@@ -10666,20 +10666,28 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
         return;
     }
 
+    let mut has_refl = false;
     for row in rbox {
-        let refl = if row.len() >= 2 && row[0] == "reflexivity" {
+        let refl = if row.len() >= 2 && matches!(row[0].as_str(), "reflexivity" | "reflexive") {
             Some(&row[1])
-        } else if row.len() >= 3 && row[0] == "fenced" && row[1] == "reflexivity" {
+        } else if row.len() >= 3
+            && row[0] == "fenced"
+            && matches!(row[1].as_str(), "reflexivity" | "reflexive")
+        {
             Some(&row[2])
         } else {
             None
         };
         if let Some(r) = refl {
+            has_refl = true;
             let base = r.strip_prefix("__inv__").unwrap_or(r.as_str()).to_string();
             for u in 0..n_elems {
                 edges.insert((u, base.clone(), u));
             }
         }
+    }
+    if edges.is_empty() && !has_refl {
+        return;
     }
 
     let insert_role = |edges: &mut std::collections::HashSet<(usize, String, usize), S>,
@@ -10713,7 +10721,7 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
         }
         for row in rbox {
             match row.first().map(String::as_str) {
-                Some("subrole") if row.len() >= 3 => {
+                Some("subrole" | "sub-role") if row.len() >= 3 => {
                     let (sub, sup) = (&row[1], &row[2]);
                     for (u, v) in pairs_for_role(&by_role, sub) {
                         insert_role(edges, u, sup, v);
@@ -10752,6 +10760,9 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                             if let Some(ws) = adj.get(&mid) {
                                 for &w in ws {
                                     insert_role(edges, u, r, w);
+                                    if edges.len() > 250_000 {
+                                        return;
+                                    }
                                 }
                             }
                         }
@@ -10770,6 +10781,9 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                             if let Some(ws) = adj2.get(&mid) {
                                 for &w in ws {
                                     insert_role(edges, u, sup, w);
+                                    if edges.len() > 250_000 {
+                                        return;
+                                    }
                                 }
                             }
                         }
@@ -10796,7 +10810,13 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                                 if let Some(ws) = adj.get(&mid) {
                                     for &w in ws {
                                         next_reach.insert((u, w));
+                                        if next_reach.len() > 250_000 {
+                                            break;
+                                        }
                                     }
+                                }
+                                if next_reach.len() > 250_000 {
+                                    break;
                                 }
                             }
                             reach = next_reach;
@@ -10806,10 +10826,16 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                         }
                         for (u, w) in reach {
                             insert_role(edges, u, sup, w);
+                            if edges.len() > 250_000 {
+                                return;
+                            }
                         }
                     }
                 }
                 _ => {}
+            }
+            if edges.len() > 250_000 {
+                return;
             }
         }
         if edges.len() == before {
@@ -11617,6 +11643,9 @@ pub(crate) fn build_cb_export_model_from_shards(
 
     let n_elems = model_contexts.len();
     close_edges_under_rbox_rows(&input.rbox, n_elems, &mut edge_set);
+    if edge_set.len() > 250_000 {
+        return Err("cb-horn RBox edge closure exceeds compact export bound".to_string());
+    }
 
     let mut partial_reason = None;
     match verify_clauses_on_cb_structure_until(
@@ -11627,7 +11656,7 @@ pub(crate) fn build_cb_export_model_from_shards(
         deadline,
     ) {
         Ok(()) => {}
-        Err(msg) if msg.contains("budget exceeded") => {
+        Err(msg) if msg.contains("budget") => {
             partial_reason = Some(msg);
         }
         Err(e) => return Err(e),

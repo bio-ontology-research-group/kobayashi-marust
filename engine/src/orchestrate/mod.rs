@@ -1326,17 +1326,23 @@ fn try_inproc_engine(
             started.elapsed().as_secs_f64()
         );
     }
+    let export_ext_deadline = deadline + budget + std::time::Duration::from_secs(3);
     loop {
         let now = std::time::Instant::now();
-        if now >= deadline {
+        let active_deadline = if probe.as_ref().is_some_and(|p| p.bridge_answered()) {
+            export_ext_deadline
+        } else {
+            deadline
+        };
+        if now >= active_deadline {
             drop(probe);
             stop_inproc(&format!("overran its {:.1}s budget", budget.as_secs_f64()));
             return Ok(None);
         }
         let wait = if probe.is_some() {
-            std::time::Duration::from_millis(2).min(deadline - now)
+            std::time::Duration::from_millis(2).min(active_deadline - now)
         } else {
-            deadline - now
+            active_deadline - now
         };
         match rx.recv_timeout(wait) {
             Ok(out) => return Ok(out), // the probe (if any) is killed on drop
@@ -2003,9 +2009,7 @@ fn classify_with_evidence_mode(
                     }
                 }
             }
-            if !evidence.classification.consistent
-                && std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some()
-            {
+            if !evidence.classification.consistent {
                 model_export::record_inconsistent();
             } else if evidence.classification.dropped > 0
                 && std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some()

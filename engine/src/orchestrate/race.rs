@@ -2546,7 +2546,9 @@ fn prepare_ht(
     // the bridge itself published carries the complete-answer-or-defer
     // guarantee that justifies the instant harvest below; any other arm keeps
     // its fallback budget.
-    let bridge_answer_marker = (bridge_candidate && !bridge_exclusive).then(|| {
+    let bridge_answer_marker = (bridge_candidate
+        && (!bridge_exclusive || std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some()))
+    .then(|| {
         let marker = super::tmpfile::TempPath::new(".bridge-answer");
         cmd.env("KM_HT_BRIDGE_ANSWER_MARKER", marker.path());
         marker
@@ -2951,6 +2953,12 @@ impl HtFirstProbe {
             return None;
         }
         Some(probe)
+    }
+
+    pub fn bridge_answered(&self) -> bool {
+        self.marker
+            .as_ref()
+            .is_some_and(|marker| std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge"))
     }
 
     pub fn poll(&mut self) -> HtFirstProbeState {
@@ -3947,7 +3955,13 @@ where
         if let Some(deadline) = ht_first.filter(|_| !typed_nominal_exclusive) {
             if pending_cb.is_some() && (budget == 0.0 || bridge_answer_marker.is_some()) {
                 let mut interval = Duration::from_millis(1);
-                while t0.elapsed() < deadline {
+                let export_ext = deadline * 2 + Duration::from_secs(3);
+                while t0.elapsed() < deadline
+                    || (t0.elapsed() < export_ext
+                        && bridge_answer_marker.as_ref().is_some_and(|marker| {
+                            std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge")
+                        }))
+                {
                     let seen = event.epoch();
                     if engine_run::read_rss(ht.id()).is_some_and(|rss| rss > ht_cap_bytes) {
                         let _ = ht.kill();

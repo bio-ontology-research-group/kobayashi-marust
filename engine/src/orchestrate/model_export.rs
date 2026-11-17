@@ -1298,6 +1298,9 @@ pub fn finish_and_write(
 fn parse_for_export(
     text: &str,
 ) -> Result<(frontend_run::Meta, crate::json_io::JInput), OrchestrateError> {
+    if std::env::var_os("KM_ROUTE").is_none() {
+        std::env::set_var("KM_ROUTE", crate::routing::Route::Auto.as_str());
+    }
     let result = match crate::frontend::ofn_to_clauses_for_classifier(text) {
         Ok(r) => r,
         Err(e) => return Err(OrchestrateError::OutOfFragment(e.0)),
@@ -1400,7 +1403,17 @@ fn try_el_raw_model(
     };
     let m =
         crate::elcomplete::el_model(el_input, el_meta.el_rbox_safe, el_meta.abox_inconsistent)?;
-    Some(Ok(build_raw_model_from_el(m, &el_input.rbox)))
+    let raw = build_raw_model_from_el(m, &el_input.rbox);
+    if let Some(ref rm) = raw {
+        if el_meta
+            .asserted_classes
+            .iter()
+            .any(|c| !rm.witnesses.contains_key(c))
+        {
+            return Some(Ok(None));
+        }
+    }
+    Some(Ok(raw))
 }
 
 fn try_cb_raw_model(
@@ -1419,7 +1432,17 @@ fn try_cb_raw_model(
         (meta, input)
     };
     let m = crate::engine::cb_model(cb_input, cb_meta.abox_inconsistent)?;
-    Ok(build_raw_model_from_cb(m))
+    let raw = build_raw_model_from_cb(m);
+    if let Some(ref rm) = raw {
+        if cb_meta
+            .asserted_classes
+            .iter()
+            .any(|c| !rm.witnesses.contains_key(c))
+        {
+            return Ok(None);
+        }
+    }
+    Ok(raw)
 }
 
 fn try_bridge_raw_model(
@@ -1427,16 +1450,17 @@ fn try_bridge_raw_model(
     meta: &frontend_run::Meta,
     input: &crate::json_io::JInput,
 ) -> Result<Option<RawModel>, String> {
+    let _guard = crate::routing::EnvironmentGuard::capture();
     let owned;
     let (ht_meta, ht_input) =
-        if input.source_axioms.is_empty() || std::env::var_os("KM_NOMINALS").is_none() {
-            let _guard = crate::routing::EnvironmentGuard::capture();
-            std::env::set_var("KM_NOMINALS", "1");
+        if input.source_axioms.is_empty() || std::env::var_os("KM_NOMINALS").is_some() {
+            std::env::remove_var("KM_NOMINALS");
             std::env::set_var("KM_ROUTE", "ht_bridge");
             std::env::set_var("KM_TRIGGER_ABSORB", "1");
             owned = parse_for_export(text).map_err(|e| e.to_string())?;
             (&owned.0, &owned.1)
         } else {
+            std::env::set_var("KM_TRIGGER_ABSORB", "1");
             (meta, input)
         };
     if ht_meta.abox_inconsistent {
@@ -1707,6 +1731,7 @@ fn write_model<W: Write>(
         )?;
         w.write_all(b"\n")?;
     }
+    let mut seen_values: HashSet<(String, String, String)> = HashSet::new();
     for (f, r, t) in &raw.edges {
         if !is_cell(*f) && is_cell(*t) && (data.contains(r.as_str()) || is_source_role(r)) {
             let mut dts: Vec<String> = raw.labels[*t]
@@ -1724,13 +1749,17 @@ fn write_model<W: Write>(
                     .cloned()
                     .unwrap_or_else(|| raw.contexts[*t].clone())
             };
+            let prop_full = iri(r);
+            if !seen_values.insert((ids[*f].clone(), prop_full.clone(), cell.clone())) {
+                continue;
+            }
             let literal = dts
                 .iter()
                 .find_map(|c| c.strip_prefix("__dt__val__").map(str::to_string));
             let mut obj = serde_json::json!({
                 "kind": "value",
                 "element": ids[*f],
-                "property": iri(r),
+                "property": prop_full,
                 "cell": cell,
                 "datatypes": dts,
             });
@@ -1743,6 +1772,9 @@ fn write_model<W: Write>(
     for (owner_iri, prop_iri, literal) in &raw.extra_values {
         if let Some(eid) = ind_to_eid.get(owner_iri) {
             let cell = format!("__dt__val__{literal}");
+            if !seen_values.insert((eid.clone(), prop_iri.clone(), cell.clone())) {
+                continue;
+            }
             line(
                 w,
                 serde_json::json!({

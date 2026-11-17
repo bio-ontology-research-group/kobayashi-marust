@@ -15875,6 +15875,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     let mut harvested_base_comp: Option<BridgeExtractedComponent> = None;
     let harvested_subject_comps: std::cell::RefCell<HashMap<usize, BridgeExtractedComponent>> =
         std::cell::RefCell::new(HashMap::default());
+    let harvest_elapsed: std::cell::Cell<std::time::Duration> =
+        std::cell::Cell::new(std::time::Duration::ZERO);
     // Milestone: later exits that record no reason of their own report the
     // phase they left from.
     note_bridge_defer("consistency or classification phase (no specific reason recorded)");
@@ -15952,13 +15954,37 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 configure_production_search(&mut algo);
                 match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
                     Some(false) => {
+                        if export_active {
+                            store_last_bridge_export_model(Ok(BridgeExportModel {
+                                contexts: Vec::new(),
+                                labels: Vec::new(),
+                                edges: Vec::new(),
+                                blocked: Vec::new(),
+                                class_witnesses: Vec::new(),
+                                inconsistent: true,
+                                partial_reason: None,
+                            }));
+                        }
                         return Some(BridgedClassification {
                             consistent: false,
                             unsatisfiable: Vec::new(),
                             subsumptions: Vec::new(),
                         });
                     }
-                    Some(true) => {}
+                    Some(true) => {
+                        if export_active {
+                            harvested_base_comp = extract_bridge_component(
+                                &mut ctx,
+                                &bridged,
+                                tin,
+                                &export_rbox,
+                                &export_lazy_cceq,
+                                None,
+                                Some("⊤"),
+                                false,
+                            );
+                        }
+                    }
                     None => return None,
                 }
             }
@@ -17529,8 +17555,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             let (subs, authoritative, root) = readoff?;
             if export_active
                 && !(authoritative && subs.len() == n_named)
+                && harvest_elapsed.get() < std::time::Duration::from_secs(2)
                 && !harvested_subject_comps.borrow().contains_key(&s)
             {
+                let t_harv = std::time::Instant::now();
                 if let Some(comp) = extract_bridge_component(
                     ctx,
                     &bridged,
@@ -17545,6 +17573,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         harvested_subject_comps.borrow_mut().insert(s, comp);
                     }
                 }
+                harvest_elapsed.set(harvest_elapsed.get() + t_harv.elapsed());
             }
             // An authoritative read-off answers every named subsumer of `s`
             // except the still-`CCEQ` hosts, which no completion adds from
@@ -18400,6 +18429,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         }
     }
     if export_active {
+        if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
+            let _ = std::fs::write(marker, b"bridge");
+        }
         let classify_elapsed = t_env.elapsed();
         let harvested_map = harvested_subject_comps.into_inner();
         let base_abbreviated = harvested_base_comp
@@ -18416,52 +18448,28 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             harvested_base_comp,
             harvested_map,
             saturation_ran,
-            probe_start_id,
+            1_000,
             classify_elapsed,
             |algo, ctx| {
-                let mut restored = false;
-                if retained_consistency_base
-                    && !base_abbreviated
-                    && !fresh_env
-                    && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
-                {
-                    if let Some(leaf) = leaf_state.borrow_mut().take() {
-                        let _ = drop_retained_consistency_leaf(algo, ctx, &leaf);
-                    }
-                    if let Some(ref db) = retained_consistency_databox {
-                        restored = restore_retained_classification_base_with(
-                            algo,
-                            ctx,
-                            &bridged,
-                            db,
-                            retained_consistency_branch_node,
-                            retained_consistency_next_id,
-                            retained_replay_snapshot.as_ref(),
-                            false,
-                        )
-                        .is_some();
-                    }
+                if base_abbreviated {
+                    bridged.precomputation_replay_disabled.set(true);
                 }
-                if !restored {
-                    if base_abbreviated {
-                        bridged.precomputation_replay_disabled.set(true);
-                    }
-                    let _ = leaf_state.borrow_mut().take();
-                    reset_classification_probe_env(
-                        algo,
-                        ctx,
-                        &bridged,
-                        saturation_ran || native_saturation_ran,
-                        independent_abox_elided,
-                    );
-                }
+                let _ = leaf_state.borrow_mut().take();
+                reset_classification_probe_env(
+                    algo,
+                    ctx,
+                    &bridged,
+                    saturation_ran || native_saturation_ran,
+                    independent_abox_elided,
+                );
                 configure_production_search(algo);
                 algo.empty_alternative_witnesses =
                     std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
-                if base_abbreviated {
-                    algo.conf_allow_backend_successor_expansion_blocking = false;
-                    algo.conf_allow_backend_neighbour_expansion_blocking = false;
-                }
+                algo.conf_allow_backend_successor_expansion_blocking = false;
+                algo.conf_allow_backend_neighbour_expansion_blocking = false;
+                algo.conf_anywhere_blocking_linked_candidate_hash_search = false;
+                algo.conf_comp_graph_deterministic_reuse = false;
+                algo.conf_comp_graph_non_deterministic_reuse = false;
                 algo.conf_sat_exp_cache_retrieval = false;
                 algo.conf_sat_exp_cache_concept_expansion = false;
                 algo.conf_sat_exp_cache_satisfiable_blocking = false;
@@ -18587,32 +18595,33 @@ fn collect_bridge_rbox_rows(tin: &TInput) -> Vec<Vec<String>> {
 }
 
 fn collect_lazy_cceq_defs(
-    ctx: &CalculationAlgorithmContextBase,
-    bridged: &Bridged,
+    _ctx: &CalculationAlgorithmContextBase,
+    _bridged: &Bridged,
     tin: &TInput,
 ) -> Vec<(usize, SourceConcept)> {
-    let n_named = tin.concepts.len();
+    let name_to_idx: HashMap<&str, usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.as_str(), i))
+        .collect();
     let mut lazy_cceq_defs: Vec<(usize, SourceConcept)> = Vec::new();
-    for c in 0..n_named {
-        if ctx
-            .ontology_arenas()
-            .concept(bridged.named[c])
-            .get_operator_code()
-            == op::CCEQ
-        {
-            let name = &tin.concepts[c];
-            if let Some(def) = tin.source_axioms.iter().find_map(|ax| {
-                if ax.kind != crate::json_io::SourceAxiomKind::Equivalent {
-                    return None;
+    for ax in &tin.source_axioms {
+        if ax.kind != crate::json_io::SourceAxiomKind::Equivalent {
+            continue;
+        }
+        match (&ax.left, &ax.right) {
+            (SourceConcept::Name(n), rhs) if !matches!(rhs, SourceConcept::Name(_)) => {
+                if let Some(&c) = name_to_idx.get(n.as_str()) {
+                    lazy_cceq_defs.push((c, rhs.clone()));
                 }
-                match (&ax.left, &ax.right) {
-                    (SourceConcept::Name(n), rhs) if n == name => Some(rhs.clone()),
-                    (lhs, SourceConcept::Name(n)) if n == name => Some(lhs.clone()),
-                    _ => None,
-                }
-            }) {
-                lazy_cceq_defs.push((c, def));
             }
+            (lhs, SourceConcept::Name(n)) if !matches!(lhs, SourceConcept::Name(_)) => {
+                if let Some(&c) = name_to_idx.get(n.as_str()) {
+                    lazy_cceq_defs.push((c, lhs.clone()));
+                }
+            }
+            _ => {}
         }
     }
     lazy_cceq_defs
@@ -18733,7 +18742,7 @@ fn eval_source_concept_on_component(
                 blocked_map,
             )
         }),
-        SourceConcept::Exists(role, filler) => succs(u, role).into_iter().any(|v| {
+        SourceConcept::Exists(role, filler) => succs(eff, role).into_iter().any(|v| {
             eval_source_concept_on_component(
                 filler,
                 v,
@@ -18745,7 +18754,7 @@ fn eval_source_concept_on_component(
                 blocked_map,
             )
         }),
-        SourceConcept::Forall(role, filler) => succs(u, role).into_iter().all(|v| {
+        SourceConcept::Forall(role, filler) => succs(eff, role).into_iter().all(|v| {
             eval_source_concept_on_component(
                 filler,
                 v,
@@ -18758,7 +18767,7 @@ fn eval_source_concept_on_component(
             )
         }),
         SourceConcept::AtLeast(n, role, filler) => {
-            succs(u, role)
+            succs(eff, role)
                 .into_iter()
                 .filter(|&v| {
                     eval_source_concept_on_component(
@@ -18776,7 +18785,7 @@ fn eval_source_concept_on_component(
                 >= (*n).max(0) as usize
         }
         SourceConcept::AtMost(n, role, filler) => {
-            succs(u, role)
+            succs(eff, role)
                 .into_iter()
                 .filter(|&v| {
                     eval_source_concept_on_component(
@@ -18818,6 +18827,7 @@ fn extract_bridge_component(
         IndividualProcessNode::PRF_PURGEDBLOCKED | IndividualProcessNode::PRF_INDIRECTBLOCKED;
     let mut reps: Vec<(Cint64, NodeId)> = Vec::new();
     let mut seen_rep_ids: HashSet<Cint64> = HashSet::default();
+    let mut abbreviated_by_cache = false;
 
     if only_root_connected {
         if let Some(r_rep) = root_rep {
@@ -18847,17 +18857,6 @@ fn extract_bridge_component(
                                 .get_data(b_id);
                             neighbor_nodes.push(if cur.is_some() { cur } else { blocker_raw });
                         }
-                    } else if flags & IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED != 0 {
-                        let sig_data = pc
-                            .node(cur_node)
-                            .signature_blocking_individual_node_concept_expansion_data(false);
-                        if sig_data.is_some() {
-                            let blocker_raw =
-                                pc.sig_block_con_exp_data(sig_data).get_blocker_individual_node();
-                            if blocker_raw.is_some() {
-                                neighbor_nodes.push(blocker_raw);
-                            }
-                        }
                     }
                     let mut it = pc.node_successor_iterator(cur_node);
                     while it.has_next() {
@@ -18883,6 +18882,10 @@ fn extract_bridge_component(
                         continue;
                     }
                     let rep_id = ctx.process_context().node(rep).individual_node_id();
+                    if r_id >= 0 && rep_id >= 0 && rep_id < r_id {
+                        abbreviated_by_cache = true;
+                        continue;
+                    }
                     if cur_id >= 0
                         && rep_id < 0
                         && IndividualProcessNode::is_individual_ancestor_in_context(
@@ -19055,7 +19058,6 @@ fn extract_bridge_component(
         }
     }
 
-    let mut abbreviated_by_cache = false;
     for (local_idx, &(rep_id, rep_node)) in reps.iter().enumerate() {
         let ctx_name = if Some(rep_id) == root_rep_id {
             root_context_name
@@ -19081,7 +19083,8 @@ fn extract_bridge_component(
                     | IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED
                     | IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED
                     | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
-                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED)
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED)
                 != 0)
         {
             abbreviated_by_cache = true;
@@ -19104,27 +19107,8 @@ fn extract_bridge_component(
                         if b_local != local_idx {
                             blocked.push((local_idx, b_local));
                         }
-                    }
-                }
-            }
-        } else if flags & IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED != 0 {
-            let sig_data = ctx
-                .process_context()
-                .node(rep_node)
-                .signature_blocking_individual_node_concept_expansion_data(false);
-            if sig_data.is_some() {
-                let blocker_raw = ctx
-                    .process_context()
-                    .sig_block_con_exp_data(sig_data)
-                    .get_blocker_individual_node();
-                if blocker_raw.is_some() {
-                    if let Some(b_rep) = native_completion_merge_target(ctx, blocker_raw, false) {
-                        let b_rep_id = ctx.process_context().node(b_rep).individual_node_id();
-                        if let Some(&b_local) = rep_id_to_local.get(&b_rep_id) {
-                            if b_local != local_idx {
-                                blocked.push((local_idx, b_local));
-                            }
-                        }
+                    } else {
+                        abbreviated_by_cache = true;
                     }
                 }
             }
@@ -19225,8 +19209,9 @@ fn extract_bridge_component(
             }
         }
     }
-
-    crate::engine::close_edges_under_rbox_rows(rbox, n_elems, &mut edges);
+    if !only_root_connected || !edges.is_empty() {
+        crate::engine::close_edges_under_rbox_rows(rbox, n_elems, &mut edges);
+    }
 
     if !blocked.is_empty() {
         let blocked_map: HashMap<usize, usize> = blocked.iter().copied().collect();
@@ -19245,18 +19230,16 @@ fn extract_bridge_component(
         let snapshot: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
         for &(u, _) in &blocked {
             let b = resolve_b(u);
-            let b_rep_id = reps[b].0;
+            let b_labels: Vec<String> = labels[b].iter().cloned().collect();
+            for c in b_labels {
+                labels[u].insert(c);
+            }
             for &(src, ref r, dst) in &snapshot {
                 if src == b && dst == b {
                     edges.insert((u, r.clone(), u));
-                } else if src == b && (reps[dst].0 > b_rep_id || reps[dst].0 < 0) {
-                    edges.insert((u, r.clone(), dst));
-                } else if dst == b && reps[src].0 > b_rep_id {
-                    edges.insert((src, r.clone(), u));
                 }
             }
         }
-        crate::engine::close_edges_under_rbox_rows(rbox, n_elems, &mut edges);
     }
 
     if !lazy_cceq_defs.is_empty() {
@@ -19393,7 +19376,6 @@ fn finish_bridge_export_model_from_live_state(
             base_fallback_comp = other;
             renew_env(algo, ctx)
                 .ok_or_else(|| "bridge export failed to restore base environment".to_string())?;
-            configure_production_search(algo);
             algo.probe_budget = Some(
                 export_deadline
                     .saturating_duration_since(std::time::Instant::now())
@@ -19438,13 +19420,15 @@ fn finish_bridge_export_model_from_live_state(
     let mut global_nominal_elem: HashMap<Cint64, usize> = HashMap::default();
     let mut global_nominal_by_name: HashMap<String, usize> = HashMap::default();
     let mut global_edges: HashSet<(usize, String, usize)> = HashSet::default();
+    let mut unblocked_elems_by_subject: HashMap<usize, Vec<usize>> = HashMap::default();
 
     let append_component = |comp: BridgeExtractedComponent,
                             only_root_connected: bool,
                             model: &mut BridgeExportModel,
                             global_nominal_elem: &mut HashMap<Cint64, usize>,
                             global_nominal_by_name: &mut HashMap<String, usize>,
-                            global_edges: &mut HashSet<(usize, String, usize)>|
+                            global_edges: &mut HashSet<(usize, String, usize)>,
+                            unblocked_elems_by_subject: &mut HashMap<usize, Vec<usize>>|
      -> Option<usize> {
         let keep_local: HashSet<usize> = if only_root_connected {
             if let Some(root_local) = comp.root_local {
@@ -19475,6 +19459,7 @@ fn finish_bridge_export_model_from_live_state(
         } else {
             (0..comp.contexts.len()).collect()
         };
+        let local_blocked_set: HashSet<usize> = comp.blocked.iter().map(|&(u, _)| u).collect();
 
         let mut local_to_global: HashMap<usize, usize> = HashMap::default();
         for u in 0..comp.contexts.len() {
@@ -19498,6 +19483,12 @@ fn finish_bridge_export_model_from_live_state(
                     for item in &comp.labels[u] {
                         if !item.starts_with("__nom__") && !lbl.contains(item) {
                             lbl.push(item.clone());
+                            if let Some(&s_idx) = active_name_to_idx.get(item.as_str()) {
+                                unblocked_elems_by_subject
+                                    .entry(s_idx)
+                                    .or_default()
+                                    .push(existing);
+                            }
                         }
                     }
                     lbl.sort();
@@ -19522,6 +19513,16 @@ fn finish_bridge_export_model_from_live_state(
             model.contexts.push(comp.contexts[u].clone());
             let mut lbl: Vec<String> = comp.labels[u].iter().cloned().collect();
             lbl.sort();
+            if !local_blocked_set.contains(&u) {
+                for item in &lbl {
+                    if let Some(&s_idx) = active_name_to_idx.get(item.as_str()) {
+                        unblocked_elems_by_subject
+                            .entry(s_idx)
+                            .or_default()
+                            .push(g_idx);
+                    }
+                }
+            }
             model.labels.push(lbl);
         }
         for &(u, ref r, v) in &comp.edges {
@@ -19547,6 +19548,7 @@ fn finish_bridge_export_model_from_live_state(
         &mut global_nominal_elem,
         &mut global_nominal_by_name,
         &mut global_edges,
+        &mut unblocked_elems_by_subject,
     );
 
     let elem_active_classes = |labels: &[String]| -> HashSet<usize> {
@@ -19556,13 +19558,27 @@ fn finish_bridge_export_model_from_live_state(
             .collect()
     };
 
+    let find_exact_elem = |s: usize,
+                           want: &HashSet<usize>,
+                           labels: &[Vec<String>],
+                           by_subj: &HashMap<usize, Vec<usize>>|
+     -> Option<usize> {
+        let cands = by_subj.get(&s)?;
+        cands.iter().copied().find(|&i| {
+            let active_cnt = labels[i]
+                .iter()
+                .filter(|name| active_name_to_idx.contains_key(name.as_str()))
+                .count();
+            active_cnt == want.len() && &elem_active_classes(&labels[i]) == want
+        })
+    };
+
     let mut witnessed: HashSet<usize> = HashSet::default();
     for &s in &satisfiable_subjects {
         let want = &entailed_supers[&s];
-        if let Some(elem_idx) = (0..model.labels.len()).find(|&i| {
-            model.labels[i].iter().any(|c| c == &tin.concepts[s])
-                && &elem_active_classes(&model.labels[i]) == want
-        }) {
+        if let Some(elem_idx) =
+            find_exact_elem(s, want, &model.labels, &unblocked_elems_by_subject)
+        {
             model
                 .class_witnesses
                 .push((tin.concepts[s].clone(), elem_idx, true));
@@ -19593,6 +19609,7 @@ fn finish_bridge_export_model_from_live_state(
                             &mut global_nominal_elem,
                             &mut global_nominal_by_name,
                             &mut global_edges,
+                            &mut unblocked_elems_by_subject,
                         ) {
                             model
                                 .class_witnesses
@@ -19610,10 +19627,9 @@ fn finish_bridge_export_model_from_live_state(
             continue;
         }
         let want = &entailed_supers[&s];
-        if let Some(elem_idx) = (0..model.labels.len()).find(|&i| {
-            model.labels[i].iter().any(|c| c == &tin.concepts[s])
-                && &elem_active_classes(&model.labels[i]) == want
-        }) {
+        if let Some(elem_idx) =
+            find_exact_elem(s, want, &model.labels, &unblocked_elems_by_subject)
+        {
             model
                 .class_witnesses
                 .push((tin.concepts[s].clone(), elem_idx, true));
@@ -19623,32 +19639,38 @@ fn finish_bridge_export_model_from_live_state(
 
         let now = std::time::Instant::now();
         if now >= export_deadline {
-            // If we already have a non-exact harvested component for `s`, attach it;
-            // otherwise mark partial and stop probing.
-            if let Some(comp) = harvested_subject_comps.remove(&s) {
-                if !comp.abbreviated_by_cache {
-                    if let Some(root_elem) = append_component(
-                        comp,
-                        true,
-                        &mut model,
-                        &mut global_nominal_elem,
-                        &mut global_nominal_by_name,
-                        &mut global_edges,
-                    ) {
-                        model
-                            .class_witnesses
-                            .push((tin.concepts[s].clone(), root_elem, false));
-                        witnessed.insert(s);
-                        continue;
+            // Attach any remaining non-abbreviated harvested components and stop probing.
+            for &rem_s in &satisfiable_subjects {
+                if witnessed.contains(&rem_s) {
+                    continue;
+                }
+                if let Some(comp) = harvested_subject_comps.remove(&rem_s) {
+                    if !comp.abbreviated_by_cache {
+                        if let Some(root_elem) = append_component(
+                            comp,
+                            true,
+                            &mut model,
+                            &mut global_nominal_elem,
+                            &mut global_nominal_by_name,
+                            &mut global_edges,
+                            &mut unblocked_elems_by_subject,
+                        ) {
+                            model
+                                .class_witnesses
+                                .push((tin.concepts[rem_s].clone(), root_elem, false));
+                            witnessed.insert(rem_s);
+                        }
                     }
                 }
             }
-            model.partial_reason = Some(format!(
-                "export budget ({:.2}s) exceeded after {}/{} class witnesses",
-                budget_secs,
-                witnessed.len(),
-                satisfiable_subjects.len()
-            ));
+            if witnessed.len() < satisfiable_subjects.len() {
+                model.partial_reason = Some(format!(
+                    "export budget ({:.2}s) exceeded after {}/{} class witnesses",
+                    budget_secs,
+                    witnessed.len(),
+                    satisfiable_subjects.len()
+                ));
+            }
             break;
         }
 
@@ -19677,7 +19699,6 @@ fn finish_bridge_export_model_from_live_state(
             if renew_env(algo, ctx).is_none() {
                 break;
             }
-            configure_production_search(algo);
             algo.probe_budget = Some(
                 export_deadline
                     .saturating_duration_since(now)
@@ -19753,6 +19774,7 @@ fn finish_bridge_export_model_from_live_state(
             &mut global_nominal_elem,
             &mut global_nominal_by_name,
             &mut global_edges,
+            &mut unblocked_elems_by_subject,
         ) else {
             model.partial_reason = Some(format!(
                 "export witness root mapping incomplete at {} after {}/{} class witnesses",
@@ -19774,12 +19796,13 @@ fn finish_bridge_export_model_from_live_state(
     }
     model.blocked.sort_unstable();
     model.blocked.dedup();
+    crate::engine::close_edges_under_rbox_rows(rbox, model.contexts.len(), &mut global_edges);
 
     // Close every element's positive named labels under all entailed named
     // subsumptions (including intermediate substitute nodes skipped by
     // saturation-data root/successor initialization and told/definition closure),
-    // materialize singleton-nominal existential edges `A ⊑ ∃R.{a}`, and propagate
-    // named role domains and ranges across `global_edges`.
+    // propagate named role domains and ranges across `global_edges`, and
+    // materialize singleton-nominal existential edges `A ⊑ ∃R.{a}`.
     let mut full_closure = source_named_subsumer_closure_seeded(tin, &classified.subsumptions);
     for &(sub, sup) in &classified.subsumptions {
         if sub < n_named && sup < n_named && sub != sup {
@@ -19851,6 +19874,64 @@ fn finish_bridge_export_model_from_live_state(
         }
     };
     close_labels(&mut model.labels);
+
+    let mut role_dom_by_name: HashMap<String, Vec<usize>> = HashMap::default();
+    let mut role_ran_by_name: HashMap<String, Vec<usize>> = HashMap::default();
+    for &(r_idx, c_idx) in &tin.role_domains {
+        if let Some(r_name) = tin.roles.get(r_idx) {
+            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
+                if let Some(base) = r_name.strip_prefix("__inv__") {
+                    role_ran_by_name.entry(base.to_string()).or_default().push(c_idx);
+                } else {
+                    role_dom_by_name.entry(r_name.clone()).or_default().push(c_idx);
+                }
+            }
+        }
+    }
+    for &(r_idx, c_idx) in &tin.role_ranges {
+        if let Some(r_name) = tin.roles.get(r_idx) {
+            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
+                if let Some(base) = r_name.strip_prefix("__inv__") {
+                    role_dom_by_name.entry(base.to_string()).or_default().push(c_idx);
+                } else {
+                    role_ran_by_name.entry(r_name.clone()).or_default().push(c_idx);
+                }
+            }
+        }
+    }
+    let propagate_dom_ran =
+        |labels: &mut [Vec<String>], edges: &HashSet<(usize, String, usize)>| -> bool {
+            if role_dom_by_name.is_empty() && role_ran_by_name.is_empty() {
+                return false;
+            }
+            let mut dom_ran_added = false;
+            for (u, r_name, v) in edges {
+                if let Some(doms) = role_dom_by_name.get(r_name.as_str()) {
+                    for &c_idx in doms {
+                        let cname = &tin.concepts[c_idx];
+                        if labels[*u].binary_search(cname).is_err() {
+                            labels[*u].push(cname.clone());
+                            labels[*u].sort();
+                            dom_ran_added = true;
+                        }
+                    }
+                }
+                if let Some(rans) = role_ran_by_name.get(r_name.as_str()) {
+                    for &c_idx in rans {
+                        let cname = &tin.concepts[c_idx];
+                        if labels[*v].binary_search(cname).is_err() {
+                            labels[*v].push(cname.clone());
+                            labels[*v].sort();
+                            dom_ran_added = true;
+                        }
+                    }
+                }
+            }
+            dom_ran_added
+        };
+    if propagate_dom_ran(&mut model.labels, &global_edges) {
+        close_labels(&mut model.labels);
+    }
 
     if !global_nominal_by_name.is_empty() {
         fn collect_nom_existentials<'a>(
@@ -19945,67 +20026,133 @@ fn finish_bridge_export_model_from_live_state(
                     model.contexts.len(),
                     &mut global_edges,
                 );
+                if propagate_dom_ran(&mut model.labels, &global_edges) {
+                    close_labels(&mut model.labels);
+                }
             }
         }
     }
 
-    // Propagate named role domains and ranges across all edges in `global_edges`.
-    let mut role_dom_by_name: HashMap<String, Vec<usize>> = HashMap::default();
-    let mut role_ran_by_name: HashMap<String, Vec<usize>> = HashMap::default();
-    for &(r_idx, c_idx) in &tin.role_domains {
-        if let Some(r_name) = tin.roles.get(r_idx) {
-            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
-                if let Some(base) = r_name.strip_prefix("__inv__") {
-                    role_ran_by_name.entry(base.to_string()).or_default().push(c_idx);
-                } else {
-                    role_dom_by_name.entry(r_name.clone()).or_default().push(c_idx);
-                }
-            }
+    if !lazy_cceq_defs.is_empty() {
+        let n_elems = model.labels.len();
+        let mut label_sets: Vec<HashSet<String>> = model
+            .labels
+            .iter()
+            .map(|v| v.iter().cloned().collect())
+            .collect();
+        let mut out_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        let mut in_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        for (u, r, v) in &global_edges {
+            out_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*u]
+                .push(*v);
+            in_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*v]
+                .push(*u);
         }
-    }
-    for &(r_idx, c_idx) in &tin.role_ranges {
-        if let Some(r_name) = tin.roles.get(r_idx) {
-            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
-                if let Some(base) = r_name.strip_prefix("__inv__") {
-                    role_dom_by_name.entry(base.to_string()).or_default().push(c_idx);
-                } else {
-                    role_ran_by_name.entry(r_name.clone()).or_default().push(c_idx);
+        let raw_blocked: HashMap<usize, usize> = model.blocked.iter().copied().collect();
+        let mut blocked_map: HashMap<usize, usize> = HashMap::default();
+        for &(u, _) in &model.blocked {
+            let mut cur = u;
+            let mut hops = 0;
+            while let Some(&nxt) = raw_blocked.get(&cur) {
+                if nxt == cur || hops > n_elems {
+                    break;
                 }
+                cur = nxt;
+                hops += 1;
             }
+            blocked_map.insert(u, cur);
         }
-    }
-    if !role_dom_by_name.is_empty() || !role_ran_by_name.is_empty() {
-        let mut dom_ran_added = false;
-        for (u, r_name, v) in &global_edges {
-            if let Some(doms) = role_dom_by_name.get(r_name.as_str()) {
-                for &c_idx in doms {
-                    let cname = &tin.concepts[c_idx];
-                    if model.labels[*u].binary_search(cname).is_err() {
-                        model.labels[*u].push(cname.clone());
-                        model.labels[*u].sort();
-                        dom_ran_added = true;
+        let mut any_cceq_added = false;
+        for _ in 0..4 {
+            let mut changed = false;
+            for (c_idx, def) in lazy_cceq_defs {
+                if unsat_set.contains(c_idx) {
+                    continue;
+                }
+                let c_name = &tin.concepts[*c_idx];
+                for u in 0..n_elems {
+                    if label_sets[u].contains(c_name.as_str()) {
+                        continue;
+                    }
+                    if eval_source_concept_on_component(
+                        def,
+                        u,
+                        n_elems,
+                        &label_sets,
+                        &global_edges,
+                        &out_adj,
+                        &in_adj,
+                        &blocked_map,
+                    ) {
+                        label_sets[u].insert(c_name.clone());
+                        for &sup in &supers_by_sub[*c_idx] {
+                            label_sets[u].insert(tin.concepts[sup].clone());
+                        }
+                        changed = true;
+                        any_cceq_added = true;
                     }
                 }
             }
-            if let Some(rans) = role_ran_by_name.get(r_name.as_str()) {
-                for &c_idx in rans {
-                    let cname = &tin.concepts[c_idx];
-                    if model.labels[*v].binary_search(cname).is_err() {
-                        model.labels[*v].push(cname.clone());
-                        model.labels[*v].sort();
-                        dom_ran_added = true;
-                    }
-                }
+            if !changed {
+                break;
             }
         }
-        if dom_ran_added {
+        if any_cceq_added {
+            for (u, set) in label_sets.into_iter().enumerate() {
+                let mut v: Vec<String> = set.into_iter().collect();
+                v.sort();
+                model.labels[u] = v;
+            }
             close_labels(&mut model.labels);
+        }
+    }
+
+    if !model.blocked.is_empty() {
+        let n_elems = model.labels.len();
+        let raw_blocked: HashMap<usize, usize> = model.blocked.iter().copied().collect();
+        for &(u, _) in &model.blocked {
+            let mut b = u;
+            let mut hops = 0;
+            while let Some(&nxt) = raw_blocked.get(&b) {
+                if nxt == b || hops > n_elems {
+                    break;
+                }
+                b = nxt;
+                hops += 1;
+            }
+            if b != u {
+                let b_labels = model.labels[b].clone();
+                let u_lbl = &mut model.labels[u];
+                let mut added = false;
+                for item in b_labels {
+                    if !item.starts_with("__nom__") && u_lbl.binary_search(&item).is_err() {
+                        u_lbl.push(item);
+                        u_lbl.sort();
+                        added = true;
+                    }
+                }
+                if added {
+                    u_lbl.dedup();
+                }
+            }
         }
     }
 
     // Revalidate all class witnesses against the final closed labels: drop any
     // witness whose element merged into a nominal on an incompatible branch, and
     // update `exact` to reflect any labels added by domain/range closure.
+    let mut final_elems_by_subject: HashMap<usize, Vec<usize>> = HashMap::default();
+    for (u, lbl) in model.labels.iter().enumerate() {
+        for name in lbl {
+            if let Some(&s_idx) = active_name_to_idx.get(name.as_str()) {
+                final_elems_by_subject.entry(s_idx).or_default().push(u);
+            }
+        }
+    }
     let mut valid_witnesses = Vec::with_capacity(model.class_witnesses.len());
     for (cname, elem_idx, _) in model.class_witnesses.drain(..) {
         let Some(&s) = active_name_to_idx.get(cname.as_str()) else {
@@ -20016,10 +20163,15 @@ fn finish_bridge_export_model_from_live_state(
         if want.iter().all(|req| got.contains(req)) {
             let exact = &got == want;
             valid_witnesses.push((cname, elem_idx, exact));
-        } else if let Some(alt_idx) = (0..model.labels.len()).find(|&i| {
-            let g = elem_active_classes(&model.labels[i]);
-            want.iter().all(|req| g.contains(req))
-        }) {
+        } else if let Some(alt_idx) = final_elems_by_subject
+            .get(&s)
+            .and_then(|cands| {
+                cands.iter().copied().find(|&i| {
+                    let g = elem_active_classes(&model.labels[i]);
+                    want.iter().all(|req| g.contains(req))
+                })
+            })
+        {
             let exact = &elem_active_classes(&model.labels[alt_idx]) == want;
             valid_witnesses.push((cname, alt_idx, exact));
         } else if model.partial_reason.is_none() {
@@ -20049,7 +20201,19 @@ pub(crate) fn bridge_model(
     if prev.is_none() {
         std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
     }
-    let _ = classified.ok_or_else(|| "bridge deferred classification".to_string())?;
+    let classified = classified.ok_or_else(|| "bridge deferred classification".to_string())?;
+    if !classified.consistent {
+        let _ = take_last_bridge_export_model();
+        return Ok(BridgeExportModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            blocked: Vec::new(),
+            class_witnesses: Vec::new(),
+            inconsistent: true,
+            partial_reason: None,
+        });
+    }
     take_last_bridge_export_model()
         .unwrap_or_else(|| Err("bridge did not produce an export model".to_string()))
 }
