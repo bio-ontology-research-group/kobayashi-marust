@@ -149,9 +149,13 @@ final class DataValues {
                 }
                 if (outsideRange) continue;
                 IRI dt = l.getDatatype().getIRI();
+                boolean infiniteUnboundedType = !dt.equals(OWL2Datatype.XSD_BOOLEAN.getIRI())
+                        && !integerTypes.contains(dt)
+                        && !dt.equals(OWL2Datatype.XSD_INTEGER.getIRI())
+                        && floatCuts.isEmpty();
                 if (!hasDataOneOf && !hasRuleData
-                        && (STRING_DATATYPES.contains(dt) || dt.equals(OWL2Datatype.XSD_ANY_URI.getIRI()))
-                        && subPropertiesAndSelf != null && !subPropertiesAndSelf.isEmpty()) {
+                        && subPropertiesAndSelf != null && !subPropertiesAndSelf.isEmpty()
+                        && (isPurelyAsserted(subPropertiesAndSelf) || infiniteUnboundedType)) {
                     Object key = valueKey(l);
                     boolean occursOnProp = false;
                     for (OWLDataProperty q : subPropertiesAndSelf) {

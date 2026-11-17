@@ -2290,7 +2290,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                     df.getOWLDataSomeValuesFrom(props.get(i), df.getTopDatatype())));
             someIris.add(some.getIRI().toString());
         }
-        boolean includePairs = n <= 64 && !hasLocalDataValueDisjointness(snapshot);
+        boolean includePairs = n <= 64;
         String[][] pairIri = includePairs ? new String[n][n] : null;
         if (includePairs) {
             for (int i = 0; i < n; i++) {
@@ -4531,17 +4531,17 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      * and {@code owl:topObjectProperty} can introduce named-individual pairs,
      * closed upwards under sub-property, property chain, equivalence and inverse.
      */
-    private List<OWLObjectProperty> activeObjectProperties(OWLOntology snapshot) {
-        boolean hasObjectOneOf = false;
+    private static boolean hasObjectOneOf(OWLOntology snapshot) {
         for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
             for (OWLClassExpression ce : ax.getNestedClassExpressions()) {
-                if (ce instanceof OWLObjectOneOf) {
-                    hasObjectOneOf = true;
-                    break;
-                }
+                if (ce instanceof OWLObjectOneOf) return true;
             }
-            if (hasObjectOneOf) break;
         }
+        return false;
+    }
+
+    private List<OWLObjectProperty> activeObjectProperties(OWLOntology snapshot) {
+        boolean hasObjectOneOf = hasObjectOneOf(snapshot);
         Set<OWLObjectProperty> active = new LinkedHashSet<>();
         active.add(df.getOWLTopObjectProperty());
         for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
@@ -4711,7 +4711,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         }
         if (!individuals.contains(ind)) return freshSubjectValues(ind, simple);
         if (precomputedTypes.contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS)
-                && allObjectValues == null && valuesFailure == null && objectValuesPrecomputable()) {
+                && allObjectValues == null && valuesFailure == null && objectValuesPrecomputable()
+                && (activeRollup != null || !hasObjectOneOf(querySnapshot()))) {
             try {
                 ensureAllObjectValues();
             } catch (UnsupportedOperationException ignored) {
@@ -4803,10 +4804,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             }
         }
         boolean freshSubject = !signatureIndividuals().contains(ind);
-        if (!freshSubject && activeRollup != null && dm != null) {
-            recordReduction("R04_rollup_data_property_values");
+        if (!freshSubject && dm != null) {
             Set<OWLDataProperty> subPropsAndSelf = subDataPropertiesAndSelf(dm, p);
             if (candidates.isPurelyAsserted(subPropsAndSelf)) {
+                recordReduction("R04_rollup_data_property_values");
                 Set<OWLNamedIndividual> same = getSameIndividuals(ind).getEntities();
                 Set<OWLLiteral> resolved = new LinkedHashSet<>();
                 for (OWLDataProperty subProp : subPropsAndSelf) {
@@ -4821,12 +4822,15 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 }
                 return resolved;
             }
-            Set<String> subs = classesWithDataSome.get(p);
-            if (subs != null) {
-                OWLClass eff = activeRollup.effectiveClassOf(ind, df);
-                String effIri = eff != null ? eff.getIRI().toString() : owlThing.getIRI().toString();
-                if (!subs.contains(owlThing.getIRI().toString()) && !subs.contains(effIri)) {
-                    return new HashSet<>();
+            if (activeRollup != null) {
+                recordReduction("R04_rollup_data_property_values");
+                Set<String> subs = classesWithDataSome.get(p);
+                if (subs != null) {
+                    OWLClass eff = activeRollup.effectiveClassOf(ind, df);
+                    String effIri = eff != null ? eff.getIRI().toString() : owlThing.getIRI().toString();
+                    if (!subs.contains(owlThing.getIRI().toString()) && !subs.contains(effIri)) {
+                        return new HashSet<>();
+                    }
                 }
             }
         }
@@ -4862,6 +4866,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                     found.put(q, new HashMap<>());
                     if (finalDm != null && (finalDm.isEmpty(q) || finalDm.isUniversal(q))) continue;
                     Set<OWLDataProperty> subProps = finalDm != null ? subDataPropertiesAndSelf(finalDm, q) : null;
+                    if (subProps != null && candidates.isPurelyAsserted(subProps)) continue;
                     Set<OWLDataProperty> supProps = finalDm != null ? superDataPropertiesAndSelf(finalDm, q)
                             : Collections.singleton(q);
                     List<OWLDataRange> qRanges = new ArrayList<>();
