@@ -10618,11 +10618,30 @@ impl Engine {
     }
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CbExportModel {
     pub contexts: Vec<String>,
     pub labels: Vec<Vec<String>>,
     pub edges: Vec<(usize, String, usize)>,
     pub inconsistent: bool,
+    pub partial_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum CbContextKey {
+    Top,
+    Query(String),
+    Core(Vec<String>),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CbContextNode {
+    pub key: CbContextKey,
+    pub labels: Vec<String>,
+    pub self_roles: Vec<String>,
+    pub fwd_roles: Vec<(String, Term)>,
+    pub bwd_roles: Vec<(String, Term)>,
+    pub succ_edges: Vec<(Term, CbContextKey)>,
 }
 
 pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
@@ -10630,16 +10649,22 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
     n_elems: usize,
     edges: &mut std::collections::HashSet<(usize, String, usize), S>,
 ) {
-    let mut normalized: std::collections::HashSet<(usize, String, usize), S> =
-        std::collections::HashSet::default();
-    for (u, r, v) in edges.drain() {
-        if let Some(base) = r.strip_prefix("__inv__") {
-            normalized.insert((v, base.to_string(), u));
-        } else {
-            normalized.insert((u, r, v));
+    let has_inv = edges.iter().any(|(_, r, _)| r.starts_with("__inv__"));
+    if has_inv {
+        let mut normalized: std::collections::HashSet<(usize, String, usize), S> =
+            std::collections::HashSet::default();
+        for (u, r, v) in edges.drain() {
+            if let Some(base) = r.strip_prefix("__inv__") {
+                normalized.insert((v, base.to_string(), u));
+            } else {
+                normalized.insert((u, r, v));
+            }
         }
+        *edges = normalized;
     }
-    *edges = normalized;
+    if rbox.is_empty() {
+        return;
+    }
 
     for row in rbox {
         let refl = if row.len() >= 2 && row[0] == "reflexivity" {
@@ -10650,24 +10675,13 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
             None
         };
         if let Some(r) = refl {
-            let base = r.strip_prefix("__inv__").unwrap_or(r.as_str());
+            let base = r.strip_prefix("__inv__").unwrap_or(r.as_str()).to_string();
             for u in 0..n_elems {
-                edges.insert((u, base.to_string(), u));
+                edges.insert((u, base.clone(), u));
             }
         }
     }
 
-    let has_role = |edges: &std::collections::HashSet<(usize, String, usize), S>,
-                    u: usize,
-                    r: &str,
-                    v: usize|
-     -> bool {
-        if let Some(base) = r.strip_prefix("__inv__") {
-            edges.contains(&(v, base.to_string(), u))
-        } else {
-            edges.contains(&(u, r.to_string(), v))
-        }
-    };
     let insert_role = |edges: &mut std::collections::HashSet<(usize, String, usize), S>,
                        u: usize,
                        r: &str,
@@ -10679,132 +10693,120 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
         }
     };
 
+    let pairs_for_role =
+        |by_role: &HashMap<String, Vec<(usize, usize)>>, r: &str| -> Vec<(usize, usize)> {
+            if let Some(base) = r.strip_prefix("__inv__") {
+                by_role
+                    .get(base)
+                    .map(|list| list.iter().map(|&(u, v)| (v, u)).collect())
+                    .unwrap_or_default()
+            } else {
+                by_role.get(r).cloned().unwrap_or_default()
+            }
+        };
+
     loop {
         let before = edges.len();
+        let mut by_role: HashMap<String, Vec<(usize, usize)>> = HashMap::default();
+        for &(u, ref r, v) in edges.iter() {
+            by_role.entry(r.clone()).or_default().push((u, v));
+        }
         for row in rbox {
             match row.first().map(String::as_str) {
                 Some("subrole") if row.len() >= 3 => {
                     let (sub, sup) = (&row[1], &row[2]);
-                    let mut to_add = Vec::new();
-                    for u in 0..n_elems {
-                        for v in 0..n_elems {
-                            if has_role(edges, u, sub, v) {
-                                to_add.push((u, v));
-                            }
-                        }
-                    }
-                    for (u, v) in to_add {
+                    for (u, v) in pairs_for_role(&by_role, sub) {
                         insert_role(edges, u, sup, v);
                     }
                 }
                 Some("inverse") if row.len() >= 3 => {
                     let (r1, r2) = (&row[1], &row[2]);
-                    let mut to_add = Vec::new();
-                    for u in 0..n_elems {
-                        for v in 0..n_elems {
-                            if has_role(edges, u, r1, v) {
-                                to_add.push((v, r2.as_str(), u));
-                            }
-                            if has_role(edges, u, r2, v) {
-                                to_add.push((v, r1.as_str(), u));
-                            }
-                        }
+                    for (u, v) in pairs_for_role(&by_role, r1) {
+                        insert_role(edges, v, r2, u);
                     }
-                    for (u, r, v) in to_add {
-                        insert_role(edges, u, r, v);
+                    for (u, v) in pairs_for_role(&by_role, r2) {
+                        insert_role(edges, v, r1, u);
                     }
                 }
                 Some("symmetric-role") if row.len() >= 2 => {
                     let r = &row[1];
-                    let mut to_add = Vec::new();
-                    for u in 0..n_elems {
-                        for v in 0..n_elems {
-                            if has_role(edges, u, r, v) {
-                                to_add.push((v, u));
-                            }
-                        }
-                    }
-                    for (u, v) in to_add {
-                        insert_role(edges, u, r, v);
+                    for (u, v) in pairs_for_role(&by_role, r) {
+                        insert_role(edges, v, r, u);
                     }
                 }
                 Some("fenced") if row.len() >= 3 && row[1] == "symmetric-role" => {
                     let r = &row[2];
-                    let mut to_add = Vec::new();
-                    for u in 0..n_elems {
-                        for v in 0..n_elems {
-                            if has_role(edges, u, r, v) {
-                                to_add.push((v, u));
-                            }
-                        }
-                    }
-                    for (u, v) in to_add {
-                        insert_role(edges, u, r, v);
+                    for (u, v) in pairs_for_role(&by_role, r) {
+                        insert_role(edges, v, r, u);
                     }
                 }
                 Some("transitive") if row.len() >= 2 => {
                     let r = &row[1];
-                    let mut pairs = Vec::new();
-                    for u in 0..n_elems {
-                        for v in 0..n_elems {
-                            if has_role(edges, u, r, v) {
-                                pairs.push((u, v));
-                            }
+                    let pairs = pairs_for_role(&by_role, r);
+                    if !pairs.is_empty() {
+                        let mut adj: HashMap<usize, Vec<usize>> = HashMap::default();
+                        for &(u, v) in &pairs {
+                            adj.entry(u).or_default().push(v);
                         }
-                    }
-                    for &(u, mid) in &pairs {
-                        for &(m2, w) in &pairs {
-                            if mid == m2 {
-                                insert_role(edges, u, r, w);
+                        for &(u, mid) in &pairs {
+                            if let Some(ws) = adj.get(&mid) {
+                                for &w in ws {
+                                    insert_role(edges, u, r, w);
+                                }
                             }
                         }
                     }
                 }
                 Some("chain") if row.len() >= 4 => {
                     let (r1, r2, sup) = (&row[1], &row[2], &row[3]);
-                    let mut to_add = Vec::new();
-                    for u in 0..n_elems {
-                        for mid in 0..n_elems {
-                            if has_role(edges, u, r1, mid) {
-                                for w in 0..n_elems {
-                                    if has_role(edges, mid, r2, w) {
-                                        to_add.push((u, w));
-                                    }
+                    let p1 = pairs_for_role(&by_role, r1);
+                    let p2 = pairs_for_role(&by_role, r2);
+                    if !p1.is_empty() && !p2.is_empty() {
+                        let mut adj2: HashMap<usize, Vec<usize>> = HashMap::default();
+                        for (mid, w) in p2 {
+                            adj2.entry(mid).or_default().push(w);
+                        }
+                        for (u, mid) in p1 {
+                            if let Some(ws) = adj2.get(&mid) {
+                                for &w in ws {
+                                    insert_role(edges, u, sup, w);
                                 }
                             }
                         }
-                    }
-                    for (u, w) in to_add {
-                        insert_role(edges, u, sup, w);
                     }
                 }
                 Some("chain-n") if row.len() >= 4 => {
                     let sup = &row[1];
                     let chain = &row[2..];
-                    let mut reach: HashSet<(usize, usize)> = HashSet::default();
-                    for u in 0..n_elems {
-                        for v in 0..n_elems {
-                            if has_role(edges, u, &chain[0], v) {
-                                reach.insert((u, v));
+                    let mut reach: HashSet<(usize, usize)> =
+                        pairs_for_role(&by_role, &chain[0]).into_iter().collect();
+                    if !reach.is_empty() {
+                        for step in &chain[1..] {
+                            let step_pairs = pairs_for_role(&by_role, step);
+                            if step_pairs.is_empty() {
+                                reach.clear();
+                                break;
                             }
-                        }
-                    }
-                    for step in &chain[1..] {
-                        let mut next_reach: HashSet<(usize, usize)> = HashSet::default();
-                        for &(u, mid) in &reach {
-                            for w in 0..n_elems {
-                                if has_role(edges, mid, step, w) {
-                                    next_reach.insert((u, w));
+                            let mut adj: HashMap<usize, Vec<usize>> = HashMap::default();
+                            for (mid, w) in step_pairs {
+                                adj.entry(mid).or_default().push(w);
+                            }
+                            let mut next_reach: HashSet<(usize, usize)> = HashSet::default();
+                            for &(u, mid) in &reach {
+                                if let Some(ws) = adj.get(&mid) {
+                                    for &w in ws {
+                                        next_reach.insert((u, w));
+                                    }
                                 }
                             }
+                            reach = next_reach;
+                            if reach.is_empty() {
+                                break;
+                            }
                         }
-                        reach = next_reach;
-                        if reach.is_empty() {
-                            break;
+                        for (u, w) in reach {
+                            insert_role(edges, u, sup, w);
                         }
-                    }
-                    for (u, w) in reach {
-                        insert_role(edges, u, sup, w);
                     }
                 }
                 _ => {}
@@ -10816,11 +10818,12 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
     }
 }
 
-fn verify_clauses_on_cb_structure(
+fn verify_clauses_on_cb_structure_until(
     clauses: &[crate::json_io::JClause],
     n_elems: usize,
     labels: &[HashSet<String>],
     edges: &HashSet<(usize, String, usize)>,
+    deadline: Option<std::time::Instant>,
 ) -> Result<(), String> {
     use crate::json_io::{JAtom, JTerm};
 
@@ -10841,11 +10844,19 @@ fn verify_clauses_on_cb_structure(
         }
     };
 
-    let mut outgoing: HashMap<(usize, String), Vec<usize>> = HashMap::default();
-    let mut incoming: HashMap<(usize, String), Vec<usize>> = HashMap::default();
+    let mut by_concept: HashMap<&str, Vec<usize>> = HashMap::default();
+    for (u, lbl) in labels.iter().enumerate() {
+        for c in lbl {
+            by_concept.entry(c.as_str()).or_default().push(u);
+        }
+    }
+    let mut outgoing: HashMap<(usize, &str), Vec<usize>> = HashMap::default();
+    let mut incoming: HashMap<(usize, &str), Vec<usize>> = HashMap::default();
+    let mut edges_by_role: HashMap<&str, Vec<(usize, usize)>> = HashMap::default();
     for &(u, ref r, v) in edges {
-        outgoing.entry((u, r.clone())).or_default().push(v);
-        incoming.entry((v, r.clone())).or_default().push(u);
+        outgoing.entry((u, r.as_str())).or_default().push(v);
+        incoming.entry((v, r.as_str())).or_default().push(u);
+        edges_by_role.entry(r.as_str()).or_default().push((u, v));
     }
 
     let mut fun_groups: HashMap<(String, String), Vec<&crate::json_io::JClause>> =
@@ -10940,9 +10951,15 @@ fn verify_clauses_on_cb_structure(
                             if has_concept(u, concept) {
                                 next_envs.push(env);
                             }
-                        } else {
+                        } else if matches!(concept.as_str(), "owl:Thing" | "Thing" | "⊤") {
                             for u in 0..n_elems {
-                                if has_concept(u, concept) {
+                                let mut env2 = env.clone();
+                                env2.insert(name.clone(), u);
+                                next_envs.push(env2);
+                            }
+                        } else if !matches!(concept.as_str(), "owl:Nothing" | "Nothing" | "⊥") {
+                            if let Some(elems) = by_concept.get(concept.as_str()) {
+                                for &u in elems {
                                     let mut env2 = env.clone();
                                     env2.insert(name.clone(), u);
                                     next_envs.push(env2);
@@ -10965,9 +10982,9 @@ fn verify_clauses_on_cb_structure(
                             }
                             (Some(su), None) => {
                                 let list = if let Some(base) = base_role {
-                                    incoming.get(&(su, base.to_string()))
+                                    incoming.get(&(su, base))
                                 } else {
-                                    outgoing.get(&(su, role.clone()))
+                                    outgoing.get(&(su, role.as_str()))
                                 };
                                 if let Some(targets) = list {
                                     for &tu in targets {
@@ -10979,9 +10996,9 @@ fn verify_clauses_on_cb_structure(
                             }
                             (None, Some(tu)) => {
                                 let list = if let Some(base) = base_role {
-                                    outgoing.get(&(tu, base.to_string()))
+                                    outgoing.get(&(tu, base))
                                 } else {
-                                    incoming.get(&(tu, role.clone()))
+                                    incoming.get(&(tu, role.as_str()))
                                 };
                                 if let Some(sources) = list {
                                     for &su in sources {
@@ -10992,33 +11009,24 @@ fn verify_clauses_on_cb_structure(
                                 }
                             }
                             (None, None) => {
-                                for &(u, ref r, v) in edges {
-                                    if let Some(base) = base_role {
-                                        if r == base {
-                                            if s_name == t_name {
-                                                if u == v {
-                                                    let mut env2 = env.clone();
-                                                    env2.insert(s_name.clone(), u);
-                                                    next_envs.push(env2);
-                                                }
-                                            } else {
-                                                let mut env2 = env.clone();
-                                                env2.insert(s_name.clone(), v);
-                                                env2.insert(t_name.clone(), u);
-                                                next_envs.push(env2);
-                                            }
-                                        }
-                                    } else if r == role {
+                                let lookup_role = base_role.unwrap_or(role.as_str());
+                                if let Some(pairs) = edges_by_role.get(lookup_role) {
+                                    for &(u, v) in pairs {
+                                        let (su, tu) = if base_role.is_some() {
+                                            (v, u)
+                                        } else {
+                                            (u, v)
+                                        };
                                         if s_name == t_name {
-                                            if u == v {
+                                            if su == tu {
                                                 let mut env2 = env.clone();
-                                                    env2.insert(s_name.clone(), u);
+                                                env2.insert(s_name.clone(), su);
                                                 next_envs.push(env2);
                                             }
                                         } else {
                                             let mut env2 = env.clone();
-                                            env2.insert(s_name.clone(), u);
-                                            env2.insert(t_name.clone(), v);
+                                            env2.insert(s_name.clone(), su);
+                                            env2.insert(t_name.clone(), tu);
                                             next_envs.push(env2);
                                         }
                                     }
@@ -11069,43 +11077,14 @@ fn verify_clauses_on_cb_structure(
         envs
     };
 
-    for ((func_name, var_name), group) in &fun_groups {
-        for u in 0..n_elems {
-            let mut active_heads: Vec<&JAtom> = Vec::new();
-            for clause in group {
-                let envs = eval_body_with_seed(&clause.body, Some((var_name.as_str(), u)));
-                if !envs.is_empty() {
-                    active_heads.push(&clause.head[0]);
+    for (idx, clause) in universal_clauses.iter().enumerate() {
+        if idx % 256 == 0 {
+            if let Some(dl) = deadline {
+                if std::time::Instant::now() >= dl {
+                    return Err("cb-horn verification exceeded export budget".to_string());
                 }
             }
-            if active_heads.is_empty() {
-                continue;
-            }
-            let witness_ok = (0..n_elems).any(|w| {
-                active_heads.iter().all(|atom| match atom {
-                    JAtom::Concept { concept, .. } => has_concept(w, concept),
-                    JAtom::Role {
-                        role,
-                        source,
-                        target,
-                    } => match (source, target) {
-                        (JTerm::Var { .. }, JTerm::Fun { .. }) => has_role(u, role, w),
-                        (JTerm::Fun { .. }, JTerm::Var { .. }) => has_role(w, role, u),
-                        (JTerm::Fun { .. }, JTerm::Fun { .. }) => has_role(w, role, w),
-                        _ => false,
-                    },
-                    _ => false,
-                })
-            });
-            if !witness_ok {
-                return Err(format!(
-                    "cb-horn structure lacks existential witness for {func_name} at element {u}"
-                ));
-            }
         }
-    }
-
-    for clause in universal_clauses {
         let mut head_vars: Vec<String> = Vec::new();
         for atom in &clause.head {
             match atom {
@@ -11192,7 +11171,486 @@ fn verify_clauses_on_cb_structure(
         }
     }
 
+    for (idx, ((func_name, var_name), group)) in fun_groups.iter().enumerate() {
+        if idx % 128 == 0 {
+            if let Some(dl) = deadline {
+                if std::time::Instant::now() >= dl {
+                    return Err("cb-horn verification exceeded export budget".to_string());
+                }
+            }
+        }
+        let mut active_by_u: HashMap<usize, Vec<&JAtom>> = HashMap::default();
+        for clause in group {
+            if clause.body.is_empty() {
+                for u in 0..n_elems {
+                    active_by_u.entry(u).or_default().push(&clause.head[0]);
+                }
+            } else {
+                let envs = eval_body_with_seed(&clause.body, None);
+                let mut matched_u: HashSet<usize> = HashSet::default();
+                for env in envs {
+                    if let Some(&u) = env.get(var_name.as_str()) {
+                        matched_u.insert(u);
+                    } else {
+                        for u in 0..n_elems {
+                            matched_u.insert(u);
+                        }
+                    }
+                }
+                for u in matched_u {
+                    active_by_u.entry(u).or_default().push(&clause.head[0]);
+                }
+            }
+        }
+        for (u, active_heads) in active_by_u {
+            let mut candidates: Option<&[usize]> = None;
+            for atom in &active_heads {
+                match atom {
+                    JAtom::Role {
+                        role,
+                        source: JTerm::Var { .. },
+                        target: JTerm::Fun { .. },
+                    } => {
+                        let list = if let Some(base) = role.strip_prefix("__inv__") {
+                            incoming.get(&(u, base)).map(Vec::as_slice).unwrap_or(&[])
+                        } else {
+                            outgoing.get(&(u, role.as_str())).map(Vec::as_slice).unwrap_or(&[])
+                        };
+                        candidates = Some(list);
+                        break;
+                    }
+                    JAtom::Role {
+                        role,
+                        source: JTerm::Fun { .. },
+                        target: JTerm::Var { .. },
+                    } => {
+                        let list = if let Some(base) = role.strip_prefix("__inv__") {
+                            outgoing.get(&(u, base)).map(Vec::as_slice).unwrap_or(&[])
+                        } else {
+                            incoming.get(&(u, role.as_str())).map(Vec::as_slice).unwrap_or(&[])
+                        };
+                        candidates = Some(list);
+                        break;
+                    }
+                    JAtom::Concept { concept, .. }
+                        if !matches!(concept.as_str(), "owl:Thing" | "Thing" | "⊤") =>
+                    {
+                        let list = by_concept
+                            .get(concept.as_str())
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]);
+                        if candidates.is_none_or(|prev| list.len() < prev.len()) {
+                            candidates = Some(list);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let check_w = |w: usize| -> bool {
+                active_heads.iter().all(|atom| match atom {
+                    JAtom::Concept { concept, .. } => has_concept(w, concept),
+                    JAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } => match (source, target) {
+                        (JTerm::Var { .. }, JTerm::Fun { .. }) => has_role(u, role, w),
+                        (JTerm::Fun { .. }, JTerm::Var { .. }) => has_role(w, role, u),
+                        (JTerm::Fun { .. }, JTerm::Fun { .. }) => has_role(w, role, w),
+                        _ => false,
+                    },
+                    _ => false,
+                })
+            };
+            let witness_ok = match candidates {
+                Some(cands) => cands.iter().any(|&w| check_w(w)),
+                None => (0..n_elems).any(check_w),
+            };
+            if !witness_ok {
+                return Err(format!(
+                    "cb-horn structure lacks existential witness for {func_name} at element {u}"
+                ));
+            }
+        }
+    }
+
     Ok(())
+}
+
+fn verify_clauses_on_cb_structure(
+    clauses: &[crate::json_io::JClause],
+    n_elems: usize,
+    labels: &[HashSet<String>],
+    edges: &HashSet<(usize, String, usize)>,
+) -> Result<(), String> {
+    verify_clauses_on_cb_structure_until(clauses, n_elems, labels, edges, None)
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CbExportShard {
+    pub inconsistent: bool,
+    pub nodes: Vec<CbContextNode>,
+}
+
+impl Engine {
+    pub(crate) fn extract_cb_export_shard(&self, shard_idx: usize) -> Result<CbExportShard, String> {
+        if self.incomplete() {
+            return Err("cb-horn saturation truncated by message cap".to_string());
+        }
+        if self.inconsistent() {
+            return Ok(CbExportShard {
+                inconsistent: true,
+                nodes: Vec::new(),
+            });
+        }
+        if let Some(g) = self.ground_ctx {
+            if !self.contexts[g].worked_off().is_empty() {
+                return Err("cb-horn declines ground-context nominal calculus".to_string());
+            }
+        }
+        let is_ctx_unsat = |ctx: &Context| -> bool {
+            let arena = &self.cc_arena[ctx.root as usize];
+            ctx.worked_off().iter().any(|ci| {
+                let c = &arena[ci as usize];
+                c.body.is_empty() && c.head.is_empty()
+            })
+        };
+        let key_of = |cid: usize| -> CbContextKey {
+            let ctx = &self.contexts[cid];
+            if ctx.root && ctx.core.is_empty() && ctx.query.is_none() {
+                CbContextKey::Top
+            } else if let Some(q) = ctx.query {
+                CbContextKey::Query(self.sig.concept_names[q as usize].clone())
+            } else {
+                let mut core_strs: Vec<String> = ctx
+                    .core
+                    .iter()
+                    .map(|p| match *p {
+                        Pred::Concept { iri, t } => {
+                            format!("C:{}:{t}", self.sig.concept_names[iri as usize])
+                        }
+                        Pred::Role { iri, s, t } => {
+                            format!("R:{}:{s}:{t}", self.sig.role_names[iri as usize])
+                        }
+                    })
+                    .collect();
+                core_strs.sort();
+                if core_strs.is_empty() {
+                    core_strs.push(format!("__cb_s{shard_idx}_c{cid}"));
+                }
+                CbContextKey::Core(core_strs)
+            }
+        };
+
+        let mut reachable: HashSet<usize> = HashSet::default();
+        let mut queue: VecDeque<usize> = VecDeque::new();
+        for ctx in &self.contexts {
+            if Some(ctx.id) == self.ground_ctx {
+                continue;
+            }
+            if ctx.root && (ctx.core.is_empty() || ctx.query.is_some()) && !is_ctx_unsat(ctx) {
+                if reachable.insert(ctx.id) {
+                    queue.push_back(ctx.id);
+                }
+            }
+        }
+        while let Some(cid) = queue.pop_front() {
+            let ctx = &self.contexts[cid];
+            for &succ_id in ctx.successors.values() {
+                let sctx = &self.contexts[succ_id];
+                if !is_ctx_unsat(sctx) && reachable.insert(succ_id) {
+                    queue.push_back(succ_id);
+                }
+            }
+        }
+
+        let mut ordered_cids: Vec<usize> = reachable.into_iter().collect();
+        ordered_cids.sort_unstable();
+        let mut nodes = Vec::with_capacity(ordered_cids.len());
+
+        for cid in ordered_cids {
+            let ctx = &self.contexts[cid];
+            let key = key_of(cid);
+            let mut labels: HashSet<String> = HashSet::default();
+            let mut self_roles: HashSet<String> = HashSet::default();
+            let mut fwd_roles: Vec<(String, Term)> = Vec::new();
+            let mut bwd_roles: Vec<(String, Term)> = Vec::new();
+            let mut unit_lits: HashSet<Lit> = HashSet::default();
+
+            for &p in &ctx.core {
+                unit_lits.insert(Lit::P(p));
+                match p {
+                    Pred::Concept { iri, t } if is_central(t) => {
+                        let cname = &self.sig.concept_names[iri as usize];
+                        if !matches!(cname.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                            labels.insert(cname.clone());
+                        }
+                    }
+                    Pred::Role { iri, s, t } if is_central(s) && is_central(t) => {
+                        self_roles.insert(self.sig.role_names[iri as usize].clone());
+                    }
+                    _ => {}
+                }
+            }
+
+            let arena = &self.cc_arena[ctx.root as usize];
+            for ci in ctx.worked_off().iter() {
+                let c = &arena[ci as usize];
+                if c.body.is_empty() && c.head.len() == 1 {
+                    let lit = c.head[0];
+                    unit_lits.insert(lit);
+                    match lit {
+                        Lit::P(Pred::Concept { iri, t }) if is_central(t) => {
+                            let cname = &self.sig.concept_names[iri as usize];
+                            if !matches!(cname.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                                labels.insert(cname.clone());
+                            }
+                        }
+                        Lit::P(Pred::Role { iri, s, t }) if is_central(s) && is_central(t) => {
+                            self_roles.insert(self.sig.role_names[iri as usize].clone());
+                        }
+                        Lit::P(Pred::Role { iri, s, t }) if is_central(s) && is_function(t) => {
+                            fwd_roles.push((self.sig.role_names[iri as usize].clone(), t));
+                        }
+                        Lit::P(Pred::Role { iri, s, t }) if is_function(s) && is_central(t) => {
+                            bwd_roles.push((self.sig.role_names[iri as usize].clone(), s));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Fast non-Horn check: if a reachable context has a body-free non-unit
+            // clause in worked_off() with no disjunct satisfied by unit facts (or
+            // successor central facts), the unit-fact graph cannot satisfy the ontology.
+            for ci in ctx.worked_off().iter() {
+                let c = &arena[ci as usize];
+                if c.body.is_empty() && c.head.len() > 1 {
+                    let satisfied = c.head.iter().any(|lit| match *lit {
+                        Lit::Eq { s, t } => s == t || unit_lits.contains(lit),
+                        Lit::Ineq { s, t } => s != t,
+                        Lit::P(Pred::Concept { iri, t }) if is_function(t) => {
+                            unit_lits.contains(lit)
+                                || ctx
+                                    .successors
+                                    .get(&t)
+                                    .is_some_and(|&scid| self.ctx_derives_central(scid, iri))
+                        }
+                        _ => unit_lits.contains(lit),
+                    });
+                    if !satisfied {
+                        return Err(
+                            "cb-horn declines non-Horn disjunction in saturated context"
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+
+            let mut succ_edges: Vec<(Term, CbContextKey)> = ctx
+                .successors
+                .iter()
+                .filter(|(_, &scid)| !is_ctx_unsat(&self.contexts[scid]))
+                .map(|(&f, &scid)| (f, key_of(scid)))
+                .collect();
+            succ_edges.sort_by(|a, b| a.0.cmp(&b.0));
+
+            let mut labels_vec: Vec<String> = labels.into_iter().collect();
+            labels_vec.sort();
+            let mut self_roles_vec: Vec<String> = self_roles.into_iter().collect();
+            self_roles_vec.sort();
+            fwd_roles.sort();
+            fwd_roles.dedup();
+            bwd_roles.sort();
+            bwd_roles.dedup();
+
+            nodes.push(CbContextNode {
+                key,
+                labels: labels_vec,
+                self_roles: self_roles_vec,
+                fwd_roles,
+                bwd_roles,
+                succ_edges,
+            });
+        }
+
+        Ok(CbExportShard {
+            inconsistent: false,
+            nodes,
+        })
+    }
+}
+
+pub(crate) fn build_cb_export_model_from_shards(
+    shards: &[CbExportShard],
+    mutual_unit_groups: &[(String, Vec<String>)],
+    input: &crate::json_io::JInput,
+    deadline: Option<std::time::Instant>,
+) -> Result<CbExportModel, String> {
+    if !input.rules.is_empty() || !input.cardinalities.is_empty() {
+        return Err("cb-horn declines SWRL rules and cardinality restrictions".to_string());
+    }
+    if shards.iter().any(|s| s.inconsistent) {
+        return Ok(CbExportModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            inconsistent: true,
+            partial_reason: None,
+        });
+    }
+
+    let mut nodes_by_key: HashMap<CbContextKey, CbContextNode> = HashMap::default();
+    for shard in shards {
+        for node in &shard.nodes {
+            nodes_by_key
+                .entry(node.key.clone())
+                .and_modify(|existing| {
+                    for l in &node.labels {
+                        if !existing.labels.contains(l) {
+                            existing.labels.push(l.clone());
+                        }
+                    }
+                    existing.labels.sort();
+                    for r in &node.self_roles {
+                        if !existing.self_roles.contains(r) {
+                            existing.self_roles.push(r.clone());
+                        }
+                    }
+                    existing.self_roles.sort();
+                    for fr in &node.fwd_roles {
+                        if !existing.fwd_roles.contains(fr) {
+                            existing.fwd_roles.push(fr.clone());
+                        }
+                    }
+                    for br in &node.bwd_roles {
+                        if !existing.bwd_roles.contains(br) {
+                            existing.bwd_roles.push(br.clone());
+                        }
+                    }
+                    for se in &node.succ_edges {
+                        if !existing.succ_edges.iter().any(|(f, _)| *f == se.0) {
+                            existing.succ_edges.push(se.clone());
+                        }
+                    }
+                })
+                .or_insert_with(|| node.clone());
+        }
+    }
+
+    let mut ordered_keys: Vec<CbContextKey> = nodes_by_key.keys().cloned().collect();
+    ordered_keys.sort();
+
+    let mut key_to_elem: HashMap<CbContextKey, usize> = HashMap::default();
+    for (idx, k) in ordered_keys.iter().enumerate() {
+        key_to_elem.insert(k.clone(), idx);
+    }
+
+    let mut model_contexts: Vec<String> = Vec::with_capacity(ordered_keys.len());
+    let mut label_sets: Vec<HashSet<String>> = vec![HashSet::default(); ordered_keys.len()];
+    let mut edge_set: HashSet<(usize, String, usize)> = HashSet::default();
+
+    for (u, k) in ordered_keys.iter().enumerate() {
+        let node = &nodes_by_key[k];
+        let ctx_name = match k {
+            CbContextKey::Top => "⊤".to_string(),
+            CbContextKey::Query(q) => q.clone(),
+            CbContextKey::Core(_) => format!("__cb_ctx_{u}"),
+        };
+        for l in &node.labels {
+            if l.starts_with("__nom__") && l != &ctx_name {
+                return Err(
+                    "cb-horn declines nominal appearing in non-nominal context label".to_string(),
+                );
+            }
+            label_sets[u].insert(l.clone());
+        }
+        for r in &node.self_roles {
+            edge_set.insert((u, r.clone(), u));
+        }
+        let succ_map: HashMap<Term, usize> = node
+            .succ_edges
+            .iter()
+            .filter_map(|(f, tk)| key_to_elem.get(tk).map(|&v| (*f, v)))
+            .collect();
+        for (r, f) in &node.fwd_roles {
+            if let Some(&v) = succ_map.get(f) {
+                edge_set.insert((u, r.clone(), v));
+            }
+        }
+        for (r, f) in &node.bwd_roles {
+            if let Some(&v) = succ_map.get(f) {
+                edge_set.insert((v, r.clone(), u));
+            }
+        }
+        model_contexts.push(ctx_name);
+    }
+
+    // Restore root witness elements for query-equivalence aliases collapsed by
+    // Reasoner::collapse_mutual_unit_queries.
+    for (rep_name, members) in mutual_unit_groups {
+        let Some(&rep_u) = key_to_elem.get(&CbContextKey::Query(rep_name.clone())) else {
+            continue;
+        };
+        let rep_labels = label_sets[rep_u].clone();
+        let rep_out_edges: Vec<(String, usize)> = edge_set
+            .iter()
+            .filter(|(s, _, _)| *s == rep_u)
+            .map(|(_, r, t)| (r.clone(), *t))
+            .collect();
+        for member in members {
+            if member == rep_name
+                || key_to_elem.contains_key(&CbContextKey::Query(member.clone()))
+            {
+                continue;
+            }
+            let new_u = model_contexts.len();
+            key_to_elem.insert(CbContextKey::Query(member.clone()), new_u);
+            model_contexts.push(member.clone());
+            label_sets.push(rep_labels.clone());
+            for (r, t) in &rep_out_edges {
+                let target = if *t == rep_u { new_u } else { *t };
+                edge_set.insert((new_u, r.clone(), target));
+            }
+        }
+    }
+
+    let n_elems = model_contexts.len();
+    close_edges_under_rbox_rows(&input.rbox, n_elems, &mut edge_set);
+
+    let mut partial_reason = None;
+    match verify_clauses_on_cb_structure_until(
+        &input.clauses,
+        n_elems,
+        &label_sets,
+        &edge_set,
+        deadline,
+    ) {
+        Ok(()) => {}
+        Err(msg) if msg.contains("budget exceeded") => {
+            partial_reason = Some(msg);
+        }
+        Err(e) => return Err(e),
+    }
+
+    let labels: Vec<Vec<String>> = label_sets
+        .into_iter()
+        .map(|set| {
+            let mut v: Vec<String> = set.into_iter().collect();
+            v.sort();
+            v
+        })
+        .collect();
+    let mut edges: Vec<(usize, String, usize)> = edge_set.into_iter().collect();
+    edges.sort();
+
+    Ok(CbExportModel {
+        contexts: model_contexts,
+        labels,
+        edges,
+        inconsistent: false,
+        partial_reason,
+    })
 }
 
 pub(crate) fn cb_model(
@@ -11210,6 +11668,7 @@ pub(crate) fn cb_model(
             labels: Vec::new(),
             edges: Vec::new(),
             inconsistent: true,
+            partial_reason: None,
         });
     }
 
@@ -11274,6 +11733,7 @@ pub(crate) fn cb_model(
                     labels: Vec::new(),
                     edges: Vec::new(),
                     inconsistent: true,
+                    partial_reason: None,
                 });
             }
         }
@@ -11415,6 +11875,7 @@ pub(crate) fn cb_model(
             labels: Vec::new(),
             edges: Vec::new(),
             inconsistent: true,
+            partial_reason: None,
         });
     }
 
@@ -11593,6 +12054,7 @@ pub(crate) fn cb_model(
         labels,
         edges,
         inconsistent: false,
+        partial_reason: None,
     })
 }
 

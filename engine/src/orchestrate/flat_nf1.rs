@@ -514,6 +514,88 @@ fn binary_role_chain_axiom_iris(line: &str) -> Option<(&str, &str, &str)> {
         .then_some((left, right, sup))
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct FlatNf1ExportState {
+    pub names: Vec<Arc<str>>,
+    pub role_names: Vec<Arc<str>>,
+    pub outgoing: Vec<Vec<u32>>,
+    pub existentials: Vec<(u32, String, u32)>,
+    pub union_rules: Vec<(u32, Vec<u32>)>,
+    pub rbox_rows: Vec<Vec<String>>,
+    pub class_assertions: Vec<(String, u32)>,
+    pub existential_assertions: Vec<(String, String, u32)>,
+    pub individuals: Vec<String>,
+}
+
+fn push_rbox_rows_from_line(line: &str, out: &mut Vec<Vec<String>>) {
+    if let Some(r) = line
+        .strip_prefix("TransitiveObjectProperty(<")
+        .and_then(|s| s.strip_suffix(">)"))
+    {
+        out.push(vec!["transitive".to_string(), r.to_string()]);
+    } else if let Some(r) = line
+        .strip_prefix("SymmetricObjectProperty(<")
+        .and_then(|s| s.strip_suffix(">)"))
+    {
+        out.push(vec!["inverse".to_string(), r.to_string(), r.to_string()]);
+    } else if let Some(r) = line
+        .strip_prefix("ReflexiveObjectProperty(<")
+        .and_then(|s| s.strip_suffix(">)"))
+    {
+        out.push(vec!["reflexive".to_string(), r.to_string()]);
+    } else if let Some(pair) = line
+        .strip_prefix("SubObjectPropertyOf(<")
+        .and_then(|s| s.strip_suffix(">)"))
+        .and_then(|s| s.split_once("> <"))
+    {
+        out.push(vec![
+            "sub-role".to_string(),
+            pair.0.to_string(),
+            pair.1.to_string(),
+        ]);
+    } else if let Some(pair) = line
+        .strip_prefix("InverseObjectProperties(<")
+        .and_then(|s| s.strip_suffix(">)"))
+        .and_then(|s| s.split_once("> <"))
+    {
+        out.push(vec![
+            "inverse".to_string(),
+            pair.0.to_string(),
+            pair.1.to_string(),
+        ]);
+    } else if let Some(pair) = line
+        .strip_prefix("EquivalentObjectProperties(<")
+        .and_then(|s| s.strip_suffix(">)"))
+        .and_then(|s| s.split_once("> <"))
+    {
+        out.push(vec![
+            "sub-role".to_string(),
+            pair.0.to_string(),
+            pair.1.to_string(),
+        ]);
+        out.push(vec![
+            "sub-role".to_string(),
+            pair.1.to_string(),
+            pair.0.to_string(),
+        ]);
+    } else if let Some((l, r, s)) = binary_role_chain_axiom_iris(line) {
+        out.push(vec![
+            "chain".to_string(),
+            l.to_string(),
+            r.to_string(),
+            s.to_string(),
+        ]);
+    }
+}
+
+fn clean_individual_token(token: &str) -> String {
+    token
+        .strip_prefix('<')
+        .and_then(|s| s.strip_suffix('>'))
+        .unwrap_or(token)
+        .to_string()
+}
+
 /// Return an exact grouped taxonomy, or `None` before publication when the
 /// source is outside the strict direct fragment.
 pub(super) fn try_classify(path: &Path) -> io::Result<Option<GroupedJsonTaxonomy>> {
@@ -523,6 +605,7 @@ pub(super) fn try_classify(path: &Path) -> io::Result<Option<GroupedJsonTaxonomy
     {
         return Ok(None);
     }
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
 
     let sparse_horn_candidate = source_bytes >= MIN_SPARSE_HORN_SOURCE_BYTES
         || (source_bytes >= MIN_SPARSE_HORN_ABOX_SOURCE_BYTES
@@ -558,7 +641,8 @@ pub(super) fn try_classify(path: &Path) -> io::Result<Option<GroupedJsonTaxonomy
     // ontologies. The strict source grammar and its composed empty-taxonomy
     // theorem authorize publication; every rejected byte falls through to the
     // complete frontend and automatic supervisor.
-    if source_bytes >= MIN_POSITIVE_ABOX_SOURCE_BYTES
+    if !export_active
+        && source_bytes >= MIN_POSITIVE_ABOX_SOURCE_BYTES
         && positive_abox_empty_taxonomy_screen(BufReader::with_capacity(
             1 << 20,
             File::open(path)?,
@@ -580,7 +664,8 @@ pub(super) fn try_classify(path: &Path) -> io::Result<Option<GroupedJsonTaxonomy
     // decision needs no class dictionary or graph.  Admit medium-sized sources
     // with one allocation-free pass so generated leaf families do not pay for
     // parsing, normalization, and ELC merely to publish an empty relation.
-    if source_bytes >= MIN_EMPTY_LEAF_SOURCE_BYTES
+    if !export_active
+        && source_bytes >= MIN_EMPTY_LEAF_SOURCE_BYTES
         && source_bytes < MIN_DIRECT_SOURCE_BYTES
         && pure_leaf_source_screen(BufReader::with_capacity(1 << 20, File::open(path)?))?
     {
@@ -1047,6 +1132,10 @@ fn classify_sparse_horn_reader<R: BufRead>(
     let mut union_rules: Vec<SparseUnionRule> = Vec::new();
     let mut redundant_nominals: Vec<SparseRedundantNominal> = Vec::new();
     let mut assertions: Vec<(Arc<str>, u32)> = Vec::new();
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let mut rbox_rows: Vec<Vec<String>> = Vec::new();
+    let mut existential_assertions: Vec<(String, String, u32)> = Vec::new();
+    let mut extra_individuals: Vec<String> = Vec::new();
     let mut saw_existential_assertion = false;
     let mut saw_unimplemented_nf4_rbox = false;
 
@@ -1325,13 +1414,31 @@ fn classify_sparse_horn_reader<R: BufRead>(
             assertions.push((Arc::from(individual), class));
             continue;
         }
-        if simple_existential_class_assertion_parts(text).is_some() {
+        if let Some((role, filler, individual)) = simple_existential_class_assertion_parts(text) {
             saw_logical_axiom = true;
             saw_existential_assertion = true;
+            if export_active {
+                let Some(_) = intern_role(role, &mut role_ids) else {
+                    return Ok(None);
+                };
+                let Some(filler_id) = intern(filler, &mut ids, &mut names, &mut outgoing) else {
+                    return Ok(None);
+                };
+                existential_assertions.push((
+                    clean_individual_token(individual),
+                    role.to_string(),
+                    filler_id,
+                ));
+            }
             continue;
         }
-        if distinct_individuals_iris(text).is_some() {
+        if let Some(iris) = distinct_individuals_iris(text) {
             saw_logical_axiom = true;
+            if export_active {
+                for iri in iris {
+                    extra_individuals.push(iri.to_string());
+                }
+            }
             continue;
         }
         if let Some(role) = text
@@ -1343,6 +1450,9 @@ fn classify_sparse_horn_reader<R: BufRead>(
                 return Ok(None);
             };
             transitive_roles.insert(role);
+            if export_active {
+                push_rbox_rows_from_line(text, &mut rbox_rows);
+            }
             continue;
         }
         if unary_role_axiom_iri(text).is_some() {
@@ -1362,6 +1472,9 @@ fn classify_sparse_horn_reader<R: BufRead>(
             {
                 return Ok(None);
             }
+            if export_active {
+                push_rbox_rows_from_line(text, &mut rbox_rows);
+            }
             // Role inclusions, inverses, and equivalent-role declarations can
             // change a named taxonomy only by supplying an existential-left
             // (NF4) premise.  The edge-elision certificate permits them when
@@ -1378,6 +1491,9 @@ fn classify_sparse_horn_reader<R: BufRead>(
                 || intern_role(sup, &mut role_ids).is_none()
             {
                 return Ok(None);
+            }
+            if export_active {
+                push_rbox_rows_from_line(text, &mut rbox_rows);
             }
             if left == right && left == sup {
                 transitive_roles.insert(left_id);
@@ -1469,6 +1585,9 @@ fn classify_sparse_horn_reader<R: BufRead>(
     }
     for (_, class) in &mut assertions {
         *class = old_to_new[*class as usize];
+    }
+    for (_, _, filler) in &mut existential_assertions {
+        *filler = old_to_new[*filler as usize];
     }
     for supers in &mut outgoing {
         supers.sort_unstable();
@@ -1615,8 +1734,8 @@ fn classify_sparse_horn_reader<R: BufRead>(
     }
     if !assertions.is_empty() {
         let mut by_individual: HashMap<Arc<str>, Vec<u32>> = HashMap::new();
-        for (individual, class) in assertions {
-            by_individual.entry(individual).or_default().push(class);
+        for (individual, class) in &assertions {
+            by_individual.entry(individual.clone()).or_default().push(*class);
         }
         for classes in by_individual.into_values() {
             let mut types = vec![false; names.len()];
@@ -1634,6 +1753,47 @@ fn classify_sparse_horn_reader<R: BufRead>(
                 return Ok(None);
             }
         }
+    }
+    if export_active {
+        let mut role_vec: Vec<(u32, Arc<str>)> =
+            role_ids.into_iter().map(|(r, id)| (id, r)).collect();
+        role_vec.sort_by_key(|(id, _)| *id);
+        let role_names: Vec<Arc<str>> = role_vec.into_iter().map(|(_, r)| r).collect();
+        let ex_edges: Vec<(u32, String, u32)> = existentials
+            .iter()
+            .filter_map(|e| {
+                role_names
+                    .get(e.role as usize)
+                    .map(|r| (e.sub, r.to_string(), e.filler))
+            })
+            .collect();
+        let class_assertions: Vec<(String, u32)> = assertions
+            .iter()
+            .map(|(ind, c)| (clean_individual_token(ind), *c))
+            .collect();
+        let mut ind_set: HashSet<String> = extra_individuals.into_iter().collect();
+        for (ind, _) in &class_assertions {
+            ind_set.insert(ind.clone());
+        }
+        for (ind, _, _) in &existential_assertions {
+            ind_set.insert(ind.clone());
+        }
+        let mut individuals: Vec<String> = ind_set.into_iter().collect();
+        individuals.sort();
+        super::model_export::record_flat_nf1_state(FlatNf1ExportState {
+            names: names.clone(),
+            role_names,
+            outgoing: outgoing.clone(),
+            existentials: ex_edges,
+            union_rules: union_rules
+                .iter()
+                .map(|u| (u.defined, u.alternatives.clone()))
+                .collect(),
+            rbox_rows,
+            class_assertions,
+            existential_assertions,
+            individuals,
+        });
     }
     Ok(Some(GroupedJsonTaxonomy {
         iris: names,
@@ -1654,6 +1814,10 @@ fn classify_reader<R: BufRead>(
     let mut names: Vec<Arc<str>> = Vec::new();
     let mut outgoing: Vec<Vec<u32>> = Vec::new();
     let mut disjoint: Vec<(Arc<str>, Arc<str>)> = Vec::new();
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let mut role_set: HashSet<Arc<str>> = HashSet::new();
+    let mut raw_existentials: Vec<(Arc<str>, String, Arc<str>)> = Vec::new();
+    let mut rbox_rows: Vec<Vec<String>> = Vec::new();
 
     loop {
         line.clear();
@@ -1696,6 +1860,9 @@ fn classify_reader<R: BufRead>(
                 || iri == "http://www.w3.org/2002/07/owl#bottomObjectProperty"
             {
                 return Ok(None);
+            }
+            if export_active {
+                role_set.insert(Arc::from(iri));
             }
             continue;
         }
@@ -1777,6 +1944,10 @@ fn classify_reader<R: BufRead>(
             {
                 return Ok(None);
             }
+            if export_active {
+                role_set.insert(Arc::from(role));
+                raw_existentials.push((Arc::from(sub), role.to_string(), Arc::from(filler)));
+            }
             continue;
         }
         if let Some(role) = unary_role_axiom_iri(text) {
@@ -1786,6 +1957,10 @@ fn classify_reader<R: BufRead>(
                 || role == "http://www.w3.org/2002/07/owl#bottomObjectProperty"
             {
                 return Ok(None);
+            }
+            if export_active {
+                role_set.insert(Arc::from(role));
+                push_rbox_rows_from_line(text, &mut rbox_rows);
             }
             continue;
         }
@@ -1800,6 +1975,11 @@ fn classify_reader<R: BufRead>(
             {
                 return Ok(None);
             }
+            if export_active {
+                role_set.insert(Arc::from(sub));
+                role_set.insert(Arc::from(sup));
+                push_rbox_rows_from_line(text, &mut rbox_rows);
+            }
             continue;
         }
         if let Some(sub) = top_role_super_axiom_iri(text) {
@@ -1810,6 +1990,9 @@ fn classify_reader<R: BufRead>(
             {
                 return Ok(None);
             }
+            if export_active {
+                role_set.insert(Arc::from(sub));
+            }
             continue;
         }
         if let Some((left, right, sup)) = binary_role_chain_axiom_iris(text) {
@@ -1819,6 +2002,12 @@ fn classify_reader<R: BufRead>(
                     || role == "http://www.w3.org/2002/07/owl#bottomObjectProperty"
             }) {
                 return Ok(None);
+            }
+            if export_active {
+                role_set.insert(Arc::from(left));
+                role_set.insert(Arc::from(right));
+                role_set.insert(Arc::from(sup));
+                push_rbox_rows_from_line(text, &mut rbox_rows);
             }
             continue;
         }
@@ -1875,6 +2064,26 @@ fn classify_reader<R: BufRead>(
         {
             return Ok(None);
         }
+    }
+
+    if export_active {
+        let existentials: Vec<(u32, String, u32)> = raw_existentials
+            .into_iter()
+            .filter_map(|(s, r, f)| Some((*ids.get(&s)?, r, *ids.get(&f)?)))
+            .collect();
+        let mut role_names: Vec<Arc<str>> = role_set.into_iter().collect();
+        role_names.sort();
+        super::model_export::record_flat_nf1_state(FlatNf1ExportState {
+            names: names.clone(),
+            role_names,
+            outgoing: outgoing.clone(),
+            existentials,
+            union_rules: Vec::new(),
+            rbox_rows,
+            class_assertions: Vec::new(),
+            existential_assertions: Vec::new(),
+            individuals: Vec::new(),
+        });
     }
 
     // Production-sized graphs are serialized from the directed graph one subject at a

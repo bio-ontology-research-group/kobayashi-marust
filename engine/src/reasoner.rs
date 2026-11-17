@@ -46,6 +46,10 @@ pub struct Reasoner {
     /// emission must observe one complete engine, so this mode uses the exact
     /// sequential schedule and retains that engine until serialization.
     certificate_engine: Option<Box<Engine>>,
+    /// Present only when `KM_EXPORT_MODEL_ACTIVE` is set: context-graph shards
+    /// extracted directly from the answering run's saturated `Engine` workers.
+    export_shards: Vec<Result<crate::engine::CbExportShard, String>>,
+    export_mutual_unit_groups: Vec<(String, Vec<String>)>,
 }
 
 #[derive(Clone)]
@@ -693,6 +697,8 @@ impl Reasoner {
             incomplete: false,
             num_ctx: 0,
             certificate_engine: None,
+            export_shards: Vec::new(),
+            export_mutual_unit_groups: Vec::new(),
         }
     }
 
@@ -1230,6 +1236,21 @@ impl Reasoner {
                 mutual_unit_groups.len()
             );
         }
+        let retain_export_model = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+        if retain_export_model {
+            self.export_mutual_unit_groups = mutual_unit_groups
+                .iter()
+                .map(|&(rep, ref members)| {
+                    (
+                        self.sig0.concept_names[rep as usize].clone(),
+                        members
+                            .iter()
+                            .map(|&m| self.sig0.concept_names[m as usize].clone())
+                            .collect(),
+                    )
+                })
+                .collect();
+        }
         let retain_certificate_engine = std::env::var_os("KM_CB_LIVE_STATE").is_some()
             || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some();
         let nominal_static = std::env::var_os("KM_NOMINALS").is_some()
@@ -1264,6 +1285,9 @@ impl Reasoner {
             // run may stop at a global refutation (the answer is fixed).
             e.set_stop_on_global_refutation(!retain_certificate_engine);
             e.run_for(&queries);
+            if retain_export_model {
+                self.export_shards.push(e.extract_cb_export_shard(0));
+            }
             let (subs, inc, incomplete, n) = (
                 e.subsumptions(),
                 e.inconsistent(),
@@ -1307,9 +1331,16 @@ impl Reasoner {
                 .ok()
                 .and_then(|value| value.parse::<usize>().ok())
                 .filter(|&value| value > 0);
-            let partials: Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)> = chunks
+            let partials: Vec<(
+                Vec<(String, Vec<String>)>,
+                bool,
+                bool,
+                usize,
+                Option<Result<crate::engine::CbExportShard, String>>,
+            )> = chunks
                 .par_iter()
-                .map(|chunk| {
+                .enumerate()
+                .map(|(shard_idx, chunk)| {
                     let mut e = Engine::from_prepared(&prepared);
                     e.set_stop_on_global_refutation(true);
                     if let Some(batch) = query_batch {
@@ -1319,16 +1350,21 @@ impl Reasoner {
                     } else {
                         e.run_for(chunk);
                     }
+                    let export_shard = retain_export_model.then(|| e.extract_cb_export_shard(shard_idx));
                     (
                         e.subsumptions(),
                         e.inconsistent(),
                         e.incomplete(),
                         e.num_contexts(),
+                        export_shard,
                     )
                 })
                 .collect();
-            for (subs, inc, incomplete, n) in partials {
+            for (subs, inc, incomplete, n, export_shard) in partials {
                 self.absorb(subs, inc, incomplete, n);
+                if let Some(shard) = export_shard {
+                    self.export_shards.push(shard);
+                }
             }
             self.expand_mutual_unit_aliases(&mutual_unit_groups);
             self.complete_inconsistent_rows(&requested_queries);
@@ -1368,11 +1404,20 @@ impl Reasoner {
             .clamp(1, 1024);
         let prepared_ref: &PreparedOntology = &prepared;
         let queries_ref: &[Iri] = &queries;
-        let partials: std::sync::Mutex<Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)>> =
-            std::sync::Mutex::new(Vec::with_capacity(threads));
+        let partials: std::sync::Mutex<
+            Vec<(
+                Vec<(String, Vec<String>)>,
+                bool,
+                bool,
+                usize,
+                Option<Result<crate::engine::CbExportShard, String>>,
+            )>,
+        > = std::sync::Mutex::new(Vec::with_capacity(threads));
+        let cursor_ref = &cursor;
+        let partials_ref = &partials;
         rayon::scope(|s| {
-            for _ in 0..threads {
-                s.spawn(|_| {
+            for shard_idx in 0..threads {
+                s.spawn(move |_| {
                     let mut engine = Engine::from_prepared(prepared_ref);
                     engine.set_stop_on_global_refutation(true);
                     let mut did_any = false;
@@ -1382,14 +1427,14 @@ impl Reasoner {
                             // the inconsistent answer is already fixed.
                             break;
                         }
-                        let seen = cursor.load(Ordering::Relaxed);
+                        let seen = cursor_ref.load(Ordering::Relaxed);
                         if seen >= n {
                             break;
                         }
                         // Guided self-scheduling: grab ~1/(2·threads) of what is
                         // left, clamped to the configured resource envelope.
                         let grab = ((n - seen) / (2 * threads)).clamp(1, guided_grab_max);
-                        let start = cursor.fetch_add(grab, Ordering::Relaxed);
+                        let start = cursor_ref.fetch_add(grab, Ordering::Relaxed);
                         if start >= n {
                             break;
                         }
@@ -1398,22 +1443,66 @@ impl Reasoner {
                         did_any = true;
                     }
                     if did_any {
+                        let export_shard =
+                            retain_export_model.then(|| engine.extract_cb_export_shard(shard_idx));
                         let part = (
                             engine.subsumptions(),
                             engine.inconsistent(),
                             engine.incomplete(),
                             engine.num_contexts(),
+                            export_shard,
                         );
-                        partials.lock().unwrap().push(part);
+                        partials_ref.lock().unwrap().push(part);
                     }
                 });
             }
         });
-        for (subs, inc, incomplete, n) in partials.into_inner().unwrap() {
+        for (subs, inc, incomplete, n, export_shard) in partials.into_inner().unwrap() {
             self.absorb(subs, inc, incomplete, n);
+            if let Some(shard) = export_shard {
+                self.export_shards.push(shard);
+            }
         }
         self.expand_mutual_unit_aliases(&mutual_unit_groups);
         self.complete_inconsistent_rows(&requested_queries);
+    }
+
+    pub(crate) fn export_cb_model(
+        &self,
+        input: &crate::json_io::JInput,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<crate::engine::CbExportModel, String> {
+        if self.incomplete {
+            return Err("cb-horn saturation truncated by message cap".to_string());
+        }
+        if self.dropped > 0 {
+            return Err(format!("cb-horn builder dropped {} clause(s)", self.dropped));
+        }
+        if self.inconsistent {
+            return Ok(crate::engine::CbExportModel {
+                contexts: Vec::new(),
+                labels: Vec::new(),
+                edges: Vec::new(),
+                inconsistent: true,
+                partial_reason: None,
+            });
+        }
+        if self.export_shards.is_empty() {
+            return Err("cb-horn answering run did not retain context shards".to_string());
+        }
+        let mut ok_shards = Vec::with_capacity(self.export_shards.len());
+        for shard in &self.export_shards {
+            match shard {
+                Ok(s) => ok_shards.push(s.clone()),
+                Err(e) => return Err(e.clone()),
+            }
+        }
+        crate::engine::build_cb_export_model_from_shards(
+            &ok_shards,
+            &self.export_mutual_unit_groups,
+            input,
+            deadline,
+        )
     }
 
     /// Give every requested query the row `owl:Nothing` when the run proved

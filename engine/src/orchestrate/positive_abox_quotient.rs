@@ -282,6 +282,25 @@ pub(super) fn try_build(path: &Path) -> Result<Option<TempPath>, OrchestrateErro
     if !saw_ontology || !closed || !saw_class || !identities.consistent() {
         return Ok(None);
     }
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let mut by_root: std::collections::BTreeMap<usize, Vec<String>> =
+            std::collections::BTreeMap::new();
+        let names_and_ids: Vec<(String, usize)> = identities
+            .ids
+            .iter()
+            .map(|(k, &v)| (k.trim_start_matches('<').trim_end_matches('>').to_string(), v))
+            .collect();
+        for (iri, id) in names_and_ids {
+            let r = identities.root(id);
+            by_root.entry(r).or_default().push(iri);
+        }
+        let mut comps: Vec<Vec<String>> = by_root.into_values().collect();
+        for c in &mut comps {
+            c.sort();
+            c.dedup();
+        }
+        super::model_export::record_positive_abox_quotient_components(comps);
+    }
     Ok(Some(output_path))
 }
 

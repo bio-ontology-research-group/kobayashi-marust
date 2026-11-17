@@ -2304,6 +2304,7 @@ impl LeanElCertificate {
             subsumptions,
             inconsistent: self.public_inconsistent,
             compact: None,
+            exported_model: None,
         }
     }
 }
@@ -11431,6 +11432,10 @@ pub struct ElResult {
     /// and then re-interning millions of repeated superclass strings.
     #[serde(skip)]
     pub(crate) compact: Option<crate::json_io::CompactElcOutput>,
+    /// Canonical model extracted directly from the answering run's completion
+    /// state when `KM_EXPORT_MODEL_ACTIVE` is set.
+    #[serde(skip)]
+    pub(crate) exported_model: Option<Result<ElModel, String>>,
 }
 
 /// Decide consistency of a positive ground ABox against a pure EL++ TBox.
@@ -11699,7 +11704,9 @@ fn positive_abox_classify_mode(
     compact: bool,
     merged_overapprox: bool,
 ) -> Result<Option<PositiveAboxResult>, ()> {
-    let Some(prepared) = prepare_positive_abox_mode(clauses, meta, merged_overapprox) else {
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let merge_all = merged_overapprox && !(export_active && !meta.different.is_empty());
+    let Some(prepared) = prepare_positive_abox_mode(clauses, meta, merge_all) else {
         return Ok(None);
     };
     let PositiveAboxPreparation::Clauses { clauses, roots } = prepared else {
@@ -11709,7 +11716,7 @@ fn positive_abox_classify_mode(
         }));
     };
     let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
-    let result = match if compact {
+    let mut result = match if compact {
         classify_compact(clauses)
     } else {
         classify(clauses)
@@ -11741,11 +11748,85 @@ fn positive_abox_classify_mode(
                 .is_some_and(|supers| supers.iter().any(|sup| sup == "owl:Nothing"))
         })
     };
-    if merged_overapprox && node_unsat && !result.inconsistent {
+    if merge_all && node_unsat && !result.inconsistent {
         return Err(());
     }
+    let consistent = !result.inconsistent && !node_unsat;
+    if export_active && !meta.individuals.is_empty() {
+        if let Some(Ok(ref mut model)) = result.exported_model {
+            if !consistent {
+                model.inconsistent = true;
+                model.contexts.clear();
+                model.labels.clear();
+                model.edges.clear();
+            } else {
+                let ids: std::collections::HashMap<&str, usize> = meta
+                    .individuals
+                    .iter()
+                    .enumerate()
+                    .map(|(i, entry)| (entry.individual.as_str(), i))
+                    .collect();
+                let mut parent: Vec<usize> = (0..ids.len()).collect();
+                fn find(parent: &mut [usize], mut node: usize) -> usize {
+                    let mut root = node;
+                    while parent[root] != root {
+                        root = parent[root];
+                    }
+                    while parent[node] != node {
+                        let next = parent[node];
+                        parent[node] = root;
+                        node = next;
+                    }
+                    root
+                }
+                for (left, right) in &meta.same {
+                    if let (Some(&li), Some(&ri)) = (ids.get(left.as_str()), ids.get(right.as_str()))
+                    {
+                        let l = find(&mut parent, li);
+                        let r = find(&mut parent, ri);
+                        if l != r {
+                            parent[r] = l;
+                        }
+                    }
+                }
+                let mut node_to_noms: std::collections::HashMap<String, (String, Vec<String>)> =
+                    std::collections::HashMap::new();
+                for (index, entry) in meta.individuals.iter().enumerate() {
+                    let root = if merge_all {
+                        0
+                    } else {
+                        find(&mut parent, index)
+                    };
+                    let key = if merge_all {
+                        "__km_abox_merged".to_string()
+                    } else {
+                        format!("__km_abox_node_{root}")
+                    };
+                    let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+                    let self_nom = format!("__nom__{}", entry.individual);
+                    let slot = node_to_noms.entry(key).or_insert((root_nom, Vec::new()));
+                    slot.1.push(self_nom);
+                }
+                for (u, ctx_name) in model.contexts.iter_mut().enumerate() {
+                    if let Some((root_nom, members)) = node_to_noms.get(ctx_name.as_str()) {
+                        let old_key = ctx_name.clone();
+                        *ctx_name = root_nom.clone();
+                        let lbl = &mut model.labels[u];
+                        lbl.retain(|c| c != &old_key);
+                        for m in members {
+                            if !lbl.contains(m) {
+                                lbl.push(m.clone());
+                            }
+                        }
+                        lbl.sort();
+                        lbl.dedup();
+                    }
+                }
+            }
+        }
+    }
     Ok(Some(PositiveAboxResult {
-        consistent: !result.inconsistent && !node_unsat,
+        consistent,
         classification: Some(result),
     }))
 }
@@ -12297,6 +12378,7 @@ impl IncrementalElClassifier {
             subsumptions,
             inconsistent: self.is_inconsistent(),
             compact: None,
+            exported_model: None,
         }
     }
 
@@ -12411,6 +12493,7 @@ pub(crate) fn classify_compact(clauses: Vec<JClause>) -> Option<ElResult> {
 /// standard EL canonical model: a model of the clause set when `⊤` is
 /// satisfiable, and the element of a concept `A` satisfies exactly the
 /// concepts the clause set entails for `A`.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ElModel {
     /// Internal name of each element's context (`⊤` for the top context).
     pub contexts: Vec<String>,
@@ -12419,6 +12502,62 @@ pub(crate) struct ElModel {
     /// `(from, role, to)` over element indices.
     pub edges: Vec<(usize, String, usize)>,
     pub inconsistent: bool,
+    pub partial_reason: Option<String>,
+}
+
+fn extract_el_model_from_state(st: &State, it: &Interner) -> Result<ElModel, String> {
+    let inconsistent = st.sub_super[TOP as usize].contains(&BOTTOM);
+    let mut model = ElModel {
+        contexts: Vec::new(),
+        labels: Vec::new(),
+        edges: Vec::new(),
+        inconsistent,
+        partial_reason: None,
+    };
+    if inconsistent {
+        return Ok(model);
+    }
+    let name = |id: u32| it.debug_name(id);
+    let mut contexts: Vec<u32> = (0..st.sub_super.len() as u32)
+        .filter(|&c| {
+            c != BOTTOM
+                && !st.sub_super[c as usize].is_empty()
+                && !st.sub_super[c as usize].contains(&BOTTOM)
+        })
+        .collect();
+    contexts.sort_by_key(|&c| (c != TOP, name(c)));
+    let mut element_of: HashMap<u32, usize> = HashMap::default();
+    for &c in &contexts {
+        let ctx_name = name(c);
+        element_of.insert(c, model.contexts.len());
+        let mut label: Vec<String> = st.sub_super[c as usize]
+            .iter()
+            .filter(|&&d| d != TOP)
+            .map(|&d| name(d))
+            .collect();
+        for item in &label {
+            if item.starts_with("__nom__") && item != &ctx_name {
+                return Err(
+                    "el-canonical declines nominal appearing in non-nominal context label"
+                        .to_string(),
+                );
+            }
+        }
+        label.sort();
+        label.dedup();
+        model.contexts.push(ctx_name);
+        model.labels.push(label);
+    }
+    for &c in &contexts {
+        let from = element_of[&c];
+        let mut out: Vec<(usize, String, usize)> = st.edges[c as usize]
+            .iter()
+            .filter_map(|&(r, d)| element_of.get(&d).map(|&to| (from, name(r), to)))
+            .collect();
+        out.sort();
+        model.edges.extend(out);
+    }
+    Ok(model)
 }
 
 /// [`ElModel`] of `input`, or `None` when the ontology lies outside EL++ (plus
@@ -12437,6 +12576,7 @@ pub(crate) fn el_model(
             labels: Vec::new(),
             edges: Vec::new(),
             inconsistent: true,
+            partial_reason: None,
         });
     }
     let meta = &input.nominal_abox;
@@ -12500,6 +12640,7 @@ pub(crate) fn el_model(
                     labels: Vec::new(),
                     edges: Vec::new(),
                     inconsistent: true,
+                    partial_reason: None,
                 });
             }
         }
@@ -12618,6 +12759,7 @@ pub(crate) fn el_model(
         labels: Vec::new(),
         edges: Vec::new(),
         inconsistent,
+        partial_reason: None,
     };
     if inconsistent {
         return Some(model);
@@ -13046,6 +13188,44 @@ fn acyclic_nf1_taxonomy(
     drop(outgoing);
     drop(indegree);
 
+    let exported_model = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").map(|_| {
+        let mut sorted_concepts: Vec<u32> = nfs
+            .concept_names
+            .iter()
+            .copied()
+            .filter(|&c| c != BOTTOM)
+            .collect();
+        sorted_concepts.sort_by_key(|&c| (c != TOP, it.debug_name(c)));
+        let mut contexts = Vec::with_capacity(sorted_concepts.len());
+        let mut labels = Vec::with_capacity(sorted_concepts.len());
+        for c in sorted_concepts {
+            if c == TOP {
+                contexts.push("⊤".to_string());
+                labels.push(Vec::new());
+            } else {
+                let cname = it.debug_name(c);
+                let mut lbl: Vec<String> = closure[c as usize]
+                    .iter()
+                    .copied()
+                    .filter(|&d| d != TOP)
+                    .map(|d| it.debug_name(d))
+                    .collect();
+                lbl.push(cname.clone());
+                lbl.sort();
+                lbl.dedup();
+                contexts.push(cname);
+                labels.push(lbl);
+            }
+        }
+        Ok(ElModel {
+            contexts,
+            labels,
+            edges: Vec::new(),
+            inconsistent: false,
+            partial_reason: None,
+        })
+    });
+
     if compact_output && (force_compact_output || expected >= 1_000) {
         let mut rows = Vec::new();
         for &concept in &nfs.concept_names {
@@ -13068,6 +13248,7 @@ fn acyclic_nf1_taxonomy(
                 inconsistent: false,
                 dropped: 0,
             }),
+            exported_model,
         });
     }
 
@@ -13093,6 +13274,7 @@ fn acyclic_nf1_taxonomy(
         subsumptions,
         inconsistent: false,
         compact: None,
+        exported_model,
     })
 }
 
@@ -13622,6 +13804,24 @@ fn classify_inner_mode(
                         .collect()
                 })
         });
+    let exported_model = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").map(|_| {
+        if el_inconsistent {
+            Ok(ElModel {
+                contexts: Vec::new(),
+                labels: Vec::new(),
+                edges: Vec::new(),
+                inconsistent: true,
+                partial_reason: None,
+            })
+        } else if !unresolved.is_empty() {
+            Err("el-canonical completion left unresolved repair subjects".to_string())
+        } else if !rcs.is_empty() && !check_certificate(&rcs, &nfs, &res, false) {
+            Err("el-canonical residual clauses require per-subject model repair".to_string())
+        } else {
+            extract_el_model_from_state(&res, &it)
+        }
+    });
+
     // Everything below reads only the completed relation (`sub_super`) and the
     // interner names. The rule indexes, the normal forms, the residual, the
     // compiled residual clauses, and the role graph (`edges` / `in_by_role` /
@@ -13695,6 +13895,7 @@ fn classify_inner_mode(
                 inconsistent: el_inconsistent,
                 dropped: 0,
             }),
+            exported_model,
         });
     }
 
@@ -13754,6 +13955,7 @@ fn classify_inner_mode(
         inconsistent: el_inconsistent,
         unresolved,
         compact: None,
+        exported_model,
     })
 }
 

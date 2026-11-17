@@ -107,13 +107,25 @@ pub fn project(text: &str) -> Result<String, String> {
         }
     }
     if assertions.is_empty() || assertions.len() > 256 { return Err("projection assertion bound".into()); }
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let mut projected_export_values: Vec<(String, String, String)> = Vec::new();
     let mut generated = BTreeSet::new();
     let mut values: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     for (property, owner, literal) in assertions {
+        if export_active {
+            generated.insert(format!("ClassAssertion(<http://www.w3.org/2002/07/owl#Thing> {owner})"));
+        }
         let mut pending = vec![property];
         let mut seen = BTreeSet::new();
         while let Some(property) = pending.pop() {
             if !seen.insert(property.clone()) { continue; }
+            if export_active {
+                projected_export_values.push((
+                    owner.trim_start_matches('<').trim_end_matches('>').to_string(),
+                    property.trim_start_matches('<').trim_end_matches('>').to_string(),
+                    literal.clone(),
+                ));
+            }
             if let Some(parents) = supers.get(&property) { pending.extend(parents.iter().cloned()); }
             for domain in domains.get(&property).into_iter().flatten() {
                 generated.insert(format!("ClassAssertion({domain} {owner})"));
@@ -127,6 +139,11 @@ pub fn project(text: &str) -> Result<String, String> {
                 values.entry(property).or_default().push((owner.clone(), literal.clone()));
             }
         }
+    }
+    if export_active && !projected_export_values.is_empty() {
+        projected_export_values.sort();
+        projected_export_values.dedup();
+        crate::orchestrate::model_export::record_projected_data_assertions(projected_export_values);
     }
     for group in values.values() {
         for (i, (a, left)) in group.iter().enumerate() {

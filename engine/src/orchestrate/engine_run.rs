@@ -339,6 +339,11 @@ pub fn run_engine(
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let mut model_out = stdout_tmp.path().as_os_str().to_os_string();
+        model_out.push(".model");
+        cmd.env("KM_WORKER_MODEL_OUT", model_out);
+    }
 
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: bin_name.clone(),

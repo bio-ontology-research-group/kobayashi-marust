@@ -351,7 +351,7 @@ pub struct DataAbox<'a> {
     dmax1: Vec<(&'a str, &'a str)>,
     // ---- ground object-level data for ≤1-driven individual merging ----
     /// object role assertions (prop, src, dst)
-    oedges: Vec<(&'a str, &'a str, &'a str)>,
+    pub(super) oedges: Vec<(&'a str, &'a str, &'a str)>,
     symmetric: HashSet<&'a str>,
     /// `InverseObjectProperties(P, Q)` pairs
     inverses: Vec<(&'a str, &'a str)>,
@@ -360,15 +360,15 @@ pub struct DataAbox<'a> {
     /// object at-most-1 constraints (class token, role); class `""` means ⊤
     omax1: Vec<(&'a str, &'a str)>,
     /// named class assertions (class, individual)
-    cassert: Vec<(&'a str, &'a str)>,
+    pub(super) cassert: Vec<(&'a str, &'a str)>,
     /// named `SubClassOf` edges: sub -> direct supers
     csupers: HashMap<&'a str, Vec<&'a str>>,
     odomain: HashMap<&'a str, Vec<&'a str>>,
     orange: HashMap<&'a str, Vec<&'a str>>,
     /// `DifferentIndividuals` groups
-    diffs: Vec<Vec<&'a str>>,
+    pub(super) diffs: Vec<Vec<&'a str>>,
     /// `SameIndividual` pairs
-    sames: Vec<(&'a str, &'a str)>,
+    pub(super) sames: Vec<(&'a str, &'a str)>,
     overflow: bool,
     /// Data properties occurring in constructors that the omission certificate
     /// does not model. Assertions on unrelated properties remain admissible.
