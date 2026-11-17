@@ -43,15 +43,19 @@ def wTabSCore (X : Ontology) (P : List (IRI × ObjProp)) (req : List IRI) (hint 
           let sp := spec T.tab
           let as := allBases sp
           let cs := cellsOf as
+          let szS := cellSizeS as
+          let sz := szS.f
+          let eS := owlES sp
+          let oe := eS.f
           let D := encS T L E (SC ++ PC)
-          let spT := SRIQN.HF.splitTab cs (cellSize as) (sroiqSBound T L E (SC ++ PC)) (owlE sp)
+          let spT := SRIQN.HF.splitTab cs sz (sroiqSBound T L E (SC ++ PC)) oe
           match hint.toHintS _ _ with
           | none => none
           | some h =>
-            if SRIQN.HF.hintPartsNLP D cs (cellSize as)
+            if SRIQN.HF.hintPartsNLP D cs sz
                 (SRIQN.HF.lookSplit spT
-                  (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqSBound T L E (SC ++ PC)) (owlE sp)))
-                (owlE sp) h then
+                  (ContextCalculus.SRIQD.splitCell cs sz (sroiqSBound T L E (SC ++ PC)) oe))
+                oe h then
               let mp := namedMap T.obj.named
               let arr := T.obj.named.toArray
               let emb := fun x : Fin T.obj.conceptCount =>
@@ -101,7 +105,7 @@ theorem wTabSCore_facts (pat : String → String → Prop) {X : Ontology} {P : L
       · cases hw
       next h hh =>
         split_ifs at hw with hp
-        rw [SRIQN.HF.lookSplit_eq] at hp
+        rw [SRIQN.HF.lookSplit_eq, cellSizeS_f, owlES_f] at hp
         simp only [Option.some.injEq] at hw
         subst hw
         have hX' := selfOff_isSROIQDKB hX

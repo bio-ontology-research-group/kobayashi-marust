@@ -244,7 +244,7 @@ theorem wTabCore_dfacts (pat : String → String → Prop) {X : Ontology} {req :
       · cases hw
       next h hh =>
         split_ifs at hw with hp
-        rw [SRIQN.HF.lookSplit_eq] at hp
+        rw [SRIQN.HF.lookSplit_eq, cellSizeS_f, owlES_f] at hp
         simp only [Option.some.injEq] at hw
         subst hw
         simp only [sroiqHOK, Bool.and_eq_true] at hok

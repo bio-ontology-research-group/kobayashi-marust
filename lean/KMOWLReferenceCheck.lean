@@ -1620,11 +1620,14 @@ def explainOn {n m p q : Nat} (D : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin 
 def splitSizes (T : SRIQDKBTranslation) (L : List OWL.IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) (bound : Nat) :
     List (Option Nat) × Nat :=
-  let sp := SHIQD.spec T.tab
+  let spS := OWLFrontend.specS T.tab
+  let sp := spS.f
   let as := OWL.Datatypes.allBases sp
   let cs := OWL.Datatypes.cellsOf as
-  let sz := OWL.Datatypes.cellSize as
-  let spT := SRIQN.HF.splitTab cs sz bound (OWL.Datatypes.owlE sp)
+  let szS := OWLFrontend.cellSizeS as
+  let sz := szS.f
+  let eS := OWLFrontend.owlES sp
+  let spT := SRIQN.HF.splitTab cs sz bound eS.f
   let sc := spT.filterMap fun p => if p.2 then some p.1 else none
   (sc.map sz, (ContextCalculus.SRIQD.allG (OWL.Datatypes.allFrees sp).length).length)
 
@@ -1833,7 +1836,8 @@ def emitData {n : Nat} (T : SRIQDKBTranslation)
     match dclauseText cl with
     | some t => out.putStrLn t
     | none => pure ()
-  let sp := SHIQD.spec T.tab
+  let spS := OWLFrontend.specS T.tab
+  let sp := spS.f
   for j in List.finRange T.tab.length do out.putStrLn s!"atom {j.val} {(reprStr (sp j)).replace "\n" " "}"
   let fr := OWL.Datatypes.allFrees sp
   for (f, i) in fr.zipIdx do out.putStrLn s!"free {i} {f}"
@@ -1844,8 +1848,10 @@ def emitData {n : Nat} (T : SRIQDKBTranslation)
       out.putStrLn s!"group {i} {String.join ((List.finRange fr.length).map fun j => if g j then "1" else "0")}"
   let as := OWL.Datatypes.allBases sp
   let cs := OWL.Datatypes.cellsOf as
-  let sz := OWL.Datatypes.cellSize as
-  let spT := SRIQN.HF.splitTab cs sz bound (OWL.Datatypes.owlE sp)
+  let szS := OWLFrontend.cellSizeS as
+  let sz := szS.f
+  let eS := OWLFrontend.owlES sp
+  let spT := SRIQN.HF.splitTab cs sz bound eS.f
   let sc := spT.filterMap fun p => if p.2 then some p.1 else none
   for (c, i) in sc.zipIdx do
     out.putStrLn s!"cell {i} {((sz c).map toString).getD "inf"} {(reprStr c).replace "\n" " "}"
@@ -2450,13 +2456,18 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
     if args.explain then
       let _ ← withWitnessTarget O req
         (fun T L E _ => do
-          let (sz, G) := splitSizes T L E (sroiqBound T L E)
-          let sp := SHIQD.spec T.tab
+          let bnd := sroiqBound T L E
+          let (sz, G) := splitSizes T L E bnd
+          let spS := OWLFrontend.specS T.tab
+          let sp := spS.f
           let as := OWL.Datatypes.allBases sp
           let cs := OWL.Datatypes.cellsOf as
-          let why := (partWhy hint sz G).orElse fun _ => starWhyD (encC T L E) cs (OWL.Datatypes.cellSize as)
-            (ContextCalculus.SRIQD.splitCell cs (OWL.Datatypes.cellSize as) (sroiqBound T L E) (OWL.Datatypes.owlE sp))
-            (OWL.Datatypes.owlE sp) hint
+          let szS := OWLFrontend.cellSizeS as
+          let eS := OWLFrontend.owlES sp
+          let spT := SRIQN.HF.splitTab cs szS.f bnd eS.f
+          let why := (partWhy hint sz G).orElse fun _ => starWhyD (encC T L E) cs szS.f
+            (SRIQN.HF.lookSplit spT (ContextCalculus.SRIQD.splitCell cs szS.f bnd eS.f))
+            eS.f hint
           IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false why}"
           return 0)
         (fun T L E SC _ _ => do

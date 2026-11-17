@@ -177,17 +177,120 @@ instance instHashableDataProp : Hashable DataProp where
 instance instHashableDExpr : Hashable DExpr where
   hash e := mixHash (hash e.kind) (mixHash (hash e.n) (mixHash (hash e.p) (hash e.R)))
 
-/-- `SHIQD.spec` through an array computed once. -/
+/-- `SHIQD.spec` through an array computed once, wrapped in a structure so
+that the compiler does not eta-expand the array construction into each lookup. -/
 def useSpec (arr : Array DataRange) (q : Nat) (h : arr.size = q) (j : Fin q) : DataRange :=
   arr[j.val]'(by rw [h]; exact j.isLt)
 
-def specF (tab : List DExpr) : Fin tab.length → DataRange :=
-  useSpec (tab.map DExpr.R).toArray tab.length (by simp)
+structure SpecS (q : Nat) where
+  f : Fin q → DataRange
 
-@[csimp] theorem spec_eq_F : @SHIQD.spec = @specF := by
-  funext tab j
-  simp only [SHIQD.spec, specF, useSpec, List.getElem_toArray, List.getElem_map]
+def specS (tab : List DExpr) : SpecS tab.length :=
+  let arr : Array DataRange := (tab.map DExpr.R).toArray
+  ⟨useSpec arr tab.length (by simp [arr])⟩
+
+@[simp] theorem specS_f (tab : List DExpr) : (specS tab).f = SHIQD.spec tab := by
+  funext j
+  simp only [SHIQD.spec, specS, useSpec, List.getElem_toArray, List.getElem_map]
   rfl
+
+instance instHashableRat : Hashable ℚ where
+  hash q := mixHash (hash q.num) (hash q.den)
+
+instance instHashableFloatV {e m : Nat} : Hashable (Datatypes.FloatV e m) where
+  hash
+    | .fin neg E M => mixHash 1 (mixHash (hash neg) (mixHash (hash E.val) (hash M.val)))
+    | .inf neg => mixHash 2 (hash neg)
+    | .nan => 3
+
+instance instHashableValOfQ : Hashable (Datatypes.ValOf ℚ) where
+  hash
+    | .num x => mixHash 1 (hash x)
+    | .dbl x => mixHash 2 (hash x)
+    | .flt x => mixHash 3 (hash x)
+    | .str s l => mixHash 4 (mixHash (hash s) (hash l))
+    | .bool b => mixHash 5 (hash b)
+    | .hex bs => mixHash 6 (hash bs)
+    | .b64 bs => mixHash 7 (hash bs)
+    | .uri s => mixHash 8 (hash s)
+    | .time t z => mixHash 9 (mixHash (hash t) (hash z))
+    | .xml s => mixHash 10 (hash s)
+    | .extra n => mixHash 11 (hash n)
+
+instance instHashableCell : Hashable Datatypes.Cell where
+  hash
+    | .pt w => mixHash 1 (hash w)
+    | .gap lo hi cls => mixHash 2 (mixHash (hash lo) (mixHash (hash hi) (hash cls.val)))
+    | .fN d => mixHash 3 (hash d)
+    | .fA d p => mixHash 4 (mixHash (hash d) (hash p))
+    | .fI d lo hi => mixHash 5 (mixHash (hash d) (mixHash (hash lo) (hash hi)))
+    | .strR => 6
+    | .langR => 7
+    | .tagR => 8
+    | .uriR => 9
+    | .hexR => 10
+    | .b64R => 11
+    | .xmlR => 12
+    | .timeTz => 13
+    | .timeLoc => 14
+    | .other => 15
+
+def numPtsF (as : List Datatypes.BAtom) : List ℚ :=
+  dedupHS (as.flatMap Datatypes.BAtom.nums)
+
+@[csimp] theorem numPts_eq_F : @Datatypes.numPts = @numPtsF := by
+  funext as; exact (dedupHS_eq _).symm
+
+def otherPtsF (as : List Datatypes.BAtom) : List (Datatypes.ValOf ℚ) :=
+  dedupHS (as.flatMap Datatypes.BAtom.others ++ [Datatypes.ValOf.bool true, Datatypes.ValOf.bool false])
+
+@[csimp] theorem otherPts_eq_F : @Datatypes.otherPts = @otherPtsF := by
+  funext as; exact (dedupHS_eq _).symm
+
+def fOrdsF (d : Bool) (as : List Datatypes.BAtom) : List Int :=
+  dedupHS ((Datatypes.otherPts as).filterMap (Datatypes.fpOrd d))
+
+@[csimp] theorem fOrds_eq_F : @Datatypes.fOrds = @fOrdsF := by
+  funext d as; exact (dedupHS_eq _).symm
+
+def cellsOfF (as : List Datatypes.BAtom) : List Datatypes.Cell :=
+  dedupHS ((Datatypes.allPts as).map Datatypes.Cell.pt ++
+    (Datatypes.gapPairs (Datatypes.numPts as)).flatMap
+      (fun x : Option ℚ × Option ℚ => [0, 1, 2, 3].map (Datatypes.Cell.gap x.1 x.2)) ++
+    (Datatypes.restCells ++ Datatypes.fCells true as ++ Datatypes.fCells false as))
+
+@[csimp] theorem cellsOf_eq_F : @Datatypes.cellsOf = @cellsOfF := by
+  funext as; exact (dedupHS_eq _).symm
+
+def allFreesF {q : Nat} (spec : Fin q → DataRange) : List IRI :=
+  dedupHS ((List.finRange q).flatMap fun p => Datatypes.drFrees (spec p))
+
+@[csimp] theorem allFrees_eq_F : @Datatypes.allFrees = @allFreesF := by
+  funext q spec; exact (dedupHS_eq _).symm
+
+/-- `Datatypes.cellSize` wrapped in a structure so `otherPts as` is computed once. -/
+structure CellSizeS where
+  f : Datatypes.Cell → Option Nat
+
+def cellSizeS (as : List Datatypes.BAtom) : CellSizeS :=
+  let opts := Datatypes.otherPts as
+  ⟨Datatypes.cellSizeWith opts⟩
+
+@[simp] theorem cellSizeS_f (as : List Datatypes.BAtom) : (cellSizeS as).f = Datatypes.cellSize as := by
+  funext c
+  cases c <;> rfl
+
+/-- `Datatypes.owlE` wrapped in a structure so `allFrees` and `compileDR` are computed once. -/
+structure OwlES {q : Nat} (spec : Fin q → DataRange) where
+  f : Fin q → Datatypes.Cell → (Fin (Datatypes.allFrees spec).length → Bool) → Bool
+
+def owlES {q : Nat} (spec : Fin q → DataRange) : OwlES spec :=
+  let arr : Array Datatypes.CExpr := Array.ofFn fun p => Datatypes.compileDR (spec p)
+  ⟨Datatypes.owlEWith (Datatypes.allFrees spec) arr q (Array.size_ofFn ..)⟩
+
+@[simp] theorem owlES_f {q : Nat} (spec : Fin q → DataRange) : (owlES spec).f = Datatypes.owlE spec := by
+  funext p c g
+  simp only [owlES, Datatypes.owlEWith, Array.getElem_ofFn, Datatypes.evalCE_compileDR, Datatypes.owlE]
 
 def tableKF (O : Ontology) : List DExpr := dedupHS ((rwAxiomsK O).flatMap axDexprsK)
 
@@ -336,7 +439,10 @@ end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.idxFast_eq
 #print axioms ContextCalculus.OWLFrontend.dedupHS_eq
-#print axioms ContextCalculus.OWLFrontend.spec_eq_F
+#print axioms ContextCalculus.OWLFrontend.specS_f
+#print axioms ContextCalculus.OWLFrontend.cellSizeS_f
+#print axioms ContextCalculus.OWLFrontend.owlES_f
+#print axioms ContextCalculus.OWLFrontend.cellsOf_eq_F
 #print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_eq_F
 #print axioms ContextCalculus.OWLFrontend.translateSHOIQD_eq_F
 #print axioms ContextCalculus.OWLFrontend.dosn_eq_F
