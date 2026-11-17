@@ -343,6 +343,24 @@ def cellSize (as : List BAtom) : Cell → Option Nat
   | .fI _ lo hi => some ((hi - lo - 1).toNat + if lo < 0 ∧ 0 < hi then 1 else 0)
   | _ => none
 
+/-- `cellSize` with the non-numeric points given. -/
+def cellSizeWith (opts : List (ValOf ℚ)) : Cell → Option Nat
+  | .pt _ => some 1
+  | .gap (some a) (some b) 0 => some (⌈b⌉ - ⌊a⌋ - 1).toNat
+  | .gap _ _ _ => none
+  | .fN d => some (1 - (opts.filter fun w => w == nanOf d).length)
+  | .fA d p => some ((if p = 0 then 2 else 1) - (opts.filter fun w => fpOrd d w == some p).length)
+  | .fI _ lo hi => some ((hi - lo - 1).toNat + if lo < 0 ∧ 0 < hi then 1 else 0)
+  | _ => none
+
+/-- `cellSize` with `otherPts as` computed once. -/
+def cellSizeF (as : List BAtom) : Cell → Option Nat :=
+  cellSizeWith (otherPts as)
+
+@[csimp] theorem cellSize_eq_F : @cellSize = @cellSizeF := by
+  funext as c
+  cases c <;> rfl
+
 /-! ## Evaluating atoms on cells -/
 
 /-- A timezone offset within `±14:00` (or none). -/
@@ -540,3 +558,5 @@ noncomputable def cellOf (as : List BAtom) (v : Val) : Cell := by
     | v => restCell v
 
 end ContextCalculus.OWL.Datatypes
+
+#print axioms ContextCalculus.OWL.Datatypes.cellSize_eq_F

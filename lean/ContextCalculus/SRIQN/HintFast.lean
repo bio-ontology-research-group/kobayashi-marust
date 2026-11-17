@@ -742,6 +742,31 @@ theorem kidIdx_perm (b : Fin h.k) : (getL h.kidIdx b.val).Perm (h.toN.kids b) :=
 
 end HintSLemmas
 
+/-- Adjacency list lookup from a precomputed array. -/
+def adjFrom {k m : Nat} (A : Array (List (Fin k × Finset (RoleT (Fin m))))) (b : Fin k) :
+    List (Fin k × Finset (RoleT (Fin m))) :=
+  getL A b.val
+
+/-- Edge label lookup from a precomputed adjacency array. -/
+def labFrom {k m : Nat} (A : Array (List (Fin k × Finset (RoleT (Fin m))))) (b c : Fin k) :
+    Finset (RoleT (Fin m)) :=
+  labOf (getL A b.val) c
+
+/-- `HintS.toN` with `lab` backed by the precomputed adjacency array `h.adj`. -/
+def HintS.toNF (h : HintS n m) : Proc.HintN n m where
+  k := h.k
+  ty := h.tyF
+  lab := labFrom h.adj
+  kids := fun b => (h.kids.filter fun e => e.1 = b).map (·.2)
+  recs := h.recs.map RecS.toN
+
+@[csimp] theorem toN_eq_F : @HintS.toN = @HintS.toNF := by
+  funext n m h
+  unfold HintS.toN HintS.toNF
+  congr 1
+  funext b c
+  exact (labOf_adj h b c).symm
+
 
 /-! ## The data-star test over the data clauses only -/
 
@@ -1199,9 +1224,10 @@ value types of every pair for every cell it is asked about). -/
 def splitTab {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (size : K → Option Nat)
     (L : Nat) (E : Fin q → K → (Fin s → Bool) → Bool) : List (K × Bool) :=
   let big := ((SRIQD.pairs cells s).filter fun cg => !SRIQD.small size L cg.1).map fun cg =>
-    SRIQD.vtc E cg.1 cg.2
+    SRI.Proc.toL (SRIQD.vtc E cg.1 cg.2)
+  let bigS : Std.HashSet (List (Fin q)) := Std.HashSet.ofList big
   cells.map fun c => (c, SRIQD.small size L c &&
-    !((SRIQD.allG s).all fun g => decide (SRIQD.vtc E c g ∈ big)))
+    !((SRIQD.allG s).all fun g => bigS.contains (SRI.Proc.toL (SRIQD.vtc E c g))))
 
 /-- A predicate read from a table first. -/
 def lookSplit {K : Type} [DecidableEq K] (tab : List (K × Bool)) (sp : K → Bool) (c : K) : Bool :=
@@ -1212,12 +1238,13 @@ def lookSplit {K : Type} [DecidableEq K] (tab : List (K × Bool)) (sp : K → Bo
 theorem splitTab_lookup {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (size : K → Option Nat)
     (L : Nat) (E : Fin q → K → (Fin s → Bool) → Bool) (c : K) (b : Bool)
     (h : (splitTab cells size L E).lookup c = some b) : b = SRIQD.splitCell cells size L E c := by
+  let big := ((SRIQD.pairs cells s).filter fun cg => !SRIQD.small size L cg.1).map fun cg =>
+    SRI.Proc.toL (SRIQD.vtc E cg.1 cg.2)
+  let bigS : Std.HashSet (List (Fin q)) := Std.HashSet.ofList big
   have key : ∀ (l : List K), (l.map fun c => (c, SRIQD.small size L c &&
-      !((SRIQD.allG s).all fun g => decide (SRIQD.vtc E c g ∈ ((SRIQD.pairs cells s).filter
-        fun cg => !SRIQD.small size L cg.1).map fun cg => SRIQD.vtc E cg.1 cg.2)))).lookup c = some b →
-      b = (SRIQD.small size L c && !((SRIQD.allG s).all fun g => decide (SRIQD.vtc E c g ∈
-        ((SRIQD.pairs cells s).filter fun cg => !SRIQD.small size L cg.1).map fun cg =>
-          SRIQD.vtc E cg.1 cg.2))) := by
+      !((SRIQD.allG s).all fun g => bigS.contains (SRI.Proc.toL (SRIQD.vtc E c g))))).lookup c = some b →
+      b = (SRIQD.small size L c && !((SRIQD.allG s).all fun g =>
+        bigS.contains (SRI.Proc.toL (SRIQD.vtc E c g)))) := by
     intro l hl
     induction l with
     | nil => simp at hl
@@ -1232,13 +1259,13 @@ theorem splitTab_lookup {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) 
   apply congrArg
   funext g
   apply Bool.eq_iff_iff.2
-  simp only [decide_eq_true_eq, List.mem_map, List.mem_filter, SRIQD.mem_pairs, List.any_eq_true,
-    Bool.and_eq_true, Bool.not_eq_true']
+  simp only [bigS, big, Std.HashSet.contains_ofList, List.elem_eq_mem, List.mem_map, List.mem_filter,
+    SRIQD.mem_pairs, List.any_eq_true, Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq]
   constructor
   · rintro ⟨⟨c', g'⟩, ⟨hc, hs⟩, he⟩
-    exact ⟨c', hc, by simpa using hs, g', SRIQD.mem_allG g', he⟩
+    exact ⟨c', hc, by simpa using hs, g', SRIQD.mem_allG g', SRI.Proc.toL_inj he⟩
   · rintro ⟨c', hc, hs, g', -, he⟩
-    exact ⟨(c', g'), ⟨hc, by simpa using hs⟩, he⟩
+    exact ⟨(c', g'), ⟨hc, by simpa using hs⟩, congrArg SRI.Proc.toL he⟩
 
 /-- **The table changes nothing.** -/
 theorem lookSplit_eq {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (size : K → Option Nat)
@@ -1415,3 +1442,5 @@ end ContextCalculus.SRIQN.HF
 #print axioms ContextCalculus.SRIQN.HF.hintPartsP_imp
 #print axioms ContextCalculus.SRIQN.HF.hintPartsNLP_imp
 #print axioms ContextCalculus.SRIQN.HF.hintPartsPB_eq
+#print axioms ContextCalculus.SRIQN.HF.lookSplit_eq
+#print axioms ContextCalculus.SRIQN.HF.toN_eq_F

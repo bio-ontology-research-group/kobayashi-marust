@@ -265,30 +265,38 @@ def wTabCore (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
           let sp := spec T.tab
           let as := allBases sp
           let cs := cellsOf as
+          let szS := cellSizeS as
+          let sz := szS.f
+          let eS := owlES sp
+          let oe := eS.f
           let D := encC T L E
           -- the cells to split as a table (`lookSplit_eq`)
-          let spT := SRIQN.HF.splitTab cs (cellSize as) (sroiqBound T L E) (owlE sp)
+          let spT := SRIQN.HF.splitTab cs sz (sroiqBound T L E) oe
           match hint.toHintS _ _ with
           | none => none
           | some h =>
-            if SRIQN.HF.hintPartsP D cs (cellSize as)
+            if SRIQN.HF.hintPartsP D cs sz
                 (SRIQN.HF.lookSplit spT
-                  (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp)))
-                (owlE sp) h then
+                  (ContextCalculus.SRIQD.splitCell cs sz (sroiqBound T L E) oe))
+                oe h then
               let mp := namedMap T.obj.named
               let arr := T.obj.named.toArray
               let emb := fun x : Fin T.obj.conceptCount =>
                 Fin.castAdd (SRIQN.Proc.encKD D) (Fin.castAdd (SROIQ.Proc.kCD (dosnC T L E)) x)
               let base := nomBase (roleOff X) req
+              let ob := objC T L E
+              let hm := Std.HashMap.ofList (SROIQ.Proc.mkTab ob)
+              let le := SROIQ.Proc.leH hm
+              let rs := SROIQ.rules ob
               some { N := _, k := h.k, ty := h.tyF
                      cls := req.filterMap fun s => (ixOfA T arr rfl mp s).map fun x => (s, emb x)
                      inds := (roleOff X).individualNames.zipIdx.filterMap fun p =>
                        (ixOfA T arr rfl mp (nomName base p.2)).map fun x => (p.1, emb x)
                      M := T.obj.roleCount, lab := h.toN.lab
                      props := propsOf T fun R =>
-                       SROIQ.Proc.selfSimpleB (objC T L E) [.selfL R []]
-                     n2 := T.obj.conceptCount, ob := objC T L E
-                     adj := fun b => ContextCalculus.SRIQ.Fast.getL h.adj b.val
+                       SROIQ.Proc.selfSimpleBL (n := T.obj.conceptCount) le rs [.selfL R []]
+                     n2 := T.obj.conceptCount, ob := ob
+                     adj := SRIQN.HF.adjFrom h.adj
                      rprops := rpropsOf T, flat := h.kids.isEmpty, chainR := true
                      p := T.dps.length, q := T.tab.length, dpsA := T.dps.toArray
                      dspA := (T.tab.map (·.R)).toArray
@@ -338,7 +346,7 @@ theorem wTabCore_facts (pat : String → String → Prop) {X : Ontology} {req : 
       · cases hw
       next h hh =>
         split_ifs at hw with hp
-        rw [SRIQN.HF.lookSplit_eq] at hp
+        rw [SRIQN.HF.lookSplit_eq, cellSizeS_f, owlES_f] at hp
         simp only [Option.some.injEq] at hw
         subst hw
         simp only [sroiqHOK, Bool.and_eq_true] at hok
