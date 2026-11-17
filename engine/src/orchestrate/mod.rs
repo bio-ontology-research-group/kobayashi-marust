@@ -1329,11 +1329,12 @@ fn try_inproc_engine(
     let export_ext_deadline = deadline + budget + std::time::Duration::from_secs(3);
     loop {
         let now = std::time::Instant::now();
-        let active_deadline = if probe.as_ref().is_some_and(|p| p.bridge_answered()) {
-            export_ext_deadline
-        } else {
-            deadline
-        };
+        let active_deadline =
+            if export_active && probe.as_ref().is_some_and(|p| p.bridge_answered()) {
+                export_ext_deadline
+            } else {
+                deadline
+            };
         if now >= active_deadline {
             drop(probe);
             stop_inproc(&format!("overran its {:.1}s budget", budget.as_secs_f64()));
@@ -2009,14 +2010,14 @@ fn classify_with_evidence_mode(
                     }
                 }
             }
-            if !evidence.classification.consistent {
-                model_export::record_inconsistent();
-            } else if evidence.classification.dropped > 0
-                && std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some()
-            {
-                model_export::record_declined(
-                    "source ontology has dropped or uncarried axioms".into(),
-                );
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                if !evidence.classification.consistent {
+                    model_export::record_inconsistent();
+                } else if evidence.classification.dropped > 0 {
+                    model_export::record_declined(
+                        "source ontology has dropped or uncarried axioms".into(),
+                    );
+                }
             }
         }
         // A one-sorted clause stream on an input with a TBox nominal and data

@@ -43,6 +43,9 @@ pub(crate) struct RawModel {
     pub witness_exact_by_class: BTreeMap<String, bool>,
     /// Named class (internal name) to its witness element.
     pub witnesses: BTreeMap<String, usize>,
+    /// Additional split-witness elements for classes whose superclasses are
+    /// separated across multiple elements (covering unions).
+    pub extra_witnesses: Vec<(String, usize)>,
     /// The role closure a consumer must apply to the edges.
     pub closure: &'static str,
     /// Present when `--export-model-budget` expired before all per-class
@@ -118,6 +121,9 @@ pub(crate) fn write_worker_model_payload_if_requested(payload: &WorkerModelPaylo
 }
 
 pub(crate) fn take_inproc_worker_payload() -> Option<WorkerModelPayload> {
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_none() {
+        return None;
+    }
     let mut g = SESSION.lock().unwrap_or_else(|e| e.into_inner());
     g.inproc_payload.take()
 }
@@ -138,6 +144,9 @@ pub(crate) fn record_flat_nf1_state(state: super::flat_nf1::FlatNf1ExportState) 
 }
 
 pub(crate) fn record_inconsistent() {
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_none() {
+        return;
+    }
     let mut g = SESSION.lock().unwrap_or_else(|e| e.into_inner());
     g.inconsistent = true;
 }
@@ -221,12 +230,12 @@ fn line<W: Write>(w: &mut W, value: serde_json::Value) -> std::io::Result<()> {
 fn build_raw_model_from_el(
     m: crate::elcomplete::ElModel,
     rbox: &[Vec<String>],
-) -> Option<RawModel> {
+) -> Result<Option<RawModel>, String> {
     if m.inconsistent {
-        return None;
+        return Ok(None);
     }
     let mut edge_set: HashSet<(usize, String, usize)> = m.edges.into_iter().collect();
-    crate::engine::close_edges_under_rbox_rows(rbox, m.contexts.len(), &mut edge_set);
+    crate::engine::close_edges_under_rbox_rows(rbox, m.contexts.len(), &mut edge_set)?;
     let mut edges: Vec<(usize, String, usize)> = edge_set.into_iter().collect();
     edges.sort();
     let witnesses: BTreeMap<String, usize> = m
@@ -236,7 +245,7 @@ fn build_raw_model_from_el(
         .map(|(i, c)| (c.clone(), i))
         .collect();
     let witness_exact_by_class = witnesses.keys().map(|k| (k.clone(), true)).collect();
-    Some(RawModel {
+    Ok(Some(RawModel {
         route: "el-canonical",
         contexts: m.contexts,
         labels: m.labels,
@@ -245,10 +254,11 @@ fn build_raw_model_from_el(
         witness_exact: true,
         witness_exact_by_class,
         witnesses,
+        extra_witnesses: Vec::new(),
         closure: "none: the edges of each role are its extension (sub-roles lifted, chains and transitivity composed)",
         partial_reason: m.partial_reason,
         extra_values: Vec::new(),
-    })
+    }))
 }
 
 fn build_raw_model_from_cb(m: crate::engine::CbExportModel) -> Option<RawModel> {
@@ -271,6 +281,7 @@ fn build_raw_model_from_cb(m: crate::engine::CbExportModel) -> Option<RawModel> 
         witness_exact: true,
         witness_exact_by_class,
         witnesses,
+        extra_witnesses: Vec::new(),
         closure: "none: the edges of each role are closed under the RBox (sub-roles, inverses, symmetry, reflexivity, transitivity, and role chains)",
         partial_reason: m.partial_reason,
         extra_values: Vec::new(),
@@ -281,9 +292,9 @@ fn build_raw_model_from_bridge(
     mut bm: crate::konclude_ht::bridge::BridgeExportModel,
     rbox: &[Vec<String>],
     nominal_abox: &crate::json_io::NominalAboxMeta,
-) -> Option<RawModel> {
+) -> Result<Option<RawModel>, String> {
     if bm.inconsistent {
-        return None;
+        return Ok(None);
     }
     if !nominal_abox.same.is_empty() {
         let mut changed = true;
@@ -309,16 +320,21 @@ fn build_raw_model_from_bridge(
         }
     }
     let mut edge_set: HashSet<(usize, String, usize)> = bm.edges.into_iter().collect();
-    crate::engine::close_edges_under_rbox_rows(rbox, bm.contexts.len(), &mut edge_set);
+    crate::engine::close_edges_under_rbox_rows(rbox, bm.contexts.len(), &mut edge_set)?;
     let mut edges: Vec<(usize, String, usize)> = edge_set.into_iter().collect();
     edges.sort();
 
     let mut witnesses = BTreeMap::new();
+    let mut extra_witnesses = Vec::new();
     let mut witness_exact_by_class = BTreeMap::new();
     let mut all_exact = true;
     for (cname, elem_idx, exact) in bm.class_witnesses {
-        witnesses.insert(cname.clone(), elem_idx);
-        witness_exact_by_class.insert(cname, exact);
+        if let std::collections::btree_map::Entry::Vacant(e) = witnesses.entry(cname.clone()) {
+            e.insert(elem_idx);
+            witness_exact_by_class.insert(cname, exact);
+        } else {
+            extra_witnesses.push((cname, elem_idx));
+        }
         if !exact {
             all_exact = false;
         }
@@ -328,7 +344,7 @@ fn build_raw_model_from_bridge(
     } else {
         "unravelling of blocked nodes along blocker edges, closed under the RBox"
     };
-    Some(RawModel {
+    Ok(Some(RawModel {
         route: "ht-bridge",
         contexts: bm.contexts,
         labels: bm.labels,
@@ -337,15 +353,16 @@ fn build_raw_model_from_bridge(
         witness_exact: all_exact,
         witness_exact_by_class,
         witnesses,
+        extra_witnesses,
         closure,
         partial_reason: bm.partial_reason,
         extra_values: Vec::new(),
-    })
+    }))
 }
 
 fn build_raw_model_from_flat_nf1(
     state: super::flat_nf1::FlatNf1ExportState,
-) -> (RawModel, frontend_run::Meta) {
+) -> Result<(RawModel, frontend_run::Meta), String> {
     let n_classes = state.names.len();
     let is_bottom = |s: &str| {
         matches!(
@@ -573,7 +590,7 @@ fn build_raw_model_from_flat_nf1(
         }
     }
 
-    crate::engine::close_edges_under_rbox_rows(&state.rbox_rows, contexts.len(), &mut edge_set);
+    crate::engine::close_edges_under_rbox_rows(&state.rbox_rows, contexts.len(), &mut edge_set)?;
     let mut edges: Vec<(usize, String, usize)> = edge_set.into_iter().collect();
     edges.sort();
 
@@ -610,11 +627,12 @@ fn build_raw_model_from_flat_nf1(
         witness_exact: all_exact,
         witness_exact_by_class,
         witnesses,
+        extra_witnesses: Vec::new(),
         closure: "none: the edges of each role are its extension (sub-roles lifted, chains and transitivity composed)",
         partial_reason: None,
         extra_values: Vec::new(),
     };
-    (raw, meta)
+    Ok((raw, meta))
 }
 
 fn duplicate_elements_batch(
@@ -690,7 +708,7 @@ fn apply_post_hooks(
     abox_quotient_blocks: Option<&[(String, Vec<String>)]>,
     positive_abox_quotient_comps: Option<&[Vec<String>]>,
     mirror_specs: Option<&[(String, String, Option<String>)]>,
-) {
+) -> Result<(), String> {
     let unsat_set: HashSet<&str> = unsat_iris.iter().map(String::as_str).collect();
 
     // 1. Separable ABox elided by `omit_separable_abox` in `frontend/mod.rs`
@@ -897,7 +915,7 @@ fn apply_post_hooks(
                 &meta.rbox,
                 raw.contexts.len(),
                 &mut edge_set,
-            );
+            )?;
             raw.edges = edge_set.into_iter().collect();
             raw.edges.sort();
         }
@@ -1171,6 +1189,7 @@ fn apply_post_hooks(
             }
         }
     }
+    Ok(())
 }
 
 /// Finish the model export session captured during `km classify` and write it
@@ -1212,8 +1231,7 @@ pub fn finish_and_write(
 
     let resolved: Result<Option<(RawModel, frontend_run::Meta)>, String> =
         if let Some(flat_state) = session.flat_nf1_state.take() {
-            let (raw, meta) = build_raw_model_from_flat_nf1(flat_state);
-            Ok(Some((raw, meta)))
+            build_raw_model_from_flat_nf1(flat_state).map(Some)
         } else if let Some(meta) = session.engine_meta.take() {
             let dropped: u64 = meta.dropped_source_axioms.values().sum();
             if dropped > 0 || meta.uncarried_data_assertions > 0 {
@@ -1232,15 +1250,15 @@ pub fn finish_and_write(
                         session.inproc_payload.take()
                     };
                 match payload_opt {
-                    Some(WorkerModelPayload::El(res)) => {
-                        res.map(|m| build_raw_model_from_el(m, &meta.rbox).map(|raw| (raw, meta)))
-                    }
+                    Some(WorkerModelPayload::El(res)) => res.and_then(|m| {
+                        build_raw_model_from_el(m, &meta.rbox).map(|opt| opt.map(|raw| (raw, meta)))
+                    }),
                     Some(WorkerModelPayload::Cb(res)) => {
                         res.map(|m| build_raw_model_from_cb(m).map(|raw| (raw, meta)))
                     }
-                    Some(WorkerModelPayload::Bridge(res)) => res.map(|bm| {
+                    Some(WorkerModelPayload::Bridge(res)) => res.and_then(|bm| {
                         build_raw_model_from_bridge(bm, &meta.rbox, &meta.nominal_abox)
-                            .map(|raw| (raw, meta))
+                            .map(|opt| opt.map(|raw| (raw, meta)))
                     }),
                     Some(WorkerModelPayload::Declined(reason)) => Err(reason),
                     None => Err("answering route did not record a model payload".to_string()),
@@ -1250,18 +1268,23 @@ pub fn finish_and_write(
             Err("answering route did not record a model payload".to_string())
         };
 
+    let resolved = match resolved {
+        Ok(Some((mut raw, mut meta))) => apply_post_hooks(
+            &mut raw,
+            &mut meta,
+            &session.unsat_iris,
+            &session.projected_data_assertions,
+            session.abox_quotient_atomic.as_deref(),
+            session.abox_quotient_blocks.as_deref(),
+            session.positive_abox_quotient_comps.as_deref(),
+            session.mirror_specs.as_deref(),
+        )
+        .map(|()| Some((raw, meta))),
+        other => other,
+    };
+
     let status = match resolved {
-        Ok(Some((mut raw, mut meta))) => {
-            apply_post_hooks(
-                &mut raw,
-                &mut meta,
-                &session.unsat_iris,
-                &session.projected_data_assertions,
-                session.abox_quotient_atomic.as_deref(),
-                session.abox_quotient_blocks.as_deref(),
-                session.positive_abox_quotient_comps.as_deref(),
-                session.mirror_specs.as_deref(),
-            );
+        Ok(Some((raw, meta))) => {
             let data_roles = meta.data_roles.clone();
             write_model(&mut w, &raw, &meta, &data_roles)?;
             format!(
@@ -1403,7 +1426,10 @@ fn try_el_raw_model(
     };
     let m =
         crate::elcomplete::el_model(el_input, el_meta.el_rbox_safe, el_meta.abox_inconsistent)?;
-    let raw = build_raw_model_from_el(m, &el_input.rbox);
+    let raw = match build_raw_model_from_el(m, &el_input.rbox) {
+        Ok(r) => r,
+        Err(e) => return Some(Err(e)),
+    };
     if let Some(ref rm) = raw {
         if el_meta
             .asserted_classes
@@ -1501,11 +1527,11 @@ fn try_bridge_raw_model(
         ));
     }
     let bm = crate::konclude_ht::bridge::bridge_model(&tin, &ht_input.rbox)?;
-    Ok(build_raw_model_from_bridge(
+    build_raw_model_from_bridge(
         bm,
         &ht_input.rbox,
         &ht_input.nominal_abox,
-    ))
+    )
 }
 
 /// `Ok(None)` for an inconsistent clause stream, `Err(reason)` when no
@@ -1750,12 +1776,17 @@ fn write_model<W: Write>(
                     .unwrap_or_else(|| raw.contexts[*t].clone())
             };
             let prop_full = iri(r);
-            if !seen_values.insert((ids[*f].clone(), prop_full.clone(), cell.clone())) {
-                continue;
-            }
             let literal = dts
                 .iter()
                 .find_map(|c| c.strip_prefix("__dt__val__").map(str::to_string));
+            let dedup_key = if let Some(ref lit) = literal {
+                format!("{cell}::{lit}")
+            } else {
+                cell.clone()
+            };
+            if !seen_values.insert((ids[*f].clone(), prop_full.clone(), dedup_key)) {
+                continue;
+            }
             let mut obj = serde_json::json!({
                 "kind": "value",
                 "element": ids[*f],
@@ -1815,6 +1846,20 @@ fn write_model<W: Write>(
                     class: iri_ref!(class),
                     element: &ids[e],
                     exact,
+                    kind: "witness",
+                },
+            )?;
+            w.write_all(b"\n")?;
+        }
+    }
+    for (class, e) in &raw.extra_witnesses {
+        if source.contains(class.as_str()) && !is_cell(*e) {
+            serde_json::to_writer(
+                &mut *w,
+                &WitnessLine {
+                    class: iri_ref!(class),
+                    element: &ids[*e],
+                    exact: false,
                     kind: "witness",
                 },
             )?;

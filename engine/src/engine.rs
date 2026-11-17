@@ -10648,7 +10648,7 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
     rbox: &[Vec<String>],
     n_elems: usize,
     edges: &mut std::collections::HashSet<(usize, String, usize), S>,
-) {
+) -> Result<(), String> {
     let has_inv = edges.iter().any(|(_, r, _)| r.starts_with("__inv__"));
     if has_inv {
         let mut normalized: std::collections::HashSet<(usize, String, usize), S> =
@@ -10662,8 +10662,11 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
         }
         *edges = normalized;
     }
+    if edges.len() > 250_000 {
+        return Err("RBox edge closure exceeds compact export bound (250,000 edges)".to_string());
+    }
     if rbox.is_empty() {
-        return;
+        return Ok(());
     }
 
     let mut has_refl = false;
@@ -10683,11 +10686,16 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
             let base = r.strip_prefix("__inv__").unwrap_or(r.as_str()).to_string();
             for u in 0..n_elems {
                 edges.insert((u, base.clone(), u));
+                if edges.len() > 250_000 {
+                    return Err(
+                        "RBox edge closure exceeds compact export bound (250,000 edges)".to_string(),
+                    );
+                }
             }
         }
     }
     if edges.is_empty() && !has_refl {
-        return;
+        return Ok(());
     }
 
     let insert_role = |edges: &mut std::collections::HashSet<(usize, String, usize), S>,
@@ -10761,7 +10769,10 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                                 for &w in ws {
                                     insert_role(edges, u, r, w);
                                     if edges.len() > 250_000 {
-                                        return;
+                                        return Err(
+                                            "RBox edge closure exceeds compact export bound (250,000 edges)"
+                                                .to_string(),
+                                        );
                                     }
                                 }
                             }
@@ -10782,7 +10793,10 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                                 for &w in ws {
                                     insert_role(edges, u, sup, w);
                                     if edges.len() > 250_000 {
-                                        return;
+                                        return Err(
+                                            "RBox edge closure exceeds compact export bound (250,000 edges)"
+                                                .to_string(),
+                                        );
                                     }
                                 }
                             }
@@ -10811,12 +10825,12 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                                     for &w in ws {
                                         next_reach.insert((u, w));
                                         if next_reach.len() > 250_000 {
-                                            break;
+                                            return Err(
+                                                "RBox edge closure exceeds compact export bound (250,000 edges)"
+                                                    .to_string(),
+                                            );
                                         }
                                     }
-                                }
-                                if next_reach.len() > 250_000 {
-                                    break;
                                 }
                             }
                             reach = next_reach;
@@ -10827,7 +10841,10 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                         for (u, w) in reach {
                             insert_role(edges, u, sup, w);
                             if edges.len() > 250_000 {
-                                return;
+                                return Err(
+                                    "RBox edge closure exceeds compact export bound (250,000 edges)"
+                                        .to_string(),
+                                );
                             }
                         }
                     }
@@ -10835,13 +10852,16 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                 _ => {}
             }
             if edges.len() > 250_000 {
-                return;
+                return Err(
+                    "RBox edge closure exceeds compact export bound (250,000 edges)".to_string(),
+                );
             }
         }
         if edges.len() == before {
             break;
         }
     }
+    Ok(())
 }
 
 fn verify_clauses_on_cb_structure_until(
@@ -11642,10 +11662,7 @@ pub(crate) fn build_cb_export_model_from_shards(
     }
 
     let n_elems = model_contexts.len();
-    close_edges_under_rbox_rows(&input.rbox, n_elems, &mut edge_set);
-    if edge_set.len() > 250_000 {
-        return Err("cb-horn RBox edge closure exceeds compact export bound".to_string());
-    }
+    close_edges_under_rbox_rows(&input.rbox, n_elems, &mut edge_set)?;
 
     let mut partial_reason = None;
     match verify_clauses_on_cb_structure_until(
@@ -12029,7 +12046,7 @@ pub(crate) fn cb_model(
         model_contexts.push(ctx_name);
     }
 
-    close_edges_under_rbox_rows(&input.rbox, n_elems, &mut edge_set);
+    close_edges_under_rbox_rows(&input.rbox, n_elems, &mut edge_set)?;
 
     let elem_of_ctx_name: HashMap<&str, usize> = model_contexts
         .iter()

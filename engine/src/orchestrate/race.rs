@@ -3955,9 +3955,11 @@ where
         if let Some(deadline) = ht_first.filter(|_| !typed_nominal_exclusive) {
             if pending_cb.is_some() && (budget == 0.0 || bridge_answer_marker.is_some()) {
                 let mut interval = Duration::from_millis(1);
+                let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
                 let export_ext = deadline * 2 + Duration::from_secs(3);
                 while t0.elapsed() < deadline
-                    || (t0.elapsed() < export_ext
+                    || (export_active
+                        && t0.elapsed() < export_ext
                         && bridge_answer_marker.as_ref().is_some_and(|marker| {
                             std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge")
                         }))

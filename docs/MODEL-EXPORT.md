@@ -42,17 +42,24 @@ normalizer symbols such as `Q_*`, `__def__*`, and `__trig__*` are stripped).
 2. **Domain elements (`"kind": "element"`)**
    ```json
    {"kind":"element","id":"e0","context":"⊤","classes":[]}
-   {"kind":"element","id":"e1","context":"http://example.org/A","classes":["http://example.org/A","http://example.org/B"],"individuals":["http://example.org/a"]}
+   {"kind":"element","id":"e1","context":"http://example.org/A","classes":["http://example.org/A","http://example.org/B"],"individuals":["http://example.org/a","_:genid2147483648"]}
    ```
    `classes` lists the source classes that hold at `id`. `individuals` (omitted
-   when empty) lists the named individuals interpreted by `id`.
+   when empty) lists the named and anonymous individuals interpreted by `id`.
+   Named individuals use their full source IRI; anonymous individuals
+   (`AnonymousIndividual(_:label)` in OWL 2 Functional-Style Syntax) retain
+   their source blank-node identifier `_:label` (for example,
+   `_:genid2147483648`), which downstream hint converters map to
+   `urn:km:owl-anon:#label`.
 
 3. **Object-property edges (`"kind": "edge"`)**
    ```json
    {"kind":"edge","role":"http://example.org/r","from":"e1","to":"e2"}
    ```
    Edges are closed under the RBox (sub-roles, inverse roles, symmetric roles,
-   reflexive roles, transitive roles, and role chains).
+   reflexive roles, transitive roles, and role chains). If RBox closure would
+   exceed 250,000 edges, model export declines (`"status": "declined"`) rather
+   than emitting a truncated edge set.
 
 4. **Data-property values (`"kind": "value"`)**
    ```json
@@ -63,8 +70,9 @@ normalizer symbols such as `Q_*`, `__def__*`, and `__trig__*` are stripped).
    ```json
    {"kind":"same","individuals":["http://example.org/a","http://example.org/b"],"element":"e1"}
    ```
-   Emitted whenever two or more named individuals denote the same domain
-   element.
+   Emitted whenever two or more individuals denote the same domain element
+   (using full IRIs for named individuals and `_:label` for anonymous
+   individuals).
 
 6. **Blocked tableau nodes (`"kind": "blocked"`)**
    ```json
@@ -77,12 +85,15 @@ normalizer symbols such as `Q_*`, `__def__*`, and `__trig__*` are stripped).
    ```json
    {"kind":"witness","class":"http://example.org/A","element":"e1","exact":true}
    ```
-   Maps each satisfiable named class `C` to an element `e` in whose `classes`
-   list `C` appears. When `"exact": true`, the source classes of `e` equal the
-   entailed named superclasses of `C` (`{D | O |= C <= D}`). When `"exact":
-   false` (for example, when `C <= D1 or D2` without entailing either disjunct
-   alone), `e` satisfies all entailed superclasses of `C` plus the chosen
-   branch disjunct.
+   Maps each satisfiable named class `C` to one or more elements `e` in whose
+   `classes` list `C` appears. When `"exact": true`, the source classes of `e`
+   equal the entailed named superclasses of `C` (`{D | O |= C <= D}`). When
+   `"exact": false` (for example, when `C <= D1 or D2` is a covering union that
+   entails neither disjunct alone), no single element in any model can avoid
+   every non-entailed disjunct; the exporter then emits covering `"kind":
+   "witness"` lines for `C` (one per disjunct branch `e_1, ..., e_k` with
+   `"exact": false`) so that the intersection of `classes(e_i)` over the
+   witnesses of `C` equals `{D | O |= C <= D}`.
 
 ---
 
@@ -160,35 +171,42 @@ arm of `production_all`).
     retains its shared `CompletionTaskHandleAlgorithm`,
     `CalculationAlgorithmContextBase`, `Bridged` arena, the retained
     deterministic consistency base (`retained_consistency_databox`), and the
-    saturation/satisfiable-expander caches.
+    saturation/satisfiable-expander caches (`sat_node`s and
+    `sat_node_ext_linked_role_successor_hash` in `ctx.process_context()`).
   - When `--export-model` is active, the answering run harvests the consistency
     completion component (`harvested_base_comp`) at the end of
-    `native_nominal_consistency` and harvests the root-connected component of
-    every subject `s` whose satisfiability read-off probe ran during Phase 1
-    (`harvested_subject_comps[s]`), before `renew` resets the context for the
-    next subject.
+    `native_nominal_consistency`, harvests the root-connected components of
+    every subject `s` whose satisfiability or batch/pairwise refutation probe
+    ran during Phase 1 or Phase 2 (`harvested_subject_comps[s]`), and collects
+    linked role-successor hashes across all completed saturation nodes.
 - **How the export is read off**:
   - `finish_bridge_export_model_from_live_state` starts from `harvested_base_comp`
     (or one `bridged_top_satisfiable` read-off on the live context when no
-    nominal consistency pass ran) and merges `harvested_subject_comps`, sharing
-    nominal nodes (`rep_id < 0`) with the base consistency component and
-    extracting root-connected anonymous nodes (`rep_id >= 0`) via BFS along
-    `node_successor_iterator` and `blocker_individual_node`. Lazy `CCEQ`
-    definitions `A == D` are evaluated in topological order on nodes where
-    neither `+A` nor `-A` was expanded.
+    nominal consistency pass ran) and merges `harvested_subject_comps` and
+    sufficient saturation subgraphs (`extract_saturation_subject_component`),
+    sharing nominal nodes (`rep_id < 0`) with the base consistency component and
+    expanding saturation-blocked or backend-blocked nodes
+    (`PRF_SATURATIONBLOCKINGCACHED`,
+    `PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED`,
+    `PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED`) directly from
+    `sat_node_ext_linked_role_successor_hash`. Lazy `CCEQ` definitions
+    `A == D` are evaluated in topological order on nodes where neither `+A` nor
+    `-A` was expanded.
 - **Additional witness probes required and how they are bounded**:
-  - Subjects answered purely by the saturation prepass (`answered_sat`) or by
-    KPSet graph propagation (`is_result_satisfiable_derivated`) did not run a
-    completion read-off probe during Phase 1. Many of these are already
-    witnessed on existing elements of the consistency or harvested subject
-    components (`exact_witness_for` / `any_witness_for`).
-  - Let `S_missing` be the satisfiable named classes that have no witness (or
-    no exact witness) in the already harvested components. At most
-    `|S_missing| <= |S_sat|` probes are needed, each restoring the retained
-    consistency base (`renew_env`) rather than rebuilding the terminology or
-    re-running ABox consistency. Each class `s in S_missing` runs at most 1
-    read-off probe plus at most 1 refinement probe (seeding `+s` and `-d` for
-    non-entailed superclasses `d` that appeared on the first branch).
+  - Subjects answered by the saturation prepass (`answered_sat`) are extracted
+    directly from the saturation graph (`s07_concept_reference_node`) with zero
+    completion probes whenever their reachable saturation subgraph is
+    sufficient. Subjects answered by KPSet graph propagation are first matched
+    against existing elements of the consistency, saturation, and harvested
+    completion components.
+  - Let `S_missing` be the satisfiable named classes whose harvested/saturation
+    components still contain unseparated non-entailed superclasses. Each
+    residual probe restores the retained consistency base (`renew_env`) with
+    production completion blocking and saturation coupling enabled (`satcache`),
+    rather than rebuilding the terminology or running uncached completion. For
+    covering-union classes `s <= d1 or d2`, single-disjunct branch probes emit
+    covering witness elements so their intersection equals the entailed
+    superclasses of `s`.
   - The residual probe loop checks `export_deadline` (`--export-model-budget`,
     default `1x classify_time + 2 s`) before every probe. If the deadline is
     reached, the loop stops immediately and returns the consistency model plus
