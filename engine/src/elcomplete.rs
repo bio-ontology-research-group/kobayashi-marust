@@ -2304,6 +2304,7 @@ impl LeanElCertificate {
             subsumptions,
             inconsistent: self.public_inconsistent,
             compact: None,
+            exported_model: None,
         }
     }
 }
@@ -11431,6 +11432,10 @@ pub struct ElResult {
     /// and then re-interning millions of repeated superclass strings.
     #[serde(skip)]
     pub(crate) compact: Option<crate::json_io::CompactElcOutput>,
+    /// Canonical model extracted directly from the answering run's completion
+    /// state when `KM_EXPORT_MODEL_ACTIVE` is set.
+    #[serde(skip)]
+    pub(crate) exported_model: Option<Result<ElModel, String>>,
 }
 
 /// Decide consistency of a positive ground ABox against a pure EL++ TBox.
@@ -11699,7 +11704,9 @@ fn positive_abox_classify_mode(
     compact: bool,
     merged_overapprox: bool,
 ) -> Result<Option<PositiveAboxResult>, ()> {
-    let Some(prepared) = prepare_positive_abox_mode(clauses, meta, merged_overapprox) else {
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let merge_all = merged_overapprox && !(export_active && !meta.different.is_empty());
+    let Some(prepared) = prepare_positive_abox_mode(clauses, meta, merge_all) else {
         return Ok(None);
     };
     let PositiveAboxPreparation::Clauses { clauses, roots } = prepared else {
@@ -11709,7 +11716,7 @@ fn positive_abox_classify_mode(
         }));
     };
     let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
-    let result = match if compact {
+    let mut result = match if compact {
         classify_compact(clauses)
     } else {
         classify(clauses)
@@ -11741,11 +11748,85 @@ fn positive_abox_classify_mode(
                 .is_some_and(|supers| supers.iter().any(|sup| sup == "owl:Nothing"))
         })
     };
-    if merged_overapprox && node_unsat && !result.inconsistent {
+    if merge_all && node_unsat && !result.inconsistent {
         return Err(());
     }
+    let consistent = !result.inconsistent && !node_unsat;
+    if export_active && !meta.individuals.is_empty() {
+        if let Some(Ok(ref mut model)) = result.exported_model {
+            if !consistent {
+                model.inconsistent = true;
+                model.contexts.clear();
+                model.labels.clear();
+                model.edges.clear();
+            } else {
+                let ids: std::collections::HashMap<&str, usize> = meta
+                    .individuals
+                    .iter()
+                    .enumerate()
+                    .map(|(i, entry)| (entry.individual.as_str(), i))
+                    .collect();
+                let mut parent: Vec<usize> = (0..ids.len()).collect();
+                fn find(parent: &mut [usize], mut node: usize) -> usize {
+                    let mut root = node;
+                    while parent[root] != root {
+                        root = parent[root];
+                    }
+                    while parent[node] != node {
+                        let next = parent[node];
+                        parent[node] = root;
+                        node = next;
+                    }
+                    root
+                }
+                for (left, right) in &meta.same {
+                    if let (Some(&li), Some(&ri)) = (ids.get(left.as_str()), ids.get(right.as_str()))
+                    {
+                        let l = find(&mut parent, li);
+                        let r = find(&mut parent, ri);
+                        if l != r {
+                            parent[r] = l;
+                        }
+                    }
+                }
+                let mut node_to_noms: std::collections::HashMap<String, (String, Vec<String>)> =
+                    std::collections::HashMap::new();
+                for (index, entry) in meta.individuals.iter().enumerate() {
+                    let root = if merge_all {
+                        0
+                    } else {
+                        find(&mut parent, index)
+                    };
+                    let key = if merge_all {
+                        "__km_abox_merged".to_string()
+                    } else {
+                        format!("__km_abox_node_{root}")
+                    };
+                    let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+                    let self_nom = format!("__nom__{}", entry.individual);
+                    let slot = node_to_noms.entry(key).or_insert((root_nom, Vec::new()));
+                    slot.1.push(self_nom);
+                }
+                for (u, ctx_name) in model.contexts.iter_mut().enumerate() {
+                    if let Some((root_nom, members)) = node_to_noms.get(ctx_name.as_str()) {
+                        let old_key = ctx_name.clone();
+                        *ctx_name = root_nom.clone();
+                        let lbl = &mut model.labels[u];
+                        lbl.retain(|c| c != &old_key);
+                        for m in members {
+                            if !lbl.contains(m) {
+                                lbl.push(m.clone());
+                            }
+                        }
+                        lbl.sort();
+                        lbl.dedup();
+                    }
+                }
+            }
+        }
+    }
     Ok(Some(PositiveAboxResult {
-        consistent: !result.inconsistent && !node_unsat,
+        consistent,
         classification: Some(result),
     }))
 }
@@ -12297,6 +12378,7 @@ impl IncrementalElClassifier {
             subsumptions,
             inconsistent: self.is_inconsistent(),
             compact: None,
+            exported_model: None,
         }
     }
 
@@ -12398,6 +12480,367 @@ pub(crate) fn classify_compact(clauses: Vec<JClause>) -> Option<ElResult> {
     // Both output-producing branches must retain dictionary coding: acyclic
     // NF1 returns before the general fixpoint-output branch is reached.
     classify_inner_mode(clauses, cert, debug, true, true)
+}
+
+/// The canonical model of an EL clause set, read off a plain serial
+/// completion (`km classify --export-model`, `docs/MODEL-EXPORT.md`).
+///
+/// One element per satisfiable concept context (every concept name of the
+/// normal form, `⊤` included), labelled with its saturated superconcepts;
+/// one edge `(c, r, d)` per derived link. The completion lifts every link to
+/// the told super-roles and composes the chains (`R ∘ S ⊑ T`, transitivity),
+/// so the edges of a role are its full extension in the model. This is the
+/// standard EL canonical model: a model of the clause set when `⊤` is
+/// satisfiable, and the element of a concept `A` satisfies exactly the
+/// concepts the clause set entails for `A`.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ElModel {
+    /// Internal name of each element's context (`⊤` for the top context).
+    pub contexts: Vec<String>,
+    /// Saturated superconcepts of each element (internal names, `⊤` omitted).
+    pub labels: Vec<Vec<String>>,
+    /// `(from, role, to)` over element indices.
+    pub edges: Vec<(usize, String, usize)>,
+    pub inconsistent: bool,
+    pub partial_reason: Option<String>,
+}
+
+fn extract_el_model_from_state(st: &State, it: &Interner) -> Result<ElModel, String> {
+    let inconsistent = st.sub_super[TOP as usize].contains(&BOTTOM);
+    let mut model = ElModel {
+        contexts: Vec::new(),
+        labels: Vec::new(),
+        edges: Vec::new(),
+        inconsistent,
+        partial_reason: None,
+    };
+    if inconsistent {
+        return Ok(model);
+    }
+    let name = |id: u32| it.debug_name(id);
+    let mut contexts: Vec<u32> = (0..st.sub_super.len() as u32)
+        .filter(|&c| {
+            c != BOTTOM
+                && !st.sub_super[c as usize].is_empty()
+                && !st.sub_super[c as usize].contains(&BOTTOM)
+        })
+        .collect();
+    contexts.sort_by_key(|&c| (c != TOP, name(c)));
+    let mut element_of: HashMap<u32, usize> = HashMap::default();
+    for &c in &contexts {
+        let ctx_name = name(c);
+        element_of.insert(c, model.contexts.len());
+        let mut label: Vec<String> = st.sub_super[c as usize]
+            .iter()
+            .filter(|&&d| d != TOP)
+            .map(|&d| name(d))
+            .collect();
+        for item in &label {
+            if item.starts_with("__nom__") && item != &ctx_name {
+                return Err(
+                    "el-canonical declines nominal appearing in non-nominal context label"
+                        .to_string(),
+                );
+            }
+        }
+        label.sort();
+        label.dedup();
+        model.contexts.push(ctx_name);
+        model.labels.push(label);
+    }
+    for &c in &contexts {
+        let from = element_of[&c];
+        let mut out: Vec<(usize, String, usize)> = st.edges[c as usize]
+            .iter()
+            .filter_map(|&(r, d)| element_of.get(&d).map(|&to| (from, name(r), to)))
+            .collect();
+        out.sort();
+        model.edges.extend(out);
+    }
+    Ok(model)
+}
+
+/// [`ElModel`] of `input`, or `None` when the ontology lies outside EL++ (plus
+/// positive ABox and residual clauses certified by [`check_certificate`]).
+pub(crate) fn el_model(
+    input: &crate::json_io::JInput,
+    el_rbox_safe: bool,
+    abox_inconsistent: bool,
+) -> Option<ElModel> {
+    if !el_rbox_safe || !input.rules.is_empty() {
+        return None;
+    }
+    if abox_inconsistent {
+        return Some(ElModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            inconsistent: true,
+            partial_reason: None,
+        });
+    }
+    let meta = &input.nominal_abox;
+    let mut clauses = input.clauses.clone();
+    let mut ids: HashMap<&str, usize> = HashMap::default();
+    let mut parent: Vec<usize> = Vec::new();
+    let mut root_noms: HashSet<String> = HashSet::default();
+    let mut extra_noms_for_root: HashMap<String, Vec<String>> = HashMap::default();
+
+    fn find(parent: &mut [usize], mut node: usize) -> usize {
+        let mut root = node;
+        while parent[root] != root {
+            root = parent[root];
+        }
+        while parent[node] != node {
+            let next = parent[node];
+            parent[node] = root;
+            node = next;
+        }
+        root
+    }
+
+    if !meta.is_empty() {
+        if !meta.complete || !meta.unsupported.is_empty() {
+            return None;
+        }
+        ids = meta
+            .individuals
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| (entry.individual.as_str(), i))
+            .collect();
+        for (left, right) in meta.same.iter().chain(meta.different.iter()) {
+            if !ids.contains_key(left.as_str()) || !ids.contains_key(right.as_str()) {
+                return None;
+            }
+        }
+        for edge in meta
+            .role_assertions
+            .iter()
+            .chain(meta.negative_role_assertions.iter())
+        {
+            if !ids.contains_key(edge.source.as_str()) || !ids.contains_key(edge.target.as_str()) {
+                return None;
+            }
+        }
+        parent = (0..ids.len()).collect();
+        for (left, right) in &meta.same {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l != r {
+                parent[r] = l;
+            }
+        }
+        for (left, right) in &meta.different {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l == r {
+                return Some(ElModel {
+                    contexts: Vec::new(),
+                    labels: Vec::new(),
+                    edges: Vec::new(),
+                    inconsistent: true,
+                    partial_reason: None,
+                });
+            }
+        }
+
+        let mut nom_alias: HashMap<String, String> = HashMap::default();
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            if entry.assertions.len() != entry.assertion_markers.len() {
+                return None;
+            }
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            let self_nom = format!("__nom__{}", entry.individual);
+            root_noms.insert(root_nom.clone());
+            extra_noms_for_root
+                .entry(root_nom.clone())
+                .or_default()
+                .push(self_nom.clone());
+            if self_nom != root_nom {
+                nom_alias.insert(self_nom, root_nom.clone());
+            }
+            for proxy in &entry.proxies {
+                if proxy != &root_nom {
+                    nom_alias.insert(proxy.clone(), root_nom.clone());
+                }
+            }
+        }
+        if !nom_alias.is_empty() {
+            for clause in &mut clauses {
+                for atom in clause.body.iter_mut().chain(clause.head.iter_mut()) {
+                    if let JAtom::Concept { concept, .. } = atom {
+                        if let Some(target) = nom_alias.get(concept.as_str()) {
+                            *concept = target.clone();
+                        }
+                    }
+                }
+            }
+        }
+        let var = || JTerm::Var {
+            name: "x".to_string(),
+        };
+        let concept = |name: String, term: JTerm| JAtom::Concept {
+            concept: name,
+            term,
+        };
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            for marker in &entry.assertion_markers {
+                clauses.push(JClause {
+                    body: vec![concept(root_nom.clone(), var())],
+                    head: vec![concept(marker.clone(), var())],
+                });
+            }
+        }
+        for (edge_index, edge) in meta.role_assertions.iter().enumerate() {
+            let source = find(&mut parent, ids[edge.source.as_str()]);
+            let target = find(&mut parent, ids[edge.target.as_str()]);
+            let source_nom = format!("__nom__{}", meta.individuals[source].individual);
+            let target_nom = format!("__nom__{}", meta.individuals[target].individual);
+            let fun = JTerm::Fun {
+                function: format!("__km_abox_edge_{edge_index}"),
+                arg: Box::new(var()),
+            };
+            clauses.push(JClause {
+                body: vec![concept(source_nom.clone(), var())],
+                head: vec![JAtom::Role {
+                    role: edge.role.clone(),
+                    source: var(),
+                    target: fun.clone(),
+                }],
+            });
+            clauses.push(JClause {
+                body: vec![concept(source_nom, var())],
+                head: vec![concept(target_nom, fun)],
+            });
+        }
+        for root_nom in &root_noms {
+            clauses.push(JClause {
+                body: vec![concept(root_nom.clone(), var())],
+                head: vec![concept(root_nom.clone(), var())],
+            });
+        }
+    }
+
+    if std::env::var_os("KM_ELC_NO_BRIDGE_PREP").is_none() {
+        prepare_inverse_bridges(&mut clauses, false);
+    }
+    let mut it = Interner::new();
+    let (mut nfs, residual, skolem_target) = to_nf(&clauses, &mut it)?;
+    nfs.concept_names.insert(TOP);
+    let rcs = if residual.is_empty() {
+        Vec::new()
+    } else {
+        compile_residual(&residual, &mut it, &mut nfs, &skolem_target)?.clauses
+    };
+    let n = it.len();
+    let idx = build_idx(&nfs, n);
+    let mut st = init_state(&nfs, n);
+    seed_reflexive_edges(&nfs, &idx, &mut st);
+    let mut prof = Prof::default();
+    run(&idx, &mut st, &mut prof);
+    let mut inconsistent = st.sub_super[TOP as usize].contains(&BOTTOM);
+    if !inconsistent {
+        for rnom in &root_noms {
+            if let Some(id) = it.id(rnom) {
+                if st.sub_super[id as usize].contains(&BOTTOM) {
+                    inconsistent = true;
+                    break;
+                }
+            }
+        }
+    }
+    let mut element_of: HashMap<u32, usize> = HashMap::default();
+    let mut model = ElModel {
+        contexts: Vec::new(),
+        labels: Vec::new(),
+        edges: Vec::new(),
+        inconsistent,
+        partial_reason: None,
+    };
+    if inconsistent {
+        return Some(model);
+    }
+    if !rcs.is_empty() && !check_certificate(&rcs, &nfs, &st, false) {
+        return None;
+    }
+    for (left, right) in &meta.different {
+        let l_root = find(&mut parent, ids[left.as_str()]);
+        let r_root = find(&mut parent, ids[right.as_str()]);
+        let l_nom = format!("__nom__{}", meta.individuals[l_root].individual);
+        let r_nom = format!("__nom__{}", meta.individuals[r_root].individual);
+        if let (Some(l_id), Some(r_id)) = (it.id(&l_nom), it.id(&r_nom)) {
+            if st.sub_super[l_id as usize].contains(&r_id)
+                || st.sub_super[r_id as usize].contains(&l_id)
+            {
+                return None;
+            }
+        }
+    }
+    for neg in &meta.negative_role_assertions {
+        let s_root = find(&mut parent, ids[neg.source.as_str()]);
+        let t_root = find(&mut parent, ids[neg.target.as_str()]);
+        let s_nom = format!("__nom__{}", meta.individuals[s_root].individual);
+        let t_nom = format!("__nom__{}", meta.individuals[t_root].individual);
+        if let (Some(s_id), Some(r_id), Some(t_id)) =
+            (it.id(&s_nom), it.id(&neg.role), it.id(&t_nom))
+        {
+            if st.edges[s_id as usize].contains(&(r_id, t_id)) {
+                if rcs.is_empty() {
+                    model.inconsistent = true;
+                    return Some(model);
+                }
+                return None;
+            }
+        }
+    }
+    let name = |id: u32| it.debug_name(id);
+    let mut contexts: Vec<u32> = (0..st.sub_super.len() as u32)
+        .filter(|&c| {
+            c != BOTTOM
+                && !st.sub_super[c as usize].is_empty()
+                && !st.sub_super[c as usize].contains(&BOTTOM)
+        })
+        .collect();
+    contexts.sort_by_key(|&c| (c != TOP, name(c)));
+    for &c in &contexts {
+        let ctx_name = name(c);
+        element_of.insert(c, model.contexts.len());
+        let mut label: Vec<String> = st.sub_super[c as usize]
+            .iter()
+            .filter(|&&d| d != TOP)
+            .map(|&d| name(d))
+            .collect();
+        for item in &label {
+            if item.starts_with("__nom__") && item != &ctx_name {
+                return None;
+            }
+        }
+        if let Some(extras) = extra_noms_for_root.get(&ctx_name) {
+            for extra in extras {
+                if !label.contains(extra) {
+                    label.push(extra.clone());
+                }
+            }
+        }
+        label.sort();
+        label.dedup();
+        model.contexts.push(ctx_name);
+        model.labels.push(label);
+    }
+    for &c in &contexts {
+        let from = element_of[&c];
+        let mut out: Vec<(usize, String, usize)> = st.edges[c as usize]
+            .iter()
+            .filter_map(|&(r, d)| element_of.get(&d).map(|&to| (from, name(r), to)))
+            .collect();
+        out.sort();
+        model.edges.extend(out);
+    }
+    Some(model)
 }
 
 /// `KM_ELC_TIMING` phase laps inside the completion itself (the worker's
@@ -12745,6 +13188,44 @@ fn acyclic_nf1_taxonomy(
     drop(outgoing);
     drop(indegree);
 
+    let exported_model = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").map(|_| {
+        let mut sorted_concepts: Vec<u32> = nfs
+            .concept_names
+            .iter()
+            .copied()
+            .filter(|&c| c != BOTTOM)
+            .collect();
+        sorted_concepts.sort_by_key(|&c| (c != TOP, it.debug_name(c)));
+        let mut contexts = Vec::with_capacity(sorted_concepts.len());
+        let mut labels = Vec::with_capacity(sorted_concepts.len());
+        for c in sorted_concepts {
+            if c == TOP {
+                contexts.push("⊤".to_string());
+                labels.push(Vec::new());
+            } else {
+                let cname = it.debug_name(c);
+                let mut lbl: Vec<String> = closure[c as usize]
+                    .iter()
+                    .copied()
+                    .filter(|&d| d != TOP)
+                    .map(|d| it.debug_name(d))
+                    .collect();
+                lbl.push(cname.clone());
+                lbl.sort();
+                lbl.dedup();
+                contexts.push(cname);
+                labels.push(lbl);
+            }
+        }
+        Ok(ElModel {
+            contexts,
+            labels,
+            edges: Vec::new(),
+            inconsistent: false,
+            partial_reason: None,
+        })
+    });
+
     if compact_output && (force_compact_output || expected >= 1_000) {
         let mut rows = Vec::new();
         for &concept in &nfs.concept_names {
@@ -12767,6 +13248,7 @@ fn acyclic_nf1_taxonomy(
                 inconsistent: false,
                 dropped: 0,
             }),
+            exported_model,
         });
     }
 
@@ -12792,6 +13274,7 @@ fn acyclic_nf1_taxonomy(
         subsumptions,
         inconsistent: false,
         compact: None,
+        exported_model,
     })
 }
 
@@ -13321,6 +13804,24 @@ fn classify_inner_mode(
                         .collect()
                 })
         });
+    let exported_model = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").map(|_| {
+        if el_inconsistent {
+            Ok(ElModel {
+                contexts: Vec::new(),
+                labels: Vec::new(),
+                edges: Vec::new(),
+                inconsistent: true,
+                partial_reason: None,
+            })
+        } else if !unresolved.is_empty() {
+            Err("el-canonical completion left unresolved repair subjects".to_string())
+        } else if !rcs.is_empty() && !check_certificate(&rcs, &nfs, &res, false) {
+            Err("el-canonical residual clauses require per-subject model repair".to_string())
+        } else {
+            extract_el_model_from_state(&res, &it)
+        }
+    });
+
     // Everything below reads only the completed relation (`sub_super`) and the
     // interner names. The rule indexes, the normal forms, the residual, the
     // compiled residual clauses, and the role graph (`edges` / `in_by_role` /
@@ -13394,6 +13895,7 @@ fn classify_inner_mode(
                 inconsistent: el_inconsistent,
                 dropped: 0,
             }),
+            exported_model,
         });
     }
 
@@ -13453,6 +13955,7 @@ fn classify_inner_mode(
         inconsistent: el_inconsistent,
         unresolved,
         compact: None,
+        exported_model,
     })
 }
 

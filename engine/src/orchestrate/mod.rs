@@ -21,6 +21,7 @@ pub mod frontend_run;
 pub(crate) mod inert_sorts;
 pub mod input;
 pub mod mirror;
+pub mod model_export;
 mod abox_quotient;
 mod positive_abox_quotient;
 mod symbolic_source;
@@ -388,6 +389,10 @@ pub struct EngineOut {
     /// coverage guard cannot check it (docs/ROUTING.md).
     #[serde(skip)]
     pub pair_form: bool,
+    #[serde(skip)]
+    pub worker_model_path: Option<std::path::PathBuf>,
+    #[serde(skip)]
+    pub worker_model_payload: Option<Arc<model_export::WorkerModelPayload>>,
 }
 
 /// The final classification, serialised exactly like `owl_classify`'s output.
@@ -421,6 +426,7 @@ pub(crate) fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, Orc
 }
 
 pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError> {
+    let worker_model_path = model_export::worker_model_sidecar_if_exists(path);
     let mut reader = BufReader::new(File::open(path)?);
     if crate::json_io::is_elc_output_binary(reader.fill_buf()?) {
         let mut bytes = Vec::new();
@@ -434,9 +440,13 @@ pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError>
             compact_subsumptions: Some(compact),
             unresolved: Vec::new(),
             pair_form: false,
+            worker_model_path,
+            worker_model_payload: None,
         });
     }
-    Ok(serde_json::from_reader(reader)?)
+    let mut out: EngineOut = serde_json::from_reader(reader)?;
+    out.worker_model_path = worker_model_path;
+    Ok(out)
 }
 
 /// The CB stack chosen by the production flags. Mirrors `owl_classify`'s
@@ -793,14 +803,22 @@ fn run_atomic_elc(
             Some(res) if !res.unresolved.is_empty() => Err(OrchestrateError::OutOfFragment(
                 "EL completeness certificate left an unresolved residue".into(),
             )),
-            Some(res) => Ok(EngineOut {
-                subsumptions: res.subsumptions,
-                compact_subsumptions: res.compact,
-                inconsistent: res.inconsistent,
-                dropped: 0,
-                unresolved: Vec::new(),
-                pair_form: false,
-            }),
+            Some(mut res) => {
+                let worker_model_payload = res
+                    .exported_model
+                    .take()
+                    .map(|m| Arc::new(model_export::WorkerModelPayload::El(m)));
+                Ok(EngineOut {
+                    subsumptions: res.subsumptions,
+                    compact_subsumptions: res.compact,
+                    inconsistent: res.inconsistent,
+                    dropped: 0,
+                    unresolved: Vec::new(),
+                    pair_form: false,
+                    worker_model_path: None,
+                    worker_model_payload,
+                })
+            }
         };
     }
     let (program, prefix) = cfg.elc_cmd();
@@ -1202,7 +1220,7 @@ fn try_inproc_engine(
     if !input.rules.is_empty() {
         return Ok(None); // rule ontologies need the HT-rules route
     }
-    let clauses = input.clauses;
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     // Worker sends `None` (decline) fast if the clause set carries an INTERNAL
     // DEFINER DISJUNCTION — the signature of the CB memory-blowup family
     // (ore_ont_9635: 45 GB). Only NON-blowup onts saturate here, so a worker
@@ -1220,12 +1238,18 @@ fn try_inproc_engine(
         .stack_size(256 << 20)
         .spawn(move || {
             use crate::reasoner::Reasoner;
+            let t0 = std::time::Instant::now();
             crate::engine::set_thread_cancel_flag(worker_cancel.clone());
-            let mut r = Reasoner::new(&clauses);
+            let mut r = Reasoner::new(&input.clauses);
             // The String-owning `JClause` block is fully interned into the
             // Reasoner; free it before saturation rather than holding it (it
             // is several times the raw JSON size) across the peak.
-            drop(clauses);
+            let export_input = if export_active {
+                Some(input)
+            } else {
+                drop(input);
+                None
+            };
             if r.has_internal_definer_disjunction() {
                 let _ = tx.send(None); // blow-up-prone ⇒ decline, use forked path
                 return;
@@ -1235,7 +1259,19 @@ fn try_inproc_engine(
                 // The supervisor stopped waiting; skip output assembly.
                 return;
             }
-            let out = inproc_engine_out(&mut r);
+            let classify_secs = t0.elapsed().as_secs_f64();
+            let mut out = inproc_engine_out(&mut r);
+            if let (Some(ref mut out), Some(ref input)) = (&mut out, &export_input) {
+                let budget_secs = std::env::var("KM_EXPORT_MODEL_BUDGET_S")
+                    .ok()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(classify_secs + 2.0);
+                let deadline = std::time::Instant::now()
+                    + std::time::Duration::from_secs_f64(budget_secs.max(0.1));
+                let model_res = r.export_cb_model(input, Some(deadline));
+                out.worker_model_payload =
+                    Some(Arc::new(model_export::WorkerModelPayload::Cb(model_res)));
+            }
             // Contexts, arenas, and indexes are dead once the answer is out.
             drop(r);
             let _ = tx.send(out);
@@ -1290,17 +1326,24 @@ fn try_inproc_engine(
             started.elapsed().as_secs_f64()
         );
     }
+    let export_ext_deadline = deadline + budget + std::time::Duration::from_secs(3);
     loop {
         let now = std::time::Instant::now();
-        if now >= deadline {
+        let active_deadline =
+            if export_active && probe.as_ref().is_some_and(|p| p.bridge_answered()) {
+                export_ext_deadline
+            } else {
+                deadline
+            };
+        if now >= active_deadline {
             drop(probe);
             stop_inproc(&format!("overran its {:.1}s budget", budget.as_secs_f64()));
             return Ok(None);
         }
         let wait = if probe.is_some() {
-            std::time::Duration::from_millis(2).min(deadline - now)
+            std::time::Duration::from_millis(2).min(active_deadline - now)
         } else {
-            deadline - now
+            active_deadline - now
         };
         match rx.recv_timeout(wait) {
             Ok(out) => return Ok(out), // the probe (if any) is killed on drop
@@ -1354,6 +1397,8 @@ fn inproc_engine_out(r: &mut crate::reasoner::Reasoner) -> Option<EngineOut> {
         dropped: r.dropped_unsupported(),
         unresolved: Vec::new(),
         pair_form: false,
+        worker_model_path: None,
+        worker_model_payload: None,
     })
 }
 
@@ -1371,7 +1416,11 @@ fn try_inproc_elc(
     };
     match crate::elcomplete::classify(input.clauses) {
         None => Ok(None), // not EL ⇒ exit-3 equivalent, fall through
-        Some(res) => {
+        Some(mut res) => {
+            let worker_model_payload = res
+                .exported_model
+                .take()
+                .map(|m| Arc::new(model_export::WorkerModelPayload::El(m)));
             let out = EngineOut {
                 subsumptions: res.subsumptions,
                 compact_subsumptions: None,
@@ -1379,6 +1428,8 @@ fn try_inproc_elc(
                 dropped: 0,
                 unresolved: res.unresolved,
                 pair_form: false,
+                worker_model_path: None,
+                worker_model_payload,
             };
             if out.unresolved.is_empty() {
                 Ok(Some(out))
@@ -1959,6 +2010,15 @@ fn classify_with_evidence_mode(
                     }
                 }
             }
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                if !evidence.classification.consistent {
+                    model_export::record_inconsistent();
+                } else if evidence.classification.dropped > 0 {
+                    model_export::record_declined(
+                        "source ontology has dropped or uncarried axioms".into(),
+                    );
+                }
+            }
         }
         // A one-sorted clause stream on an input with a TBox nominal and data
         // properties is stronger than the ontology (its data successors fall
@@ -2039,7 +2099,22 @@ fn classify_with_evidence_inner(
             std::fs::write(rewritten.path(), keyed)?;
             let _trusted = TrustedRewrite::register(rewritten.path());
             timing_mark("keys rewritten as DL-safe rules");
-            return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
+            let export_was_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+            if export_was_active {
+                std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+            }
+            let res = classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
+            if export_was_active {
+                std::env::set_var("KM_EXPORT_MODEL_ACTIVE", "1");
+                if let Ok(ref ev) = res {
+                    if !ev.classification.consistent {
+                        model_export::record_inconsistent();
+                    } else {
+                        model_export::record_declined("HasKey axioms are outside the model export fragment".into());
+                    }
+                }
+            }
+            return res;
         }
         // W8: a lone data variable of a rule body is a data restriction
         // (`frontend::rule_data_atoms`), rewritten before the rule gates too.
@@ -2050,7 +2125,19 @@ fn classify_with_evidence_inner(
             std::fs::write(rewritten.path(), rules)?;
             let _trusted = TrustedRewrite::register(rewritten.path());
             timing_mark("rule data variables rewritten as data restrictions");
+            let export_was_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+            if export_was_active {
+                std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+            }
             let mut evidence = classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output)?;
+            if export_was_active {
+                std::env::set_var("KM_EXPORT_MODEL_ACTIVE", "1");
+                if !evidence.classification.consistent {
+                    model_export::record_inconsistent();
+                } else {
+                    model_export::record_declined("DL-safe SWRL rules are outside the model export fragment".into());
+                }
+            }
             let fresh = |name: &str| name.starts_with(crate::frontend::rule_data_atoms::NAMESPACE);
             evidence.classification.subsumptions.retain(|[a, b]| !fresh(a) && !fresh(b));
             evidence.classification.unsatisfiable.retain(|a| !fresh(a));
@@ -2093,6 +2180,12 @@ fn classify_with_evidence_inner(
             eprintln!("KM_TIMING ground-rule source: rules={} instances={}",
                 grounded.source_rules, grounded.instances);
         }
+        let decline_rules = !project_data_abox
+            && grounded.source_rules > 0
+            && std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+        if decline_rules {
+            std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+        }
         // Reparse the transformed source, including its generated assertions,
         // under the ordinary ABox coverage checks. No original counts are forged.
         let input = tmpfile::TempPath::new("-ground-rules.ofn");
@@ -2119,6 +2212,13 @@ fn classify_with_evidence_inner(
         let mut evidence = classify_with_evidence_mode(&Config::from_env(), input.path(), false)?;
         if evidence.classification.dropped != 0 {
             return Err(OrchestrateError::OutOfFragment("ground-rule native bridge omitted axioms".into()));
+        }
+        if decline_rules {
+            if !evidence.classification.consistent {
+                model_export::record_inconsistent();
+            } else {
+                model_export::record_declined("DL-safe SWRL rules are outside the model export fragment".into());
+            }
         }
         evidence.classification.subsumptions.retain(|[a,b]|
             !grounded.private_classes.contains(a) && !grounded.private_classes.contains(b));
@@ -2230,6 +2330,7 @@ fn classify_with_evidence_inner(
                     return Ok(evidence);
                 }
             }
+            model_export::clear_positive_abox_quotient();
             if timing {
                 eprintln!(
                     "KM_TIMING positive ABox quotient declined @ {:.2}s",
@@ -2302,6 +2403,7 @@ fn classify_with_evidence_inner(
                         let probe = {
                             let _trusted = TrustedRewrite::register(data_free.path());
                             let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                            std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
                             let _deadline = BridgeAttemptDeadline::install(budget);
                             std::env::set_var("KM_ABOX_QUOTIENT_ACTIVE", "1");
                             crate::routing::Route::HtBridge.apply_environment();
@@ -2382,7 +2484,11 @@ fn classify_with_evidence_inner(
             }
             if let (Ok(evidence), Some(tbox)) = (&attempt, &quotient.tbox) {
                 if certified(evidence) {
-                    let agrees = match run(tbox.path(), false) {
+                    let agrees = match {
+                        let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                        std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+                        run(tbox.path(), false)
+                    } {
                         Ok(lower) => {
                             certified(&lower)
                                 && abox_quotient::same_taxonomy(
@@ -2416,6 +2522,7 @@ fn classify_with_evidence_inner(
                     return Ok(evidence);
                 }
                 _ => {
+                    model_export::clear_abox_quotient();
                     if timing {
                         eprintln!(
                             "KM_TIMING ABox quotient declined @ {:.2}s",
@@ -2540,6 +2647,11 @@ fn classify_with_evidence_inner(
             // The projection has no rules, so it cannot recursively select
             // this branch. Preserve the caller's requested output layout.
             let evidence = classify_with_evidence_mode(initial_cfg, projection.path(), retain_grouped_output)?;
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                model_export::record_declined(
+                    "answered via finite-rule class projection route".into(),
+                );
+            }
             return checked_finite_rule_taxonomy(evidence);
         }
     }
@@ -3290,8 +3402,12 @@ fn classify_with_evidence_inner(
             Some(result) => {
                 consistency_certified = true;
                 if selected_route == crate::routing::Route::Elc {
-                    if let Some(classification) = result.classification {
+                    if let Some(mut classification) = result.classification {
                         if classification.unresolved.is_empty() {
+                            let worker_model_payload = classification
+                                .exported_model
+                                .take()
+                                .map(|m| Arc::new(model_export::WorkerModelPayload::El(m)));
                             certified_el_out = Some(EngineOut {
                                 subsumptions: classification.subsumptions,
                                 compact_subsumptions: classification.compact,
@@ -3299,6 +3415,8 @@ fn classify_with_evidence_inner(
                                 dropped: 0,
                                 unresolved: Vec::new(),
                                 pair_form: false,
+                                worker_model_path: None,
+                                worker_model_payload,
                             });
                         }
                     }
@@ -3424,6 +3542,15 @@ fn classify_with_evidence_inner(
                     taxonomy.expect("checked by the guard"),
                     &meta,
                 );
+                if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                    if !classification.consistent {
+                        model_export::record_inconsistent();
+                    } else {
+                        model_export::record_declined(
+                            "answered via DL-safe rules taxonomy route".into(),
+                        );
+                    }
+                }
                 if timing {
                     eprintln!(
                         "KM_TIMING rules-consistency rule-aware taxonomy done @ {:.2}s subsumptions={} unsatisfiable={}",
@@ -3832,6 +3959,10 @@ fn classify_with_evidence_inner(
     }
     if deferred_rule_taxonomy && !out.inconsistent {
         out = complete_rule_taxonomy(cfg, clauses_path.path(), &meta, out)?;
+        out.worker_model_path = None;
+        out.worker_model_payload = Some(Arc::new(model_export::WorkerModelPayload::Declined(
+            "answered via hybrid CB + DL-safe rules taxonomy route".into(),
+        )));
         if timing {
             eprintln!(
                 "KM_TIMING rules-consistency rule-aware taxonomy completed after CB @ {:.2}s",
@@ -4058,6 +4189,9 @@ fn map_engine_out_to_evidence(
         }
     }
     if projected_abox_inconsistent || unsat_asserted {
+        if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+            model_export::record_inconsistent();
+        }
         return Ok(ClassificationEvidence {
             classification: Classification {
                 approximate: None,
@@ -4082,7 +4216,21 @@ fn map_engine_out_to_evidence(
     } else {
         (flatten_grouped_subsumptions(grouped_subs), None)
     };
-    let unsat = unsat_set.into_iter().collect();
+    let unsat: Vec<String> = unsat_set.into_iter().collect();
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        if out.inconsistent {
+            model_export::record_inconsistent();
+        } else if out.dropped > 0 {
+            model_export::record_declined("source ontology has dropped or uncarried axioms".into());
+        } else {
+            model_export::record_engine_out(
+                meta.clone(),
+                out.worker_model_path.take(),
+                out.worker_model_payload.take(),
+                &unsat,
+            );
+        }
+    }
     timing_mark("output mapping done");
     Ok(ClassificationEvidence {
         classification: Classification {
@@ -4679,6 +4827,10 @@ fn try_reference_stage(
         dropped: 0,
         unresolved: Vec::new(),
         pair_form: false,
+        worker_model_path: None,
+        worker_model_payload: Some(Arc::new(model_export::WorkerModelPayload::Declined(
+            "answered via reference stage fallback".into(),
+        ))),
     };
     match map_engine_out_to_evidence(engine_out, &meta, retain_grouped_output, true, timing) {
         Ok(evidence) => {
@@ -5351,6 +5503,10 @@ fn resolve_residue(
         partial.subsumptions.insert(k, v); // dict.update: eng overwrites partial
     }
     partial.inconsistent = partial.inconsistent || eng.inconsistent;
+    partial.worker_model_path = None;
+    partial.worker_model_payload = Some(Arc::new(model_export::WorkerModelPayload::Declined(
+        "answered via hybrid partial-EL + query-restricted CB residue".into(),
+    )));
     Ok(partial)
 }
 

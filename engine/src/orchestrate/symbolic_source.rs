@@ -58,14 +58,38 @@ pub(super) fn classify_text(text: String) -> Result<ClassificationEvidence, Orch
     if names.iter().any(|name| !iris.contains_key(name)) {
         return Err(OrchestrateError::OutOfFragment("symbolic source lacks a public class IRI".into()));
     }
+    let export_meta = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some().then(|| {
+        super::frontend_run::Meta {
+            iri_map: source.iri_map.clone(),
+            named: source.named.clone(),
+            declared: source.declared.clone(),
+            el_rbox_safe: source.el_rbox_safe,
+            abox_inconsistent: source.abox_inconsistent,
+            asserted_classes: source.asserted_classes.clone(),
+            profile: source.profile.clone(),
+            route: source.route.clone(),
+            uncarried_data_assertions: source.uncarried_data_assertions,
+            dropped_source_axioms: source.dropped_source_axioms.clone(),
+            route_approximations: source.route_approximations.clone(),
+            one_sorted_data_successors: source.one_sorted_data_successors,
+            rbox: source.rbox.clone(),
+            data_roles: source.data_roles.clone(),
+            nominal_abox: source.nominal_abox.clone(),
+            separable_abox_export: source.separable_abox_export.clone(),
+        }
+    });
     // The native input owns the complete source evidence now. Do not retain
     // the large frontend clause representation beside the completion graph.
     drop(frontend);
     crate::mem::release_transient_heap();
     let output = crate::tableau::run_bridge_producer_input_typed(input)
         .map_err(|error| OrchestrateError::OutOfFragment(format!("symbolic source bridge deferred ({error})")))?;
+    let classification = map_output(output, &names, &iris, &asserted, inconsistent);
+    if let Some(meta) = export_meta {
+        super::model_export::record_symbolic_source_export(meta, classification.consistent);
+    }
     Ok(ClassificationEvidence {
-        classification: map_output(output, &names, &iris, &asserted, inconsistent),
+        classification,
         grouped_subsumptions: None,
         consistency_certified: true,
     })

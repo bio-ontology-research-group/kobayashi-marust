@@ -6843,6 +6843,13 @@ pub(crate) fn run_bridge_json_owned_compact(
             (result, producer_input.concepts, reason)
         })?;
     let result = result.ok_or_else(|| bridge_defer_message(reason))?;
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
+            .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
+        crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+            &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
+        );
+    }
     crate::mem::release_transient_heap();
     compact_bridge_classification(concepts, result)
 }
@@ -7064,6 +7071,13 @@ pub(crate) fn run_bridge_producer_input_typed(
                 (result, crate::konclude_ht::bridge::take_bridge_defer_reason())
             })?;
     let result = result.ok_or_else(|| bridge_defer_message(reason))?;
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
+            .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
+        crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+            &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
+        );
+    }
     crate::mem::release_transient_heap();
     let name = |concept: usize| {
         concepts
@@ -8466,6 +8480,26 @@ fn run_tinput_inner(
         // when the tableau identifies it with a named individual.
         if std::env::var_os("KM_RULES_CLASSIFY").is_some() {
             let (consistent, unsat, subs) = rules_classification(&inp, clauses, queries)?;
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let payload = if !consistent {
+                    crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
+                        crate::konclude_ht::bridge::BridgeExportModel {
+                            contexts: Vec::new(),
+                            labels: Vec::new(),
+                            edges: Vec::new(),
+                            blocked: Vec::new(),
+                            class_witnesses: Vec::new(),
+                            inconsistent: true,
+                            partial_reason: None,
+                        },
+                    ))
+                } else {
+                    crate::orchestrate::model_export::WorkerModelPayload::Declined(
+                        "answered via DL-safe rules tableau route".into(),
+                    )
+                };
+                crate::orchestrate::model_export::write_worker_model_payload_if_requested(&payload);
+            }
             let name = |c: C| {
                 inp.concepts.get(c as usize).cloned().unwrap_or_else(|| format!("C{c}"))
             };
@@ -8539,6 +8573,13 @@ fn run_tinput_inner(
             // only; a failed write just keeps the conservative budget.
             if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
                 let _ = std::fs::write(marker, b"bridge");
+            }
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
+                    .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
+                crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+                    &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
+                );
             }
             return Ok(out);
         }
@@ -9351,6 +9392,26 @@ fn run_tinput_inner(
                         .map(|(sub, sup)| [name(sub), name(sup)])
                         .collect(),
                 };
+                if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                    let payload = if !consistent {
+                        crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
+                            crate::konclude_ht::bridge::BridgeExportModel {
+                                contexts: Vec::new(),
+                                labels: Vec::new(),
+                                edges: Vec::new(),
+                                blocked: Vec::new(),
+                                class_witnesses: Vec::new(),
+                                inconsistent: true,
+                                partial_reason: None,
+                            },
+                        ))
+                    } else {
+                        crate::orchestrate::model_export::WorkerModelPayload::Declined(
+                            "answered via non-bridge hypertableau route (qo/card/shoq/ht)".into(),
+                        )
+                    };
+                    crate::orchestrate::model_export::write_worker_model_payload_if_requested(&payload);
+                }
                 return Ok(out);
             }
             // The per-concept model-label candidate sets can miss an entailed
@@ -9373,6 +9434,26 @@ fn run_tinput_inner(
                 unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
                 subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
             };
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let payload = if !consistent {
+                    crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
+                        crate::konclude_ht::bridge::BridgeExportModel {
+                            contexts: Vec::new(),
+                            labels: Vec::new(),
+                            edges: Vec::new(),
+                            blocked: Vec::new(),
+                            class_witnesses: Vec::new(),
+                            inconsistent: true,
+                            partial_reason: None,
+                        },
+                    ))
+                } else {
+                    crate::orchestrate::model_export::WorkerModelPayload::Declined(
+                        "answered via non-bridge hypertableau route (qo/card/shoq/ht)".into(),
+                    )
+                };
+                crate::orchestrate::model_export::write_worker_model_payload_if_requested(&payload);
+            }
             return Ok(out);
         }
         if lean_cert_requested {
@@ -9419,6 +9500,26 @@ fn run_tinput_inner(
         unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
         subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
     };
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let payload = if !consistent {
+            crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
+                crate::konclude_ht::bridge::BridgeExportModel {
+                    contexts: Vec::new(),
+                    labels: Vec::new(),
+                    edges: Vec::new(),
+                    blocked: Vec::new(),
+                    class_witnesses: Vec::new(),
+                    inconsistent: true,
+                    partial_reason: None,
+                },
+            ))
+        } else {
+            crate::orchestrate::model_export::WorkerModelPayload::Declined(
+                "answered via legacy tableau route".into(),
+            )
+        };
+        crate::orchestrate::model_export::write_worker_model_payload_if_requested(&payload);
+    }
     Ok(out)
 }
 

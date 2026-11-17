@@ -1,53 +1,347 @@
-# Model export: what each route holds (design, 2026-11-16)
+# Model export (`km classify --export-model FILE [--export-model-budget SECONDS]`)
 
-Status: not implemented. `km classify --export-model FILE` was requested
-(engine round 3, Part 4) so that the proved model checker of the hint route
-(`docs/V1.7.0-C5-HINT-ROUTE.md`) can certify negative answers from one
-model. This note records what each route holds today and the format the
-export should write.
+Status: implemented on the `el-canonical`, `ht-bridge`, and `cb-horn` routes.
 
-## Proposed format (JSON lines)
+`km classify --export-model FILE` writes a finite representation of a model of
+the input ontology over source-level IRIs after classification finishes. The
+answering run captures its terminal completion or saturation state in place so
+the export reads that state directly without re-parsing or re-classifying the
+ontology from scratch. When `--export-model` is omitted, no export state is
+retained and classification pays zero overhead.
 
-One object per line, source-level names (full IRIs), no Lean normal-form
-names:
+`--export-model-budget SECONDS` bounds post-classification model verification
+and residual witness probes (default: `1x classify_time + 2 s`). When the budget
+expires before all per-class witness probes finish on `ht-bridge`, the exporter
+writes the consistency model and every class witness established so far with
+`"status": "partial"` and `"reason"` in the header line.
 
-```text
-{"kind":"element","id":"e0","classes":["http://x/A", ...],"individuals":["http://x/a"]}
-{"kind":"edge","role":"http://x/r","from":"e0","to":"e1"}
-{"kind":"same","individuals":["http://x/a","http://x/b"]}
-{"kind":"value","element":"e0","property":"http://x/p","literal":"\"1\"^^xsd:integer"}
-{"kind":"witness","class":"http://x/C","element":"e3"}
-{"kind":"blocked","element":"e7","blocker":"e2"}
+## JSON lines format (`km-model-v1`)
+
+Each line is a JSON object with a `"kind"` field. All class, role, data
+property, and individual names are expanded to full source IRIs (internal
+normalizer symbols such as `Q_*`, `__def__*`, and `__trig__*` are stripped).
+
+1. **Header (`"kind": "model"`)**
+   - Consistent ontology:
+     ```json
+     {"kind":"model","format":"km-model-v1","status":"ok","route":"el-canonical","elements":3,"edges":1,"closure":"none: the edges of each role are its extension (sub-roles lifted, chains and transitivity composed)","witness_exact":true,"blocked":0}
+     ```
+   - Partial export (consistency model and witnesses found within `--export-model-budget`):
+     ```json
+     {"kind":"model","format":"km-model-v1","status":"partial","reason":"export budget (2.50s) exceeded after 412 of 1200 residual class witness probe(s)","route":"ht-bridge","elements":845,"edges":1920,"closure":"none: the edges of each role are closed under the RBox (sub-roles, inverses, symmetry, reflexivity, transitivity, and role chains)","witness_exact":false,"blocked":0}
+     ```
+   - Inconsistent ontology:
+     ```json
+     {"kind":"model","format":"km-model-v1","status":"inconsistent"}
+     ```
+   - Declined input (outside the implemented model-export fragment):
+     ```json
+     {"kind":"model","format":"km-model-v1","status":"declined","reason":"cb-horn unit-fact structure does not satisfy non-Horn clause"}
+     ```
+
+2. **Domain elements (`"kind": "element"`)**
+   ```json
+   {"kind":"element","id":"e0","context":"⊤","classes":[]}
+   {"kind":"element","id":"e1","context":"http://example.org/A","classes":["http://example.org/A","http://example.org/B"],"individuals":["http://example.org/a","_:genid2147483648"]}
+   ```
+   `classes` lists the source classes that hold at `id`. `individuals` (omitted
+   when empty) lists the named and anonymous individuals interpreted by `id`.
+   Named individuals use their full source IRI; anonymous individuals
+   (`AnonymousIndividual(_:label)` in OWL 2 Functional-Style Syntax) retain
+   their source blank-node identifier `_:label` (for example,
+   `_:genid2147483648`), which downstream hint converters map to
+   `urn:km:owl-anon:#label`.
+
+3. **Object-property edges (`"kind": "edge"`)**
+   ```json
+   {"kind":"edge","role":"http://example.org/r","from":"e1","to":"e2"}
+   ```
+   Edges are closed under the RBox (sub-roles, inverse roles, symmetric roles,
+   reflexive roles, transitive roles, and role chains). If RBox closure would
+   exceed 250,000 edges, model export declines (`"status": "declined"`) rather
+   than emitting a truncated edge set.
+
+4. **Data-property values (`"kind": "value"`)**
+   ```json
+   {"kind":"value","element":"e1","property":"http://example.org/p","cell":"__dt__val__\"1\"^^xsd:integer","datatypes":["__dt__integer","__dt__val__\"1\"^^xsd:integer"],"literal":"\"1\"^^xsd:integer"}
+   ```
+
+5. **Merged individuals (`"kind": "same"`)**
+   ```json
+   {"kind":"same","individuals":["http://example.org/a","http://example.org/b"],"element":"e1"}
+   ```
+   Emitted whenever two or more individuals denote the same domain element
+   (using full IRIs for named individuals and `_:label` for anonymous
+   individuals).
+
+6. **Blocked tableau nodes (`"kind": "blocked"`)**
+   ```json
+   {"kind":"blocked","element":"e4","blocker":"e2"}
+   ```
+   Marks a finite cycle in a tableau completion graph: in the unravelled model,
+   `element` inherits the outgoing role successors of `blocker`.
+
+7. **Satisfiable class witnesses (`"kind": "witness"`)**
+   ```json
+   {"kind":"witness","class":"http://example.org/A","element":"e1","exact":true}
+   ```
+   Maps each satisfiable named class `C` to one or more elements `e` in whose
+   `classes` list `C` appears. When `"exact": true`, the source classes of `e`
+   equal the entailed named superclasses of `C` (`{D | O |= C <= D}`). When
+   `"exact": false` (for example, when `C <= D1 or D2` is a covering union that
+   entails neither disjunct alone), no single element in any model can avoid
+   every non-entailed disjunct; the exporter then emits covering `"kind":
+   "witness"` lines for `C` (one per disjunct branch `e_1, ..., e_k` with
+   `"exact": false`) so that the intersection of `classes(e_i)` over the
+   witnesses of `C` equals `{D | O |= C <= D}`.
+
+---
+
+## Routes, terminal state reuse, and witness probe bounds
+
+### 1. EL canonical model (`route: "el-canonical"`)
+
+Applies to the `elc` route, the `flat_nf1` source fast path, and any route that
+finishes in EL++ completion (including positive ABoxes materialised into EL
+completion and non-EL residual clauses certified by `check_certificate`).
+
+- **State held at the end of the answering run**:
+  - In `elcomplete` (`classify_inner_mode`, `acyclic_nf1_taxonomy`, and
+    `positive_abox_classify_mode`), the completion holds `contexts` (each named
+    or structural concept and `⊤`), `sub_super[c]` (the saturated subsumer bitset
+    or vector of context `c`), and `edges[c]` (the saturated role-successor list
+    `(role, target_ctx)` of context `c`).
+  - In `flat_nf1` (`classify_reader` and `classify_sparse_horn_reader`), the
+    answering scan holds `names`, `role_names`, the NF1 superclass graph
+    `outgoing`, conjunction rules `union_rules`, existential leaves
+    `existentials`, `rbox_rows`, and the ABox assertions (`class_assertions`,
+    `existential_assertions`, `individuals`).
+- **How the export is read off**:
+  - One domain element is emitted per satisfiable context (`⊤`, each satisfiable
+    class, and each named-individual equivalence class `__nom__a`), with
+    `classes` read directly from `sub_super[c]` (or the `outgoing`/`union_rules`
+    closure in `flat_nf1`) and `edges` read from `edges[c]` (or `existentials`),
+    closed under `rbox_rows`.
+- **Additional witness probes required**: **0**. Every satisfiable class already
+  has its own canonical context in the terminal completion state.
+- **Soundness and witness exactness**: By the canonical-model theorem for EL++
+  completion, this finite structure satisfies all normalized EL++ clauses (and
+  all residual clauses when `check_certificate` passes), requires no blocking,
+  and satisfies `B in classes(e_A)` if and only if the ontology entails
+  `A <= B`. Every witness has `"exact": true`.
+
+#### Example (`el-canonical`)
+
+Source ontology:
+```owl
+Prefix(:=<http://example.org/>)
+Ontology(
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  Declaration(ObjectProperty(:r))
+  SubClassOf(:A ObjectSomeValuesFrom(:r :B))
+  SubClassOf(ObjectSomeValuesFrom(:r :B) :C)
+)
 ```
 
-`blocked` lines mark a finite representation: the model is the
-unravelling, and the producer that closes it under the Lean translation
-must expand them.
+Exported JSON lines:
+```json
+{"kind":"model","format":"km-model-v1","status":"ok","route":"el-canonical","elements":4,"edges":2,"closure":"none: the edges of each role are its extension (sub-roles lifted, chains and transitivity composed)","witness_exact":true,"blocked":0}
+{"kind":"element","id":"e0","context":"⊤","classes":[]}
+{"kind":"element","id":"e1","context":"http://example.org/A","classes":["http://example.org/A","http://example.org/C"]}
+{"kind":"element","id":"e2","context":"http://example.org/B","classes":["http://example.org/B"]}
+{"kind":"element","id":"e3","context":"http://example.org/C","classes":["http://example.org/C"]}
+{"kind":"edge","role":"http://example.org/r","from":"e1","to":"e2"}
+{"kind":"witness","class":"http://example.org/A","element":"e1","exact":true}
+{"kind":"witness","class":"http://example.org/B","element":"e2","exact":true}
+{"kind":"witness","class":"http://example.org/C","element":"e3","exact":true}
+```
 
-## What each route has
+---
 
-- EL completion (`elc`, `elcomplete.rs`): the saturated sets `S(A)` and the
-  role relation `R(r)` over the class names and the existential fillers. That
-  is the canonical model directly (one element per named class and per
-  filler, edges from `R`), with no blocking; individuals are their nominal
-  elements. This is the cheapest exact export and the natural first target.
-- Native bridge (`konclude_ht`): one completion graph per probe and one for
-  the ABox consistency check (`native_nominal_consistency`). A clash-free
-  completed graph of the consistency check is a model of the ontology up to
-  blocking (nodes, labels with concept tags mapped back to names through
-  `bridged.named`, edges per role tag, merged nodes, blocked nodes). The
-  graph is torn down after each probe; exporting needs a hook at the
-  consistency fixpoint (where `KM_HT_GRAPH_DUMP` prints it today) and the
-  tag-to-name map. Labels hold internal concepts (triggers, definers) that
-  must be dropped.
-- CB engine (`engine.rs`): saturated contexts, not a model. A model would be
-  the standard canonical-model construction of the completeness proof (one
-  element per context, edges from successor links), which the Lean side
-  formalises but Rust does not build.
-- Hypertableau worker (`tableau.rs`): a completed branch with blocking, the
-  same shape as the bridge graph.
+### 2. Native hypertableau bridge (`route: "ht-bridge"`)
 
-## Next step
+Applies to ontologies classified by the native Konclude hypertableau bridge
+(`ht_bridge`, `ht_full`, `nominal_ni_abox`, `symbolic_source`, and the bridge
+arm of `production_all`).
 
-Implement the EL export first (complete and blocking-free), then the
-bridge's consistency graph.
+- **State held at the end of the answering run**:
+  - During `bridged_classify_opts_with_trigger_absorption_inner`, the bridge
+    retains its shared `CompletionTaskHandleAlgorithm`,
+    `CalculationAlgorithmContextBase`, `Bridged` arena, the retained
+    deterministic consistency base (`retained_consistency_databox`), and the
+    saturation/satisfiable-expander caches (`sat_node`s and
+    `sat_node_ext_linked_role_successor_hash` in `ctx.process_context()`).
+  - When `--export-model` is active, the answering run harvests the consistency
+    completion component (`harvested_base_comp`) at the end of
+    `native_nominal_consistency`, harvests the root-connected components of
+    every subject `s` whose satisfiability or batch/pairwise refutation probe
+    ran during Phase 1 or Phase 2 (`harvested_subject_comps[s]`), and collects
+    linked role-successor hashes across all completed saturation nodes.
+- **How the export is read off**:
+  - `finish_bridge_export_model_from_live_state` starts from `harvested_base_comp`
+    (or one `bridged_top_satisfiable` read-off on the live context when no
+    nominal consistency pass ran) and merges `harvested_subject_comps` and
+    sufficient saturation subgraphs (`extract_saturation_subject_component`),
+    sharing nominal nodes (`rep_id < 0`) with the base consistency component and
+    expanding saturation-blocked or backend-blocked nodes
+    (`PRF_SATURATIONBLOCKINGCACHED`,
+    `PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED`,
+    `PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED`) directly from
+    `sat_node_ext_linked_role_successor_hash`. Lazy `CCEQ` definitions
+    `A == D` are evaluated in topological order on nodes where neither `+A` nor
+    `-A` was expanded.
+- **Additional witness probes required and how they are bounded**:
+  - Subjects answered by the saturation prepass (`answered_sat`) are extracted
+    directly from the saturation graph (`s07_concept_reference_node`) with zero
+    completion probes whenever their reachable saturation subgraph is
+    sufficient. Subjects answered by KPSet graph propagation are first matched
+    against existing elements of the consistency, saturation, and harvested
+    completion components.
+  - Let `S_missing` be the satisfiable named classes whose harvested/saturation
+    components still contain unseparated non-entailed superclasses. Each
+    residual probe restores the retained consistency base (`renew_env`) with
+    production completion blocking and saturation coupling enabled (`satcache`),
+    rather than rebuilding the terminology or running uncached completion. For
+    covering-union classes `s <= d1 or d2`, single-disjunct branch probes emit
+    covering witness elements so their intersection equals the entailed
+    superclasses of `s`.
+  - The residual probe loop checks `export_deadline` (`--export-model-budget`,
+    default `1x classify_time + 2 s`) before every probe. If the deadline is
+    reached, the loop stops immediately and returns the consistency model plus
+    all witnesses found so far with `"status": "partial"` and `"reason"` naming
+    the budget and completed probe count.
+
+#### Example (`ht-bridge`)
+
+Source ontology:
+```owl
+Prefix(:=<http://example.org/>)
+Ontology(
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  SubClassOf(:A ObjectUnionOf(:B :C))
+)
+```
+
+Exported JSON lines:
+```json
+{"kind":"model","format":"km-model-v1","status":"ok","route":"ht-bridge","elements":4,"edges":0,"closure":"none: the edges of each role are closed under the RBox (sub-roles, inverses, symmetry, reflexivity, transitivity, and role chains)","witness_exact":false,"blocked":0}
+{"kind":"element","id":"e0","context":"⊤","classes":[]}
+{"kind":"element","id":"e1","context":"http://example.org/A","classes":["http://example.org/A","http://example.org/B"]}
+{"kind":"element","id":"e2","context":"http://example.org/B","classes":["http://example.org/B"]}
+{"kind":"element","id":"e3","context":"http://example.org/C","classes":["http://example.org/C"]}
+{"kind":"witness","class":"http://example.org/A","element":"e1","exact":false}
+{"kind":"witness","class":"http://example.org/B","element":"e2","exact":true}
+{"kind":"witness","class":"http://example.org/C","element":"e3","exact":true}
+```
+
+---
+
+### 3. Consequence-based Horn context graph (`route: "cb-horn"`)
+
+Applies to the CB route (`cb_plain*`, `cb_trigger*`, `cb_role_guard*`,
+`nominals`, and `--cb`).
+
+- **State held at the end of the answering run**:
+  - At the end of `Reasoner::saturate_inner`, each saturation shard holds an
+    `Engine` with `contexts` (the root context `⊤`, each query context `C`, and
+    each created successor context `Succ(preds)`), `worked_off(ctx)` (all
+    saturated clauses of `ctx`), `successors(ctx)` (edges `(f, target_ctx)`),
+    and `mutual_unit_groups` (collapsed 2-cycles of equivalent unit concepts).
+- **How the export is read off**:
+  - Before `Reasoner::saturate_inner` drops each shard's `Engine`,
+    `Engine::extract_cb_export_shard` inspects `worked_off(ctx)`. If any
+    satisfiable context holds an unreduced body-free multi-literal head clause
+    (`⊤ -> A(x) | B(x)` where no head literal holds as a unit fact in that
+    context), `extract_cb_export_shard` declines in under 1 ms. Otherwise it
+    extracts `CbContextNode`s from the shard.
+  - `build_cb_export_model_from_shards` merges the shards, restores
+    `mutual_unit_groups` concept aliases, links `(u, r, v)` across
+    `ctx.successors[f]`, closes edges under the RBox in `O(|RBox| * |edges|)`
+    via role-indexed adjacency lists, and verifies all normalized clauses using
+    inverted concept and role indexes under `export_deadline`.
+- **Additional witness probes required**: **0**. Every satisfiable named class is
+  already a root query context in one of the saturated CB shards (or an alias
+  in `mutual_unit_groups`).
+- **Source reductions and projections**:
+  - `omit_separable_abox` (`positive_abox_tbox_separable`,
+    `atomic_class_abox_candidate`, `existential_witness_abox_candidate`,
+    `inert_role_abox_probe_candidate`), `abox_quotient`,
+    `positive_abox_quotient`, `data_abox_projection`, and `mirror` record their
+    reduction metadata during classification and reconstruct the ABox
+    individuals, projected data values, or private negative-existential mirrors
+    directly on top of the answering route's model in `apply_post_hooks`,
+    requiring **0** additional solver runs.
+- **When the CB context graph is a model of the Horn part and when it is not**:
+  1. *When it is a model*: On Horn DL-clauses without equality in clause heads
+     (clauses of the form `B1(x) & ... & Bn(x, z) -> C(x)`, `-> r(x, f(x))`,
+     `-> C(f(x))`, or `B1 & ... -> bottom`), every worked-off consequence of a
+     context core is a unit clause `⊤ -> L` in that context (once predecessor
+     triggers are resolved). With all successor triggers armed, every derived
+     existential `⊤ -> r(x, f(x))` has a target context `v = ctx.successors[f]`
+     seeded with all unit filler facts `C(x)` pushed along `f`, and `Pred`
+     propagates backward consequences `r(y, x) & D(x) -> E(y)` back to the
+     predecessor context. The unit-fact graph therefore satisfies all Horn
+     clauses, and `B in classes(ctx_A)` holds if and only if `⊤ -> B(x)` is
+     derived in `ctx_A` (exact witnesses). The same holds on non-Horn ontologies
+     whose disjunctive or equality clauses happen to be satisfied by the unit
+     facts of every context (for example, when one disjunct is already entailed
+     by the Horn core of every context that triggers the clause body).
+  2. *When it is not a model*:
+     - **Unsplit disjunctions**: When a context derives a multi-literal
+       disjunctive clause `⊤ -> B(x) | C(x)` without deriving either `⊤ -> B(x)`
+       or `⊤ -> C(x)` as a unit fact, neither `B` nor `C` is in the context's
+       unit-fact label, so the unit-fact interpretation falsifies `B(x) | C(x)`.
+     - **Non-trivial equality / functionality / at-most restrictions**: When a
+       clause head contains an equality `y1 = y2` (such as `FunctionalObjectProperty`
+       or `ObjectMaxCardinality`) and a context creates two distinct successor
+       contexts `v1 != v2` for the same role `r`, the CB calculus transfers
+       concept facts between `f1(x)` and `f2(x)` via the `Eq` rule `⊤ -> f1(x) = f2(x)`
+       inside the parent context, but keeps `v1` and `v2` as distinct context
+       ids unless quotiented; or if `y1 = y2` appears in a disjunction, the
+       distinct elements violate the cardinality bound.
+     - **Nominals in non-nominal contexts**: If `C <= {a}` derives `__nom__a(x)`
+       in the context of a satisfiable class `C` distinct from `{a}`, interpreting
+       each context as a distinct element would place the singleton individual
+       `a` in two elements.
+  - **Verification and decline**: `cb_model` evaluates every normalized clause
+    of the ontology on the extracted unit-fact structure before exporting. If
+    any clause is violated (or if nominals, SWRL rules, or cardinalities cannot
+    be represented as a valid model), `cb_model` declines and writes a
+    `"status": "declined"` record with the reason.
+
+#### Example (`cb-horn`)
+
+Source ontology:
+```owl
+Prefix(:=<http://example.org/>)
+Ontology(
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  Declaration(ObjectProperty(:r))
+  SubClassOf(:A ObjectSomeValuesFrom(:r :B))
+  SubClassOf(:B :C)
+  SubClassOf(ObjectSomeValuesFrom(:r :C) :D)
+  Declaration(Class(:D))
+)
+```
+
+Exported JSON lines:
+```json
+{"kind":"model","format":"km-model-v1","status":"ok","route":"cb-horn","elements":6,"edges":1,"closure":"none: the edges of each role are closed under the RBox (sub-roles, inverses, symmetry, reflexivity, transitivity, and role chains)","witness_exact":true,"blocked":0}
+{"kind":"element","id":"e0","context":"⊤","classes":[]}
+{"kind":"element","id":"e1","context":"http://example.org/A","classes":["http://example.org/A","http://example.org/D"]}
+{"kind":"element","id":"e2","context":"http://example.org/B","classes":["http://example.org/B","http://example.org/C"]}
+{"kind":"element","id":"e3","context":"http://example.org/C","classes":["http://example.org/C"]}
+{"kind":"element","id":"e4","context":"http://example.org/D","classes":["http://example.org/D"]}
+{"kind":"element","id":"e5","context":"__cb_ctx_5","classes":["http://example.org/B","http://example.org/C"]}
+{"kind":"edge","role":"http://example.org/r","from":"e1","to":"e5"}
+{"kind":"witness","class":"http://example.org/A","element":"e1","exact":true}
+{"kind":"witness","class":"http://example.org/B","element":"e2","exact":true}
+{"kind":"witness","class":"http://example.org/C","element":"e3","exact":true}
+{"kind":"witness","class":"http://example.org/D","element":"e4","exact":true}
+```

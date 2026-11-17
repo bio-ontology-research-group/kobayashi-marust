@@ -121,6 +121,14 @@ struct OfnMeta {
     route_approximations: std::collections::BTreeMap<String, u64>,
     #[serde(skip_serializing_if = "is_false")]
     one_sorted_data_successors: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rbox: Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    data_roles: Vec<String>,
+    #[serde(skip_serializing_if = "crate::json_io::NominalAboxMeta::is_empty")]
+    nominal_abox: crate::json_io::NominalAboxMeta,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    separable_abox_export: Option<crate::frontend::SeparableAboxExport>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -305,6 +313,7 @@ pub fn run_ofn(args: &[String]) {
         && result.profile.source.rule_axioms == 0;
 
     if let Some(mp) = meta_path {
+        let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
         let meta = OfnMeta {
             iri_map: result.iri_map,
             named: result.named,
@@ -318,6 +327,22 @@ pub fn run_ofn(args: &[String]) {
             dropped_source_axioms: result.dropped_source_axioms,
             route_approximations: result.route_approximations,
             one_sorted_data_successors: result.one_sorted_data_successors,
+            rbox: if export_active {
+                result.rbox.clone()
+            } else {
+                Vec::new()
+            },
+            data_roles: if export_active {
+                result.data_roles.clone()
+            } else {
+                Vec::new()
+            },
+            nominal_abox: if export_active {
+                result.nominal_abox.clone()
+            } else {
+                crate::json_io::NominalAboxMeta::default()
+            },
+            separable_abox_export: result.separable_abox_export,
         };
         match std::fs::File::create(mp) {
             Ok(f) => {
@@ -468,6 +493,15 @@ pub fn run_elc() {
                 );
             }
             let t3 = Instant::now();
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let model_res = res
+                    .exported_model
+                    .take()
+                    .unwrap_or_else(|| Err("elc worker did not capture exported model".into()));
+                crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+                    &crate::orchestrate::model_export::WorkerModelPayload::El(model_res),
+                );
+            }
             let partial = !res.unresolved.is_empty();
             let direct_compact = res.compact.take();
             let out = ElcOutput {
@@ -663,11 +697,17 @@ pub fn run_engine() {
             exit(5);
         }
     }
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     let mut r = Reasoner::new(&input.clauses);
     // Likewise the parsed `JClause` block (String-owning IRIs, several times
     // the raw JSON size) is fully interned into the Reasoner; drop it before
     // saturation rather than at end of function.
-    drop(input);
+    let export_input = if export_active {
+        Some(input)
+    } else {
+        drop(input);
+        None
+    };
     let t_build = t1.elapsed();
     if prof {
         eprintln!("KM_STATS[phase] build={:.1}ms", t_build.as_secs_f64() * 1e3);
@@ -728,6 +768,19 @@ pub fn run_engine() {
         .into_iter()
         .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
         .collect();
+    if let Some(ref input) = export_input {
+        let classify_secs = (t_parse + t_build + t_saturate).as_secs_f64();
+        let budget_secs = std::env::var("KM_EXPORT_MODEL_BUDGET_S")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(classify_secs + 2.0);
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs_f64(budget_secs.max(0.1));
+        let model_res = r.export_cb_model(input, Some(deadline));
+        crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+            &crate::orchestrate::model_export::WorkerModelPayload::Cb(model_res),
+        );
+    }
     // The reasoner (contexts, clause arenas, indexes — the saturation peak) is
     // dead once the answer is moved out; free it before serialising so the
     // output bytes reuse that memory instead of stacking on top of it.
