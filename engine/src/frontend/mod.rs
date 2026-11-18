@@ -599,11 +599,24 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
 /// atomic ABox projection under automatic routing while keeping the public
 /// standalone `ofn` contract byte-identical.
 pub(crate) fn ofn_to_clauses_for_classifier(text: &str) -> Result<FrontendResult, parse::OutOfFragment> {
+    ofn_to_clauses_for_classifier_pass(text, false)
+}
+
+pub(crate) fn ofn_to_clauses_for_classifier_pass(
+    text: &str,
+    abort_on_uncarried_data_assertions: bool,
+) -> Result<FrontendResult, parse::OutOfFragment> {
     let requested = std::env::var("KM_ROUTE")
         .unwrap_or_else(|_| "manual".to_string())
         .parse::<crate::routing::Route>()
         .map_err(|error| parse::OutOfFragment(format!("configuration: {error}")))?;
-    ofn_to_clauses_representation(text, requested, false, true)
+    ofn_to_clauses_representation_with(
+        text,
+        requested,
+        false,
+        true,
+        abort_on_uncarried_data_assertions,
+    )
 }
 
 /// Symbolic bounds require a native consumer; this wrapper deliberately does
@@ -1124,6 +1137,16 @@ fn ofn_to_clauses_representation(
     symbolic: bool,
     enable_extended_atomic: bool,
 ) -> Result<FrontendResult, parse::OutOfFragment> {
+    ofn_to_clauses_representation_with(text, requested, symbolic, enable_extended_atomic, false)
+}
+
+fn ofn_to_clauses_representation_with(
+    text: &str,
+    requested: crate::routing::Route,
+    symbolic: bool,
+    enable_extended_atomic: bool,
+    abort_on_uncarried_data_assertions: bool,
+) -> Result<FrontendResult, parse::OutOfFragment> {
     if !TRUSTED_REWRITE.with(|flag| flag.get()) {
         conformance::check_source(text).map_err(parse::OutOfFragment)?;
     }
@@ -1594,6 +1617,59 @@ fn ofn_to_clauses_representation(
         // taxonomy consistency check. Source counts and signature remain
         // authoritative.
         profile.positive_el_abox_materializable = false;
+    }
+    if abort_on_uncarried_data_assertions
+        && !symbolic
+        && !omit_separable_abox
+        && ontology.data_assertions_as_class() == 0
+        && !data_abox.positive_assertions_redundant()
+        && data_abox.functional_string_projection().is_none()
+    {
+        let source_count = |kind: &str| profile.source.axiom_types.get(kind).copied().unwrap_or(0);
+        let uncarried =
+            source_count("DataPropertyAssertion") + source_count("NegativeDataPropertyAssertion");
+        if uncarried > 0 {
+            if !rule_independent_abox_inconsistent && std::env::var_os("KM_NO_HT_RULES").is_none() {
+                let _ = collect_rules(
+                    &ontology,
+                    if profile.normalized_finite_data_rules > 0 {
+                        ontology.rules().count() as u64
+                    } else {
+                        profile.source.rule_axioms
+                    },
+                    if profile.normalized_finite_data_rules > 0 {
+                        0
+                    } else if profile.normalized_unary_rules > 0 {
+                        profile.normalized_unary_rules
+                    } else {
+                        certified_unsupported_rules
+                    },
+                )?;
+            }
+            return Ok(FrontendResult {
+                clauses: Vec::new(),
+                rbox: Vec::new(),
+                iri_map: BTreeMap::new(),
+                named: Vec::new(),
+                declared: Vec::new(),
+                el_rbox_safe: false,
+                abox_inconsistent: false,
+                asserted_classes: Vec::new(),
+                nominal_abox: crate::json_io::NominalAboxMeta::default(),
+                cardinalities: Vec::new(),
+                definers: Vec::new(),
+                source_axioms: Vec::new(),
+                rules: Vec::new(),
+                profile,
+                route: route.as_str().to_string(),
+                uncarried_data_assertions: uncarried,
+                dropped_source_axioms: BTreeMap::new(),
+                route_approximations: BTreeMap::new(),
+                data_roles: Vec::new(),
+                one_sorted_data_successors: false,
+                separable_abox_export: None,
+            });
+        }
     }
     // ELC computes bottom propagation as part of its own complete fixpoint.
     // Building the general SROIQ bottom certificate is therefore redundant on

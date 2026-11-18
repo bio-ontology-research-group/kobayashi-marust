@@ -73,7 +73,7 @@ fn manual_route() -> String {
 /// (multi-GB on the giants) stays isolated in the subprocess: at 4 MB the
 /// in-process transient peak is only tens of MB and is freed before the engine
 /// runs, so the classify RSS high-water-mark is unaffected.
-const IN_PROCESS_OFN_MAX: u64 = 4 << 20;
+const IN_PROCESS_OFN_MAX: u64 = 8 << 20;
 /// Retain a parsed general-HT input across the frontend/solver boundary only
 /// for the measured small-source band.  Large sources that pass the lexical
 /// EL screen can still select general HT after full profiling; retaining their
@@ -263,7 +263,9 @@ fn run_ofn_in_process(
     text: &str,
     clauses_path: &Path,
 ) -> Result<(Meta, Option<crate::json_io::JInput>, Option<TempPath>), OrchestrateError> {
-    let result = match crate::frontend::ofn_to_clauses_for_classifier(text) {
+    let abort_on_uncarried = !data_assertions_as_class_requested()
+        && std::env::var_os("KM_KEEP_CLAUSES").is_none();
+    let result = match crate::frontend::ofn_to_clauses_for_classifier_pass(text, abort_on_uncarried) {
         Ok(r) => r,
         Err(e) => return Err(OrchestrateError::OutOfFragment(e.0)),
     };
@@ -298,6 +300,9 @@ fn run_ofn_in_process(
         },
         separable_abox_export: result.separable_abox_export,
     };
+    if abort_on_uncarried && meta.uncarried_data_assertions > 0 {
+        return Ok((meta, None, None));
+    }
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
         cb_typed_source: None,

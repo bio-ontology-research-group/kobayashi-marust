@@ -1621,6 +1621,9 @@ impl SatisfiableExpanderCacheHandler {
         entry: Option<&mut SigExpanderCacheEntryId>,
     ) -> bool {
         self.stat_retrieval_requests += 1;
+        if self.cache.sig_item_hash.is_empty() {
+            return false;
+        }
         let con_set = process_context
             .node(individual_node)
             .use_reapply_con_label_set;

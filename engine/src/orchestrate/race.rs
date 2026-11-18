@@ -3966,7 +3966,11 @@ where
         // contains nominals (`!cb_first_source`), the native bridge is the
         // primary arm and runs HT-first before starting the CB stack.
         if let Some(deadline) = ht_first.filter(|_| !(typed_nominal_exclusive && cb_first_source)) {
-            if pending_cb.is_some() && (budget == 0.0 || bridge_answer_marker.is_some()) {
+            if pending_cb.is_some()
+                && (budget == 0.0
+                    || bridge_answer_marker.is_some()
+                    || proxy_abox_certificate.is_some())
+            {
                 let mut interval = Duration::from_millis(1);
                 let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
                 let export_ext = deadline * 2 + Duration::from_secs(3);
@@ -4012,7 +4016,7 @@ where
                         ht_res.is_some()
                     );
                 }
-                if budget == 0.0 {
+                if budget == 0.0 || proxy_abox_certificate.is_some() {
                     ht_first_won = ht_res.take();
                 }
             }

@@ -22757,10 +22757,58 @@ impl Ht {
         // only the number of Phase-1 sat-tests changes. The orchestrator enables
         // it for production workers; direct worker users can still select it with
         // the environment flag.
+        // Told subsumers (Mechanism 1, from the HermiT trace): structural
+        // A(x) -> B(x) clauses give A ⊑ B with no tableau test. Skipping those
+        // tests and propagating their transitive closure when a subsumption is
+        // confirmed (A ⊑ B and B ⊑* X told ⇒ A ⊑ X) cuts the per-pair test count
+        // while leaving the result set identical. Gated KM_HT_NO_TOLD.
+        let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
+        let mut told: HashMap<C, Vec<C>> = HashMap::default();
+        let mut supers_of: HashMap<C, HashSet<C>> = HashMap::default();
+        let mut subs_of: HashMap<C, HashSet<C>> = HashMap::default();
+        if use_told && !naive {
+            for (c, _, _) in &self.index.clauses {
+                if c.body.len() == 1 && c.head.len() == 1 {
+                    if let (Atom::Concept { lit: lb, t: tb }, Atom::Concept { lit: lh, t: th }) =
+                        (&c.body[0], &c.head[0])
+                    {
+                        if !lb.neg && !lh.neg && tb == th && lb.c != lh.c {
+                            told.entry(lb.c).or_default().push(lh.c);
+                        }
+                    }
+                }
+            }
+            for &u in told.keys() {
+                let mut stack: Vec<C> = told.get(&u).cloned().unwrap_or_default();
+                let mut visited: HashSet<C> = HashSet::default();
+                while let Some(x) = stack.pop() {
+                    if x != u && visited.insert(x) {
+                        supers_of.entry(u).or_default().insert(x);
+                        subs_of.entry(x).or_default().insert(u);
+                        if let Some(next) = told.get(&x) {
+                            stack.extend(next.iter().copied());
+                        }
+                    }
+                }
+            }
+        }
+
         let witreuse = std::env::var_os("KM_HT_WITREUSE").is_some();
+        let modelprune = std::env::var_os("KM_HT_MODELPRUNE").is_some();
+        let mut root_models: Vec<HashSet<C>> = Vec::new();
         let mut wit: HashMap<C, Vec<C>> = HashMap::default();
         let mut wit_hits = 0u64;
-        for (qi, &a) in queries.iter().enumerate() {
+        let mut p1_queries: Vec<C> = queries.to_vec();
+        if witreuse && use_told && !naive {
+            p1_queries.sort_by_key(|&a| {
+                (
+                    subs_of.get(&a).map_or(0, |s| s.len()),
+                    std::cmp::Reverse(supers_of.get(&a).map_or(0, |s| s.len())),
+                    a,
+                )
+            });
+        }
+        for (qi, &a) in p1_queries.iter().enumerate() {
             if witreuse {
                 if let Some(lab) = wit.get(&a) {
                     // already witnessed SAT by a prior model that carries `a`.
@@ -22825,7 +22873,17 @@ impl Ht {
             } else {
                 sat_q.push(a);
                 if !naive {
-                    labels.push((a, self.root_pos_label()));
+                    let r_lab = self.root_pos_label();
+                    if modelprune && self.ext.merged.get(0).copied().flatten().is_none() {
+                        root_models.push(
+                            r_lab
+                                .iter()
+                                .copied()
+                                .filter(|c| qset.contains(c))
+                                .collect(),
+                        );
+                    }
+                    labels.push((a, r_lab));
                     // branch-free build ⇒ this concept's root label is exact.
                     if hornfast && self.branch_pushes == bp0 {
                         exact.insert(a);
@@ -22881,27 +22939,6 @@ impl Ht {
             );
         }
 
-        // Told subsumers (Mechanism 1, from the HermiT trace): structural
-        // A(x) -> B(x) clauses give A ⊑ B with no tableau test. Skipping those
-        // tests and propagating their transitive closure when a subsumption is
-        // confirmed (A ⊑ B and B ⊑* X told ⇒ A ⊑ X) cuts the per-pair test count
-        // while leaving the result set identical. Gated KM_HT_NO_TOLD.
-        let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
-        let mut told: HashMap<C, Vec<C>> = HashMap::default();
-        if use_told && !naive {
-            for (c, _, _) in &self.index.clauses {
-                if c.body.len() == 1 && c.head.len() == 1 {
-                    if let (Atom::Concept { lit: lb, t: tb }, Atom::Concept { lit: lh, t: th }) =
-                        (&c.body[0], &c.head[0])
-                    {
-                        if !lb.neg && !lh.neg && tb == th && lb.c != lh.c {
-                            told.entry(lb.c).or_default().push(lh.c);
-                        }
-                    }
-                }
-            }
-        }
-
         // Phase 2: confirm candidate subsumptions A ⊑ B.
         let mut subs = Vec::new();
         if naive {
@@ -22914,100 +22951,137 @@ impl Ht {
             }
         } else {
             let satset: HashSet<C> = sat_q.iter().copied().collect();
-            // Multi-model pruning (HermiT QuasiOrderClassification, the
-            // m_possibleSubsumptions.removeAll step). Every model of A built
-            // during classification has A in its root label; any query concept
-            // ABSENT from that label is witnessed non-subsumed (A ⊓ ¬C is
-            // satisfiable in that model), so it can be dropped from A's candidate
-            // set WITHOUT a test. Phase 1 supplies one A-model (`lab`); each
-            // Phase-2 test that returns SAT (A ⋢ b) supplies a fresh A-model
-            // whose root label shrinks the residual we still have to test. Sound
-            // (only proven non-subsumers are removed) and output-identical to the
-            // un-pruned run; it only changes which/how-many tests fire. Gated
-            // KM_HT_MODELPRUNE for clean A/B. `tests` counts Phase-2 SAT calls so
-            // KM_HT_STATS can report the per-classify test count (the HermiT
-            // metric: O(classes), not O(classes^2)). The orchestrator enables it
-            // for production workers; direct worker users can still select it
-            // with the environment flag.
-            let modelprune = std::env::var_os("KM_HT_MODELPRUNE").is_some();
-            let mut tests: u64 = 0;
+            let add_entailed_edge = |u: C,
+                                     v: C,
+                                     supers_of: &mut HashMap<C, HashSet<C>>,
+                                     subs_of: &mut HashMap<C, HashSet<C>>| {
+                if u == v || supers_of.get(&u).is_some_and(|s| s.contains(&v)) {
+                    return;
+                }
+                let mut lefts: Vec<C> = subs_of
+                    .get(&u)
+                    .map(|s| s.iter().copied().collect())
+                    .unwrap_or_default();
+                lefts.push(u);
+                let mut rights: Vec<C> = supers_of
+                    .get(&v)
+                    .map(|s| s.iter().copied().collect())
+                    .unwrap_or_default();
+                rights.push(v);
+                for l in lefts {
+                    for &r in &rights {
+                        if l != r && supers_of.entry(l).or_default().insert(r) {
+                            subs_of.entry(r).or_default().insert(l);
+                        }
+                    }
+                }
+            };
+            let mut possible_map: HashMap<C, HashSet<C>> = HashMap::default();
             for (a0, lab) in &labels {
+                let a = *a0;
+                let mut p: HashSet<C> = lab
+                    .iter()
+                    .copied()
+                    .filter(|b| *b != a && qset.contains(b) && satset.contains(b))
+                    .collect();
+                p.shrink_to_fit();
+                possible_map.insert(a, p);
+            }
+            if modelprune {
+                for m in &root_models {
+                    for &d in m {
+                        if let Some(p) = possible_map.get_mut(&d) {
+                            p.retain(|c| m.contains(c));
+                        }
+                    }
+                }
+            }
+            drop(root_models);
+            let mut order: Vec<usize> = (0..labels.len()).collect();
+            order.sort_by_key(|&i| {
+                let a = labels[i].0;
+                (possible_map.get(&a).map_or(0, |s| s.len()), a)
+            });
+            let mut tests: u64 = 0;
+            for idx in order {
+                let (a0, lab) = &labels[idx];
                 let a = *a0;
                 // HORNFAST: branch-free build ⇒ unique model ⇒ root label is the
                 // exact subsumer set; emit it without any Phase-2 SAT test.
                 if hornfast && exact.contains(&a) {
                     for &b in lab {
                         if b != a && qset.contains(&b) && satset.contains(&b) {
-                            subs.push((a, b));
+                            add_entailed_edge(a, b, &mut supers_of, &mut subs_of);
                         }
                     }
                     continue;
                 }
-                // known = transitive closure of A's told subsumers (no test).
-                let mut known: HashSet<C> = HashSet::default();
-                let mut stack: Vec<C> = told.get(&a).cloned().unwrap_or_default();
-                while let Some(x) = stack.pop() {
-                    if known.insert(x) {
-                        if let Some(v) = told.get(&x) {
-                            stack.extend(v.iter().copied());
-                        }
-                    }
-                }
-                let mut local: Vec<C> = known
-                    .iter()
-                    .copied()
-                    .filter(|b| *b != a && qset.contains(b) && satset.contains(b))
-                    .collect();
-                // candidates: model-label minus those already entailed by told.
-                let mut cand: Vec<C> = lab
-                    .iter()
-                    .copied()
-                    .filter(|b| {
-                        *b != a && qset.contains(b) && satset.contains(b) && !known.contains(b)
-                    })
-                    .collect();
+                let mut cand: Vec<C> = if modelprune {
+                    possible_map
+                        .get(&a)
+                        .into_iter()
+                        .flatten()
+                        .copied()
+                        .filter(|b| !supers_of.get(&a).is_some_and(|s| s.contains(b)))
+                        .collect()
+                } else {
+                    lab.iter()
+                        .copied()
+                        .filter(|b| {
+                            *b != a
+                                && qset.contains(b)
+                                && satset.contains(b)
+                                && !supers_of.get(&a).is_some_and(|s| s.contains(b))
+                        })
+                        .collect()
+                };
                 cand.sort_unstable();
                 cand.dedup();
-                // `possible` is the live residual; SAT models prune it as we go.
-                let mut possible: HashSet<C> = if modelprune {
-                    cand.iter().copied().collect()
-                } else {
-                    HashSet::default()
-                };
+                cand.sort_by_key(|&b| {
+                    (
+                        std::cmp::Reverse(supers_of.get(&b).map_or(0, |s| s.len())),
+                        possible_map.get(&b).map_or(0, |s| s.len()),
+                        b,
+                    )
+                });
                 for b in cand {
-                    if known.contains(&b) {
+                    if supers_of.get(&a).is_some_and(|s| s.contains(&b)) {
                         continue;
                     }
-                    if modelprune && !possible.contains(&b) {
-                        continue; // a prior A-model already witnessed A ⋢ b
+                    if modelprune
+                        && !possible_map.get(&a).is_some_and(|s| s.contains(&b))
+                    {
+                        continue; // a prior model already witnessed A ⋢ b
                     }
                     tests += 1;
                     if !self.consistent(&[CLit::pos(a), CLit::neg(b)])? {
-                        local.push(b);
-                        known.insert(b);
-                        // A ⊑ b and b ⊑* x (told) ⇒ A ⊑ x: record + skip its test.
-                        let mut st: Vec<C> = told.get(&b).cloned().unwrap_or_default();
-                        while let Some(x) = st.pop() {
-                            if known.insert(x) {
-                                if x != a && qset.contains(&x) && satset.contains(&x) {
-                                    local.push(x);
-                                }
-                                if let Some(v) = told.get(&x) {
-                                    st.extend(v.iter().copied());
+                        add_entailed_edge(a, b, &mut supers_of, &mut subs_of);
+                    } else if modelprune {
+                        let m: HashSet<C> = self
+                            .root_pos_label()
+                            .into_iter()
+                            .filter(|c| qset.contains(c))
+                            .collect();
+                        if let Some(p) = possible_map.get_mut(&a) {
+                            p.retain(|c| m.contains(c));
+                        }
+                        if self.ext.merged.get(0).copied().flatten().is_none() {
+                            for &d in &m {
+                                if let Some(p) = possible_map.get_mut(&d) {
+                                    p.retain(|c| m.contains(c));
                                 }
                             }
                         }
-                    } else if modelprune {
-                        // SAT: this fresh A-model (A true, b false at root)
-                        // excludes every query concept missing from its root
-                        // label. Intersect the residual with it. True subsumers
-                        // hold in every A-model, so they survive.
-                        let m: HashSet<C> = self.root_pos_label().into_iter().collect();
-                        possible.retain(|c| m.contains(c));
                     }
                 }
-                for b in local {
-                    subs.push((a, b));
+            }
+            for (&u, vs) in &supers_of {
+                if qset.contains(&u) && satset.contains(&u) {
+                    for &v in vs {
+                        if u != v && qset.contains(&v) && satset.contains(&v) {
+                            subs.push((u, v));
+                        }
+                    }
                 }
             }
             if self.stats {

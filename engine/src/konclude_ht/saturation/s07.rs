@@ -499,6 +499,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context()
             .sat_node(*indi_proc_sat_node)
             .role_back_prop_hash;
+        let mut newly_installed_roles: smallvec::SmallVec<[RoleId; 8]> = smallvec::SmallVec::new();
         while functionality_role_sat_proc_linker.is_some() {
             let role = calc_alg_context
                 .process_context()
@@ -608,11 +609,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     );
                 }
 
-                self.add_functional_process_role_extension_functionality_added_to_dependent_individuals(
-                    indi_proc_sat_node,
-                    role,
-                    calc_alg_context,
-                );
+                newly_installed_roles.push(role);
 
                 if has_back_prop_entry {
                     let old_head = calc_alg_context
@@ -642,6 +639,13 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             }
+        }
+        if !newly_installed_roles.is_empty() {
+            self.add_functional_process_role_extensions_functionality_added_to_dependent_individuals(
+                indi_proc_sat_node,
+                &newly_installed_roles,
+                calc_alg_context,
+            );
         }
 
         if !updated {
@@ -1337,6 +1341,22 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         role: RoleId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        self.add_functional_process_role_extensions_functionality_added_to_dependent_individuals(
+            indi_proc_sat_node,
+            &[role],
+            calc_alg_context,
+        );
+    }
+
+    pub fn add_functional_process_role_extensions_functionality_added_to_dependent_individuals(
+        &mut self,
+        indi_proc_sat_node: &mut SatNodeId,
+        roles: &[RoleId],
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if roles.is_empty() {
+            return;
+        }
         let dep_indis: Vec<SatNodeId> = calc_alg_context
             .process_context()
             .sat_node(*indi_proc_sat_node)
@@ -1353,29 +1373,33 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .process_context_mut()
                 .sat_successor_extension_functional_concepts_extension_data(succ_ext_data, true);
             self.add_successor_extension_to_processing_queue(&mut dep_indi, calc_alg_context);
-            let (old_head, present) = {
-                let data = calc_alg_context
-                    .process_context()
-                    .sat_indi_node_functional_concept_ext_data(succ_indi_functional_con_ext_data);
-                (
-                    data.functionality_added_role_process_linker,
-                    data.functionality_added_roles.contains(&role),
-                )
-            };
-            debug_assert_eq!(
-                present,
-                Self::s07_role_process_linker_chain_has_role(old_head, role, calc_alg_context)
-            );
-            if !present {
-                let role_proc_linker =
-                    Self::s07_create_role_process_linker(role, old_head, calc_alg_context);
-                let data = calc_alg_context
-                    .process_context_mut()
-                    .sat_indi_node_functional_concept_ext_data_mut(
-                        succ_indi_functional_con_ext_data,
-                    );
-                data.functionality_added_role_process_linker = role_proc_linker;
-                data.functionality_added_roles.insert(role);
+            for &role in roles {
+                let (old_head, present) = {
+                    let data = calc_alg_context
+                        .process_context()
+                        .sat_indi_node_functional_concept_ext_data(
+                            succ_indi_functional_con_ext_data,
+                        );
+                    (
+                        data.functionality_added_role_process_linker,
+                        data.functionality_added_roles.contains(&role),
+                    )
+                };
+                debug_assert_eq!(
+                    present,
+                    Self::s07_role_process_linker_chain_has_role(old_head, role, calc_alg_context)
+                );
+                if !present {
+                    let role_proc_linker =
+                        Self::s07_create_role_process_linker(role, old_head, calc_alg_context);
+                    let data = calc_alg_context
+                        .process_context_mut()
+                        .sat_indi_node_functional_concept_ext_data_mut(
+                            succ_indi_functional_con_ext_data,
+                        );
+                    data.functionality_added_role_process_linker = role_proc_linker;
+                    data.functionality_added_roles.insert(role);
+                }
             }
         }
     }

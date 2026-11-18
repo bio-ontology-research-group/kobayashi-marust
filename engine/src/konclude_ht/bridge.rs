@@ -9868,14 +9868,17 @@ fn fresh_bridge_env_with_trigger_absorption_init(
         bridged.has_native_nominals(),
         std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
     );
-    algo.conf_direct_rule_preprocessing = card_nominal_profile;
-    algo.conf_cache_oriented_or_ordering = card_nominal_profile;
-    if card_nominal_profile {
+    let source_tbox_preproc = bridged.source_tbox && !bridged.has_native_nominals() && !tin.number;
+    algo.conf_direct_rule_preprocessing = card_nominal_profile || source_tbox_preproc;
+    algo.conf_cache_oriented_or_ordering = card_nominal_profile || bridged.source_tbox;
+    if algo.conf_direct_rule_preprocessing {
         // Konclude's null-configuration production defaults allow eager
         // preprocessing to recurse through 300 nested rule applications. A
         // zero limit only preprocesses the first descriptor and then silently
         // falls back to ordinary queueing for every conclusion it produces.
         algo.current_rec_proc_depth_limit = 300;
+    }
+    if card_nominal_profile {
         algo.conf_atomic_semantic_branching = true;
         // This is also Konclude's production dependency profile. The
         // cardinality+ABox route has complete branch epochs and now preserves
@@ -10754,7 +10757,7 @@ fn reset_probe_env_impl(
     // component tasks teach the later consistency/classification tasks.
     let budget = algo.probe_budget;
     let card_nominal_profile =
-        algo.conf_direct_rule_preprocessing && algo.conf_cache_oriented_or_ordering;
+        algo.conf_direct_rule_preprocessing && algo.conf_cache_oriented_or_ordering && algo.conf_atomic_semantic_branching;
     let direct_rule_preprocessing = algo.conf_direct_rule_preprocessing;
     let cache_oriented_or_ordering = algo.conf_cache_oriented_or_ordering;
     let current_rec_proc_depth_limit = algo.current_rec_proc_depth_limit;
@@ -10762,7 +10765,7 @@ fn reset_probe_env_impl(
     let dependency_backjumping = algo.conf_dependency_backjumping;
     let build_dependencies = algo.conf_build_dependencies;
     let atomic_semantic_branching = algo.conf_atomic_semantic_branching;
-    let branch_learning = if card_nominal_profile {
+    let branch_learning = if cache_oriented_or_ordering {
         std::mem::take(&mut algo.or_branch_learning_stats)
     } else {
         HashMap::default()
@@ -10771,15 +10774,17 @@ fn reset_probe_env_impl(
     configure_default_blocking(&mut a);
     a.singleton_concepts = bridged.singleton_concepts.clone();
     a.probe_budget = budget;
+    a.conf_direct_rule_preprocessing = direct_rule_preprocessing;
+    a.conf_cache_oriented_or_ordering = cache_oriented_or_ordering;
+    a.current_rec_proc_depth_limit = current_rec_proc_depth_limit;
+    if cache_oriented_or_ordering {
+        a.or_branch_learning_stats = branch_learning;
+    }
     if card_nominal_profile {
-        a.conf_direct_rule_preprocessing = direct_rule_preprocessing;
-        a.conf_cache_oriented_or_ordering = cache_oriented_or_ordering;
-        a.current_rec_proc_depth_limit = current_rec_proc_depth_limit;
         a.conf_dependency_backtracking = dependency_backtracking;
         a.conf_dependency_backjumping = dependency_backjumping;
         a.conf_build_dependencies = build_dependencies;
         a.conf_atomic_semantic_branching = atomic_semantic_branching;
-        a.or_branch_learning_stats = branch_learning;
     }
     *algo = a;
     if card_nominal_profile {
@@ -15242,6 +15247,7 @@ fn source_named_subsumer_closure_seeded(
         index: &HashMap<&str, usize>,
         keys: &mut HashMap<&'a SourceConcept, usize>,
         providers: &mut Vec<Provider>,
+        direct_pairs: &mut Vec<(usize, usize)>,
     ) {
         let SourceConcept::Name(head) = head else {
             return;
@@ -15277,7 +15283,10 @@ fn source_named_subsumer_closure_seeded(
         if named.is_empty() && structural.is_empty() {
             return;
         }
-        if structural.is_empty() && named.len() == 1 && named[0] == sup {
+        if structural.is_empty() && named.len() == 1 {
+            if named[0] != sup {
+                direct_pairs.push((named[0], sup));
+            }
             return;
         }
         providers.push((sup, named, structural));
@@ -15285,17 +15294,39 @@ fn source_named_subsumer_closure_seeded(
 
     let mut keys: HashMap<&SourceConcept, usize> = HashMap::default();
     let mut providers: Vec<Provider> = Vec::new();
+    let mut direct_pairs: Vec<(usize, usize)> = Vec::new();
     for axiom in &tin.source_axioms {
         match axiom.kind {
             // `D ⊑ M` with a named right side — including the structural-left
             // GCI half of an equivalence the terminology could not host as a
             // direct definition.
             crate::json_io::SourceAxiomKind::SubClass => {
-                record_provider(&axiom.right, &axiom.left, &index, &mut keys, &mut providers);
+                record_provider(
+                    &axiom.right,
+                    &axiom.left,
+                    &index,
+                    &mut keys,
+                    &mut providers,
+                    &mut direct_pairs,
+                );
             }
             crate::json_io::SourceAxiomKind::Equivalent => {
-                record_provider(&axiom.left, &axiom.right, &index, &mut keys, &mut providers);
-                record_provider(&axiom.right, &axiom.left, &index, &mut keys, &mut providers);
+                record_provider(
+                    &axiom.left,
+                    &axiom.right,
+                    &index,
+                    &mut keys,
+                    &mut providers,
+                    &mut direct_pairs,
+                );
+                record_provider(
+                    &axiom.right,
+                    &axiom.left,
+                    &index,
+                    &mut keys,
+                    &mut providers,
+                    &mut direct_pairs,
+                );
             }
             crate::json_io::SourceAxiomKind::Disjoint => {}
         }
@@ -15304,7 +15335,7 @@ fn source_named_subsumer_closure_seeded(
     // Seed the per-class state from the asserted superclass sides.
     let mut upper: Vec<crate::fxhash::FxHashSet<usize>> = vec![Default::default(); n_named];
     let mut key_subjects: Vec<Vec<usize>> = vec![Vec::new(); keys.len()];
-    let mut pair_stack: Vec<(usize, usize)> = Vec::new();
+    let mut pair_stack: Vec<(usize, usize)> = direct_pairs;
     let mut key_stack: Vec<(usize, usize)> = Vec::new();
     {
         let mut seed = |left: &SourceConcept, right: &SourceConcept| {
@@ -16082,6 +16113,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     }
     out.subsumptions
         .extend(saturation_known_pairs.iter().copied());
+    let initial_out_subsumptions_len = out.subsumptions.len();
     let mut native_saturation_ran = false;
     let mut precomputed_saturation_outcome: Option<SaturationOutcome> = None;
     // Armed once, after the precomputation saturation has COMPLETED and its
@@ -18702,17 +18734,24 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     }
     drop(kpset_state);
     drop(classifier);
-    drop(saturation_known_pairs);
     if !export_active {
         let _ = leaf_state.borrow_mut().take();
         let _ = retained_consistency_databox.take();
         ctx = CalculationAlgorithmContextBase::new();
         algo = CompletionTaskHandleAlgorithm::new();
     }
-    if source_definition_closure {
+    if source_definition_closure && out.subsumptions.len() > initial_out_subsumptions_len {
         let before = out.subsumptions.len();
-        let closed = source_named_subsumer_closure_seeded(tin, &out.subsumptions);
-        out.subsumptions.extend(closed);
+        let closed =
+            source_named_subsumer_closure_seeded(tin, &out.subsumptions[initial_out_subsumptions_len..]);
+        for (sub, sup) in closed {
+            if subject_set.contains(&sub)
+                && universe.contains(&sup)
+                && saturation_known_pairs.insert((sub, sup))
+            {
+                out.subsumptions.push((sub, sup));
+            }
+        }
         if progress {
             eprintln!(
                 "BRIDGE-SOURCE-POST-CLOSURE seeded={} combined={}",
@@ -18721,6 +18760,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             );
         }
     }
+    drop(saturation_known_pairs);
     out.unsatisfiable.sort_unstable();
     out.unsatisfiable.dedup();
     if !out.unsatisfiable.is_empty() {

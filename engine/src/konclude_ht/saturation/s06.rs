@@ -140,7 +140,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let linked_succ_hash = calc_alg_context
             .process_context_mut()
             .sat_node_ext_linked_role_successor_hash(*indi_proc_sat_node, false);
-        if linked_succ_hash.is_some() {
+        let backward_prop_hash = calc_alg_context
+            .process_context_mut()
+            .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, false);
+        if linked_succ_hash.is_some() && backward_prop_hash.is_some() {
             let mut role_succ_pairs: Vec<_> = calc_alg_context
                 .process_context()
                 .linked_role_sat_succ_hash(linked_succ_hash)
@@ -153,35 +156,30 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     super::algorithm::successor_iteration_key(0x0601, role.index() as u64)
                 });
             }
-            let backward_prop_hash = calc_alg_context
-                .process_context_mut()
-                .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, false);
-            if backward_prop_hash.is_some() {
-                for (role, succ_data) in role_succ_pairs {
-                    let back_prop_data = calc_alg_context
-                        .process_context()
-                        .role_backward_sat_prop_hash(backward_prop_hash)
-                        .get_role_backward_propagation_data_hash()
-                        .get(&role)
-                        .cloned();
-                    if let Some(back_prop_data) = back_prop_data {
-                        if back_prop_data.reapply_linker.is_some() {
-                            if let Some(data) = calc_alg_context
-                                .process_context_mut()
-                                .role_backward_sat_prop_hash_mut(backward_prop_hash)
-                                .get_role_backward_propagation_data_hash_mut()
-                                .get_mut(&role)
-                            {
-                                data.role_all_concepts_processing_queued = false;
-                            }
-                            self.update_successor_role_all_concepts_extensions_for_succ_data(
-                                indi_proc_sat_node,
-                                role,
-                                succ_data,
-                                back_prop_data,
-                                calc_alg_context,
-                            );
+            for (role, succ_data) in role_succ_pairs {
+                let back_prop_data = calc_alg_context
+                    .process_context()
+                    .role_backward_sat_prop_hash(backward_prop_hash)
+                    .get_role_backward_propagation_data_hash()
+                    .get(&role)
+                    .cloned();
+                if let Some(back_prop_data) = back_prop_data {
+                    if back_prop_data.reapply_linker.is_some() {
+                        if let Some(data) = calc_alg_context
+                            .process_context_mut()
+                            .role_backward_sat_prop_hash_mut(backward_prop_hash)
+                            .get_role_backward_propagation_data_hash_mut()
+                            .get_mut(&role)
+                        {
+                            data.role_all_concepts_processing_queued = false;
                         }
+                        self.update_successor_role_all_concepts_extensions_for_succ_data(
+                            indi_proc_sat_node,
+                            role,
+                            succ_data,
+                            back_prop_data,
+                            calc_alg_context,
+                        );
                     }
                 }
             }
