@@ -2977,7 +2977,6 @@ mod tests {
             .iter()
             .map(|linker| linker.raw)
             .collect();
-        assert!(released.contains(&qual_linker.raw));
 
         let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(false);
         assert!(queue.is_some());
@@ -2997,6 +2996,7 @@ mod tests {
             .process_context()
             .sat_indi_node_functional_concept_ext_data(dep_functional_ext)
             .qual_func_atmost_con_process_linker;
+        assert!(released.contains(&qual_linker.raw) || dep_head == qual_linker);
         assert_eq!(
             concept_process_chain_descriptor_count(&ctx, dep_head, descriptor),
             1

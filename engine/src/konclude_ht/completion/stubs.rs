@@ -1621,7 +1621,14 @@ impl SatisfiableExpanderCacheHandler {
         entry: Option<&mut SigExpanderCacheEntryId>,
     ) -> bool {
         self.stat_retrieval_requests += 1;
-        if self.cache.sig_item_hash.is_empty() {
+        if self.cache.sig_item_hash.is_empty()
+            && (self.sat_cache_reader.is_none()
+                || self
+                    .cache_context
+                    .sig_expander_cache_reader(self.sat_cache_reader)
+                    .current_slot
+                    .is_none())
+        {
             return false;
         }
         let con_set = process_context
