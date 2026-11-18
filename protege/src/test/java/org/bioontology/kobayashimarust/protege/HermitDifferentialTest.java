@@ -28,6 +28,11 @@ public class HermitDifferentialTest {
 
     static void locateKm() {
         if (System.getProperty("km.bin") == null) {
+            String env = System.getenv("KM_BIN");
+            if (env != null && new File(env).isFile()) {
+                System.setProperty("km.bin", new File(env).getAbsolutePath());
+                return;
+            }
             File release = new File("../.work/target/release/km");
             File debug = new File("../.work/target/debug/km");
             File local = release.isFile() ? release : debug;

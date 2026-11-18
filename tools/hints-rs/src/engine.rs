@@ -319,6 +319,9 @@ impl Model {
             j.tm_added.push(t);
         }
     }
+    pub fn tm_clear(&mut self) {
+        self.typemap.clear();
+    }
     pub fn push_elem(&mut self, e: Elem) -> Id {
         let id = self.elems.len() as Id;
         let t = e.ty;
@@ -414,7 +417,7 @@ impl Model {
     pub fn queue_empty(&self) -> bool {
         self.queue.is_empty()
     }
-    fn pop(&mut self) -> Option<Id> {
+    pub fn pop(&mut self) -> Option<Id> {
         let x = self.queue.pop_front()?;
         self.inq[x as usize] = false;
         Some(x)
@@ -2389,7 +2392,7 @@ impl<'a> Engine<'a> {
                     if h.iter().any(|&x| self.mark[x as usize] == st) {
                         continue;
                     }
-                    if !self.is_forbid(cand, fst, st) {
+                    if !self.is_forbid(cand, fst, st) && self.cmark[cand as usize] != st {
                         self.mark[cand as usize] = st;
                         for j in 0..self.conflict_peers[cand as usize].len() {
                             let p = self.conflict_peers[cand as usize][j];
@@ -2452,7 +2455,7 @@ impl<'a> Engine<'a> {
                         }
                         let mut best_inert: Option<(bool, u32)> = None;
                         for &cand in h {
-                            if self.is_forbid(cand, fst, st) {
+                            if self.is_forbid(cand, fst, st) || self.cmark[cand as usize] == st {
                                 continue;
                             }
                             let check_atom = |x: u32| -> bool {
@@ -2478,7 +2481,7 @@ impl<'a> Engine<'a> {
                             let is_inert = check_atom(cand)
                                 && self.self_push[cu]
                                     .iter()
-                                    .all(|&c| !self.is_forbid(c, fst, st) && check_atom(c));
+                                    .all(|&c| !self.is_forbid(c, fst, st) && self.cmark[c as usize] != st && check_atom(c));
                             if is_inert {
                                 let k = (self.has_data[cu], cand);
                                 if best_inert.map_or(true, |b| k < b) {

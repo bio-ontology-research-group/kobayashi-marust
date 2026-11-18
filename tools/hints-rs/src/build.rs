@@ -1581,6 +1581,9 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
     let (mut dstar_with, mut dstar_without) = (0usize, 0usize);
     let mut models_json = Vec::new();
     for (k, s) in slots.iter().enumerate() {
+        if k > 0 && (s.wits.is_empty() || s.m.canonical().next().is_none()) {
+            continue;
+        }
         let mut roots: Vec<Id> = s.wits.iter().map(|w| w.1).collect();
         roots.extend(s.m.nom_elem.values().copied());
         if roots.is_empty() {

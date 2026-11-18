@@ -27,6 +27,9 @@ impl Km {
             } else if h.starts_with("DROPPED") {
                 k.dropped = h.split_whitespace().last().and_then(|x| x.parse().ok()).unwrap_or(0);
             } else if w.len() >= 3 && h == "SUB" {
+                if w[1] == THING {
+                    k.top.insert(w[2].to_string());
+                }
                 k.sup.entry(w[1].to_string()).or_default().insert(w[2].to_string());
             } else if w.len() >= 2 && h == "UNSAT" {
                 k.unsat.insert(w[1].to_string());

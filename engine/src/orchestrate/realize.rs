@@ -198,7 +198,7 @@ pub(super) fn prefix_bindings(text: &str) -> Result<BTreeMap<String, String>, Or
 /// classifier sees. After canonicalization every IRI has one spelling; the
 /// check below declines, rather than report one individual under two
 /// names, should that invariant ever fail.
-fn canonical_individuals(text: &str) -> Result<(String, Vec<String>), OrchestrateError> {
+pub(super) fn canonical_individuals(text: &str) -> Result<(String, Vec<String>), OrchestrateError> {
     let canonical = canonical_source(text)?;
     let individuals = source_individuals(&canonical)?;
     check_one_spelling(&canonical, &individuals, "realization: individual")?;

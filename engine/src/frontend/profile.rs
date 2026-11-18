@@ -1058,6 +1058,18 @@ impl<'a> SourceProfileBuilder<'a> {
         names
     }
 
+    pub(super) fn object_property_names(&self) -> Vec<&'a str> {
+        let mut names: Vec<_> = self.object_properties.iter().copied().collect();
+        names.sort_unstable();
+        names
+    }
+
+    pub(super) fn all_individual_names(&self) -> Vec<&'a str> {
+        let mut names: Vec<_> = self.individuals.iter().copied().collect();
+        names.sort_unstable();
+        names
+    }
+
     pub(super) fn rule_individual_names(&self) -> Vec<&'a str> {
         if self.stats.rule_axioms == 0 { return Vec::new(); }
         let mut names: Vec<_> = self.individuals.iter().copied()

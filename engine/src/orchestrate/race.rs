@@ -143,6 +143,8 @@ fn tableau_to_out(t: TOutput) -> EngineOut {
         dropped: 0,
         unresolved: Vec::new(),
         pair_form: true,
+        worker_model_path: None,
+        worker_model_payload: None,
     }
 }
 
@@ -257,6 +259,11 @@ fn spawn_tableau(
         .stderr(Stdio::null())
         .env("KM_TAB_CACHE", "1")
         .env("KM_TAB_ORD", &cfg.tab_ord);
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let mut model_out = out_path.path().as_os_str().to_os_string();
+        model_out.push(".model");
+        cmd.env("KM_WORKER_MODEL_OUT", model_out);
+    }
     let mut child = cmd.spawn().ok()?;
     // feed the TInput on a background thread (ignore broken pipe if the tableau
     // exits before draining — the small TInput never deadlocks)
@@ -334,7 +341,10 @@ where
                         if let Ok(f) = File::open(outp.path()) {
                             if let Ok(t) = serde_json::from_reader::<_, TOutput>(BufReader::new(f))
                             {
-                                won = Some(tableau_to_out(t));
+                                let mut w = tableau_to_out(t);
+                                w.worker_model_path =
+                                    super::model_export::worker_model_sidecar_if_exists(outp.path());
+                                won = Some(w);
                             }
                         }
                     }
@@ -460,6 +470,11 @@ fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tm
         .stdout(File::create(out_path.path()).ok()?)
         .stderr(Stdio::null())
         .env("KM_ELC_CERT", &cert);
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let mut model_out = out_path.path().as_os_str().to_os_string();
+        model_out.push(".model");
+        cmd.env("KM_WORKER_MODEL_OUT", model_out);
+    }
     let child = cmd.spawn().ok()?;
     Some((child, out_path))
 }
@@ -578,6 +593,12 @@ fn sequential_elc_then_residue(
                         partial.subsumptions.insert(subject, supers);
                     }
                     partial.inconsistent = partial.inconsistent || exact.inconsistent;
+                    partial.worker_model_path = None;
+                    partial.worker_model_payload = Some(Arc::new(
+                        super::model_export::WorkerModelPayload::Declined(
+                            "answered via hybrid partial-EL + query-restricted CB residue".into(),
+                        ),
+                    ));
                     return Ok(partial);
                 }
             }
@@ -705,6 +726,13 @@ pub fn race_adaptive_vs_elc(
                                 p.subsumptions.insert(k, v); // dict.update: eng overwrites
                             }
                             p.inconsistent = p.inconsistent || eng.inconsistent;
+                            p.worker_model_path = None;
+                            p.worker_model_payload = Some(Arc::new(
+                                super::model_export::WorkerModelPayload::Declined(
+                                    "answered via hybrid partial-EL + query-restricted CB residue"
+                                        .into(),
+                                ),
+                            ));
                             winner = Some(p);
                             break;
                         }
@@ -2558,7 +2586,9 @@ fn prepare_ht(
     // the bridge itself published carries the complete-answer-or-defer
     // guarantee that justifies the instant harvest below; any other arm keeps
     // its fallback budget.
-    let bridge_answer_marker = (bridge_candidate && !bridge_exclusive).then(|| {
+    let bridge_answer_marker = (bridge_candidate
+        && (!bridge_exclusive || std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some()))
+    .then(|| {
         let marker = super::tmpfile::TempPath::new(".bridge-answer");
         cmd.env("KM_HT_BRIDGE_ANSWER_MARKER", marker.path());
         marker
@@ -2788,6 +2818,11 @@ impl PreparedHt {
             proxy_abox_certificate,
             bridge_answer_marker,
         } = self;
+        if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+            let mut model_out = out_path.path().as_os_str().to_os_string();
+            model_out.push(".model");
+            cmd.env("KM_WORKER_MODEL_OUT", model_out);
+        }
         let mut child = cmd.spawn().ok()?;
         if let Some(stderr) = child.stderr.take() {
             forward_ht_worker_errors(stderr);
@@ -2880,7 +2915,9 @@ fn read_ht_answer(p: &Path, proxy_abox_certificate: Option<&ProxyAboxCertificate
     if let Some(certificate) = proxy_abox_certificate {
         proxy_abox_filter_output(certificate, &mut output);
     }
-    Some(tableau_to_out(output))
+    let mut out = tableau_to_out(output);
+    out.worker_model_path = super::model_export::worker_model_sidecar_if_exists(p);
+    Some(out)
 }
 
 /// The HT-first worker of `race_cb_vs_ht`, started early: while the in-process
@@ -2956,6 +2993,12 @@ impl HtFirstProbe {
             return None;
         }
         Some(probe)
+    }
+
+    pub fn bridge_answered(&self) -> bool {
+        self.marker
+            .as_ref()
+            .is_some_and(|marker| std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge"))
     }
 
     pub fn poll(&mut self) -> HtFirstProbeState {
@@ -3115,6 +3158,7 @@ pub fn run_ht_only(
     }
     let mut out = tableau_to_out(parsed);
     out.dropped += bypass_drops;
+    out.worker_model_path = super::model_export::worker_model_sidecar_if_exists(out_path.path());
     Ok(out)
 }
 
@@ -3214,11 +3258,13 @@ pub fn run_ht_shoq_in_process(
     let result = crate::tableau::run_producer_input_typed(tin).map_err(|error| {
         OrchestrateError::OutOfFragment(format!("selected SHOQ mechanism deferred ({error})"))
     })?;
-    Ok(tableau_to_out(TOutput {
+    let mut out = tableau_to_out(TOutput {
         consistent: result.consistent,
         subsumptions: result.subsumptions,
         unsatisfiable: result.unsatisfiable,
-    }))
+    });
+    out.worker_model_payload = super::model_export::take_inproc_worker_payload().map(Arc::new);
+    Ok(out)
 }
 
 /// Run the selected clause-only general hypertableau in this process. The
@@ -3302,6 +3348,7 @@ pub fn run_ht_general_in_process(
         unsatisfiable: result.unsatisfiable,
     });
     out.dropped += bypass_drops;
+    out.worker_model_payload = super::model_export::take_inproc_worker_payload().map(Arc::new);
     Ok(out)
 }
 
@@ -3393,11 +3440,13 @@ pub fn run_ht_bridge_in_process(
     let result = crate::tableau::run_bridge_producer_input_typed(tin).map_err(|error| {
         OrchestrateError::OutOfFragment(format!("selected native HT bridge deferred ({error})"))
     })?;
-    Ok(tableau_to_out(TOutput {
+    let mut out = tableau_to_out(TOutput {
         consistent: result.consistent,
         subsumptions: result.subsumptions,
         unsatisfiable: result.unsatisfiable,
-    }))
+    });
+    out.worker_model_payload = super::model_export::take_inproc_worker_payload().map(Arc::new);
+    Ok(out)
 }
 
 /// Bounded variant used by fail-open preprocessing probes. A timeout,
@@ -3487,7 +3536,9 @@ fn run_ht_only_bounded_from(
     if let Some(certificate) = &proxy_abox_certificate {
         proxy_abox_filter_output(certificate, &mut parsed);
     }
-    Ok(Some(tableau_to_out(parsed)))
+    let mut out = tableau_to_out(parsed);
+    out.worker_model_path = super::model_export::worker_model_sidecar_if_exists(out_path.path());
+    Ok(Some(out))
 }
 
 /// Run the historical label-caching tableau as an isolated mechanism. Its
@@ -3514,7 +3565,9 @@ pub fn run_tableau_only(
     }
     let output = File::open(out_path.path())?;
     let parsed: TOutput = serde_json::from_reader(BufReader::new(output))?;
-    Ok(tableau_to_out(parsed))
+    let mut out = tableau_to_out(parsed);
+    out.worker_model_path = super::model_export::worker_model_sidecar_if_exists(out_path.path());
+    Ok(out)
 }
 
 /// Reserved engine thread count for the HT race: reduce `KM_THREADS` by one when
@@ -3942,7 +3995,15 @@ where
         if let Some(deadline) = ht_first.filter(|_| !typed_nominal_exclusive) {
             if pending_cb.is_some() && (budget == 0.0 || bridge_answer_marker.is_some()) {
                 let mut interval = Duration::from_millis(1);
-                while t0.elapsed() < deadline {
+                let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+                let export_ext = deadline * 2 + Duration::from_secs(3);
+                while t0.elapsed() < deadline
+                    || (export_active
+                        && t0.elapsed() < export_ext
+                        && bridge_answer_marker.as_ref().is_some_and(|marker| {
+                            std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge")
+                        }))
+                {
                     let seen = event.epoch();
                     if engine_run::read_rss(ht.id()).is_some_and(|rss| rss > ht_cap_bytes) {
                         let _ = ht.kill();

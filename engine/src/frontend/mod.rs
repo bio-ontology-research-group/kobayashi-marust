@@ -58,6 +58,31 @@ const MAX_COUNTED_COVER: usize = 4096;
 /// carry (`"<n> data-property assertion axiom(s) are unsupported"`).
 pub const DATA_ASSERTIONS_UNSUPPORTED_SUFFIX: &str = " data-property assertion axiom(s) are unsupported";
 
+/// Provenance of an ABox elided by `omit_separable_abox`, retained only when
+/// `KM_EXPORT_MODEL_ACTIVE` is set so `--export-model` can reconstruct the
+/// ABox individuals on top of the TBox model without re-running the solver.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SeparableAboxExport {
+    #[serde(default)]
+    pub positive_separable: bool,
+    #[serde(default)]
+    pub top_identity_separable: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ind_components: Vec<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_roles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub atomic_individual_classes: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub existential_assertions: Vec<(String, String, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inert_probes: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inert_role_assertions: Vec<(String, String, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inert_extra_individuals: Vec<String>,
+}
+
 /// Result of `ofn_to_clauses`: the JSON clause set plus the output-mapping
 /// side data.
 pub struct FrontendResult {
@@ -130,6 +155,7 @@ pub struct FrontendResult {
     /// rule-consistency checker does not publish an inconsistency found on
     /// such a stream.
     pub one_sorted_data_successors: bool,
+    pub separable_abox_export: Option<SeparableAboxExport>,
 }
 
 /// Preserve every parsed object ABox assertion together with the exact nominal
@@ -1201,6 +1227,17 @@ fn ofn_to_clauses_representation(
     // Source features are now complete and their borrowed distinct-entity sets
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let export_all_individuals = if export_active {
+        profile_builder.all_individual_names()
+    } else {
+        Vec::new()
+    };
+    let export_object_properties = if export_active {
+        profile_builder.object_property_names()
+    } else {
+        Vec::new()
+    };
     let rule_individual_names = profile_builder.rule_individual_names();
     let data_property_raw = profile_builder.data_property_names();
     let class_raw = profile_builder.class_names();
@@ -1481,7 +1518,73 @@ fn ofn_to_clauses_representation(
             || profile.atomic_class_abox_candidate
             || profile.inert_role_abox_probe_candidate
             || profile.existential_witness_abox_candidate
-            || disjoint_union_consistent);
+            || (!export_active && disjoint_union_consistent));
+    let mut raw_atomic_ind_classes: Vec<(&str, &str)> = Vec::new();
+    let mut raw_sames: Vec<(&str, &str)> = Vec::new();
+    let mut raw_top_identity_separable = false;
+    let mut raw_existential_assertions: Vec<(String, String, String)> = Vec::new();
+    let mut raw_inert_probes: Vec<(String, String)> = Vec::new();
+    let mut raw_inert_role_assertions: Vec<(String, String, String)> = Vec::new();
+    let mut raw_inert_extra_individuals: Vec<String> = Vec::new();
+    if omit_separable_abox && export_active {
+        if profile.atomic_class_abox_candidate {
+            for &(class_raw_tok, ind_raw_tok) in &data_abox.cassert {
+                raw_atomic_ind_classes.push((ind_raw_tok, class_raw_tok));
+            }
+        } else if profile.positive_abox_tbox_separable {
+            raw_sames = data_abox.sames.clone();
+            raw_top_identity_separable = profile.source.role_assertions == 0
+                && data_abox.cassert.len() as u64 == profile.source.class_assertions
+                && data_abox.cassert.iter().all(|&(c, _)| {
+                    matches!(c, "owl:Thing" | "<http://www.w3.org/2002/07/owl#Thing>")
+                });
+        } else if profile.existential_witness_abox_candidate {
+            for axiom in ontology.abox() {
+                if let syntax::Axiom::ConceptAssertion(
+                    syntax::Concept::Exists(syntax::Role::Name(role), filler),
+                    ind,
+                ) = axiom
+                {
+                    if let syntax::Concept::Name(filler_name) = filler.as_ref() {
+                        raw_existential_assertions.push((
+                            ind.clone(),
+                            role.clone(),
+                            filler_name.clone(),
+                        ));
+                    }
+                }
+            }
+        } else if profile.inert_role_abox_probe_candidate {
+            let mut memberships: BTreeSet<String> = BTreeSet::new();
+            let mut all_inert_inds: BTreeSet<String> = BTreeSet::new();
+            for axiom in ontology.abox() {
+                match axiom {
+                    syntax::Axiom::ConceptAssertion(syntax::Concept::Name(_), ind) => {
+                        memberships.insert(ind.clone());
+                        all_inert_inds.insert(ind.clone());
+                    }
+                    syntax::Axiom::RoleAssertion(role, s, t) => {
+                        raw_inert_role_assertions.push((role.clone(), s.clone(), t.clone()));
+                        all_inert_inds.insert(s.clone());
+                        all_inert_inds.insert(t.clone());
+                    }
+                    syntax::Axiom::DifferentIndividuals(left, right) => {
+                        all_inert_inds.insert(left.clone());
+                        all_inert_inds.insert(right.clone());
+                    }
+                    _ => {}
+                }
+            }
+            for (index, ind) in memberships.iter().enumerate() {
+                raw_inert_probes.push((ind.clone(), format!("__km_abox_probe_{index}")));
+            }
+            for ind in all_inert_inds {
+                if !memberships.contains(&ind) {
+                    raw_inert_extra_individuals.push(ind);
+                }
+            }
+        }
+    }
     if omit_separable_abox {
         ontology.retain_axioms(|axiom| !axiom.is_abox());
         data_abox = data_abox::DataAbox::default();
@@ -2219,16 +2322,98 @@ fn ofn_to_clauses_representation(
     // blank-node CONCEPT stays in the clause set — only its query/output
     // registration is dropped). Gated by KM_KEEP_BLANK_NAMES for A/B.
     let drop_blank = std::env::var_os("KM_KEEP_BLANK_NAMES").is_none();
+    let keep_blank_in_iri_map = !drop_blank || export_active;
+    let separable_abox_export = if omit_separable_abox && export_active {
+        let mut exp = SeparableAboxExport::default();
+        if profile.atomic_class_abox_candidate {
+            for (ind_raw_tok, class_raw_tok) in raw_atomic_ind_classes {
+                let ind_short = reg.short(ind_raw_tok);
+                let class_short = reg.short(class_raw_tok);
+                exp.atomic_individual_classes.push((ind_short, class_short));
+            }
+            exp.atomic_individual_classes.sort();
+            exp.atomic_individual_classes.dedup();
+        } else if profile.positive_abox_tbox_separable {
+            exp.positive_separable = !raw_top_identity_separable;
+            exp.top_identity_separable = raw_top_identity_separable;
+            let mut ind_shorts: Vec<String> = export_all_individuals
+                .iter()
+                .map(|raw| reg.short(raw))
+                .collect();
+            ind_shorts.sort();
+            ind_shorts.dedup();
+            let ind_idx: BTreeMap<String, usize> = ind_shorts
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (s.clone(), i))
+                .collect();
+            let mut parent: Vec<usize> = (0..ind_shorts.len()).collect();
+            let find = |parent: &mut [usize], mut x: usize| -> usize {
+                while parent[x] != x {
+                    parent[x] = parent[parent[x]];
+                    x = parent[x];
+                }
+                x
+            };
+            for (a_raw, b_raw) in raw_sames {
+                let a_s = reg.short(a_raw);
+                let b_s = reg.short(b_raw);
+                if let (Some(&ia), Some(&ib)) = (ind_idx.get(&a_s), ind_idx.get(&b_s)) {
+                    let ra = find(&mut parent, ia);
+                    let rb = find(&mut parent, ib);
+                    if ra != rb {
+                        parent[ra.max(rb)] = ra.min(rb);
+                    }
+                }
+            }
+            if exp.top_identity_separable || profile.source.axiom_types.contains_key("DifferentIndividuals") {
+                let mut by_root: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+                for (i, s) in ind_shorts.into_iter().enumerate() {
+                    let r = find(&mut parent, i);
+                    by_root.entry(r).or_default().push(s);
+                }
+                exp.ind_components = by_root.into_values().collect();
+            } else if !ind_shorts.is_empty() {
+                exp.ind_components = vec![ind_shorts];
+            }
+            if exp.positive_separable {
+                for role_raw in export_object_properties {
+                    let r_short = reg.short(role_raw);
+                    if !matches!(
+                        r_short.as_str(),
+                        "owl:topObjectProperty"
+                            | "http://www.w3.org/2002/07/owl#topObjectProperty"
+                            | "owl:bottomObjectProperty"
+                            | "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+                    ) {
+                        exp.object_roles.push(r_short);
+                    }
+                }
+                exp.object_roles.sort();
+                exp.object_roles.dedup();
+            }
+        } else if profile.existential_witness_abox_candidate {
+            exp.existential_assertions = raw_existential_assertions;
+        } else if profile.inert_role_abox_probe_candidate {
+            exp.inert_probes = raw_inert_probes;
+            exp.inert_role_assertions = raw_inert_role_assertions;
+            exp.inert_extra_individuals = raw_inert_extra_individuals;
+        }
+        Some(exp)
+    } else {
+        None
+    };
     let mut iri_entries: Vec<(String, String)> = reg
         .owned_entries()
         .filter(|(_, iri)| {
-            (!drop_blank || !iri.starts_with("_:")) && !lenient::is_skolem_anon_iri(iri)
+            (keep_blank_in_iri_map || !iri.starts_with("_:")) && !lenient::is_skolem_anon_iri(iri)
         })
         .map(|(internal, iri)| (internal.to_string(), iri.to_string()))
         .collect();
     iri_entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
     let named = iri_entries
         .iter()
+        .filter(|(_, iri)| !drop_blank || !iri.starts_with("_:"))
         .map(|(internal, _)| internal.clone())
         .collect::<Vec<_>>();
     // The disjoint-union theorem preserves the requested public taxonomy
@@ -2286,6 +2471,7 @@ fn ofn_to_clauses_representation(
         route_approximations,
         data_roles: used_data_roles,
         one_sorted_data_successors,
+        separable_abox_export,
     })
 }
 

@@ -13,7 +13,7 @@ use super::{Config, OrchestrateError};
 
 /// Side data from `ofn --meta` (everything needed to map engine output back to
 /// OWL, minus the clauses). Mirrors `bin/ofn.rs`'s `Meta`.
-#[derive(serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Deserialize)]
 pub struct Meta {
     pub iri_map: BTreeMap<String, String>,
     pub named: Vec<String>,
@@ -46,6 +46,14 @@ pub struct Meta {
     /// See `FrontendResult::one_sorted_data_successors`.
     #[serde(default)]
     pub one_sorted_data_successors: bool,
+    #[serde(default)]
+    pub rbox: Vec<Vec<String>>,
+    #[serde(default)]
+    pub data_roles: Vec<String>,
+    #[serde(default)]
+    pub nominal_abox: crate::json_io::NominalAboxMeta,
+    #[serde(default)]
+    pub separable_abox_export: Option<crate::frontend::SeparableAboxExport>,
 }
 
 fn manual_route() -> String {
@@ -253,6 +261,7 @@ fn run_ofn_in_process(
         Ok(r) => r,
         Err(e) => return Err(OrchestrateError::OutOfFragment(e.0)),
     };
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     let meta = Meta {
         iri_map: result.iri_map,
         named: result.named,
@@ -266,6 +275,22 @@ fn run_ofn_in_process(
         dropped_source_axioms: result.dropped_source_axioms,
         route_approximations: result.route_approximations,
         one_sorted_data_successors: result.one_sorted_data_successors,
+        rbox: if export_active {
+            result.rbox.clone()
+        } else {
+            Vec::new()
+        },
+        data_roles: if export_active {
+            result.data_roles.clone()
+        } else {
+            Vec::new()
+        },
+        nominal_abox: if export_active {
+            result.nominal_abox.clone()
+        } else {
+            crate::json_io::NominalAboxMeta::default()
+        },
+        separable_abox_export: result.separable_abox_export,
     };
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
@@ -613,6 +638,10 @@ pub fn run_ofn_for_reference(
                 dropped_source_axioms: result.dropped_source_axioms,
                 route_approximations: result.route_approximations,
                 one_sorted_data_successors: result.one_sorted_data_successors,
+                rbox: result.rbox,
+                nominal_abox: result.nominal_abox,
+                data_roles: result.data_roles,
+                separable_abox_export: result.separable_abox_export,
             };
             return Ok((result.clauses, meta));
         }

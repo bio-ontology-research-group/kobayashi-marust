@@ -1705,6 +1705,8 @@ pub fn try_classify(cfg: &Config, ont: &Path) -> Result<Option<Classification>, 
     let double_check = std::env::var_os("KM_MIRROR_DOUBLE_CHECK").is_some();
     let base = double_check.then(|| {
         let _route = EnvVar::set("KM_ROUTE", PROJECTION_ROUTE);
+        let _no_export = crate::routing::EnvironmentGuard::capture();
+        std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
         super::classify(cfg, base_path.path())
     });
     let slice = {
@@ -1762,6 +1764,21 @@ pub fn try_classify(cfg: &Config, ont: &Path) -> Result<Option<Classification>, 
     let base_view = base.as_ref().unwrap_or(&slice);
     match reconstruct(&fragment, base_view, &slice) {
         Ok(classification) => {
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let specs: Vec<(String, String, Option<String>)> = fragment
+                    .mirrors
+                    .iter()
+                    .map(|m| {
+                        let filler = match &m.filler {
+                            ClassRef::Top => Some(OWL_THING.to_string()),
+                            ClassRef::Bottom => None,
+                            ClassRef::Iri(iri) => Some(iri.clone()),
+                        };
+                        (m.negative.clone(), m.role.clone(), filler)
+                    })
+                    .collect();
+                super::model_export::record_mirror_spec(specs);
+            }
             timing(format_args!(
                 "reconstructed {} public pairs, {} unsatisfiable",
                 classification.subsumptions.len(),

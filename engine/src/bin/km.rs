@@ -503,6 +503,10 @@ fn classify_help() {
     println!("  --realize[=all]     also report every entailed named type of each named individual");
     println!("  --realize=direct    also report only the most specific entailed named types");
     println!("  --properties        also report the inferred object property hierarchy, domains and ranges");
+    println!("  --export-model FILE after the answer, write a model of the ontology to FILE (JSON lines, docs/MODEL-EXPORT.md)");
+    println!("  --export-model-budget SECONDS");
+    println!("                      wall-clock budget for post-classify model verification/witness probes");
+    println!("                      (default: 1x classify_time + 2 s); writes status=\"partial\" when exceeded");
     println!("  --values            also report every entailed object property assertion between named individuals");
     println!("  --different         also report every entailed pair of different named individuals");
     println!("  --data-properties   also report the data property hierarchy, empty data properties,");
@@ -570,6 +574,8 @@ fn classify_cmd(rest: &[String]) {
     let mut values = false;
     let mut different = false;
     let mut top = false;
+    let mut export_model: Option<String> = None;
+    let mut export_model_budget: Option<f64> = None;
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
@@ -590,6 +596,41 @@ fn classify_cmd(rest: &[String]) {
             "--different" => different = true,
             "--top" => top = true,
             "--json-edges" => graph_edges = true,
+            "--export-model" => {
+                index += 1;
+                export_model = rest.get(index).cloned();
+                if export_model.is_none() {
+                    eprintln!("--export-model requires a file name");
+                    exit(2);
+                }
+            }
+            value if value.starts_with("--export-model=") => {
+                export_model = Some(value.trim_start_matches("--export-model=").to_string());
+            }
+            "--export-model-budget" => {
+                index += 1;
+                let Some(val) = rest.get(index) else {
+                    eprintln!("--export-model-budget requires a positive number of seconds");
+                    exit(2);
+                };
+                match val.parse::<f64>() {
+                    Ok(secs) if secs.is_finite() && secs > 0.0 => export_model_budget = Some(secs),
+                    _ => {
+                        eprintln!("--export-model-budget requires a positive number of seconds, got {val:?}");
+                        exit(2);
+                    }
+                }
+            }
+            value if value.starts_with("--export-model-budget=") => {
+                let raw = value.trim_start_matches("--export-model-budget=");
+                match raw.parse::<f64>() {
+                    Ok(secs) if secs.is_finite() && secs > 0.0 => export_model_budget = Some(secs),
+                    _ => {
+                        eprintln!("--export-model-budget requires a positive number of seconds, got {raw:?}");
+                        exit(2);
+                    }
+                }
+            }
             "--route" => {
                 index += 1;
                 route = rest.get(index).map(String::as_str);
@@ -685,6 +726,26 @@ fn classify_cmd(rest: &[String]) {
         }
     };
     let cfg = Config::from_env();
+    if export_model.is_some() {
+        orchestrate::model_export::begin_session(export_model_budget);
+    }
+    // `--export-model FILE`: after the answer is written, the model of the
+    // same clause stream (docs/MODEL-EXPORT.md). Never runs otherwise.
+    let export = |cfg: &Config| {
+        if let Some(file) = &export_model {
+            match orchestrate::model_export::finish_and_write(
+                cfg,
+                Path::new(ontology),
+                Path::new(file),
+            ) {
+                Ok(status) => eprintln!("{status}"),
+                Err(error) => {
+                    eprintln!("model export failed: {error}");
+                    exit(1);
+                }
+            }
+        }
+    };
     if realize.is_some() || properties || top || data_properties || values || different {
         if graph_edges {
             eprintln!("--realize, --properties and --top cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
@@ -716,6 +777,8 @@ fn classify_cmd(rest: &[String]) {
                     let _ = w.write_all(b"\n");
                 }
                 let _ = w.flush();
+                drop(w);
+                export(&cfg);
                 return;
             }
             Err(OrchestrateError::OutOfFragment(e)) => {
@@ -754,6 +817,8 @@ fn classify_cmd(rest: &[String]) {
                 if std::env::var_os("KM_TIMING").is_some() {
                     eprintln!("KM_TIMING mark: output written");
                 }
+                drop(w);
+                export(&cfg);
                 return;
             }
             Err(OrchestrateError::OutOfFragment(e)) => {
@@ -779,6 +844,8 @@ fn classify_cmd(rest: &[String]) {
             let mut w = BufWriter::new(stdout.lock());
             let _ = writeln!(w, "{}", res.to_lines());
             let _ = w.flush();
+            drop(w);
+            export(&cfg);
         }
         // honest decline: outside the supported fragment (datatypes)
         Err(OrchestrateError::OutOfFragment(e)) => {

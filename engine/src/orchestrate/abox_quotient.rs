@@ -978,9 +978,11 @@ fn hash64<T: Hash>(value: &T) -> u64 {
 }
 
 /// Replace every small component by the representative of its canonical
-/// form. Returns the reduced ABox (same interners, new assertion lists).
-fn canonicalize_components(abox: &mut Abox) {
+/// form. Returns the reduced ABox (same interners, new assertion lists) and
+/// the isomorphism target `iso_target[x]` of each individual `x`.
+fn canonicalize_components(abox: &mut Abox) -> Vec<u32> {
     let n = abox.individuals.names.len();
+    let mut iso_target: Vec<u32> = (0..n as u32).collect();
     let mut uf = UnionFind::new(n);
     for &(_, a, b) in &abox.role_assertions {
         uf.union(a, b);
@@ -1021,7 +1023,7 @@ fn canonicalize_components(abox: &mut Abox) {
         }
     };
 
-    let mut seen_forms: HashSet<Vec<FormItem>> = HashSet::new();
+    let mut seen_forms: HashMap<Vec<FormItem>, Vec<u32>> = HashMap::new();
     let mut keep = vec![true; n];
     let mut renamed: HashMap<(u32, u32, Value), Value> = HashMap::new();
     let mut roots: Vec<u32> = members.keys().copied().collect();
@@ -1104,12 +1106,15 @@ fn canonicalize_components(abox: &mut Abox) {
         }
         form.sort_unstable();
         form.dedup();
-        if seen_forms.contains(&form) {
-            for &x in comp {
+        if let Some(first_order) = seen_forms.get(&form) {
+            for (idx, &x) in order.iter().enumerate() {
                 keep[x as usize] = false;
+                if let Some(&target) = first_order.get(idx) {
+                    iso_target[x as usize] = target;
+                }
             }
         } else {
-            seen_forms.insert(form);
+            seen_forms.insert(form, order);
             renamed.extend(renames);
         }
     }
@@ -1123,6 +1128,7 @@ fn canonicalize_components(abox: &mut Abox) {
             assertion.2 = canon;
         }
     }
+    iso_target
 }
 
 /// Whether a classification marks the full-IRI `class` unsatisfiable, in any
@@ -1613,9 +1619,10 @@ fn build_from_text(
         return { decline_trace(6); Ok(None) };
     }
     // Renamability of every ABox literal against the complete literal set.
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     let canon_clash = screen.literals.iter().any(|l| l.starts_with(CANON_PREFIX))
         || pending.iter().any(|(_, lexical)| lexical.starts_with(CANON_PREFIX));
-    let renaming = !screen.string_sensitive && !canon_clash;
+    let renaming = !export_active && !screen.string_sensitive && !canon_clash;
     for (index, (canonical, lexical)) in pending.iter().enumerate() {
         abox.renamable[index] = renaming
             && canonical.ends_with(&format!("^^{XSD_STRING}"))
@@ -1633,9 +1640,11 @@ fn build_from_text(
     let source_classes: HashSet<(u32, u32)> = abox.class_assertions.iter().copied().collect();
     let source_roles: HashSet<(u32, u32, u32)> = abox.role_assertions.iter().copied().collect();
     let source_data: HashSet<(u32, u32, Value)> = abox.data_assertions.iter().copied().collect();
-    if !sandwich {
-        canonicalize_components(&mut abox);
-    }
+    let iso_target = if !sandwich {
+        canonicalize_components(&mut abox)
+    } else {
+        (0..individuals as u32).collect()
+    };
     let mut pinned = vec![false; abox.individuals.names.len()];
     for name in &screen.nominal_individuals {
         if let Some(&id) = abox.individuals.ids.get(name) {
@@ -1661,7 +1670,11 @@ fn build_from_text(
         .filter(|(_, name)| restricted_roles_names.contains(*name))
         .map(|(i, _)| i as u32)
         .collect();
-    let abstraction = abstract_counted_values(&abox, &screen, &restricted_data);
+    let abstraction = if export_active {
+        None
+    } else {
+        abstract_counted_values(&abox, &screen, &restricted_data)
+    };
     if std::env::var_os("KM_TIMING").is_some() && abstraction.is_some() {
         eprintln!("KM_TIMING ABox quotient: count-restricted data values abstracted to their datatype class");
     }
@@ -1699,7 +1712,7 @@ fn build_from_text(
     let mut thinned: HashMap<(u32, u32), Value> = HashMap::new();
     for &(p, x, v) in &abox.data_assertions {
         let node = representative[&block[x as usize]];
-        if !restricted_data.contains(&p) && abox.is_renamable(v) {
+        if !export_active && !restricted_data.contains(&p) && abox.is_renamable(v) {
             let slot = thinned.entry((node, p)).or_insert(v);
             if v < *slot {
                 *slot = v;
@@ -1810,6 +1823,43 @@ fn build_from_text(
     }
     out.push_str(&text[document.close..]);
     tbox.push_str(&text[document.close..]);
+    if export_active {
+        let strip_angle = |s: &str| s.trim_start_matches('<').trim_end_matches('>').to_string();
+        if atomic.is_some() {
+            let mut pairs: Vec<(String, String)> = source_classes
+                .iter()
+                .map(|&(x, c)| {
+                    (
+                        strip_angle(&abox.individuals.names[x as usize]),
+                        strip_angle(&abox.classes.names[c as usize]),
+                    )
+                })
+                .collect();
+            pairs.sort();
+            pairs.dedup();
+            super::model_export::record_abox_quotient_atomic(pairs);
+        } else {
+            let mut by_rep: std::collections::BTreeMap<String, Vec<String>> =
+                std::collections::BTreeMap::new();
+            for x in 0..individuals {
+                let target = iso_target[x] as usize;
+                let b = block[target];
+                if b == u32::MAX {
+                    continue;
+                }
+                if let Some(&rep) = representative.get(&b) {
+                    let rep_iri = strip_angle(&abox.individuals.names[rep as usize]);
+                    let ind_iri = strip_angle(&abox.individuals.names[x]);
+                    by_rep.entry(rep_iri).or_default().push(ind_iri);
+                }
+            }
+            for members in by_rep.values_mut() {
+                members.sort();
+                members.dedup();
+            }
+            super::model_export::record_abox_quotient_blocks(by_rep.into_iter().collect());
+        }
+    }
     Ok(Some(Built {
         source: out,
         tbox: sandwich.then_some(tbox),

@@ -353,6 +353,9 @@ public class PropertiesTest {
         r.precomputeInferences(InferenceType.CLASS_HIERARCHY);
         assertEquals(0, r.propertyRunCount());
         r.precomputeInferences(InferenceType.OBJECT_PROPERTY_HIERARCHY);
+        assertTrue(r.isPrecomputed(InferenceType.OBJECT_PROPERTY_HIERARCHY));
+        assertEquals("lazy precompute defers the native run until the first property query", 0, r.propertyRunCount());
+        r.getTopObjectPropertyNode();
         assertEquals(1, r.propertyRunCount());
     }
 

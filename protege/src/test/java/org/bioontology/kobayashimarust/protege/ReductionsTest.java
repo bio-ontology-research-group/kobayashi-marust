@@ -343,18 +343,66 @@ public class ReductionsTest {
     }
 
     @Test
-    public void keysRulesAndDatatypeDefinitionsAreRefused() throws Exception {
-        OWLOntology o = load(ZOO);
+    public void keysRulesAndDatatypeDefinitionsAreCheckedByRefutation() throws Exception {
+        String src = "Prefix(:=<" + NS + ">)\nPrefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n"
+                + "Ontology(<http://example.org/red-goal5>\n"
+                + "Declaration(Class(:Person)) Declaration(Class(:Employee)) Declaration(Class(:Parent))\n"
+                + "Declaration(ObjectProperty(:hasSSN)) Declaration(ObjectProperty(:hasChild)) Declaration(ObjectProperty(:hasParent))\n"
+                + "Declaration(DataProperty(:empId)) Declaration(Datatype(:ShortCode))\n"
+                + "SubClassOf(:Employee :Person)\n"
+                + "HasKey(:Person (:hasSSN) ())\n"
+                + "DatatypeDefinition(:ShortCode xsd:integer)\n"
+                + "DLSafeRule(Body(ObjectPropertyAtom(:hasParent Variable(:x) Variable(:y))) Head(ClassAtom(:Parent Variable(:y))))\n"
+                + ")\n";
+        OWLOntology o = load(src);
+        OWLReasoner h = hermit(o);
         KMReasoner k = km(o);
-        OWLAxiom key = df().getOWLHasKeyAxiom(c("Person"), Collections.singleton(p("spouse")));
-        assertFalse(k.isEntailmentCheckingSupported(AxiomType.HAS_KEY));
-        assertFalse(k.isEntailmentCheckingSupported(AxiomType.SWRL_RULE));
-        assertFalse(k.isEntailmentCheckingSupported(AxiomType.DATATYPE_DEFINITION));
+        OWLDataFactory f = df();
+
+        assertTrue(k.isEntailmentCheckingSupported(AxiomType.HAS_KEY));
+        assertTrue(k.isEntailmentCheckingSupported(AxiomType.SWRL_RULE));
+        assertTrue(k.isEntailmentCheckingSupported(AxiomType.DATATYPE_DEFINITION));
+
+        OWLAxiom entailedKey = f.getOWLHasKeyAxiom(c("Employee"), Collections.singleton(p("hasSSN")));
+        OWLAxiom nonEntailedKey = f.getOWLHasKeyAxiom(c("Person"), Collections.singleton(p("hasChild")));
+        OWLAxiom nonEntailedDataKey = f.getOWLHasKeyAxiom(c("Employee"), Collections.singleton(d("empId")));
+        assertEquals(h.isEntailed(entailedKey), k.isEntailed(entailedKey));
+        assertTrue(k.isEntailed(entailedKey));
+        assertEquals(h.isEntailed(nonEntailedKey), k.isEntailed(nonEntailedKey));
+        assertFalse(k.isEntailed(nonEntailedKey));
+        assertEquals(h.isEntailed(nonEntailedDataKey), k.isEntailed(nonEntailedDataKey));
+        assertFalse(k.isEntailed(nonEntailedDataKey));
+
+        OWLDatatype shortCode = f.getOWLDatatype(IRI.create(NS + "ShortCode"));
+        OWLAxiom entailedDt = f.getOWLDatatypeDefinitionAxiom(shortCode, f.getIntegerOWLDatatype());
+        OWLAxiom nonEntailedDt = f.getOWLDatatypeDefinitionAxiom(shortCode,
+                f.getOWLDatatype(org.semanticweb.owlapi.vocab.OWL2Datatype.XSD_STRING.getIRI()));
+        assertEquals(h.isEntailed(entailedDt), k.isEntailed(entailedDt));
+        assertTrue(k.isEntailed(entailedDt));
+        assertEquals(h.isEntailed(nonEntailedDt), k.isEntailed(nonEntailedDt));
+        assertFalse(k.isEntailed(nonEntailedDt));
+
+        SWRLVariable vx = f.getSWRLVariable(IRI.create(NS + "x"));
+        SWRLVariable vy = f.getSWRLVariable(IRI.create(NS + "y"));
+        SWRLRule entailedRule = f.getSWRLRule(
+                new HashSet<>(Arrays.asList(
+                        f.getSWRLClassAtom(c("Employee"), vx),
+                        f.getSWRLObjectPropertyAtom(p("hasParent"), vx, vy))),
+                Collections.singleton(f.getSWRLClassAtom(c("Parent"), vy)));
+        SWRLRule nonEntailedRule = f.getSWRLRule(
+                Collections.singleton(f.getSWRLClassAtom(c("Employee"), vx)),
+                Collections.singleton(f.getSWRLClassAtom(c("Parent"), vx)));
+        assertTrue(k.isEntailed(entailedRule));
+        assertFalse(k.isEntailed(nonEntailedRule));
+
+        SWRLRule builtInRule = f.getSWRLRule(
+                Collections.singleton(f.getSWRLBuiltInAtom(IRI.create(NS + "customBuiltin"), Collections.singletonList(vx))),
+                Collections.singleton(f.getSWRLClassAtom(c("Person"), vx)));
         try {
-            k.isEntailed(key);
-            fail("a key is not answered");
+            k.isEntailed(builtInRule);
+            fail("SWRL built-in atoms must throw UnsupportedEntailmentTypeException");
         } catch (UnsupportedEntailmentTypeException expected) {
-            // refused, as isEntailmentCheckingSupported says
+            // expected when a rule uses SWRLBuiltInAtom
         }
     }
 
