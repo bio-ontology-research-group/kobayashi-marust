@@ -26,6 +26,7 @@ mod pass_cache;
 pub(crate) use pass_cache::with_scope as with_pass_cache;
 mod isolated_rules;
 pub mod iri;
+pub mod lenient;
 pub mod literal_profiles;
 pub mod value_projection;
 pub mod normalise;
@@ -2220,7 +2221,9 @@ fn ofn_to_clauses_representation(
     let drop_blank = std::env::var_os("KM_KEEP_BLANK_NAMES").is_none();
     let mut iri_entries: Vec<(String, String)> = reg
         .owned_entries()
-        .filter(|(_, iri)| !drop_blank || !iri.starts_with("_:"))
+        .filter(|(_, iri)| {
+            (!drop_blank || !iri.starts_with("_:")) && !lenient::is_skolem_anon_iri(iri)
+        })
         .map(|(internal, iri)| (internal.to_string(), iri.to_string()))
         .collect();
     iri_entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));

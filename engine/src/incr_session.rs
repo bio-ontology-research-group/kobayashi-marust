@@ -292,6 +292,7 @@ fn inconsistency_witness_with(text: &str, scanned: &Scan, budget_seconds: f64,
 struct Taxonomy {
     consistent: bool,
     dropped: usize,
+    lenient: Arc<[String]>,
     iris: Vec<Arc<str>>,
     /// JSON string encoding of each IRI.
     escaped: Vec<Arc<str>>,
@@ -311,6 +312,7 @@ impl Taxonomy {
         Taxonomy {
             consistent: true,
             dropped: 0,
+            lenient: Arc::from([]),
             iris: Vec::new(),
             escaped: Vec::new(),
             ids: FxHashMap::default(),
@@ -429,7 +431,12 @@ impl Taxonomy {
             if k > 0 { w.write_all(b",")?; }
             w.write_all(self.escaped[*u as usize].as_bytes())?;
         }
-        w.write_all(b"]}")
+        w.write_all(b"]")?;
+        if !self.lenient.is_empty() {
+            w.write_all(b",\"lenient\":")?;
+            serde_json::to_writer(&mut *w, &*self.lenient).map_err(std::io::Error::other)?;
+        }
+        w.write_all(b"}")
     }
 
     fn write_json<W: Write>(&self, w: &mut W) -> std::io::Result<()> {
@@ -491,7 +498,12 @@ impl Taxonomy {
             }
             w.write_all(escaped[*u as usize].as_bytes())?;
         }
-        write!(w, "],\"dropped\":{}}}", self.dropped)
+        write!(w, "],\"dropped\":{}", self.dropped)?;
+        if !self.lenient.is_empty() {
+            w.write_all(b",\"lenient\":")?;
+            serde_json::to_writer(&mut *w, &*self.lenient).map_err(std::io::Error::other)?;
+        }
+        w.write_all(b"}")
     }
 }
 
@@ -1389,6 +1401,30 @@ impl Session {
 
     /// Classify one complete revision (init or replace).
     fn update(&mut self, text: String) -> Result<(Arc<Taxonomy>, Receipt), String> {
+        let (text, lenient_notes) = if crate::frontend::lenient::enabled() {
+            let (rewritten, notes) = crate::frontend::lenient::rewrite_source(&text)?;
+            (rewritten.into_owned(), notes)
+        } else {
+            (text, Vec::new())
+        };
+        let (mut tax, receipt) = if crate::frontend::lenient::has_escaped_iri(&text) {
+            self.full_without_reuse(Arc::new(text), Instant::now(), "lenient IRI escape")?
+        } else {
+            self.update_inner(text)?
+        };
+        if !lenient_notes.is_empty() && tax.lenient.is_empty() {
+            let mut copy = (*tax).clone();
+            copy.lenient = lenient_notes.into();
+            copy.rendered = std::sync::OnceLock::new();
+            tax = Arc::new(copy);
+            if let Some(cur) = self.current {
+                self.memo[cur].taxonomy = tax.clone();
+            }
+        }
+        Ok((tax, receipt))
+    }
+
+    fn update_inner(&mut self, text: String) -> Result<(Arc<Taxonomy>, Receipt), String> {
         let started = Instant::now();
         self.validated_new = false;
         let mut preparation = PreparationWork::default();
@@ -2747,6 +2783,8 @@ enum Command {
         functional_syntax: String,
         #[serde(default)]
         unknown_datatypes: Option<String>,
+        #[serde(default)]
+        lenient: Option<bool>,
     },
     /// `base_revision`: the revision whose answer the client already holds. When it
     /// equals the last published revision the answer is sent as a row delta.
@@ -2756,6 +2794,8 @@ enum Command {
         base_revision: Option<u64>,
         #[serde(default)]
         unknown_datatypes: Option<String>,
+        #[serde(default)]
+        lenient: Option<bool>,
     },
     Classify,
     Stats,
@@ -2778,17 +2818,24 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
         let request_started = Instant::now();
         match serde_json::from_str::<Command>(&line) {
             Ok(command @ (Command::Init { .. } | Command::Replace { .. })) => {
-                let (functional_syntax, base_revision, unknown_datatypes) = match command {
-                    Command::Init { functional_syntax, unknown_datatypes } => {
-                        (functional_syntax, None, unknown_datatypes)
+                let (functional_syntax, base_revision, unknown_datatypes, lenient) = match command {
+                    Command::Init { functional_syntax, unknown_datatypes, lenient } => {
+                        (functional_syntax, None, unknown_datatypes, lenient)
                     }
-                    Command::Replace { functional_syntax, base_revision, unknown_datatypes } => {
-                        (functional_syntax, base_revision, unknown_datatypes)
+                    Command::Replace { functional_syntax, base_revision, unknown_datatypes, lenient } => {
+                        (functional_syntax, base_revision, unknown_datatypes, lenient)
                     }
                     _ => unreachable!(),
                 };
                 drop(line);
                 let op = if session.current.is_none() { "init" } else { "replace" };
+                if let Some(flag) = lenient {
+                    if flag {
+                        std::env::set_var("KM_LENIENT", "1");
+                    } else {
+                        std::env::remove_var("KM_LENIENT");
+                    }
+                }
                 if let Some(mode) = unknown_datatypes.as_deref() {
                     match mode {
                         "strict" => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
@@ -4241,6 +4288,7 @@ mod tests {
         session_delta_mismatch_failure_and_recovery_equal_full_answers();
         session_delta_after_refused_update_uses_last_published_revision();
         session_unknown_datatypes_free_admits_opaque_rdfs_literal();
+        session_lenient_mode_admits_hermit_inputs();
     }
 
     fn session_delta_mismatch_failure_and_recovery_equal_full_answers() {
@@ -4328,5 +4376,36 @@ mod tests {
         assert_eq!(free_lines[0]["status"], "ok");
         assert_eq!(free_lines[0]["result"]["consistent"], false);
         assert_eq!(free_lines[0]["result"]["dropped"], 0);
+    }
+
+    fn session_lenient_mode_admits_hermit_inputs() {
+        use serde_json::json;
+        let src = "Prefix(:=<http://example.org/t#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(Class(:B))\n\
+              Declaration(ObjectProperty(:r))\n\
+              Declaration(NamedIndividual(:x))\n\
+              InverseFunctionalObjectProperty(:r)\n\
+              SubClassOf(:A ObjectHasValue(:r _:b1))\n\
+              ClassAssertion(ObjectHasValue(:r _:b1) :x)\n\
+              ClassAssertion(:B :x)\n\
+            )\n";
+        let strict_lines = session_lines(&[json!({"op":"init","functional_syntax":src,"lenient":false})]);
+        assert_eq!(strict_lines[0]["status"], "error");
+        assert!(strict_lines[0]["error"].as_str().unwrap().contains("ObjectHasValue"));
+
+        let lenient_lines = session_lines(&[json!({
+            "op":"init",
+            "functional_syntax":src,
+            "lenient":true
+        })]);
+        std::env::remove_var("KM_LENIENT");
+        assert_eq!(lenient_lines[0]["status"], "ok");
+        assert_eq!(lenient_lines[0]["result"]["consistent"], true);
+        assert_eq!(lenient_lines[0]["result"]["dropped"], 0);
+        assert!(lenient_lines[0]["result"]["lenient"].is_array());
+        let subs = lenient_lines[0]["result"]["subsumptions"].as_array().unwrap();
+        assert!(subs.contains(&json!(["http://example.org/t#A", "http://example.org/t#B"])));
     }
 }

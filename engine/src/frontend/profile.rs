@@ -1061,7 +1061,7 @@ impl<'a> SourceProfileBuilder<'a> {
     pub(super) fn rule_individual_names(&self) -> Vec<&'a str> {
         if self.stats.rule_axioms == 0 { return Vec::new(); }
         let mut names: Vec<_> = self.individuals.iter().copied()
-            .filter(|name| !name.starts_with("_:"))
+            .filter(|name| !name.starts_with("_:") && !super::lenient::is_skolem_anon_iri(name))
             .collect();
         names.sort_unstable();
         names

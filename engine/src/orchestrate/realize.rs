@@ -97,7 +97,10 @@ pub fn source_individuals(text: &str) -> Result<Vec<String>, OrchestrateError> {
 
 fn push_individual<'a>(node: Option<&&Node<'a>>, out: &mut Vec<&'a str>) {
     if let Some(Node::Atom(token)) = node.copied() {
-        if !token.starts_with('"') && !token.starts_with("_:") {
+        if !token.starts_with('"')
+            && !token.starts_with("_:")
+            && !crate::frontend::lenient::is_skolem_anon_iri(token)
+        {
             out.push(token);
         }
     }
@@ -235,11 +238,11 @@ pub(super) fn check_one_spelling(canonical: &str, tokens: &[String], what: &str)
 /// The public name of a source token, as the classification output spells
 /// class names: the IRI without its angle brackets, otherwise the token.
 pub(super) fn public_name(token: &str) -> String {
-    token
+    let raw = token
         .strip_prefix('<')
         .and_then(|inner| inner.strip_suffix('>'))
-        .unwrap_or(token)
-        .to_string()
+        .unwrap_or(token);
+    crate::frontend::lenient::unescape_iri(raw).into_owned()
 }
 
 /// Byte offset of the `)` that closes the document's `Ontology(` node.
@@ -495,6 +498,14 @@ pub fn classify_extended(
     super::validate_user_input(ont)?;
     let prepared = super::input::prepare(ont)?;
     let text = std::fs::read_to_string(prepared.path())?;
+    let text = if crate::frontend::lenient::enabled() {
+        let (rewritten, notes) = crate::frontend::lenient::rewrite_source(&text)
+            .map_err(OrchestrateError::from_conformance)?;
+        crate::frontend::lenient::record_published_notes(notes);
+        rewritten.into_owned()
+    } else {
+        text
+    };
     let (text, individuals) = if mode.is_some() || values || different {
         canonical_individuals(&text)?
     } else {
@@ -751,15 +762,19 @@ impl Realization {
             dropped: usize,
             #[serde(skip_serializing_if = "Option::is_none")]
             approximate: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            lenient: Option<&'a [String]>,
             types: &'a [[String; 2]],
             same: &'a [[String; 2]],
         }
+        let notes = crate::frontend::lenient::published_notes();
         let encoded = Encoded {
             consistent: self.classification.consistent,
             subsumptions: &self.classification.subsumptions,
             unsatisfiable: &self.classification.unsatisfiable,
             dropped: self.classification.dropped,
             approximate: self.classification.approximate.as_deref(),
+            lenient: (!notes.is_empty()).then_some(notes.as_slice()),
             types: &self.types,
             same: &self.same,
         };

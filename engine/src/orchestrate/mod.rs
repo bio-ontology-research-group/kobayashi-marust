@@ -1576,7 +1576,10 @@ impl serde::Serialize for JsonClassificationEncoding<'_> {
             }
         }
 
-        let extra = usize::from(self.graph_edges) + usize::from(self.result.classification.approximate.is_some());
+        let notes = crate::frontend::lenient::published_notes();
+        let extra = usize::from(self.graph_edges)
+            + usize::from(self.result.classification.approximate.is_some())
+            + usize::from(!notes.is_empty());
         let mut state = serializer.serialize_struct("Classification", 4 + extra)?;
         state.serialize_field("consistent", &self.result.classification.consistent)?;
         if let Some(grouped) = &self.result.grouped_subsumptions {
@@ -1588,6 +1591,9 @@ impl serde::Serialize for JsonClassificationEncoding<'_> {
         state.serialize_field("dropped", &self.result.classification.dropped)?;
         if let Some(reason) = &self.result.classification.approximate {
             state.serialize_field("approximate", reason)?;
+        }
+        if !notes.is_empty() {
+            state.serialize_field("lenient", &notes)?;
         }
         if self.graph_edges {
             state.serialize_field("subsumptions_are_graph_edges", &true)?;
@@ -1684,6 +1690,15 @@ fn timing_mark(label: &str) {
 fn validate_user_input(ont: &Path) -> Result<(), OrchestrateError> {
     let prepared = input::prepare(ont)?;
     let source = std::fs::read_to_string(prepared.path())?;
+    let source = if crate::frontend::lenient::enabled() {
+        let (rewritten, notes) = crate::frontend::lenient::rewrite_source(&source)
+            .map_err(OrchestrateError::from_conformance)?;
+        crate::frontend::lenient::set_published_notes(notes);
+        rewritten
+    } else {
+        crate::frontend::lenient::clear_published_notes();
+        std::borrow::Cow::Borrowed(source.as_str())
+    };
     // has_imports, check_source, check_iri_prefixes, check_declarations: same
     // order and messages, one shared parse (see check_user_source).
     match crate::frontend::conformance::check_user_source(&source) {
@@ -1981,8 +1996,64 @@ fn classify_with_evidence_mode(
                 evidence.classification.approximate = Some(reason);
             }
         }
+        if !crate::frontend::lenient::enabled() {
+            crate::frontend::lenient::clear_published_notes();
+        } else if let Ok(evidence) = &mut result {
+            unescape_classification_evidence(evidence);
+        }
     }
     result
+}
+
+fn unescape_classification_evidence(evidence: &mut ClassificationEvidence) {
+    use crate::frontend::lenient::{has_escaped_iri, unescape_iri};
+    let has_escaped = evidence
+        .classification
+        .unsatisfiable
+        .iter()
+        .any(|u| has_escaped_iri(u))
+        || evidence
+            .classification
+            .subsumptions
+            .iter()
+            .any(|[a, b]| has_escaped_iri(a) || has_escaped_iri(b))
+        || evidence
+            .grouped_subsumptions
+            .as_ref()
+            .is_some_and(|g| g.iris.iter().any(|i| has_escaped_iri(i)));
+    if !has_escaped {
+        return;
+    }
+    if let Some(grouped) = evidence.grouped_subsumptions.take() {
+        let mut pairs = Vec::new();
+        let _ = grouped.try_for_each_pair(false, |s, o| {
+            let us = unescape_iri(s).into_owned();
+            let uo = unescape_iri(o).into_owned();
+            if us != uo {
+                pairs.push([us, uo]);
+            }
+            Ok::<(), std::convert::Infallible>(())
+        });
+        evidence.classification.subsumptions = pairs;
+    } else {
+        for [a, b] in &mut evidence.classification.subsumptions {
+            if has_escaped_iri(a) {
+                *a = unescape_iri(a).into_owned();
+            }
+            if has_escaped_iri(b) {
+                *b = unescape_iri(b).into_owned();
+            }
+        }
+    }
+    evidence.classification.subsumptions.sort_unstable();
+    evidence.classification.subsumptions.dedup();
+    for u in &mut evidence.classification.unsatisfiable {
+        if has_escaped_iri(u) {
+            *u = unescape_iri(u).into_owned();
+        }
+    }
+    evidence.classification.unsatisfiable.sort_unstable();
+    evidence.classification.unsatisfiable.dedup();
 }
 
 fn classify_with_evidence_inner(
@@ -2002,6 +2073,31 @@ fn classify_with_evidence_inner(
     {
         let prepared_input = input::prepare_for_reasoning(ont)?;
         let source = std::fs::read_to_string(prepared_input.path())?;
+        if !is_trusted_rewrite(ont) && crate::frontend::lenient::enabled() {
+            let (rewritten_text, notes) = crate::frontend::lenient::rewrite_source(&source)
+                .map_err(OrchestrateError::from_conformance)?;
+            crate::frontend::lenient::record_published_notes(notes);
+            if let std::borrow::Cow::Owned(rewritten_text) = rewritten_text {
+                if crate::frontend::conformance::has_imports(&rewritten_text)
+                    .map_err(OrchestrateError::from_conformance)?
+                {
+                    return Err(OrchestrateError::OutOfFragment(
+                        "cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into(),
+                    ));
+                }
+                crate::frontend::conformance::check_source(&rewritten_text)
+                    .map_err(OrchestrateError::from_conformance)?;
+                let rewritten = tmpfile::TempPath::new("-lenient.ofn");
+                std::fs::write(rewritten.path(), rewritten_text)?;
+                let _trusted = TrustedRewrite::register(rewritten.path());
+                timing_mark("lenient source rewritten");
+                return classify_with_evidence_mode(
+                    initial_cfg,
+                    rewritten.path(),
+                    retain_grouped_output,
+                );
+            }
+        }
         if is_trusted_rewrite(ont) {
             timing_mark("trusted rewrite: source re-validation skipped");
         } else {
@@ -5414,7 +5510,32 @@ impl Classification {
     /// allocation-returning API and delegates here to pin byte identity.
     pub fn write_json<W: Write>(&self, writer: W) -> serde_json::Result<()> {
         let mut ser = serde_json::Serializer::with_formatter(writer, PyFmt);
-        serde::Serialize::serialize(self, &mut ser)
+        let notes = crate::frontend::lenient::published_notes();
+        if notes.is_empty() {
+            serde::Serialize::serialize(self, &mut ser)
+        } else {
+            #[derive(serde::Serialize)]
+            struct WithLenient<'a> {
+                consistent: bool,
+                subsumptions: &'a [[String; 2]],
+                unsatisfiable: &'a [String],
+                dropped: usize,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                approximate: Option<&'a str>,
+                lenient: &'a [String],
+            }
+            serde::Serialize::serialize(
+                &WithLenient {
+                    consistent: self.consistent,
+                    subsumptions: &self.subsumptions,
+                    unsatisfiable: &self.unsatisfiable,
+                    dropped: self.dropped,
+                    approximate: self.approximate.as_deref(),
+                    lenient: &notes,
+                },
+                &mut ser,
+            )
+        }
     }
 
     /// `json.dumps(res)`-compatible bytes.
@@ -5457,6 +5578,9 @@ impl Classification {
         ];
         if let Some(reason) = &self.approximate {
             out.push(format!("APPROXIMATE\t{}", reason.replace(['\t', '\n'], " ")));
+        }
+        for note in crate::frontend::lenient::published_notes() {
+            out.push(format!("LENIENT\t{}", note.replace(['\t', '\n'], " ")));
         }
         for p in &self.subsumptions {
             out.push(format!("SUB\t{}\t{}", p[0], p[1]));
