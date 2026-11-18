@@ -1581,6 +1581,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                         ForestABoxRollup.tryBuildPositiveRBoxProperties(snapshot, unsatisfiable.isEmpty());
                 if (fastRows != null) {
                     built = new ObjectPropertyModel(df, signature, fastRows, hasInverses);
+                } else if (!snapshot.getAxioms(AxiomType.SWRL_RULE).isEmpty()
+                        && hasObjectOneOf(snapshot)
+                        && snapshot.getAxioms(AxiomType.REFLEXIVE_OBJECT_PROPERTY).isEmpty()) {
+                    built = propertiesByExistentialProbes(snapshot, signature, hasInverses);
                 } else {
                     propertyRuns++;
                     try {
