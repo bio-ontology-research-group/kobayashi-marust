@@ -3336,7 +3336,15 @@ pub fn run_ht_bridge_in_process(
             "native HT bridge received rules".into(),
         ));
     }
-    let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, !nominal_abox.same.is_empty(), false);
+    let view = native_nominal_bridge_clauses(
+        &clauses,
+        &nominal_abox,
+        &definers,
+        (std::env::var_os("KM_NOMINALS").is_some()
+            && std::env::var_os("KM_TRIGGER_ABSORB").is_some())
+            || !nominal_abox.same.is_empty(),
+        false,
+    );
     let mut tin = cb_to_ht::convert(
         &view,
         Some(rbox.as_slice()),
@@ -3344,7 +3352,7 @@ pub fn run_ht_bridge_in_process(
         &cardinalities,
         &definers,
         &source_axioms,
-        false,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
     );

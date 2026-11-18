@@ -2150,6 +2150,53 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         counts
     }
 
+    fn adjust_singleton_label_ref_counts(
+        ctx: &super::super::process::context::ProcessContext,
+        label: super::super::process::LabelSetId,
+        counts: &mut Vec<u32>,
+        increment: bool,
+    ) {
+        use super::super::process::satellites::{AdditionalDesDepMapRef, AdditionalMapSlot};
+        if label.is_none() {
+            return;
+        }
+        if increment && label.index() >= counts.len() {
+            counts.resize(label.index() + 1, 0);
+        }
+        if let Some(slot) = counts.get_mut(label.index()) {
+            *slot = if increment {
+                slot.saturating_add(1)
+            } else {
+                slot.saturating_sub(1)
+            };
+        }
+        let mut next = match &ctx.label_set(label).additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Shared(alias) => Some(*alias),
+            _ => None,
+        };
+        while let Some(alias) = next {
+            if increment && alias.label_set.index() >= counts.len() {
+                counts.resize(alias.label_set.index() + 1, 0);
+            }
+            if let Some(slot) = counts.get_mut(alias.label_set.index()) {
+                *slot = if increment {
+                    slot.saturating_add(1)
+                } else {
+                    slot.saturating_sub(1)
+                };
+            }
+            next = match alias.which {
+                AdditionalMapSlot::Main => None,
+                AdditionalMapSlot::Additional => {
+                    match &ctx.label_set(alias.label_set).additional_concept_des_dep_map {
+                        AdditionalDesDepMapRef::Shared(alias) => Some(*alias),
+                        _ => None,
+                    }
+                }
+            };
+        }
+    }
+
     fn singleton_carriers_with_limit(
         &self,
         calc_alg_context: &CalculationAlgorithmContextBase,
@@ -2641,6 +2688,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .process_context()
                     .node(into)
                     .reapply_con_label_set;
+                let from_label_before = calc_alg_context
+                    .process_context()
+                    .node(from)
+                    .reapply_con_label_set;
                 self.merge_individual_node_into(
                     into,
                     from,
@@ -2660,25 +2711,35 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .process_context_mut()
                             .singleton_cache_has_semantic_descriptor_changes();
                         let ctx = calc_alg_context.process_context();
+                        Self::adjust_singleton_label_ref_counts(
+                            ctx,
+                            from_label_before,
+                            &mut label_ref_counts,
+                            false,
+                        );
                         let into_node = ctx.node(into);
                         let into_label = into_node.reapply_con_label_set;
+                        if into_label != into_label_before {
+                            Self::adjust_singleton_label_ref_counts(
+                                ctx,
+                                into_label_before,
+                                &mut label_ref_counts,
+                                false,
+                            );
+                            Self::adjust_singleton_label_ref_counts(
+                                ctx,
+                                into_label,
+                                &mut label_ref_counts,
+                                true,
+                            );
+                        }
                         let unique_into_label = into_label.is_some()
-                            && ((into_label == into_label_before
-                                && label_ref_counts.get(into_label.index()).copied() == Some(1))
-                                || into_label.index() >= label_ref_counts.len());
+                            && label_ref_counts.get(into_label.index()).copied() == Some(1);
                         let can_fast_update = !desc_changed
                             && !into_node.has_merged_into_individual_node_id()
                             && !into_node.has_purged_blocked_processing_restriction_flags()
-                            && unique_into_label
-                            && !matches!(
-                                ctx.label_set(into_label).additional_concept_des_dep_map,
-                                super::super::process::satellites::AdditionalDesDepMapRef::Shared(_)
-                            );
+                            && unique_into_label;
                         if can_fast_update {
-                            if into_label.index() >= label_ref_counts.len() {
-                                label_ref_counts.resize(into_label.index() + 1, 0);
-                                label_ref_counts[into_label.index()] = 1;
-                            }
                             let index = indexed.as_mut().unwrap();
                             ctx.label_set_visit_stored_descriptors(
                                 into_label,
@@ -2697,8 +2758,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                             return;
                                         }
                                     }
-                                    if descriptor.is_none() || ctx.con_desc(descriptor).is_negated()
-                                    {
+                                    if descriptor.is_none() {
+                                        return;
+                                    }
+                                    if ctx.con_desc(descriptor).is_negated() {
+                                        if !additional {
+                                            if let Some(pair) = index.get_mut(&tag) {
+                                                if let Ok(pos) =
+                                                    pair.binary_search_by_key(&into.raw, |&(n, _)| n.raw)
+                                                {
+                                                    pair.remove(pos);
+                                                }
+                                            }
+                                        }
                                         return;
                                     }
                                     if additional

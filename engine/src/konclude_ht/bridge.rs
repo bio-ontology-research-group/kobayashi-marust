@@ -877,6 +877,8 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
                 }
             }
             ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: range, t: ht }])
+                if t == ht && aux(*helper) && name(*range) == crate::frontend::sorts::DATA_SORT => {}
+            ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: range, t: ht }])
                 if t == ht && aux(*helper) && dt::value_aux_digit(name(*helper)).is_none()
                     && !aux(*range) && dt::bridge_tbox_atomic_name(name(*range)) =>
                 profile_includes.push((*helper, *range)),
@@ -2996,23 +2998,47 @@ fn tbox_extension_evidence_exact(
     }
     let included = |left: usize, right: usize| relations.includes(left, right);
     let separated = |left: usize, right: usize| relations.separated(left, right);
+    let parsed: HashMap<usize, dt::ParsedBridgeAtomic> = datatype_ids
+        .iter()
+        .filter_map(|&concept| dt::ParsedBridgeAtomic::of(&tin.concepts[concept]).map(|p| (concept, p)))
+        .collect();
+    let keyed_values: HashSet<usize> = datatype_ids
+        .iter()
+        .copied()
+        .filter(|&concept| {
+            tin.concepts[concept].starts_with("__dt__val__")
+                && dt::bridge_value_identity_key(&tin.concepts[concept]).is_some()
+        })
+        .collect();
     for &member in datatype_ids.iter().filter(|&&concept| is_extension(concept) && !literal(concept)) {
+        let Some(left_p) = parsed.get(&member) else {
+            defer!("an extension datatype pair has no exact decided relation");
+        };
+        let member_is_keyed_val = keyed_values.contains(&member);
         for &other in datatype_ids.iter().filter(|&&other| other != member && !literal(other)) {
-            let (left, right) = (&tin.concepts[member], &tin.concepts[other]);
+            if is_extension(other) && other < member {
+                continue;
+            }
+            if member_is_keyed_val && keyed_values.contains(&other) {
+                continue;
+            }
+            let Some(right_p) = parsed.get(&other) else {
+                defer!("an extension datatype pair has no exact decided relation");
+            };
             let mut decided = false;
-            if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
+            if left_p.subsumed(right_p) == Some(true) {
                 decided = true;
                 if !included(member, other) {
                     defer!("an extension datatype pair lacks its inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_subsumed(right, left) == Some(true) {
+            if right_p.subsumed(left_p) == Some(true) {
                 decided = true;
                 if !included(other, member) {
                     defer!("an extension datatype pair lacks its reverse inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_disjoint(left, right) == Some(true) {
+            if left_p.disjoint(right_p) == Some(true) {
                 decided = true;
                 if !separated(member, other) {
                     defer!("an extension datatype pair lacks its disjointness clause");
@@ -3020,23 +3046,22 @@ fn tbox_extension_evidence_exact(
             }
             // Overlapping intervals of one numeric family are decided by the
             // IEEE/decimal cell certificates, against the present clauses.
-            let overlapping_intervals = ((dt::bridge_ieee_range(left) && dt::bridge_ieee_range(right))
-                || (dt::bridge_decimal_range(left) && dt::bridge_decimal_range(right)))
-                && dt::bridge_tbox_atomic_family(left) == dt::bridge_tbox_atomic_family(right);
+            let overlapping_intervals = ((left_p.is_ieee_range && right_p.is_ieee_range)
+                || (left_p.is_decimal_range && right_p.is_decimal_range))
+                && left_p.family == right_p.family;
             // A complement `¬A` overlaps another range `B` partially. The
             // label `{¬A, B}` is decided by `B`'s own exact cover when `B` is
             // finite or a union, by the cell certificate of `A`'s family when
             // `B` is in that family (`A` is body-sensitive there), and by a
             // fresh IRI when `B` is another complement.
-            let complement_overlap = |complement: &str, other: &str| {
-                let Some(operand) = dt::bridge_exact_complement_operand(complement) else { return false };
-                let family = dt::bridge_tbox_atomic_family(other);
-                matches!(family, Some("finite" | "union" | "complement"))
-                    || (family == dt::bridge_tbox_atomic_family(&operand)
-                        && matches!(family, Some("decimal" | "float" | "double")))
+            let complement_overlap = |comp: &dt::ParsedBridgeAtomic, oth: &dt::ParsedBridgeAtomic| {
+                let Some(op_fam) = comp.complement_operand_family else { return false };
+                matches!(oth.family, "finite" | "union" | "complement")
+                    || (oth.family == op_fam
+                        && matches!(oth.family, "decimal" | "float" | "double"))
             };
             if !decided && !overlapping_intervals
-                && !complement_overlap(left, right) && !complement_overlap(right, left) {
+                && !complement_overlap(left_p, right_p) && !complement_overlap(right_p, left_p) {
                 defer!("an extension datatype pair has no exact decided relation");
             }
         }
@@ -15955,6 +15980,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // name heuristic only to non-query helper concepts.
     let declared_queries: crate::fxhash::FxHashSet<usize> =
         tin.queries.iter().map(|&query| query as usize).collect();
+    let filter_ground_assertions = std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE").is_some();
     let universe: crate::fxhash::FxHashSet<usize> = tin
         .concepts
         .iter()
@@ -15962,6 +15988,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         .filter(|(index, n)| {
             (declared_queries.contains(index) || !crate::orchestrate::cb_to_ht::is_internal(n))
                 && !crate::orchestrate::cb_to_ht::is_bottom(n)
+                && !(filter_ground_assertions && n.contains("__ground_assertion_"))
         })
         .map(|(i, _)| i)
         .collect();

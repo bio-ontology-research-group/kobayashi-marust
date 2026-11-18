@@ -88,6 +88,12 @@ fn ht_typed_handoff_candidate(route: Option<crate::routing::Route>, source_bytes
         Some(crate::routing::Route::HtGeneral | crate::routing::Route::HtBridge) => {
             source_bytes < IN_PROCESS_GENERAL_HT_MAX
         }
+        Some(crate::routing::Route::Manual)
+            if std::env::var("KM_MECHANISM").as_deref() == Ok("ht")
+                && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge") =>
+        {
+            source_bytes <= 8 * 1024 * 1024
+        }
         _ => false,
     }
 }

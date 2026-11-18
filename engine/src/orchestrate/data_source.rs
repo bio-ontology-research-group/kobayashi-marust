@@ -1,14 +1,47 @@
 //! Schedule exact source reductions before the nominal CB fallback.
-use std::path::Path;
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use super::OrchestrateError;
+use crate::frontend::ground_rule_source::GroundedRuleSource;
+
+thread_local! {
+    static CACHED_GROUNDED: RefCell<Option<(PathBuf, bool, GroundedRuleSource)>> =
+        const { RefCell::new(None) };
+}
+
+pub(super) fn take_cached_grounded(path: &Path, project_data_abox: bool) -> Option<GroundedRuleSource> {
+    CACHED_GROUNDED.with(|slot| {
+        let mut guard = slot.borrow_mut();
+        if guard.as_ref().is_some_and(|(cached_path, cached_project, _)| {
+            cached_path == path && *cached_project == project_data_abox
+        }) {
+            guard.take().map(|(_, _, grounded)| grounded)
+        } else {
+            None
+        }
+    })
+}
+
+fn cache_grounded(path: Option<&Path>, project_data_abox: bool, grounded: GroundedRuleSource) {
+    if let Some(path) = path {
+        CACHED_GROUNDED.with(|slot| {
+            *slot.borrow_mut() = Some((path.to_path_buf(), project_data_abox, grounded));
+        });
+    }
+}
 
 pub(super) fn automatic_candidate(path: &Path) -> Result<Option<&'static str>, OrchestrateError> {
     if std::fs::metadata(path)?.len() > 4 * 1024 * 1024 { return Ok(None); }
     let text = std::fs::read_to_string(path)?;
-    Ok(plan(&text))
+    Ok(plan_with_path(Some(path), &text))
 }
 
+#[cfg(test)]
 fn plan(text: &str) -> Option<&'static str> {
+    plan_with_path(None, text)
+}
+
+fn plan_with_path(path: Option<&Path>, text: &str) -> Option<&'static str> {
     // This is a cost bound, not semantic admission. The reducers below and
     // native bridge independently check complete source coverage.
     // User-input validation already profiled exactly this text in its shared
@@ -48,11 +81,15 @@ fn plan(text: &str) -> Option<&'static str> {
         // Raw profile support is conservative (for example, an empty-head
         // constraint). The compiler's source/parsed coverage check is the
         // authoritative admission test for this reduction.
-        return (source.imports == 0
-            && count("DataPropertyAssertion") <= 4_096
-            && crate::frontend::ground_rule_source::compile(text, 100_000)
-                .is_ok_and(|grounded| grounded.text.len() <= 8 * 1024 * 1024))
-            .then_some("KM_GROUND_RULE_SOURCE");
+        if source.imports == 0 && count("DataPropertyAssertion") <= 4_096 {
+            if let Ok(grounded) = crate::frontend::ground_rule_source::compile(text, 100_000) {
+                if grounded.text.len() <= 8 * 1024 * 1024 {
+                    cache_grounded(path, false, grounded);
+                    return Some("KM_GROUND_RULE_SOURCE");
+                }
+            }
+        }
+        return None;
     }
     // Functional numeric profiles need the exact source path even without
     // inverse-functional object roles. A successful bounded compiler is only
@@ -60,8 +97,11 @@ fn plan(text: &str) -> Option<&'static str> {
     if bounded && (count("DataPropertyAssertion") > 0
         || count("NegativeDataPropertyAssertion") > 0)
         && crate::frontend::numeric_source::normalize(text, 256).ok().flatten().is_some()
-        && crate::frontend::ground_rule_source::compile(text, 100_000).is_ok() {
-        return Some("KM_GROUND_RULE_SOURCE");
+    {
+        if let Ok(grounded) = crate::frontend::ground_rule_source::compile(text, 100_000) {
+            cache_grounded(path, false, grounded);
+            return Some("KM_GROUND_RULE_SOURCE");
+        }
     }
     // Give ground-source compilation a separate class-count cost bound;
     // keep the existing native/numeric scheduling bounds above unchanged.
@@ -91,10 +131,23 @@ fn plan(text: &str) -> Option<&'static str> {
     // assertions. Requiring an inverse-functional object role here stranded
     // accepted string-valued ABoxes on the nominal CB fallback. Keep bounded
     // scheduling and independently checked compiler/bridge admission.
-    if count("FunctionalDataProperty") > 0 && source.inverse_functional_role_axioms > 0
-        && crate::frontend::data_abox_projection::project(text).is_ok() {
-        Some("KM_DATA_ABOX_PROJECT")
-    } else if crate::frontend::ground_rule_source::compile(text, 100_000).is_ok() {
+    if count("FunctionalDataProperty") > 0 && source.inverse_functional_role_axioms > 0 {
+        if let Ok(projected) = crate::frontend::data_abox_projection::project(text) {
+            cache_grounded(
+                path,
+                true,
+                GroundedRuleSource {
+                    text: projected,
+                    source_rules: 0,
+                    instances: 0,
+                    private_classes: Default::default(),
+                },
+            );
+            return Some("KM_DATA_ABOX_PROJECT");
+        }
+    }
+    if let Ok(grounded) = crate::frontend::ground_rule_source::compile(text, 100_000) {
+        cache_grounded(path, false, grounded);
         Some("KM_GROUND_RULE_SOURCE")
     } else { None }
 }

@@ -3329,6 +3329,45 @@ pub(crate) fn bridge_ieee_cells_by_atoms(
     Some(true)
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct ParsedBridgeAtomic {
+    pub family: &'static str,
+    range: Option<DRange>,
+    pub is_ieee_range: bool,
+    pub is_decimal_range: bool,
+    pub complement_operand_family: Option<&'static str>,
+}
+
+impl ParsedBridgeAtomic {
+    pub(crate) fn of(name: &str) -> Option<Self> {
+        let family = bridge_tbox_atomic_family(name)?;
+        let range = bridge_exact_atomic_range(name);
+        let is_ieee_range = !name.starts_with("__dt__val__")
+            && matches!(family, "float" | "double")
+            && bridge_ieee_interval(name).is_some();
+        let is_decimal_range = !name.starts_with("__dt__val__")
+            && family == "decimal"
+            && DecimalInterval::of(name).is_some();
+        let complement_operand_family = bridge_exact_complement_operand(name)
+            .and_then(|operand| bridge_tbox_atomic_family(&operand));
+        Some(Self {
+            family,
+            range,
+            is_ieee_range,
+            is_decimal_range,
+            complement_operand_family,
+        })
+    }
+
+    pub(crate) fn subsumed(&self, sup: &Self) -> Option<bool> {
+        range_subsumed(self.range.as_ref()?, sup.range.as_ref()?)
+    }
+
+    pub(crate) fn disjoint(&self, right: &Self) -> Option<bool> {
+        range_disjoint(self.range.as_ref()?, right.range.as_ref()?)
+    }
+}
+
 fn bridge_exact_atomic_range(name: &str) -> Option<DRange> {
     match classify_name(name)? {
         DtEntry::Range(_, range) => Some(range),
@@ -3862,7 +3901,7 @@ fn integral_difference(
 /// forms have the same models over the source vocabulary (docs/DATATYPES.md,
 /// "Exact data values without a literal cap"), so the limit is a performance
 /// knob only; at or below it the output is the pairwise form unchanged.
-const PAIRWISE_VALUE_LIMIT: usize = 512;
+const PAIRWISE_VALUE_LIMIT: usize = 128;
 
 /// The finite cover of a range, as glued literals: the members of a
 /// `DataOneOf`, or an enumerated finite range of at most `cap` values.

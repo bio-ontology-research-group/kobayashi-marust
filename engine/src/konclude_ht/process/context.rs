@@ -1998,12 +1998,25 @@ impl ProcessContext {
         // Record the first semantic state before an old descriptor is
         // borrowed. Intrusive `next` edits do not change label membership;
         // recycling, polarity changes and dependency changes still invalidate.
+        // Descriptors on the free list have `concept == NONE` and are not
+        // referenced by any label set until initialized.
         if self.singleton_descriptor_limit.is_some_and(|limit| id.index() < limit) {
             let d = self.con_descs.get(id);
-            self.singleton_descriptor_changes.entry(id.index()).or_insert((
-                d.get_concept(), d.is_negated(), d.get_dependency_track_point()));
+            if d.get_concept().is_some() {
+                self.singleton_descriptor_changes.entry(id.index()).or_insert((
+                    d.get_concept(), d.is_negated(), d.get_dependency_track_point()));
+            }
         }
         self.con_descs.get_mut_journaled(id)
+    }
+    #[inline]
+    pub fn release_con_desc_to_pool(&mut self, id: ConDescId) {
+        self.singleton_descriptor_changes.remove(&id.index());
+        let d = self.con_descs.get_mut_journaled(id);
+        d.concept = ConceptId::NONE;
+        d.negated = false;
+        d.next = ConDescId::NONE;
+        d.dep_track_point = TrackPointId::NONE;
     }
     #[inline]
     pub fn alloc_con_desc(&mut self, value: ConceptDescriptor) -> ConDescId { self.con_descs.push(value) }

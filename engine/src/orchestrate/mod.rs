@@ -1034,12 +1034,15 @@ fn run_atomic_mechanism(
             run_budgeted_bridge_attempt(cfg, clauses_path, named, cached_input)
         }
         Mechanism::Ht => {
-            if matches!(
+            let is_manual_bridge = selected_route == crate::routing::Route::Manual
+                && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge");
+            if (matches!(
                 selected_route,
                 crate::routing::Route::HtShoq
                     | crate::routing::Route::HtGeneral
                     | crate::routing::Route::HtBridge
-            ) && std::env::var_os("KM_NO_INPROC_HT").is_none()
+            ) || is_manual_bridge)
+                && std::env::var_os("KM_NO_INPROC_HT").is_none()
                 && cached_input.is_some()
             {
                 let input = cached_input
@@ -1051,7 +1054,7 @@ fn run_atomic_mechanism(
                     })?;
                 if selected_route == crate::routing::Route::HtShoq {
                     race::run_ht_shoq_in_process(cfg, input, named).map(Some)
-                } else if selected_route == crate::routing::Route::HtBridge {
+                } else if selected_route == crate::routing::Route::HtBridge || is_manual_bridge {
                     race::run_ht_bridge_in_process(input, named).map(Some)
                 } else {
                     race::run_ht_general_in_process(input, named).map(Some)
@@ -2164,17 +2167,21 @@ fn classify_with_evidence_inner(
             return Err(OrchestrateError::OutOfFragment(
                 "ground-rule source cannot bypass requested runtime certification".into()));
         }
-        let source = std::fs::read_to_string(ont)?;
-        let grounded = if project_data_abox {
-            crate::frontend::data_abox_projection::project(&source)
-                .map(|text| crate::frontend::ground_rule_source::GroundedRuleSource {
-                    text,
-                    source_rules: 0, instances: 0, private_classes: Default::default(),
-                })
-                .map_err(OrchestrateError::OutOfFragment)?
+        let grounded = if let Some(cached) = data_source::take_cached_grounded(ont, project_data_abox) {
+            cached
         } else {
-            crate::frontend::ground_rule_source::compile(&source, 100_000)
-                .map_err(OrchestrateError::OutOfFragment)?
+            let source = std::fs::read_to_string(ont)?;
+            if project_data_abox {
+                crate::frontend::data_abox_projection::project(&source)
+                    .map(|text| crate::frontend::ground_rule_source::GroundedRuleSource {
+                        text,
+                        source_rules: 0, instances: 0, private_classes: Default::default(),
+                    })
+                    .map_err(OrchestrateError::OutOfFragment)?
+            } else {
+                crate::frontend::ground_rule_source::compile(&source, 100_000)
+                    .map_err(OrchestrateError::OutOfFragment)?
+            }
         };
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!("KM_TIMING ground-rule source: rules={} instances={}",
@@ -3296,12 +3303,14 @@ fn classify_with_evidence_inner(
                 cfg.elc && meta.el_rbox_safe && elc_source_publication_safe(&meta.profile)
             }
             Mechanism::Ht => {
-                matches!(
+                (matches!(
                     selected_route,
                     crate::routing::Route::HtShoq
                         | crate::routing::Route::HtGeneral
                         | crate::routing::Route::HtBridge
-                ) && std::env::var_os("KM_NO_INPROC_HT").is_none()
+                ) || (selected_route == crate::routing::Route::Manual
+                    && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge")))
+                    && std::env::var_os("KM_NO_INPROC_HT").is_none()
             }
             Mechanism::Cb | Mechanism::Tableau | Mechanism::Unknown(_) => false,
         };
