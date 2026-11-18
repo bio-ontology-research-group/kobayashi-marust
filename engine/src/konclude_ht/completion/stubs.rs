@@ -7099,17 +7099,24 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         ontology: &OntologyArenas,
         node: NodeId,
     ) -> Option<ClassificationAnalyserOtherNodeSnapshot> {
-        let single_dependency_label_index = self
-            .single_ancestor_dependency_label_index_from_process_node(
+        let mut snapshot =
+            self.extract_other_node_snapshot_from_process_node(process_context, node, None)?;
+        if let Some((descriptor, _)) = self
+            .single_ancestor_dependency_descriptor_and_index_from_process_node(
                 process_context,
                 ontology,
                 node,
-            );
-        self.extract_other_node_snapshot_from_process_node(
-            process_context,
-            node,
-            single_dependency_label_index,
-        )
+            )
+        {
+            let descriptor_ref = process_context.con_desc(descriptor);
+            let target_concept = descriptor_ref.get_concept();
+            let target_negated = descriptor_ref.is_negated();
+            snapshot.single_dependency_label_index = snapshot
+                .labels
+                .iter()
+                .position(|label| label.concept == target_concept && label.negated == target_negated);
+        }
+        Some(snapshot)
     }
 
     /// Port of

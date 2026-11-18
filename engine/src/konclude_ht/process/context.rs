@@ -351,6 +351,7 @@ struct EpochReleaseFrame {
 pub struct ProcessContext {
     singleton_descriptor_limit: Option<usize>,
     singleton_descriptor_epoch: u64,
+    next_label_singleton_stamp: u64,
     singleton_changed_descriptors: Vec<usize>,
     singleton_descriptor_changes: HashMap<usize, (ConceptId, bool, TrackPointId)>,
     /// Open branch-epoch count (in-process COW; see `push_branch_epoch`).
@@ -756,6 +757,7 @@ impl ProcessContext {
         ProcessContext {
             singleton_descriptor_limit: None,
             singleton_descriptor_epoch: 0,
+            next_label_singleton_stamp: 1,
             singleton_changed_descriptors: Vec::new(),
             singleton_descriptor_changes: HashMap::default(),            branch_epoch_depth: 0,
             branch_epoch_release_frames: Vec::new(),
@@ -1986,6 +1988,17 @@ impl ProcessContext {
     pub(crate) fn take_singleton_changed_descriptors(&mut self) -> Vec<usize> {
         std::mem::take(&mut self.singleton_changed_descriptors)
     }
+    pub(crate) fn singleton_cache_has_semantic_descriptor_changes(&mut self) -> bool {
+        let any_changed = self.singleton_descriptor_changes.iter().any(|(&index, &previous)| {
+            let d = self.con_descs.get(Id::new(index as Cint64));
+            previous != (d.get_concept(), d.is_negated(), d.get_dependency_track_point())
+        });
+        if !any_changed {
+            self.singleton_descriptor_changes.clear();
+            self.singleton_descriptor_limit = Some(self.con_descs.len());
+        }
+        any_changed
+    }
     pub(crate) fn end_singleton_cache_scope(&mut self) {
         self.singleton_descriptor_limit = None;
         self.singleton_descriptor_changes.clear();
@@ -1995,24 +2008,26 @@ impl ProcessContext {
     /// Retain every COW label object that owns a map visible through this label.
     /// Shared aliases are resolved afresh, including aliases of additional maps.
     /// Whether `snapshot` equals `singleton_label_snapshot(id)` (pointer
-    /// identity of every label object in the alias chain), without building
-    /// the vector or touching reference counts.
+    /// identity and mutation stamp of every label object in the alias chain),
+    /// without building the vector or touching reference counts.
     pub(crate) fn singleton_label_snapshot_matches(
         &self,
         id: LabelSetId,
-        snapshot: &[std::sync::Arc<ReapplyConceptLabelSet>],
+        snapshot: &[(*const ReapplyConceptLabelSet, u64)],
     ) -> bool {
         let mut parts = snapshot.iter();
-        let Some(first) = parts.next() else { return false };
-        if !std::sync::Arc::ptr_eq(first, self.label_sets.get(Id::new(id.raw))) {
+        let Some(&(first_ptr, first_stamp)) = parts.next() else { return false };
+        let first_arc = self.label_sets.get(Id::new(id.raw));
+        if std::sync::Arc::as_ptr(first_arc) != first_ptr || first_arc.singleton_stamp != first_stamp {
             return false;
         }
         let mut next = match &self.label_set(id).additional_concept_des_dep_map {
             AdditionalDesDepMapRef::Shared(alias) => Some(*alias), _ => None,
         };
         while let Some(alias) = next {
-            let Some(part) = parts.next() else { return false };
-            if !std::sync::Arc::ptr_eq(part, self.label_sets.get(Id::new(alias.label_set.raw))) {
+            let Some(&(part_ptr, part_stamp)) = parts.next() else { return false };
+            let part_arc = self.label_sets.get(Id::new(alias.label_set.raw));
+            if std::sync::Arc::as_ptr(part_arc) != part_ptr || part_arc.singleton_stamp != part_stamp {
                 return false;
             }
             next = match alias.which {
@@ -2026,13 +2041,15 @@ impl ProcessContext {
     }
 
     pub(crate) fn singleton_label_snapshot(&self, id: LabelSetId)
-        -> Vec<std::sync::Arc<ReapplyConceptLabelSet>> {
-        let mut result = vec![self.label_sets.get(Id::new(id.raw)).clone()];
+        -> Vec<(*const ReapplyConceptLabelSet, u64)> {
+        let first_arc = self.label_sets.get(Id::new(id.raw));
+        let mut result = vec![(std::sync::Arc::as_ptr(first_arc), first_arc.singleton_stamp)];
         let mut next = match &self.label_set(id).additional_concept_des_dep_map {
             AdditionalDesDepMapRef::Shared(alias) => Some(*alias), _ => None,
         };
         while let Some(alias) = next {
-            result.push(self.label_sets.get(Id::new(alias.label_set.raw)).clone());
+            let part_arc = self.label_sets.get(Id::new(alias.label_set.raw));
+            result.push((std::sync::Arc::as_ptr(part_arc), part_arc.singleton_stamp));
             next = match alias.which {
                 AdditionalMapSlot::Main => None,
                 AdditionalMapSlot::Additional => match &self.label_set(alias.label_set).additional_concept_des_dep_map {
@@ -2362,11 +2379,17 @@ impl ProcessContext {
     /// Resolve an id to a mutable borrow — copy-on-write when shared.
     #[inline]
     pub fn label_set_mut(&mut self, id: LabelSetId) -> &mut ReapplyConceptLabelSet {
-        std::sync::Arc::make_mut(self.label_sets.get_mut_journaled(Id::new(id.raw)))
+        let stamp = self.next_label_singleton_stamp;
+        self.next_label_singleton_stamp += 1;
+        let ls = std::sync::Arc::make_mut(self.label_sets.get_mut_journaled(Id::new(id.raw)));
+        ls.singleton_stamp = stamp;
+        ls
     }
     /// Pool-allocate a new label set, returning its stable id.
     #[inline]
-    pub fn alloc_label_set(&mut self, v: ReapplyConceptLabelSet) -> LabelSetId {
+    pub fn alloc_label_set(&mut self, mut v: ReapplyConceptLabelSet) -> LabelSetId {
+        v.singleton_stamp = self.next_label_singleton_stamp;
+        self.next_label_singleton_stamp += 1;
         Id::new(self.label_sets.push(std::sync::Arc::new(v)).raw)
     }
     arena_accessors!(

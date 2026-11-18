@@ -49,7 +49,9 @@ fn plan(text: &str) -> Option<&'static str> {
         // constraint). The compiler's source/parsed coverage check is the
         // authoritative admission test for this reduction.
         return (source.imports == 0
-            && crate::frontend::ground_rule_source::compile(text, 100_000).is_ok())
+            && count("DataPropertyAssertion") <= 4_096
+            && crate::frontend::ground_rule_source::compile(text, 100_000)
+                .is_ok_and(|grounded| grounded.text.len() <= 8 * 1024 * 1024))
             .then_some("KM_GROUND_RULE_SOURCE");
     }
     // Functional numeric profiles need the exact source path even without

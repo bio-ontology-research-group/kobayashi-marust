@@ -2190,6 +2190,7 @@ fn classify_with_evidence_inner(
         // under the ordinary ABox coverage checks. No original counts are forged.
         let input = tmpfile::TempPath::new("-ground-rules.ofn");
         std::fs::write(input.path(), grounded.text)?;
+        let _trusted = TrustedRewrite::register(input.path());
         std::env::remove_var("KM_GROUND_RULE_SOURCE");
         std::env::remove_var("KM_DATA_ABOX_PROJECT");
         crate::routing::Route::HtBridge.apply_environment();
@@ -3768,6 +3769,7 @@ fn classify_with_evidence_inner(
                     );
                 }
             }
+            drop(cached_input.take());
 
             if cfg.elc
                 && out.is_none()
