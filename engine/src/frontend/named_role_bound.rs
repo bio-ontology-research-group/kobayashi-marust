@@ -686,6 +686,35 @@ impl NamedRoleBound {
             }
         }
 
+        fn concept_mentions_class(c: &Concept, target: &str) -> bool {
+            match c {
+                Concept::Name(n) => n == target,
+                Concept::Not(inner)
+                | Concept::Exists(_, inner)
+                | Concept::Forall(_, inner)
+                | Concept::AtLeast(_, _, inner)
+                | Concept::AtMost(_, _, inner) => concept_mentions_class(inner, target),
+                Concept::And(cs) | Concept::Or(cs) => cs.iter().any(|d| concept_mentions_class(d, target)),
+                _ => false,
+            }
+        }
+
+        let mut equiv_def_count: BTreeMap<String, usize> = BTreeMap::new();
+        for (idx, ax) in all_axioms.iter().enumerate() {
+            if skip_axiom[idx] {
+                continue;
+            }
+            if let Axiom::EquivalentClasses(a, b) = ax {
+                if let Concept::Name(c) = a {
+                    *equiv_def_count.entry(c.clone()).or_default() += 1;
+                }
+                if let Concept::Name(c) = b {
+                    *equiv_def_count.entry(c.clone()).or_default() += 1;
+                }
+            }
+        }
+
+        let mut deferred_equiv_defs: Vec<(String, &Concept)> = Vec::new();
         for (idx, ax) in all_axioms.iter().enumerate() {
             if skip_axiom[idx] {
                 continue;
@@ -696,8 +725,24 @@ impl NamedRoleBound {
                     walk_concept(b, true, false, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
                 }
                 Axiom::EquivalentClasses(a, b) => {
-                    walk_concept(a, true, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
-                    walk_concept(b, true, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                    let candidate = match (a, b) {
+                        (Concept::Name(c), rhs) if !matches!(rhs, Concept::Name(_)) => Some((c, rhs)),
+                        (rhs, Concept::Name(c)) if !matches!(rhs, Concept::Name(_)) => Some((c, rhs)),
+                        _ => None,
+                    };
+                    if let Some((c, rhs)) = candidate.filter(|(c, rhs)| {
+                        !is_probe_class(c)
+                            && !vp_classes.contains_key(*c)
+                            && full_iris.get(*c).map(String::as_str) != Some("http://www.w3.org/2002/07/owl#Thing")
+                            && equiv_def_count.get(*c).copied() == Some(1)
+                            && !concept_mentions_class(rhs, c)
+                    }) {
+                        walk_concept(rhs, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                        deferred_equiv_defs.push((c.clone(), rhs));
+                    } else {
+                        walk_concept(a, true, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                        walk_concept(b, true, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                    }
                 }
                 Axiom::DisjointClasses(a, b) => {
                     walk_concept(a, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
@@ -754,6 +799,22 @@ impl NamedRoleBound {
                     pos_classes.insert(c.clone());
                 }
                 _ => {}
+            }
+        }
+        if !deferred_equiv_defs.is_empty() {
+            let mut activated = vec![false; deferred_equiv_defs.len()];
+            loop {
+                let mut progress = false;
+                for (i, (c, rhs)) in deferred_equiv_defs.iter().enumerate() {
+                    if !activated[i] && pos_classes.contains(c) {
+                        activated[i] = true;
+                        progress = true;
+                        walk_concept(rhs, true, false, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                    }
+                }
+                if !progress {
+                    break;
+                }
             }
         }
         if !forest_exact_for_rules && !vp_classes.is_empty() {
