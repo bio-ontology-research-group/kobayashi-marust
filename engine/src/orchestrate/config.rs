@@ -157,17 +157,21 @@ fn env_f64(key: &str, default: f64) -> f64 {
 
 impl Config {
     pub fn from_env() -> Config {
-        let mut self_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("km"));
-        if self_exe.file_name().and_then(|s| s.to_str()) != Some("km") {
-            if let Some(candidate) = self_exe
-                .parent()
-                .and_then(|p| p.parent())
-                .map(|p| p.join("km"))
-                .filter(|p| p.is_file())
-            {
-                self_exe = candidate;
-            }
-        }
+        let self_exe = std::env::current_exe()
+            .ok()
+            .and_then(|exe| {
+                if exe.parent().and_then(|p| p.file_name()) == Some(std::ffi::OsStr::new("deps")) {
+                    let candidate = exe
+                        .parent()?
+                        .parent()?
+                        .join(if cfg!(windows) { "km.exe" } else { "km" });
+                    if candidate.is_file() {
+                        return Some(candidate);
+                    }
+                }
+                Some(exe)
+            })
+            .unwrap_or_else(|| PathBuf::from("km"));
         Config {
             self_exe,
             ofn_bin_override: std::env::var_os("KM_OFN_BIN").map(PathBuf::from),

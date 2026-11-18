@@ -140,7 +140,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let linked_succ_hash = calc_alg_context
             .process_context_mut()
             .sat_node_ext_linked_role_successor_hash(*indi_proc_sat_node, false);
-        if linked_succ_hash.is_some() {
+        let backward_prop_hash = calc_alg_context
+            .process_context_mut()
+            .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, false);
+        if linked_succ_hash.is_some() && backward_prop_hash.is_some() {
             let mut role_succ_pairs: Vec<_> = calc_alg_context
                 .process_context()
                 .linked_role_sat_succ_hash(linked_succ_hash)
@@ -153,35 +156,30 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     super::algorithm::successor_iteration_key(0x0601, role.index() as u64)
                 });
             }
-            let backward_prop_hash = calc_alg_context
-                .process_context_mut()
-                .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, false);
-            if backward_prop_hash.is_some() {
-                for (role, succ_data) in role_succ_pairs {
-                    let back_prop_data = calc_alg_context
-                        .process_context()
-                        .role_backward_sat_prop_hash(backward_prop_hash)
-                        .get_role_backward_propagation_data_hash()
-                        .get(&role)
-                        .cloned();
-                    if let Some(back_prop_data) = back_prop_data {
-                        if back_prop_data.reapply_linker.is_some() {
-                            if let Some(data) = calc_alg_context
-                                .process_context_mut()
-                                .role_backward_sat_prop_hash_mut(backward_prop_hash)
-                                .get_role_backward_propagation_data_hash_mut()
-                                .get_mut(&role)
-                            {
-                                data.role_all_concepts_processing_queued = false;
-                            }
-                            self.update_successor_role_all_concepts_extensions_for_succ_data(
-                                indi_proc_sat_node,
-                                role,
-                                succ_data,
-                                back_prop_data,
-                                calc_alg_context,
-                            );
+            for (role, succ_data) in role_succ_pairs {
+                let back_prop_data = calc_alg_context
+                    .process_context()
+                    .role_backward_sat_prop_hash(backward_prop_hash)
+                    .get_role_backward_propagation_data_hash()
+                    .get(&role)
+                    .cloned();
+                if let Some(back_prop_data) = back_prop_data {
+                    if back_prop_data.reapply_linker.is_some() {
+                        if let Some(data) = calc_alg_context
+                            .process_context_mut()
+                            .role_backward_sat_prop_hash_mut(backward_prop_hash)
+                            .get_role_backward_propagation_data_hash_mut()
+                            .get_mut(&role)
+                        {
+                            data.role_all_concepts_processing_queued = false;
                         }
+                        self.update_successor_role_all_concepts_extensions_for_succ_data(
+                            indi_proc_sat_node,
+                            role,
+                            succ_data,
+                            back_prop_data,
+                            calc_alg_context,
+                        );
                     }
                 }
             }
@@ -701,27 +699,49 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .process_context()
                 .linked_role_sat_succ_hash(linked_succ_hash)
                 .get_linked_role_successor_data(role);
-            if succ_data.is_some()
-                && calc_alg_context
+            if succ_data.is_some() {
+                let mut queuing_required = calc_alg_context
                     .process_context()
                     .linked_role_sat_succ_data(succ_data)
-                    .role_functional_concepts_queuing_required
-            {
-                let succ_count = {
-                    let succ_data_ref = calc_alg_context
+                    .role_functional_concepts_queuing_required;
+                if !queuing_required {
+                    let functional_ext = calc_alg_context
                         .process_context_mut()
-                        .linked_role_sat_succ_data_mut(succ_data);
-                    succ_data_ref.role_functional_concepts_processing_queued = false;
-                    succ_data_ref.get_successor_count()
-                };
-                if succ_count > 1 {
-                    updated |= self
-                        .update_successor_role_functional_concepts_extensions_for_succ_data(
-                            indi_proc_sat_node,
-                            role,
-                            succ_data,
-                            calc_alg_context,
-                        );
+                        .sat_node_functional_concepts_extension_data(*indi_proc_sat_node, false);
+                    if functional_ext.is_some() {
+                        let func_linker = calc_alg_context
+                            .process_context()
+                            .sat_indi_node_functional_concept_ext_data(functional_ext)
+                            .functional_succ_queuing_role_process_linker;
+                        if calc_alg_context
+                            .process_context_mut()
+                            .copying_initializing_role_linker_contains(func_linker, role)
+                        {
+                            queuing_required = true;
+                            calc_alg_context
+                                .process_context_mut()
+                                .linked_role_sat_succ_data_mut(succ_data)
+                                .role_functional_concepts_queuing_required = true;
+                        }
+                    }
+                }
+                if queuing_required {
+                    let succ_count = {
+                        let succ_data_ref = calc_alg_context
+                            .process_context_mut()
+                            .linked_role_sat_succ_data_mut(succ_data);
+                        succ_data_ref.role_functional_concepts_processing_queued = false;
+                        succ_data_ref.get_successor_count()
+                    };
+                    if succ_count > 1 {
+                        updated |= self
+                            .update_successor_role_functional_concepts_extensions_for_succ_data(
+                                indi_proc_sat_node,
+                                role,
+                                succ_data,
+                                calc_alg_context,
+                            );
+                    }
                 }
             }
         }
@@ -1194,21 +1214,50 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let mut updated = false;
         let backward_prop_hash = calc_alg_context
             .process_context_mut()
-            .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, true);
+            .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, false);
         if backward_prop_hash.is_some() {
-            let (queuing_required, back_prop_link_linker) = {
-                let back_prop_data = calc_alg_context
+            let (mut queuing_required, back_prop_link_linker) = {
+                if let Some(back_prop_data) = calc_alg_context
                     .process_context_mut()
                     .role_backward_sat_prop_hash_mut(backward_prop_hash)
                     .get_role_backward_propagation_data_hash_mut()
-                    .entry(role)
-                    .or_default();
-                let queuing_required = back_prop_data.role_predecessor_merging_queuing_required;
-                if queuing_required {
-                    back_prop_data.role_predecessor_merging_processing_queued = false;
+                    .get_mut(&role)
+                {
+                    let queuing_required = back_prop_data.role_predecessor_merging_queuing_required;
+                    if queuing_required {
+                        back_prop_data.role_predecessor_merging_processing_queued = false;
+                    }
+                    (queuing_required, back_prop_data.link_linker)
+                } else {
+                    (false, BackwardSaturationPropagationLinkId::NONE)
                 }
-                (queuing_required, back_prop_data.link_linker)
             };
+            if !queuing_required && back_prop_link_linker.is_some() {
+                let functional_ext = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_functional_concepts_extension_data(*indi_proc_sat_node, false);
+                if functional_ext.is_some() {
+                    let copy_init_linker = calc_alg_context
+                        .process_context()
+                        .sat_indi_node_functional_concept_ext_data(functional_ext)
+                        .copying_initializing_role_process_linker;
+                    if calc_alg_context
+                        .process_context_mut()
+                        .copying_initializing_role_linker_contains(copy_init_linker, role)
+                    {
+                        queuing_required = true;
+                        if let Some(back_prop_data) = calc_alg_context
+                            .process_context_mut()
+                            .role_backward_sat_prop_hash_mut(backward_prop_hash)
+                            .get_role_backward_propagation_data_hash_mut()
+                            .get_mut(&role)
+                        {
+                            back_prop_data.role_predecessor_merging_queuing_required = true;
+                            back_prop_data.role_predecessor_merging_processing_queued = false;
+                        }
+                    }
+                }
+            }
             if queuing_required && back_prop_link_linker.is_some() {
                 let linked_succ_hash = calc_alg_context
                     .process_context_mut()
@@ -1428,6 +1477,45 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             }
         }
 
+        if !calc_alg_context
+            .process_context()
+            .role_backward_sat_prop_hash(resolved_indi_back_prop_hash)
+            .role_back_prop_data_hash
+            .get(&role)
+            .is_some_and(|d| d.role_predecessor_merging_queuing_required)
+        {
+            let succ_ext_data = calc_alg_context
+                .process_context_mut()
+                .sat_node_ext_successor_extension_data(dest_indi_proc_sat_node, false);
+            if succ_ext_data.is_some() {
+                let functional_ext = calc_alg_context
+                    .process_context_mut()
+                    .sat_successor_extension_functional_concepts_extension_data(
+                        succ_ext_data,
+                        false,
+                    );
+                if functional_ext.is_some() {
+                    let copy_init_linker = calc_alg_context
+                        .process_context()
+                        .sat_indi_node_functional_concept_ext_data(functional_ext)
+                        .copying_initializing_role_process_linker;
+                    if calc_alg_context
+                        .process_context_mut()
+                        .copying_initializing_role_linker_contains(copy_init_linker, role)
+                    {
+                        if let Some(data) = calc_alg_context
+                            .process_context_mut()
+                            .role_backward_sat_prop_hash_mut(resolved_indi_back_prop_hash)
+                            .role_back_prop_data_hash
+                            .get_mut(&role)
+                        {
+                            data.role_predecessor_merging_queuing_required = true;
+                        }
+                    }
+                }
+            }
+        }
+
         let queue_predecessor_merging = calc_alg_context
             .process_context_mut()
             .role_backward_saturation_propagation_hash_queue_predecessor_merging(
@@ -1466,13 +1554,28 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         calc_alg_context,
                     ) {
                         let old_head = predecessor_role_linker;
-                        let mut role_process_linker = RoleSaturationProcessLinker::new();
-                        role_process_linker
-                            .init_role_process_linker(role)
-                            .set_next(old_head);
-                        let role_process_linker = calc_alg_context
-                            .process_context_mut()
-                            .alloc_role_sat_proc_linker(role_process_linker);
+                        let reused = calc_alg_context
+                            .processing_data_box_mut()
+                            .take_remaining_role_saturation_process_linker();
+                        let role_process_linker = if reused.is_some() {
+                            let linker = super::satellites::RoleSaturationProcessLinkerId::new(
+                                reused.raw,
+                            );
+                            calc_alg_context
+                                .process_context_mut()
+                                .role_sat_proc_linker_mut(linker)
+                                .init_role_process_linker(role)
+                                .set_next(old_head);
+                            linker
+                        } else {
+                            let mut role_process_linker = RoleSaturationProcessLinker::new();
+                            role_process_linker
+                                .init_role_process_linker(role)
+                                .set_next(old_head);
+                            calc_alg_context
+                                .process_context_mut()
+                                .alloc_role_sat_proc_linker(role_process_linker)
+                        };
                         calc_alg_context
                             .process_context_mut()
                             .sat_indi_node_functional_concept_ext_data_mut(functional_ext)

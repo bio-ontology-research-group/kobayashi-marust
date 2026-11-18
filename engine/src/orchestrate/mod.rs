@@ -1004,20 +1004,19 @@ fn run_budgeted_bridge_attempt(
     named: &HashSet<String>,
     cached_input: &mut Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
-    if let Some(input) = cached_input.take() {
-        // The typed in-process handoff skipped the clause file. Serialize the
-        // identical frontend value exactly as the uncached frontend would.
-        let mut w = std::io::BufWriter::new(File::create(clauses_path)?);
-        serde_json::to_writer(&mut w, &input)?;
-        w.flush()?;
-    }
     let deadline = bridge_attempt_deadline().unwrap_or_else(std::time::Instant::now);
     if deadline <= std::time::Instant::now() {
         return Err(OrchestrateError::OutOfFragment(
             "speculative native bridge attempt exhausted its budget".into(),
         ));
     }
-    match race::run_ht_only_until(cfg, clauses_path, named, deadline)? {
+    match race::run_ht_only_until_with_input(
+        cfg,
+        clauses_path,
+        named,
+        deadline,
+        cached_input.take(),
+    )? {
         Some(out) => Ok(Some(out)),
         None => Err(OrchestrateError::OutOfFragment(
             "speculative native bridge attempt deferred or exceeded its budget".into(),
@@ -1081,12 +1080,15 @@ fn run_atomic_mechanism(
             run_budgeted_bridge_attempt(cfg, clauses_path, named, cached_input)
         }
         Mechanism::Ht => {
-            if matches!(
+            let is_manual_bridge = selected_route == crate::routing::Route::Manual
+                && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge");
+            if (matches!(
                 selected_route,
                 crate::routing::Route::HtShoq
                     | crate::routing::Route::HtGeneral
                     | crate::routing::Route::HtBridge
-            ) && std::env::var_os("KM_NO_INPROC_HT").is_none()
+            ) || is_manual_bridge)
+                && std::env::var_os("KM_NO_INPROC_HT").is_none()
                 && cached_input.is_some()
             {
                 let input = cached_input
@@ -1098,7 +1100,7 @@ fn run_atomic_mechanism(
                     })?;
                 if selected_route == crate::routing::Route::HtShoq {
                     race::run_ht_shoq_in_process(cfg, input, named).map(Some)
-                } else if selected_route == crate::routing::Route::HtBridge {
+                } else if selected_route == crate::routing::Route::HtBridge || is_manual_bridge {
                     race::run_ht_bridge_in_process(input, named).map(Some)
                 } else {
                     race::run_ht_general_in_process(input, named).map(Some)
@@ -1257,6 +1259,7 @@ fn try_inproc_engine(
     clauses_path: &Path,
     budget: std::time::Duration,
     ht_first_probe: Option<&dyn Fn() -> Option<race::HtFirstProbe>>,
+    cb_only_ok: bool,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
     use crate::json_io::JInput;
     let buf = std::fs::read(clauses_path)?;
@@ -1367,11 +1370,17 @@ fn try_inproc_engine(
     } else {
         None
     };
-    if timing && probe.is_some() {
-        eprintln!(
-            "KM_TIMING in-process engine: HT-first probe started @ {:.2}s",
-            started.elapsed().as_secs_f64()
-        );
+    if probe.is_some() {
+        stop_inproc("yielded to HT-first probe");
+        if timing {
+            eprintln!(
+                "KM_TIMING in-process engine: HT-first probe started @ {:.2}s",
+                started.elapsed().as_secs_f64()
+            );
+        }
+    } else if !cb_only_ok {
+        stop_inproc("no HT-first probe on large/nominal route");
+        return Ok(None);
     }
     let export_ext_deadline = deadline + budget + std::time::Duration::from_secs(3);
     loop {
@@ -1394,7 +1403,12 @@ fn try_inproc_engine(
         };
         match rx.recv_timeout(wait) {
             Ok(out) => return Ok(out), // the probe (if any) is killed on drop
-            Err(RecvTimeoutError::Disconnected) => return Ok(None),
+            Err(RecvTimeoutError::Disconnected) => {
+                if probe.is_none() {
+                    return Ok(None);
+                }
+                std::thread::sleep(wait);
+            }
             Err(RecvTimeoutError::Timeout) => {}
         }
         if let Some(p) = probe.as_mut() {
@@ -2217,17 +2231,21 @@ fn classify_with_evidence_inner(
             return Err(OrchestrateError::OutOfFragment(
                 "ground-rule source cannot bypass requested runtime certification".into()));
         }
-        let source = std::fs::read_to_string(ont)?;
-        let grounded = if project_data_abox {
-            crate::frontend::data_abox_projection::project(&source)
-                .map(|text| crate::frontend::ground_rule_source::GroundedRuleSource {
-                    text,
-                    source_rules: 0, instances: 0, private_classes: Default::default(),
-                })
-                .map_err(OrchestrateError::OutOfFragment)?
+        let grounded = if let Some(cached) = data_source::take_cached_grounded(ont, project_data_abox) {
+            cached
         } else {
-            crate::frontend::ground_rule_source::compile(&source, 100_000)
-                .map_err(OrchestrateError::OutOfFragment)?
+            let source = std::fs::read_to_string(ont)?;
+            if project_data_abox {
+                crate::frontend::data_abox_projection::project(&source)
+                    .map(|text| crate::frontend::ground_rule_source::GroundedRuleSource {
+                        text,
+                        source_rules: 0, instances: 0, private_classes: Default::default(),
+                    })
+                    .map_err(OrchestrateError::OutOfFragment)?
+            } else {
+                crate::frontend::ground_rule_source::compile(&source, 100_000)
+                    .map_err(OrchestrateError::OutOfFragment)?
+            }
         };
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!("KM_TIMING ground-rule source: rules={} instances={}",
@@ -2243,6 +2261,7 @@ fn classify_with_evidence_inner(
         // under the ordinary ABox coverage checks. No original counts are forged.
         let input = tmpfile::TempPath::new("-ground-rules.ofn");
         std::fs::write(input.path(), grounded.text)?;
+        let _trusted = TrustedRewrite::register(input.path());
         std::env::remove_var("KM_GROUND_RULE_SOURCE");
         std::env::remove_var("KM_DATA_ABOX_PROJECT");
         crate::routing::Route::HtBridge.apply_environment();
@@ -2655,7 +2674,7 @@ fn classify_with_evidence_inner(
             });
         }
     }
-    let (clauses_path, meta, mut cached_input, elc_binary) =
+    let (mut clauses_path, mut meta, mut cached_input, mut elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
     // Owned here so it is released with this classification on every path.
     let mut positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
@@ -2725,11 +2744,7 @@ fn classify_with_evidence_inner(
             return checked_finite_rule_taxonomy(evidence);
         }
     }
-    let elc_input_path = elc_binary
-        .as_ref()
-        .map(|path| path.path())
-        .unwrap_or_else(|| clauses_path.path());
-    let selected_route = meta
+    let mut selected_route = meta
         .route
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
@@ -2823,7 +2838,7 @@ fn classify_with_evidence_inner(
                 let _deadline = BridgeAttemptDeadline::install(budget);
                 crate::routing::Route::HtBridge.apply_environment();
                 std::env::set_var("KM_ROUTE", crate::routing::Route::HtBridge.as_str());
-                if convert_data_assertions {
+                if convert_data_assertions || meta.uncarried_data_assertions > 0 {
                     std::env::set_var("KM_DATA_ASSERTION_AS_CLASS", "1");
                 }
                 if object_guard {
@@ -2878,7 +2893,22 @@ fn classify_with_evidence_inner(
                 }
             }
         }
+        if meta.named.is_empty() && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
+        {
+            std::env::set_var("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT", "1");
+            let full_res = frontend_run::run_ofn_split_cached(initial_cfg, ont);
+            std::env::remove_var("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT");
+            (clauses_path, meta, cached_input, elc_binary) = full_res?;
+            positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
+            selected_route = meta.route.parse::<crate::routing::Route>().map_err(|error| {
+                OrchestrateError::OutOfFragment(format!("configuration: {error}"))
+            })?;
+        }
     }
+    let elc_input_path = elc_binary
+        .as_ref()
+        .map(|path| path.path())
+        .unwrap_or_else(|| clauses_path.path());
 
     // Compact expressive object-ABoxes benefit from the exact typed bridge,
     // whose source-definition hierarchy can reuse negative witnesses across
@@ -3365,12 +3395,14 @@ fn classify_with_evidence_inner(
                 cfg.elc && meta.el_rbox_safe && elc_source_publication_safe(&meta.profile)
             }
             Mechanism::Ht => {
-                matches!(
+                (matches!(
                     selected_route,
                     crate::routing::Route::HtShoq
                         | crate::routing::Route::HtGeneral
                         | crate::routing::Route::HtBridge
-                ) && std::env::var_os("KM_NO_INPROC_HT").is_none()
+                ) || (selected_route == crate::routing::Route::Manual
+                    && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge")))
+                    && std::env::var_os("KM_NO_INPROC_HT").is_none()
             }
             Mechanism::Cb | Mechanism::Tableau | Mechanism::Unknown(_) => false,
         };
@@ -3838,6 +3870,7 @@ fn classify_with_evidence_inner(
                     );
                 }
             }
+            drop(cached_input.take());
 
             if cfg.elc
                 && out.is_none()
@@ -3936,6 +3969,11 @@ fn classify_with_evidence_inner(
                     .ok()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(4.0);
+                let cb_only_ok = meta.profile.source.logical_axioms <= 1_500
+                    && !matches!(
+                        selected_route,
+                        crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
+                    );
                 // The race below runs an HT-first phase only with cfg.ht_race.
                 let spawn_probe = || {
                     race::HtFirstProbe::spawn(cfg, clauses_path.path(), &named_set, ht_mode)
@@ -3946,6 +3984,7 @@ fn classify_with_evidence_inner(
                     std::time::Duration::from_secs_f64(budget_s),
                     cfg.ht_race
                         .then_some(&spawn_probe as &dyn Fn() -> Option<race::HtFirstProbe>),
+                    cb_only_ok,
                 )?;
                 drop(released);
                 if timing && out.is_some() {

@@ -878,6 +878,8 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
                 }
             }
             ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: range, t: ht }])
+                if t == ht && aux(*helper) && name(*range) == crate::frontend::sorts::DATA_SORT => {}
+            ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: range, t: ht }])
                 if t == ht && aux(*helper) && dt::value_aux_digit(name(*helper)).is_none()
                     && !aux(*range) && dt::bridge_tbox_atomic_name(name(*range)) =>
                 profile_includes.push((*helper, *range)),
@@ -2439,9 +2441,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 let name = tin.concepts[concept].as_str();
                 source_concept_mentions_name(&axiom.left, name) || source_concept_mentions_name(&axiom.right, name)
             });
-        let complements: Vec<(usize, usize)> = datatype_ids.iter().filter(|&&concept| mentioned(concept)).filter_map(|&concept| {
+        let complements: Vec<(usize, usize)> = datatype_ids.iter().filter_map(|&concept| {
             let operand = dt::bridge_exact_complement_operand(&tin.concepts[concept])?;
-            Some((concept, tin.concepts.iter().position(|name| *name == operand).unwrap_or(usize::MAX)))
+            mentioned(concept).then(|| {
+                (concept, tin.concepts.iter().position(|name| *name == operand).unwrap_or(usize::MAX))
+            })
         }).collect();
         if !complements.is_empty() {
             if datatype_ids.iter().any(|&concept| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("anyURI")) {
@@ -2530,7 +2534,12 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                         .is_some()
             })
     };
-    let finite_or_bool_reaches_probe = {
+    let has_data_probe = values
+        .iter()
+        .any(|&v| crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[v]));
+    let finite_or_bool_reaches_probe = if !has_data_probe {
+        false
+    } else {
         let finite_or_bool: Vec<&str> = ranges
             .get("finite")
             .into_iter()
@@ -3336,23 +3345,47 @@ fn tbox_extension_evidence_exact(
     }
     let included = |left: usize, right: usize| relations.includes(left, right);
     let separated = |left: usize, right: usize| relations.separated(left, right);
+    let parsed: HashMap<usize, dt::ParsedBridgeAtomic> = datatype_ids
+        .iter()
+        .filter_map(|&concept| dt::ParsedBridgeAtomic::of(&tin.concepts[concept]).map(|p| (concept, p)))
+        .collect();
+    let keyed_values: HashSet<usize> = datatype_ids
+        .iter()
+        .copied()
+        .filter(|&concept| {
+            tin.concepts[concept].starts_with("__dt__val__")
+                && dt::bridge_value_identity_key(&tin.concepts[concept]).is_some()
+        })
+        .collect();
     for &member in datatype_ids.iter().filter(|&&concept| is_extension(concept) && !literal(concept)) {
+        let Some(left_p) = parsed.get(&member) else {
+            defer!("an extension datatype pair has no exact decided relation");
+        };
+        let member_is_keyed_val = keyed_values.contains(&member);
         for &other in datatype_ids.iter().filter(|&&other| other != member && !literal(other) && !probe_value(other)) {
-            let (left, right) = (&tin.concepts[member], &tin.concepts[other]);
+            if is_extension(other) && other < member {
+                continue;
+            }
+            if member_is_keyed_val && keyed_values.contains(&other) {
+                continue;
+            }
+            let Some(right_p) = parsed.get(&other) else {
+                defer!("an extension datatype pair has no exact decided relation");
+            };
             let mut decided = false;
-            if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
+            if left_p.subsumed(right_p) == Some(true) {
                 decided = true;
                 if !included(member, other) {
                     defer!("an extension datatype pair lacks its inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_subsumed(right, left) == Some(true) {
+            if right_p.subsumed(left_p) == Some(true) {
                 decided = true;
                 if !included(other, member) {
                     defer!("an extension datatype pair lacks its reverse inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_disjoint(left, right) == Some(true) {
+            if left_p.disjoint(right_p) == Some(true) {
                 decided = true;
                 if !separated(member, other) {
                     defer!("an extension datatype pair lacks its disjointness clause");
@@ -3360,23 +3393,22 @@ fn tbox_extension_evidence_exact(
             }
             // Overlapping intervals of one numeric family are decided by the
             // IEEE/decimal cell certificates, against the present clauses.
-            let overlapping_intervals = ((dt::bridge_ieee_range(left) && dt::bridge_ieee_range(right))
-                || (dt::bridge_decimal_range(left) && dt::bridge_decimal_range(right)))
-                && dt::bridge_tbox_atomic_family(left) == dt::bridge_tbox_atomic_family(right);
+            let overlapping_intervals = ((left_p.is_ieee_range && right_p.is_ieee_range)
+                || (left_p.is_decimal_range && right_p.is_decimal_range))
+                && left_p.family == right_p.family;
             // A complement `¬A` overlaps another range `B` partially. The
             // label `{¬A, B}` is decided by `B`'s own exact cover when `B` is
             // finite or a union, by the cell certificate of `A`'s family when
             // `B` is in that family (`A` is body-sensitive there), and by a
             // fresh IRI when `B` is another complement.
-            let complement_overlap = |complement: &str, other: &str| {
-                let Some(operand) = dt::bridge_exact_complement_operand(complement) else { return false };
-                let family = dt::bridge_tbox_atomic_family(other);
-                matches!(family, Some("finite" | "union" | "complement"))
-                    || (family == dt::bridge_tbox_atomic_family(&operand)
-                        && matches!(family, Some("decimal" | "float" | "double")))
+            let complement_overlap = |comp: &dt::ParsedBridgeAtomic, oth: &dt::ParsedBridgeAtomic| {
+                let Some(op_fam) = comp.complement_operand_family else { return false };
+                matches!(oth.family, "finite" | "union" | "complement")
+                    || (oth.family == op_fam
+                        && matches!(oth.family, "decimal" | "float" | "double"))
             };
             if !decided && !overlapping_intervals
-                && !complement_overlap(left, right) && !complement_overlap(right, left) {
+                && !complement_overlap(left_p, right_p) && !complement_overlap(right_p, left_p) {
                 defer!("an extension datatype pair has no exact decided relation");
             }
         }
@@ -4586,15 +4618,20 @@ fn collect_full_absorption_triggers(
         )
     };
     if (!negated && matches!(op_code, op::CCAND | op::CCEQ)) || (negated && op_code == op::CCOR) {
-        return operands.into_iter().all(|operand| {
-            collect_full_absorption_triggers(
+        let saved_len = triggers.len();
+        for operand in operands {
+            if !collect_full_absorption_triggers(
                 b,
                 (operand.target, operand.negated ^ negated),
                 role_inverses,
                 caches,
                 triggers,
-            )
-        });
+            ) {
+                triggers.truncate(saved_len);
+                return false;
+            }
+        }
+        return true;
     }
     if let Some(trigger) = full_absorption_trigger(b, literal, role_inverses, caches) {
         triggers.push(trigger);
@@ -4645,7 +4682,9 @@ fn partial_absorption_trigger(
             c.get_operand_list().to_vec(),
         )
     };
-    let result = if (!negated && op_code == op::CCAND) || (negated && op_code == op::CCOR) {
+    let result = if (!negated && matches!(op_code, op::CCAND | op::CCEQ))
+        || (negated && op_code == op::CCOR)
+    {
         let triggers: Vec<_> = operands
             .into_iter()
             .filter_map(|operand| {
@@ -6893,6 +6932,22 @@ fn bridge_tinput_with_trigger_absorption(
                 }
             }
         }
+        fn collect_source_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
+            match concept {
+                SourceConcept::Name(name) => out.push(name.as_str()),
+                SourceConcept::Not(operand) => collect_source_names(operand, out),
+                SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                    for operand in operands {
+                        collect_source_names(operand, out);
+                    }
+                }
+                SourceConcept::Exists(_, filler)
+                | SourceConcept::Forall(_, filler)
+                | SourceConcept::AtLeast(_, _, filler)
+                | SourceConcept::AtMost(_, _, filler) => collect_source_names(filler, out),
+                _ => {}
+            }
+        }
         // Lazy unfolding of a CCEQ definition (`A -> D`, `not A -> not D`, no
         // reverse TOP GCI) is complete only for definitions that do not reach
         // their own name: for `A == not A` a node carrying neither A nor
@@ -6900,22 +6955,6 @@ fn bridge_tinput_with_trigger_absorption(
         // (fuzz s1798). A name whose definition reaches itself through other
         // single-equivalence definitions keeps both inclusions instead.
         {
-            fn collect_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
-                match concept {
-                    SourceConcept::Name(name) => out.push(name.as_str()),
-                    SourceConcept::Not(operand) => collect_names(operand, out),
-                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
-                        for operand in operands {
-                            collect_names(operand, out);
-                        }
-                    }
-                    SourceConcept::Exists(_, filler)
-                    | SourceConcept::Forall(_, filler)
-                    | SourceConcept::AtLeast(_, _, filler)
-                    | SourceConcept::AtMost(_, _, filler) => collect_names(filler, out),
-                    _ => {}
-                }
-            }
             // Edges only from the side the equivalence pass below would make
             // the CCEQ host (the first named side that is not forced and has
             // a single equivalence); the other names of the axiom are atoms of
@@ -6940,7 +6979,7 @@ fn bridge_tinput_with_trigger_absorption(
                         });
                     if let Some((name, definition)) = host {
                         let mut names = Vec::new();
-                        collect_names(definition, &mut names);
+                        collect_source_names(definition, &mut names);
                         definition_edges.entry(name).or_default().extend(names);
                     }
                 }
@@ -6966,89 +7005,6 @@ fn bridge_tinput_with_trigger_absorption(
                 forced_subclass_names.extend(cyclic);
             }
         }
-        // Names in a trigger position of an absorbed inclusion: positive in
-        // the left side or negative in the right side of `L ⊑ R` (through
-        // conjunctions, disjunctions and the fillers of restrictions), and
-        // every name of an equivalence or disjointness that is encoded as two
-        // inclusions. Such an inclusion fires only when the name is in a
-        // label. A CCEQ host `A ≡ D` whose definition is not fully
-        // triggerable is unfolded lazily (`A -> D`, `not A -> not D`): a node
-        // in `D` never receives `A`, so an inclusion triggered by `A` is
-        // missed (`{c} ⊑ ¬C`, `C ≡ =1 k.integer`, `k(c, 2)` came out
-        // consistent). Such a name is not made a lazy CCEQ host; its
-        // equivalence is encoded as the two inclusions instead.
-        let trigger_names: crate::fxhash::FxHashSet<&str> = {
-            fn walk<'a>(concept: &'a SourceConcept, positive: bool, out: &mut crate::fxhash::FxHashSet<&'a str>) {
-                match concept {
-                    SourceConcept::Name(name) => {
-                        if positive {
-                            out.insert(name.as_str());
-                        }
-                    }
-                    SourceConcept::Not(operand) => walk(operand, !positive, out),
-                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
-                        for operand in operands {
-                            walk(operand, positive, out);
-                        }
-                    }
-                    SourceConcept::Exists(_, filler)
-                    | SourceConcept::Forall(_, filler)
-                    | SourceConcept::AtLeast(_, _, filler) => walk(filler, positive, out),
-                    // `≤ n r.C` holds when few successors carry C: C occurs
-                    // negatively; count both polarities to stay on the safe side.
-                    SourceConcept::AtMost(_, _, filler) => {
-                        walk(filler, positive, out);
-                        walk(filler, !positive, out);
-                    }
-                    _ => {}
-                }
-            }
-            let mut out = crate::fxhash::FxHashSet::default();
-            for axiom in &tin.source_axioms {
-                match axiom.kind {
-                    crate::json_io::SourceAxiomKind::SubClass => {
-                        walk(&axiom.left, true, &mut out);
-                        walk(&axiom.right, false, &mut out);
-                    }
-                    crate::json_io::SourceAxiomKind::Disjoint => {
-                        walk(&axiom.left, true, &mut out);
-                        walk(&axiom.right, true, &mut out);
-                    }
-                    crate::json_io::SourceAxiomKind::Equivalent => {}
-                }
-            }
-            // An equivalence without a lazy host is encoded as two
-            // inclusions, so every name in it is in a trigger position. A
-            // host that is itself a trigger name may lose its definition
-            // (above), so iterate to a fixpoint.
-            loop {
-                let before = out.len();
-                for axiom in &tin.source_axioms {
-                    if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
-                        continue;
-                    }
-                    let host = [&axiom.left, &axiom.right].into_iter().find_map(|side| match side {
-                        SourceConcept::Name(name)
-                            if !forced_subclass_names.contains(name.as_str())
-                                && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
-                        {
-                            Some(name.as_str())
-                        }
-                        _ => None,
-                    });
-                    if host.is_none_or(|name| out.contains(name)) {
-                        for side in [&axiom.left, &axiom.right] {
-                            walk(side, true, &mut out);
-                            walk(side, false, &mut out);
-                        }
-                    }
-                }
-                if out.len() == before {
-                    break;
-                }
-            }
-            out
-        };
         bridge_phase!("source-prescan");
         macro_rules! encode {
             ($left:expr, $right:expr $(,)?) => {{
@@ -7085,33 +7041,175 @@ fn bridge_tinput_with_trigger_absorption(
                 }
             }};
         }
+        // Pre-install a non-triggerable CCEQ definition only when an earlier
+        // source axiom (`first_mention < axiom_index`) references its host
+        // name before its `EquivalentClasses` axiom (for example,
+        // `SubClassOf({c}, ¬C)` preceding `EquivalentClasses(C, =1 k.int)`).
+        // Checking triggerability syntactically first avoids touching `b`,
+        // `concept_cache`, or `trigger_caches` on triggerable definitions, so
+        // ConceptId allocation and trigger pairing stay identical to the
+        // single-pass source order.
+        fn syntactically_triggerable(
+            concept: &SourceConcept,
+            positive: bool,
+            non_triggerable_hosts: &crate::fxhash::FxHashSet<&str>,
+        ) -> bool {
+            match concept {
+                SourceConcept::Name(name) => {
+                    positive && !non_triggerable_hosts.contains(name.as_str())
+                }
+                SourceConcept::Top | SourceConcept::Nominal(_) => positive,
+                SourceConcept::Bottom | SourceConcept::HasSelf(_) => false,
+                SourceConcept::Not(operand) => {
+                    syntactically_triggerable(operand, !positive, non_triggerable_hosts)
+                }
+                SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                    !operands.is_empty()
+                        && operands.iter().all(|op| {
+                            syntactically_triggerable(op, positive, non_triggerable_hosts)
+                        })
+                }
+                SourceConcept::Exists(_, filler) => {
+                    positive && syntactically_triggerable(filler, true, non_triggerable_hosts)
+                }
+                SourceConcept::Forall(_, filler) => {
+                    !positive && syntactically_triggerable(filler, false, non_triggerable_hosts)
+                }
+                SourceConcept::AtLeast(n, _, filler) => {
+                    positive
+                        && *n <= 1
+                        && syntactically_triggerable(filler, true, non_triggerable_hosts)
+                }
+                SourceConcept::AtMost(n, _, filler) => {
+                    !positive
+                        && *n == 0
+                        && syntactically_triggerable(filler, false, non_triggerable_hosts)
+                }
+            }
+        }
+        let mut non_triggerable_hosts: crate::fxhash::FxHashSet<&str> = Default::default();
+        loop {
+            let before = non_triggerable_hosts.len();
+            for axiom in &tin.source_axioms {
+                if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                    continue;
+                }
+                if let Some((name, definition)) =
+                    [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                        .into_iter()
+                        .find_map(|(named_side, definition)| match named_side {
+                            SourceConcept::Name(name)
+                                if !forced_subclass_names.contains(name.as_str())
+                                    && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
+                            {
+                                Some((name.as_str(), definition))
+                            }
+                            _ => None,
+                        })
+                {
+                    if !syntactically_triggerable(definition, true, &non_triggerable_hosts) {
+                        non_triggerable_hosts.insert(name);
+                    }
+                }
+            }
+            if non_triggerable_hosts.len() == before {
+                break;
+            }
+        }
+        let mut first_mention: HashMap<&str, usize> = HashMap::default();
+        if !non_triggerable_hosts.is_empty() {
+            for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
+                let mut names = Vec::new();
+                collect_source_names(&axiom.left, &mut names);
+                collect_source_names(&axiom.right, &mut names);
+                for name in names {
+                    first_mention.entry(name).or_insert(axiom_index);
+                }
+            }
+        }
+        let mut preinstalled_cceq: HashMap<usize, (ConceptId, &SourceConcept, &str)> =
+            HashMap::default();
+        if !non_triggerable_hosts.is_empty() {
+            for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
+                if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                    continue;
+                }
+                let candidate = [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                    .into_iter()
+                    .find_map(|(named_side, definition)| {
+                        let SourceConcept::Name(name) = named_side else {
+                            return None;
+                        };
+                        if !non_triggerable_hosts.contains(name.as_str())
+                            || !first_mention
+                                .get(name.as_str())
+                                .is_some_and(|&first| first < axiom_index)
+                        {
+                            return None;
+                        }
+                        let &index = concept_index.get(name.as_str())?;
+                        (b.ctx
+                            .ontology_arenas()
+                            .concept(named[index])
+                            .get_operator_code()
+                            == op::CCATOM)
+                            .then_some((named[index], definition, name.as_str()))
+                    });
+                if let Some((host, definition, name)) = candidate {
+                    if let Some(built) = build_source_concept(
+                        &mut b,
+                        definition,
+                        &concept_index,
+                        &role_index,
+                        &named,
+                        &roles,
+                        &inv_roles,
+                        &nominal_by_name,
+                        &mut concept_cache,
+                    ) {
+                        if full_absorption_trigger(
+                            &mut b,
+                            built,
+                            &role_inverses,
+                            &mut trigger_caches,
+                        )
+                        .is_none()
+                            && b.add_equivalent_definition(host, built.0, built.1)
+                        {
+                            preinstalled_cceq.insert(axiom_index, (host, definition, name));
+                        }
+                    }
+                }
+            }
+        }
         for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
                     encode!(&axiom.left, &axiom.right);
                 }
                 crate::json_io::SourceAxiomKind::Equivalent => {
-                    // `buildPermutableConceptEquivalentClass` chooses a still
-                    // undefined named side for a direct CCEQ definition.
-                    let candidate = [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
-                        .into_iter()
-                        .find_map(|(named_side, definition)| {
-                            let SourceConcept::Name(name) = named_side else {
-                                return None;
-                            };
-                            if forced_subclass_names.contains(name.as_str())
-                                || equivalence_name_counts.get(name.as_str()) != Some(&1)
-                            {
-                                return None;
-                            }
-                            let &index = concept_index.get(name.as_str())?;
-                            (b.ctx
-                                .ontology_arenas()
-                                .concept(named[index])
-                                .get_operator_code()
-                                == op::CCATOM)
-                                .then_some((named[index], definition, name.as_str()))
-                        });
+                    let preinstalled = preinstalled_cceq.get(&axiom_index).copied();
+                    let candidate = preinstalled.or_else(|| {
+                        [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                            .into_iter()
+                            .find_map(|(named_side, definition)| {
+                                let SourceConcept::Name(name) = named_side else {
+                                    return None;
+                                };
+                                if forced_subclass_names.contains(name.as_str())
+                                    || equivalence_name_counts.get(name.as_str()) != Some(&1)
+                                {
+                                    return None;
+                                }
+                                let &index = concept_index.get(name.as_str())?;
+                                (b.ctx
+                                    .ontology_arenas()
+                                    .concept(named[index])
+                                    .get_operator_code()
+                                    == op::CCATOM)
+                                    .then_some((named[index], definition, name.as_str()))
+                            })
+                    });
                     let defined = candidate.is_some_and(|(host, definition, name)| {
                         let Some(built) = build_source_concept(
                             &mut b,
@@ -7126,28 +7224,15 @@ fn bridge_tinput_with_trigger_absorption(
                         ) else {
                             return false;
                         };
-                        if trigger_names.contains(name)
+                        equivalent_definition_names.push(name.to_string());
+                        let triggerable = preinstalled.is_none()
                             && full_absorption_trigger(
                                 &mut b,
                                 built,
                                 &role_inverses,
                                 &mut trigger_caches,
                             )
-                            .is_none()
-                        {
-                            return false;
-                        }
-                        equivalent_definition_names.push(name.to_string());
-                        // Port of the absorber's equivalence pre-pass. A fully
-                        // triggerable definition is changed CCEQ -> CCSUB and
-                        // gets the reverse direction as a binary implication.
-                        let triggerable = full_absorption_trigger(
-                            &mut b,
-                            built,
-                            &role_inverses,
-                            &mut trigger_caches,
-                        )
-                        .is_some();
+                            .is_some();
                         if triggerable {
                             let forward = b.add_unfolding(host, built.0, built.1);
                             let reverse = absorb_concept_disjunction(
@@ -7164,23 +7249,9 @@ fn bridge_tinput_with_trigger_absorption(
                                 false
                             }
                         } else {
-                            let defined = b.add_equivalent_definition(host, built.0, built.1);
+                            let defined = preinstalled.is_some()
+                                || b.add_equivalent_definition(host, built.0, built.1);
                             if defined && build_eq_candidates {
-                                // Port of the partial-equivalence candidate
-                                // (`PartialEquivalentDefinitionToCandidates-
-                                // Absorption`, default on in Konclude,
-                                // cpp 207-212): the fully triggerable
-                                // conjuncts T of the definition imply a fresh
-                                // marker. `A == D` and `D <= T` give
-                                // `A <= T`, so a complete model whose node
-                                // lacks the marker is not in T, hence not in
-                                // A. The marker has no rule and no class name
-                                // (Konclude's CCEQCAND is likewise rule-free
-                                // in completion); it only adds labels, so all
-                                // verdicts are unchanged. The host stays in
-                                // the non-candidate set below: the marker is
-                                // consumed only by the bridge's own
-                                // countermodel test for pair candidates.
                                 let parts: Vec<&SourceConcept> = match definition {
                                     SourceConcept::And(parts) => parts.iter().collect(),
                                     other => vec![other],
@@ -7233,14 +7304,6 @@ fn bridge_tinput_with_trigger_absorption(
                                 }
                             }
                             if defined {
-                                // Exact non-candidate branch of
-                                // `CTriggeredImplicationBinaryAbsorberPreProcess`
-                                // (cpp 203-215). Konclude either builds the
-                                // optional partial-equivalence candidate or
-                                // inserts the still-CCEQ host into
-                                // `mEquivConNonCandidateSet`. The bridge does
-                                // not materialise that optional optimization,
-                                // so it takes Konclude's non-candidate branch.
                                 b.ctx
                                     .ontology_arenas_mut()
                                     .insert_equivalent_concept_non_candidate(host);
@@ -9918,10 +9981,6 @@ fn analyse_kpset_completion_model(
         state.concept_reference_linking_data_hash.clone(),
         EFEXTRACTALL,
     );
-    let individual_vector = ctx
-        .processing_data_box()
-        .individual_process_node_vector()
-        .clone();
     let max_branch_tag = ctx.processing_data_box().maximum_deterministic_branch_tag();
     let snapshot_finished = timing_start.map(|_| std::time::Instant::now());
     let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -9929,17 +9988,19 @@ fn analyse_kpset_completion_model(
         .ontology_item
         .get_concept_satisfiable_test_item_container();
     // `mEquivConNonCandidateSet` belongs to the live TBox in Konclude. Split
-    // the two disjoint context fields so the analyser can update completion
-    // bookkeeping while reading that ontology-owned set.
+    // the disjoint context fields so the analyser can update completion
+    // bookkeeping while reading that ontology-owned set and the individual
+    // node vector without cloning the vector on every job.
     let base = &mut ctx.base;
     let process_context = &mut base.used_process_context;
     let ontology = &base.ontology_arenas;
+    let individual_vector = base.used_processing_data_box.individual_process_node_vector();
     let analysed = analyser.analyse_satisfiable_task_classification_messages_with_live_other_nodes_and_live_equivalent_non_candidates(
         &adapter,
         process_context,
         ontology,
         root,
-        &individual_vector,
+        individual_vector,
         max_branch_tag,
         ontology.concepts(),
         ontology.concept_process_datas(),
@@ -10142,6 +10203,18 @@ fn fresh_bridge_env_with_trigger_absorption(
     CalculationAlgorithmContextBase,
     Bridged,
 ) {
+    fresh_bridge_env_with_trigger_absorption_init(tin, trigger_absorb, true)
+}
+
+fn fresh_bridge_env_with_trigger_absorption_init(
+    tin: &TInput,
+    trigger_absorb: bool,
+    initialize_nominals: bool,
+) -> (
+    CompletionTaskHandleAlgorithm,
+    CalculationAlgorithmContextBase,
+    Bridged,
+) {
     use super::completion::strategy::ConceptProcessingPriorityStrategy;
     let mut algo = CompletionTaskHandleAlgorithm::new();
     configure_default_blocking(&mut algo);
@@ -10177,13 +10250,16 @@ fn fresh_bridge_env_with_trigger_absorption(
         std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
     );
     algo.conf_direct_rule_preprocessing = card_nominal_profile;
-    algo.conf_cache_oriented_or_ordering = card_nominal_profile;
-    if card_nominal_profile {
+    algo.conf_cache_oriented_or_ordering =
+        card_nominal_profile || (bridged.source_tbox && tin.number && !bridged.has_native_nominals());
+    if algo.conf_direct_rule_preprocessing {
         // Konclude's null-configuration production defaults allow eager
         // preprocessing to recurse through 300 nested rule applications. A
         // zero limit only preprocesses the first descriptor and then silently
         // falls back to ordinary queueing for every conclusion it produces.
         algo.current_rec_proc_depth_limit = 300;
+    }
+    if card_nominal_profile {
         algo.conf_atomic_semantic_branching = true;
         // This is also Konclude's production dependency profile. The
         // cardinality+ABox route has complete branch epochs and now preserves
@@ -10197,7 +10273,7 @@ fn fresh_bridge_env_with_trigger_absorption(
         // Forced singleton merges can cross an OR alternative. Full in-process
         // COW is the existing complete restore mechanism for those writes.
         algo.conf_inprocess_cow = true;
-        if !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
+        if initialize_nominals && !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
             ctx.raise_stop(false);
         }
     }
@@ -10217,6 +10293,47 @@ fn initialize_native_nominal_state(
     initialize_native_nominal_state_for_tags(algo, ctx, bridged, None)
 }
 
+#[inline]
+fn nominal_seed_by_tag(bridged: &Bridged, tag: Cint64) -> Option<&NominalSeed> {
+    if let Ok(idx) = usize::try_from(tag) {
+        if let Some(seed) = bridged.nominal_seeds.get(idx) {
+            if seed.individual_tag == tag {
+                return Some(seed);
+            }
+        }
+    }
+    bridged
+        .nominal_seeds
+        .iter()
+        .find(|candidate| candidate.individual_tag == tag)
+}
+
+#[inline]
+fn nominal_seed_by_concept<'a>(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &'a Bridged,
+    concept: ConceptId,
+) -> Option<&'a NominalSeed> {
+    if concept.is_some() && concept.index() < ctx.ontology_arenas().concept_count() as usize {
+        let concept_ref = ctx.ontology_arenas().concept(concept);
+        if concept_ref.get_operator_code() == op::CCNOMINAL {
+            let ind = concept_ref.get_nominal_individual();
+            if ind.is_some() && ind.index() < ctx.ontology_arenas().individual_count() as usize {
+                let tag = ctx.ontology_arenas().individual(ind).get_individual_id();
+                if let Some(seed) = nominal_seed_by_tag(bridged, tag) {
+                    if seed.nominal_concept == concept {
+                        return Some(seed);
+                    }
+                }
+            }
+        }
+    }
+    bridged
+        .nominal_seeds
+        .iter()
+        .find(|target| target.nominal_concept == concept)
+}
+
 /// Nominal concepts of the other members of `entry`'s deterministic
 /// same-individual set, or `None` when that set is not recorded or names an
 /// individual without a nominal seed. See
@@ -10232,10 +10349,7 @@ fn native_deterministic_same_nominal_concepts(
         if tag == seed.individual_tag {
             continue;
         }
-        let other = bridged
-            .nominal_seeds
-            .iter()
-            .find(|candidate| candidate.individual_tag == tag)?;
+        let other = nominal_seed_by_tag(bridged, tag)?;
         if other.nominal_concept.is_none() {
             return None;
         }
@@ -10558,6 +10672,7 @@ fn reset_classification_algorithm_on_retained_base(
     fresh.or_branch_learning_stats = branch_learning;
     // Immutable index of the same retained base (u20 `BlockingBaseIndex`).
     fresh.blocking_base_index = algo.blocking_base_index.clone();
+    fresh.retained_singleton_base = algo.retained_singleton_base.clone();
     *algo = fresh;
     if let Some(snapshot) = replay_snapshot {
         // Only immutable input is shared; every mutable per-job field is fresh.
@@ -10743,6 +10858,10 @@ struct RetainedConsistencyLeaf {
     /// The job algorithm's backend replay map at the build: immutable input
     /// data, shared by every leaf job instead of being rebuilt per job.
     replay: NativeReplaySnapshot,
+    /// Blocking candidate index of the retained leaf (`u20::BlockingBaseIndex`).
+    blocking_index: Option<std::sync::Arc<super::completion::u20::BlockingBaseIndex>>,
+    /// Singleton carrier snapshot of the retained leaf (`u02::RetainedSingletonBase`).
+    singleton_base: Option<std::sync::Arc<super::completion::u02::RetainedSingletonBase>>,
 }
 
 /// Counters of the reuse branch point (reported under `KM_BRIDGE_PROGRESS`
@@ -10818,16 +10937,32 @@ fn build_retained_consistency_leaf(
     algo.or_branch_stack.clear();
     ctx.clear_pending_signal();
     ctx.base.set_current_individual_node(NodeId::NONE);
+    ctx.coalesce_branch_epochs_to(base_depth + 1);
+    crate::mem::release_before_worker_wait();
     let depth = ctx.process_context().branch_epoch_depth();
     let databox = ctx.processing_data_box().clone();
     let next_id = ctx.processing_data_box_mut().next_individual_node_id(false);
     let branch_node = ctx.base.used_branch_tree_node;
+    let blocking_index = std::env::var_os("KM_HT_NO_BLOCKING_BASE_INDEX")
+        .is_none()
+        .then(|| std::sync::Arc::new(algo.build_blocking_base_index(ctx)));
+    let singleton_base = algo.build_retained_singleton_base(ctx);
     // Spine journal 2: one class job's spine changes, undone per job.
     ctx.process_context_mut().push_spine_journal_epoch();
     // The first leaf job's epoch (popped by `restore_retained_consistency_leaf`).
     ctx.push_branch_epoch();
     let replay = std::sync::Arc::clone(&algo.native_nominal_backend_replay);
-    Some(RetainedConsistencyLeaf { depth, base_depth, databox, branch_node, next_id, decisions, replay })
+    Some(RetainedConsistencyLeaf {
+        depth,
+        base_depth,
+        databox,
+        branch_node,
+        next_id,
+        decisions,
+        replay,
+        blocking_index,
+        singleton_base,
+    })
 }
 
 /// Start the next class job on the leaf: roll the previous job back (its
@@ -10869,6 +11004,11 @@ fn restore_retained_consistency_leaf(
         bridged,
         Some(replay_snapshot.unwrap_or(&leaf.replay)),
     );
+    if let Some(blocking_index) = &leaf.blocking_index {
+        algo.blocking_base_index = Some(std::sync::Arc::clone(blocking_index));
+    }
+    algo.retained_singleton_base = leaf.singleton_base.clone();
+    algo.singleton_base_prepared = true;
     // A continuation of the consistency completion: no retained-node special
     // casing, as on the resuming base.
     algo.retained_base_node_count = 0;
@@ -11001,7 +11141,7 @@ fn reset_probe_env_impl(
     // component tasks teach the later consistency/classification tasks.
     let budget = algo.probe_budget;
     let card_nominal_profile =
-        algo.conf_direct_rule_preprocessing && algo.conf_cache_oriented_or_ordering;
+        algo.conf_direct_rule_preprocessing && algo.conf_cache_oriented_or_ordering && algo.conf_atomic_semantic_branching;
     let direct_rule_preprocessing = algo.conf_direct_rule_preprocessing;
     let cache_oriented_or_ordering = algo.conf_cache_oriented_or_ordering;
     let current_rec_proc_depth_limit = algo.current_rec_proc_depth_limit;
@@ -11009,7 +11149,7 @@ fn reset_probe_env_impl(
     let dependency_backjumping = algo.conf_dependency_backjumping;
     let build_dependencies = algo.conf_build_dependencies;
     let atomic_semantic_branching = algo.conf_atomic_semantic_branching;
-    let branch_learning = if card_nominal_profile {
+    let branch_learning = if cache_oriented_or_ordering {
         std::mem::take(&mut algo.or_branch_learning_stats)
     } else {
         HashMap::default()
@@ -11018,15 +11158,17 @@ fn reset_probe_env_impl(
     configure_default_blocking(&mut a);
     a.singleton_concepts = bridged.singleton_concepts.clone();
     a.probe_budget = budget;
+    a.conf_direct_rule_preprocessing = direct_rule_preprocessing;
+    a.conf_cache_oriented_or_ordering = cache_oriented_or_ordering;
+    a.current_rec_proc_depth_limit = current_rec_proc_depth_limit;
+    if cache_oriented_or_ordering {
+        a.or_branch_learning_stats = branch_learning;
+    }
     if card_nominal_profile {
-        a.conf_direct_rule_preprocessing = direct_rule_preprocessing;
-        a.conf_cache_oriented_or_ordering = cache_oriented_or_ordering;
-        a.current_rec_proc_depth_limit = current_rec_proc_depth_limit;
         a.conf_dependency_backtracking = dependency_backtracking;
         a.conf_dependency_backjumping = dependency_backjumping;
         a.conf_build_dependencies = build_dependencies;
         a.conf_atomic_semantic_branching = atomic_semantic_branching;
-        a.or_branch_learning_stats = branch_learning;
     }
     *algo = a;
     if card_nominal_profile {
@@ -11102,7 +11244,7 @@ fn reset_probe_env_impl(
 /// even when dependency-directed backjumping itself remains opt-in.
 fn configure_production_search(algo: &mut CompletionTaskHandleAlgorithm) {
     algo.conf_build_dependencies = true;
-    if algo.conf_cache_oriented_or_ordering {
+    if algo.conf_cache_oriented_or_ordering && algo.conf_direct_rule_preprocessing {
         // The representative-batch profile replays learned disjunct
         // priorities. Its alternatives must therefore remain disjoint. Keep
         // the legacy nominal-only and cardinality-only schedules unchanged.
@@ -11985,12 +12127,7 @@ fn commit_native_representative_association_batch(
     prepared: Vec<(Cint64, NativeAboxRepresentativeEntry)>,
     selected_individuals: &HashSet<Cint64>,
 ) -> Option<HashSet<Cint64>> {
-    if prepared.is_empty()
-        || selected_individuals.is_empty()
-        || !selected_individuals
-            .iter()
-            .all(|tag| prepared.iter().any(|(prepared_tag, _)| prepared_tag == tag))
-    {
+    if prepared.is_empty() || selected_individuals.is_empty() {
         return None;
     }
     let mut seen = HashSet::with_capacity_and_hasher(prepared.len(), Default::default());
@@ -12006,6 +12143,9 @@ fn commit_native_representative_association_batch(
         {
             return None;
         }
+    }
+    if !selected_individuals.iter().all(|tag| seen.contains(tag)) {
+        return None;
     }
 
     let mut updated = HashSet::with_capacity_and_hasher(prepared.len(), Default::default());
@@ -14443,11 +14583,7 @@ fn native_generated_role_assertion_synchronized(
     if filler.negated {
         return false;
     }
-    let Some(target) = bridged
-        .nominal_seeds
-        .iter()
-        .find(|target| target.nominal_concept == filler.target)
-    else {
+    let Some(target) = nominal_seed_by_concept(ctx, bridged, filler.target) else {
         return false;
     };
     seed.role_assertions
@@ -14576,15 +14712,15 @@ fn try_establish_native_backend_expansion_blocking(
     // `if (assocData)` — the typed association must additionally COVER the seed's
     // asserted edges to stand in for the raw assertion linkers (see
     // `neighbour_expansion_blocking_candidate`).
-    let entry = {
+    // backendExpBlocking = isCompletelyHandled() && !hasRepresentativeSameIndividualMerging()
+    //                      && detMergedSameConsideredLabel == DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL
+    let mut expansion_blocked = false;
+    {
         let cache = bridged.native_representative_cache.borrow();
         let Some(cache) = cache.as_ref() else {
             return false;
         };
-        if cache.association_write_aborted {
-            return false;
-        }
-        if !cache.saturation_labels_replayable() {
+        if cache.association_write_aborted || !cache.saturation_labels_replayable() {
             return false;
         }
         let Some(entry) = cache.entries.get(&seed.individual_tag) else {
@@ -14593,15 +14729,13 @@ fn try_establish_native_backend_expansion_blocking(
         if !native_cache_entry_covers_seed(entry, seed) {
             return false;
         }
-        entry.clone()
-    };
-
-    // backendExpBlocking = isCompletelyHandled() && !hasRepresentativeSameIndividualMerging()
-    //                      && detMergedSameConsideredLabel == DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL
-    let mut expansion_blocked = false;
-    if entry.reusable_for_full_completion()
-        && native_backend_concepts_synchronized(algo, ctx, bridged, seed, node, &entry)
-    {
+        if entry.reusable_for_full_completion()
+            && native_backend_concepts_synchronized(algo, ctx, bridged, seed, node, entry)
+        {
+            expansion_blocked = true;
+        }
+    }
+    if expansion_blocked {
         if !ctx
             .process_context()
             .node(node)
@@ -14618,7 +14752,6 @@ fn try_establish_native_backend_expansion_blocking(
                     | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
             );
         }
-        expansion_blocked = true;
     }
     // The independent neighbour block: gated only on the config flag, exactly as
     // upstream. `PRFRETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED` schedules the
@@ -14648,7 +14781,7 @@ fn replay_native_representative_cache(
     node: NodeId,
     dependency_track_point: super::process::TrackPointId,
 ) -> bool {
-    let entry = {
+    {
         let cache = bridged.native_representative_cache.borrow();
         let Some(cache) = cache.as_ref() else {
             return true;
@@ -14662,48 +14795,46 @@ fn replay_native_representative_cache(
         if !native_cache_entry_covers_seed(entry, seed) {
             return false;
         }
-        entry.clone()
-    };
-
-    let Some(concept_values) = entry.concept_values.as_ref() else {
-        return false;
-    };
-    // Without the deterministic same individuals' nominal concepts the cached
-    // labels are not closed (positive nominals are not cache values), so the
-    // replay is skipped and the raw assertions re-derive the closure.
-    let Some(same_nominals) = native_deterministic_same_nominal_concepts(bridged, &entry, seed)
-    else {
-        return true;
-    };
-    for value in concept_values.iter().filter(|value| value.deterministic) {
-        algo.add_concept_to_individual_skip_and_processing(
-            value.concept,
-            value.negated,
-            node,
-            dependency_track_point,
-            true,
-            false,
-            false,
-            ctx,
-        );
-        if ctx.has_pending_signal() {
-            break;
+        let Some(concept_values) = entry.concept_values.as_ref() else {
+            return false;
+        };
+        // Without the deterministic same individuals' nominal concepts the cached
+        // labels are not closed (positive nominals are not cache values), so the
+        // replay is skipped and the raw assertions re-derive the closure.
+        let Some(same_nominals) = native_deterministic_same_nominal_concepts(bridged, entry, seed)
+        else {
+            return true;
+        };
+        for value in concept_values.iter().filter(|value| value.deterministic) {
+            algo.add_concept_to_individual_skip_and_processing(
+                value.concept,
+                value.negated,
+                node,
+                dependency_track_point,
+                true,
+                false,
+                false,
+                ctx,
+            );
+            if ctx.has_pending_signal() {
+                break;
+            }
         }
-    }
-    for concept in same_nominals {
-        if ctx.has_pending_signal() {
-            break;
+        for concept in same_nominals {
+            if ctx.has_pending_signal() {
+                break;
+            }
+            let mut target = node;
+            algo.add_concept_to_individual(
+                concept,
+                false,
+                &mut target,
+                dependency_track_point,
+                true,
+                true,
+                ctx,
+            );
         }
-        let mut target = node;
-        algo.add_concept_to_individual(
-            concept,
-            false,
-            &mut target,
-            dependency_track_point,
-            true,
-            true,
-            ctx,
-        );
     }
     ctx.process_context_mut()
         .node_mut(node)
@@ -14926,14 +15057,36 @@ fn extract_saturation_outcome(
             let sat_node = ctx.process_context().sat_node(node);
             let ind = sat_node.indirect_status_flags.get_flags();
             let dir = sat_node.direct_status_flags.get_flags();
+            let flags = ind | dir;
+            let nominal_or_incomplete = (bridged.has_native_nominals()
+                && (flags & F::INDSATFLAGNOMINALCONNECTION != 0
+                    || sat_node.is_abox_individual_representation_node()))
+                || (!sat_node.is_completed() && flags & F::INDSATFLAGCLASHED == 0);
             (
-                ind & F::INDSATFLAGCLASHED != 0,
-                ind & F::INDSATFLAGINSUFFICIENT != 0,
-                ind & F::INDSATFLAGUNPROCESSED != 0,
-                dir & F::INDSATFLAGEQCANDPROPLEMATIC != 0,
+                flags & F::INDSATFLAGCLASHED != 0,
+                flags & F::INDSATFLAGINSUFFICIENT != 0 || nominal_or_incomplete,
+                flags & F::INDSATFLAGUNPROCESSED != 0,
+                flags & F::INDSATFLAGEQCANDPROPLEMATIC != 0,
             )
         };
-        let (b_clash, b_insuf, b_unproc, _b_eqprob) = read(base_node, ctx);
+        let (mut b_clash, mut b_insuf, mut b_unproc, _b_eqprob) = read(base_node, ctx);
+        {
+            let mut chain_node = base_node;
+            while ctx
+                .process_context()
+                .sat_node(chain_node)
+                .has_substitute_individual_node()
+            {
+                let (c_clash, c_insuf, c_unproc, _) = read(chain_node, ctx);
+                b_clash |= c_clash;
+                b_insuf |= c_insuf;
+                b_unproc |= c_unproc;
+                chain_node = ctx
+                    .process_context()
+                    .sat_node(chain_node)
+                    .get_substitute_individual_node();
+            }
+        }
         let (r_clash, r_insuf, r_unproc, r_eqprob) = read(resolved, ctx);
         if std::env::var_os("KM_SAT_DEBUG").is_some() {
             eprintln!(
@@ -15005,7 +15158,7 @@ fn extract_saturation_outcome(
                     index != i && subs.binary_search(&index).is_err()
                 })
             });
-        if !missing_equivalence {
+        if !missing_equivalence && (!bridged.has_native_nominals() || bridged.unguarded_top_gcis == 0) {
             certain_subsumers[i] = Some(subs);
         }
     }
@@ -15441,6 +15594,22 @@ fn source_named_subsumer_closure_seeded(
     tin: &TInput,
     seed_pairs: &[(usize, usize)],
 ) -> crate::fxhash::FxHashSet<(usize, usize)> {
+    let supers = source_named_subsumer_closure_seeded_rows(tin, seed_pairs);
+    let total: usize = supers.iter().map(Vec::len).sum();
+    let mut closure: crate::fxhash::FxHashSet<(usize, usize)> =
+        crate::fxhash::FxHashSet::with_capacity_and_hasher(total, Default::default());
+    for (sub, row) in supers.into_iter().enumerate() {
+        for sup in row {
+            closure.insert((sub, sup as usize));
+        }
+    }
+    closure
+}
+
+fn source_named_subsumer_closure_seeded_rows(
+    tin: &TInput,
+    seed_pairs: &[(usize, usize)],
+) -> Vec<Vec<u32>> {
     let index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -15478,6 +15647,7 @@ fn source_named_subsumer_closure_seeded(
         index: &HashMap<&str, usize>,
         keys: &mut HashMap<&'a SourceConcept, usize>,
         providers: &mut Vec<Provider>,
+        direct_pairs: &mut Vec<(usize, usize)>,
     ) {
         let SourceConcept::Name(head) = head else {
             return;
@@ -15513,7 +15683,10 @@ fn source_named_subsumer_closure_seeded(
         if named.is_empty() && structural.is_empty() {
             return;
         }
-        if structural.is_empty() && named.len() == 1 && named[0] == sup {
+        if structural.is_empty() && named.len() == 1 {
+            if named[0] != sup {
+                direct_pairs.push((named[0], sup));
+            }
             return;
         }
         providers.push((sup, named, structural));
@@ -15521,27 +15694,52 @@ fn source_named_subsumer_closure_seeded(
 
     let mut keys: HashMap<&SourceConcept, usize> = HashMap::default();
     let mut providers: Vec<Provider> = Vec::new();
+    let mut direct_pairs: Vec<(usize, usize)> = Vec::new();
     for axiom in &tin.source_axioms {
         match axiom.kind {
             // `D ⊑ M` with a named right side — including the structural-left
             // GCI half of an equivalence the terminology could not host as a
             // direct definition.
             crate::json_io::SourceAxiomKind::SubClass => {
-                record_provider(&axiom.right, &axiom.left, &index, &mut keys, &mut providers);
+                record_provider(
+                    &axiom.right,
+                    &axiom.left,
+                    &index,
+                    &mut keys,
+                    &mut providers,
+                    &mut direct_pairs,
+                );
             }
             crate::json_io::SourceAxiomKind::Equivalent => {
-                record_provider(&axiom.left, &axiom.right, &index, &mut keys, &mut providers);
-                record_provider(&axiom.right, &axiom.left, &index, &mut keys, &mut providers);
+                record_provider(
+                    &axiom.left,
+                    &axiom.right,
+                    &index,
+                    &mut keys,
+                    &mut providers,
+                    &mut direct_pairs,
+                );
+                record_provider(
+                    &axiom.right,
+                    &axiom.left,
+                    &index,
+                    &mut keys,
+                    &mut providers,
+                    &mut direct_pairs,
+                );
             }
             crate::json_io::SourceAxiomKind::Disjoint => {}
         }
     }
 
     // Seed the per-class state from the asserted superclass sides.
-    let mut upper: Vec<crate::fxhash::FxHashSet<usize>> = vec![Default::default(); n_named];
-    let mut key_subjects: Vec<Vec<usize>> = vec![Vec::new(); keys.len()];
-    let mut pair_stack: Vec<(usize, usize)> = Vec::new();
-    let mut key_stack: Vec<(usize, usize)> = Vec::new();
+    let mut adj: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut direct_key_owners: Vec<Vec<u32>> = vec![Vec::new(); keys.len()];
+    for (sub, sup) in direct_pairs {
+        if sub != sup && sub < n_named && sup < n_named {
+            adj[sub].push(sup as u32);
+        }
+    }
     {
         let mut seed = |left: &SourceConcept, right: &SourceConcept| {
             let SourceConcept::Name(left) = left else {
@@ -15556,15 +15754,14 @@ fn source_named_subsumer_closure_seeded(
                 match part {
                     SourceConcept::Name(name) => {
                         if let Some(&sup) = index.get(name.as_str()) {
-                            pair_stack.push((sub, sup));
+                            if sub != sup {
+                                adj[sub].push(sup as u32);
+                            }
                         }
                     }
                     other => {
                         if let Some(&key) = keys.get(other) {
-                            if upper[sub].insert(key) {
-                                key_subjects[key].push(sub);
-                                key_stack.push((sub, key));
-                            }
+                            direct_key_owners[key].push(sub as u32);
                         }
                     }
                 }
@@ -15587,43 +15784,106 @@ fn source_named_subsumer_closure_seeded(
         // encounter. Every seed is already an established entailment, and the
         // only additional rule is conjunction introduction followed by the
         // asserted `D ⊑ M` definition direction.
-        pair_stack.extend(seed_pairs.iter().copied());
+        for &(sub, sup) in seed_pairs {
+            if sub != sup && sub < n_named && sup < n_named {
+                adj[sub].push(sup as u32);
+            }
+        }
+    }
+    for list in &mut adj {
+        list.sort_unstable();
+        list.dedup();
+    }
+    for owners in &mut direct_key_owners {
+        owners.sort_unstable();
+        owners.dedup();
     }
 
-    let mut closure: crate::fxhash::FxHashSet<(usize, usize)> = crate::fxhash::FxHashSet::default();
-    let mut supers: Vec<Vec<usize>> = vec![Vec::new(); n_named];
-    let mut subs: Vec<Vec<usize>> = vec![Vec::new(); n_named];
+    let mut supers: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut subs: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut upper: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut key_subjects: Vec<Vec<u32>> = vec![Vec::new(); keys.len()];
+    let mut seen: Vec<u32> = vec![0; n_named];
+    let mut epoch: u32 = 0;
+    let mut stack: Vec<u32> = Vec::new();
+    let next_epoch = |seen: &mut Vec<u32>, epoch: &mut u32| -> u32 {
+        *epoch = epoch.wrapping_add(1);
+        if *epoch == 0 {
+            seen.fill(0);
+            *epoch = 1;
+        }
+        *epoch
+    };
     loop {
         // Propagate the current facts to a fixpoint: transitivity of the pair
         // relation, and inheritance of a superclass's conjuncts by its
         // subclasses (`N ⊑ M ⊑ D` ⇒ `N ⊑ D`).
-        while !pair_stack.is_empty() || !key_stack.is_empty() {
-            while let Some((sub, sup)) = pair_stack.pop() {
-                if sub == sup || sub >= n_named || sup >= n_named || !closure.insert((sub, sup)) {
-                    continue;
-                }
-                supers[sub].push(sup);
-                subs[sup].push(sub);
-                let inherited: Vec<usize> = upper[sup].iter().copied().collect();
-                for key in inherited {
-                    if upper[sub].insert(key) {
-                        key_subjects[key].push(sub);
-                        key_stack.push((sub, key));
-                    }
-                }
-                for i in 0..supers[sup].len() {
-                    pair_stack.push((sub, supers[sup][i]));
-                }
-                for i in 0..subs[sub].len() {
-                    pair_stack.push((subs[sub][i], sup));
+        for v in &mut subs {
+            v.clear();
+        }
+        for u in 0..n_named {
+            supers[u].clear();
+            if adj[u].is_empty() {
+                continue;
+            }
+            let ep = next_epoch(&mut seen, &mut epoch);
+            seen[u] = ep;
+            for &v in &adj[u] {
+                let vi = v as usize;
+                if vi < n_named && seen[vi] != ep {
+                    seen[vi] = ep;
+                    stack.push(v);
                 }
             }
-            while let Some((sub, key)) = key_stack.pop() {
-                for i in 0..subs[sub].len() {
-                    let descendant = subs[sub][i];
-                    if upper[descendant].insert(key) {
-                        key_subjects[key].push(descendant);
-                        key_stack.push((descendant, key));
+            while let Some(v) = stack.pop() {
+                let vi = v as usize;
+                supers[u].push(v);
+                subs[vi].push(u as u32);
+                if vi < u {
+                    let v_len = supers[vi].len();
+                    for idx in 0..v_len {
+                        let w = supers[vi][idx];
+                        let wi = w as usize;
+                        if seen[wi] != ep {
+                            seen[wi] = ep;
+                            supers[u].push(w);
+                            subs[wi].push(u as u32);
+                        }
+                    }
+                } else {
+                    for &w in &adj[vi] {
+                        let wi = w as usize;
+                        if wi < n_named && seen[wi] != ep {
+                            seen[wi] = ep;
+                            stack.push(w);
+                        }
+                    }
+                }
+            }
+            supers[u].sort_unstable();
+        }
+        if !providers.is_empty() {
+            for u in &mut upper {
+                u.clear();
+            }
+            for key in 0..keys.len() {
+                key_subjects[key].clear();
+                let ep = next_epoch(&mut seen, &mut epoch);
+                let key_u32 = key as u32;
+                for &owner in &direct_key_owners[key] {
+                    let oi = owner as usize;
+                    if seen[oi] != ep {
+                        seen[oi] = ep;
+                        key_subjects[key].push(owner);
+                        upper[oi].push(key_u32);
+                    }
+                    for &desc in &subs[oi] {
+                        let di = desc as usize;
+                        if seen[di] != ep {
+                            seen[di] = ep;
+                            key_subjects[key].push(desc);
+                            upper[di].push(key_u32);
+                        }
                     }
                 }
             }
@@ -15633,6 +15893,7 @@ fn source_named_subsumer_closure_seeded(
         // discharge a body if it already carries every one of its conjuncts.
         let mut derived = false;
         for (sup, named, structural) in &providers {
+            let sup_u32 = *sup as u32;
             let mut best: Option<(usize, bool, usize)> = None;
             for &class in named {
                 let len = subs[class].len() + 1;
@@ -15646,25 +15907,28 @@ fn source_named_subsumer_closure_seeded(
                     best = Some((len, false, key));
                 }
             }
-            let candidates: Vec<usize> = match best {
+            let candidates: Vec<u32> = match best {
                 Some((_, true, class)) => {
                     let mut candidates = subs[class].clone();
-                    candidates.push(class);
+                    candidates.push(class as u32);
                     candidates
                 }
                 Some((_, false, key)) => key_subjects[key].clone(),
                 None => continue,
             };
-            for sub in candidates {
-                if sub == *sup || closure.contains(&(sub, *sup)) {
+            for sub_u32 in candidates {
+                let sub = sub_u32 as usize;
+                if sub == *sup || supers[sub].binary_search(&sup_u32).is_ok() {
                     continue;
                 }
-                let discharged = structural.iter().all(|key| upper[sub].contains(key))
-                    && named
-                        .iter()
-                        .all(|&class| class == sub || closure.contains(&(sub, class)));
+                let discharged = structural
+                    .iter()
+                    .all(|&key| upper[sub].binary_search(&(key as u32)).is_ok())
+                    && named.iter().all(|&class| {
+                        class == sub || supers[sub].binary_search(&(class as u32)).is_ok()
+                    });
                 if discharged {
-                    pair_stack.push((sub, *sup));
+                    adj[sub].push(sup_u32);
                     derived = true;
                 }
             }
@@ -15673,7 +15937,7 @@ fn source_named_subsumer_closure_seeded(
             break;
         }
     }
-    closure
+    supers
 }
 
 fn source_named_subsumer_closure(tin: &TInput) -> crate::fxhash::FxHashSet<(usize, usize)> {
@@ -15960,11 +16224,18 @@ fn bridged_classify_opts_with_trigger_absorption(
     use_satcache: bool,
     trigger_absorb: bool,
 ) -> Option<BridgedClassification> {
+    let max_workers = if std::env::var_os("KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE").is_some() {
+        8
+    } else {
+        std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .clamp(1, 8)
+    };
     let subject_workers = std::env::var("KM_BRIDGE_SUBJECT_WORKERS")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(1)
-        .clamp(1, 8);
+        .clamp(1, max_workers);
     bridged_classify_opts_with_trigger_absorption_workers(
         tin,
         use_saturation,
@@ -16189,6 +16460,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // `saturation_expansion_concept_count` are 0 by construction and every
     // generated successor is expanded by the tableau instead of being replayed
     // from, and blocked by, its saturation node.
+    let native_saturation_outcome_requested =
+        use_saturation && std::env::var_os("KM_HT_NO_NATIVE_SAT_OUTCOME").is_none();
     let native_saturation_coupling_requested =
         use_satcache && native_nominals && !independent_abox_elided;
     let use_saturation = use_saturation && (!native_nominals || independent_abox_elided);
@@ -16207,6 +16480,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // name heuristic only to non-query helper concepts.
     let declared_queries: crate::fxhash::FxHashSet<usize> =
         tin.queries.iter().map(|&query| query as usize).collect();
+    let filter_ground_assertions = std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE").is_some();
     let universe: crate::fxhash::FxHashSet<usize> = tin
         .concepts
         .iter()
@@ -16214,6 +16488,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         .filter(|(index, n)| {
             (declared_queries.contains(index) || !crate::orchestrate::cb_to_ht::is_internal(n))
                 && !crate::orchestrate::cb_to_ht::is_bottom(n)
+                && !(filter_ground_assertions && n.contains("__ground_assertion_"))
         })
         .map(|(i, _)| i)
         .collect();
@@ -16239,7 +16514,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     let t_env = std::time::Instant::now();
     let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     let (mut algo, mut ctx, bridged) =
-        fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+        fresh_bridge_env_with_trigger_absorption_init(tin, trigger_absorb, false);
     report_bridge_memory("fresh-env");
     if progress {
         eprintln!(
@@ -16307,7 +16582,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     }
     out.subsumptions
         .extend(saturation_known_pairs.iter().copied());
+    let initial_out_subsumptions_len = out.subsumptions.len();
     let mut native_saturation_ran = false;
+    let mut precomputed_saturation_outcome: Option<SaturationOutcome> = None;
     let mut saturation_aborted = false;
     // Armed once, after the precomputation saturation has COMPLETED and its
     // concept→saturation reference linkings have been verified to be present,
@@ -16322,6 +16599,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // branch-epoch journals do NOT restore (see the snapshot site below).
     let mut retained_consistency_branch_node = super::process::BranchNodeId::NONE;
     let mut retained_consistency_databox: Option<super::process::databox::ProcessingDataBox> = None;
+    let mut prebuilt_leaf: Option<RetainedConsistencyLeaf> = None;
     if bridged.has_native_nominals() {
         if independent_abox_elided && !export_active {
             // Role-free duplicate assertion signatures need one root each.
@@ -16416,6 +16694,27 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         NativePrecomputationPhase::IndividualSaturation,
                     )?;
                     native_saturation_ran = true;
+                    if native_saturation_outcome_requested && bridged.unguarded_top_gcis == 0 {
+                        if let Some(mut extracted) =
+                            extract_finished_saturation_outcome(&mut ctx, &bridged, true)
+                        {
+                            let any_certified = extracted.sat_verdict.iter().enumerate().any(
+                                |(idx, verdict)| {
+                                    *verdict == Some(true)
+                                        || (*verdict == Some(false)
+                                            && extracted.certain_subsumers[idx].is_some())
+                                },
+                            );
+                            if any_certified {
+                                for sub in 0..n_named {
+                                    if !extracted.label_certified(sub) {
+                                        extracted.known_subsumers[sub].clear();
+                                    }
+                                }
+                                precomputed_saturation_outcome = Some(extracted);
+                            }
+                        }
+                    }
                     advance_native_precomputation_phase(
                         &mut precomputation_phase,
                         NativePrecomputationPhase::FullConsistencyCompletion,
@@ -16777,7 +17076,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 resume_fork = false;
                                 drained_konclude = true;
                             }
-                            bridged.retained_base_depth.set(1);
+                            ctx.coalesce_branch_epochs_to(0);
+                            crate::mem::release_before_worker_wait();
+                            bridged.retained_base_depth.set(0);
                         } else {
                             drain_failed = true;
                             while let Some(open) = algo.or_branch_stack.pop() {
@@ -16844,6 +17145,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             }
                             algo.blocking_base_index = Some(std::sync::Arc::new(index));
                         }
+                        algo.retained_singleton_base = algo.build_retained_singleton_base(&ctx);
                         ctx.push_branch_epoch();
                         retained_consistency_base = true;
                     } else if progress {
@@ -16854,12 +17156,34 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 } else {
                     // Preserve the exact nominal-only schedule from efbcbbc. Its
                     // 10621 classification is a validated full-IRI reference.
+                    let prebuild_leaf_candidate = !export_active
+                        && std::env::var_os("KM_BRIDGE_FRESH_ENV").is_none()
+                        && std::env::var_os("KM_BRIDGE_NO_LEAF_REUSE").is_none()
+                        && bridged.has_native_nominals()
+                        && !independent_abox_elided
+                        && algo.conf_direct_rule_preprocessing
+                        && algo.conf_cache_oriented_or_ordering;
+                    if prebuild_leaf_candidate {
+                        install_native_nominal_backend_replay(&mut algo, &bridged);
+                    }
+                    if !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
+                        ctx.raise_stop(false);
+                    }
                     let mut decided = None;
                     for round in 0..=retry_rounds {
                         algo.probe_budget = Some(std::time::Duration::from_secs(
                             base_budget.saturating_mul(4u64.saturating_pow(round)),
                         ));
                         configure_production_search(&mut algo);
+                        let leaf_epoch_pushed = round == 0
+                            && prebuild_leaf_candidate
+                            && !ctx.has_pending_signal()
+                            && ctx.process_context().branch_epoch_depth() == 0
+                            && algo.or_branch_stack.is_empty();
+                        if leaf_epoch_pushed {
+                            ctx.push_branch_epoch();
+                            ctx.process_context_mut().push_spine_journal_epoch();
+                        }
                         match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
                             Some(false) => {
                                 if export_active {
@@ -16874,6 +17198,61 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 });
                             }
                             Some(true) => {
+                                if leaf_epoch_pushed {
+                                    let owned = algo
+                                        .or_branch_stack
+                                        .iter()
+                                        .filter(|branch| branch.own_epoch)
+                                        .count();
+                                    let trusted = !ctx.has_pending_signal()
+                                        && !algo.completeness_poisoned
+                                        && algo.unrestored_advance_count == 0
+                                        && ctx.process_context().branch_epoch_depth() == 1 + owned;
+                                    if trusted {
+                                        let decisions = algo.or_branch_stack.len();
+                                        algo.or_branch_stack.clear();
+                                        ctx.clear_pending_signal();
+                                        ctx.base.set_current_individual_node(NodeId::NONE);
+                                        ctx.coalesce_branch_epochs_to(1);
+                                        crate::mem::release_before_worker_wait();
+                                        let depth = ctx.process_context().branch_epoch_depth();
+                                        let databox = ctx.processing_data_box().clone();
+                                        let next_id = ctx
+                                            .processing_data_box_mut()
+                                            .next_individual_node_id(false);
+                                        let branch_node = ctx.base.used_branch_tree_node;
+                                        let blocking_index = std::env::var_os("KM_HT_NO_BLOCKING_BASE_INDEX")
+                                            .is_none()
+                                            .then(|| std::sync::Arc::new(algo.build_blocking_base_index(&ctx)));
+                                        let singleton_base = algo.build_retained_singleton_base(&ctx);
+                                        ctx.process_context_mut().push_spine_journal_epoch();
+                                        ctx.push_branch_epoch();
+                                        let replay = std::sync::Arc::clone(
+                                            &algo.native_nominal_backend_replay,
+                                        );
+                                        if progress {
+                                            eprintln!(
+                                                "BRIDGE-LEAF built: decisions={} depth={} nodes={}",
+                                                decisions,
+                                                depth,
+                                                ctx.process_context().node_count()
+                                            );
+                                        }
+                                        prebuilt_leaf = Some(RetainedConsistencyLeaf {
+                                            depth,
+                                            base_depth: 0,
+                                            databox,
+                                            branch_node,
+                                            next_id,
+                                            decisions,
+                                            replay,
+                                            blocking_index,
+                                            singleton_base,
+                                        });
+                                    } else {
+                                        ctx.process_context_mut().pop_spine_journal_epoch();
+                                    }
+                                }
                                 if export_active {
                                     harvested_base_comp = extract_bridge_component(
                                         &mut ctx,
@@ -16899,7 +17278,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 }
             }
         }
-        if !retained_consistency_base {
+        if !retained_consistency_base && prebuilt_leaf.is_none() {
             reset_classification_probe_env(
                 &mut algo,
                 &mut ctx,
@@ -16907,6 +17286,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 native_saturation_ran,
                 independent_abox_elided,
             );
+            if native_saturation_coupling {
+                install_bridge_saturation_node_expansion_cache(&mut ctx);
+            }
         }
     }
     let certified_unsatisfiable: crate::fxhash::FxHashSet<usize> = bridged
@@ -16942,10 +17324,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // with the coupling (u08/u17/u22) armed when `use_satcache`.
     let mut saturation_ran = native_saturation_ran;
     let mut satcache_active = false;
-    if use_saturation && !saturation_aborted {
+    if (use_saturation || precomputed_saturation_outcome.is_some()) && !saturation_aborted {
         let t_sat = std::time::Instant::now();
         let mut saturation_complete = true;
-        let outcome = if use_satcache {
+        let outcome = if let Some(precomputed) = precomputed_saturation_outcome.take() {
+            Some(precomputed)
+        } else if use_satcache {
             let native_consistency_prefix = bridged
                 .native_consistency_nominal_nondeterministic_prefix
                 .borrow()
@@ -17085,10 +17469,17 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // SCHEDULING unconditionally; only certified labels (see
             // `SaturationOutcome::label_certified`) may enter the trusted
             // subsumer sets that `certain_subsumer` accepts without a probe.
+            for &(sub, sup) in &saturation_known_pairs {
+                if sub < n_named && sup < n_named && sub != sup {
+                    if let Err(pos) = outcome.known_subsumers[sub].binary_search(&sup) {
+                        outcome.known_subsumers[sub].insert(pos, sup);
+                    }
+                }
+            }
             let known_subsumers_entailed: Vec<bool> = (0..n_named)
                 .map(|subject| outcome.label_certified(subject))
                 .collect();
-            let state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            let mut state = classifier.initialize_synchronous_kpset_from_saturation_data(
                 &bridged.named,
                 &outcome.sat_verdict,
                 &outcome.certain_subsumers,
@@ -17097,9 +17488,25 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 &pending,
                 ctx.ontology_arenas().concepts(),
             );
+            for &(sub, sup) in &saturation_known_pairs {
+                if sub < n_named
+                    && sup < n_named
+                    && sub != sup
+                    && !known_subsumers_entailed[sub]
+                    && state.item_ids[sub].is_some()
+                    && state.item_ids[sup].is_some()
+                {
+                    if let Some(item) = state
+                        .ontology_item
+                        .get_concept_satisfiable_test_item_mut(state.item_ids[sub])
+                    {
+                        item.add_subsuming_concept_item(state.item_ids[sup]);
+                    }
+                }
+            }
             pending = state.ordered_subjects.clone();
             kpset_state = Some(state);
-            saturation_ran = use_satcache && saturation_complete;
+            saturation_ran = native_saturation_ran || (use_satcache && saturation_complete);
             satcache_active = use_satcache && saturation_complete;
             if progress {
                 eprintln!(
@@ -17447,11 +17854,16 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 && algo.conf_direct_rule_preprocessing
                 && algo.conf_cache_oriented_or_ordering
         };
-    let leaf_state: std::cell::RefCell<Option<RetainedConsistencyLeaf>> = Default::default();
+    let mut initial_leaf_counts = RetainedLeafCounts::default();
+    if prebuilt_leaf.is_some() {
+        initial_leaf_counts.builds = 1;
+    }
+    let leaf_state: std::cell::RefCell<Option<RetainedConsistencyLeaf>> =
+        std::cell::RefCell::new(prebuilt_leaf);
     let leaf_job = std::cell::Cell::new(false);
     let leaf_job_ran = std::cell::Cell::new(false);
     let leaf_disabled = std::cell::Cell::new(false);
-    let leaf_counts = std::cell::Cell::new(RetainedLeafCounts::default());
+    let leaf_counts = std::cell::Cell::new(initial_leaf_counts);
     let leaf_update = |f: &dyn Fn(&mut RetainedLeafCounts)| {
         let mut counts = leaf_counts.get();
         f(&mut counts);
@@ -18781,10 +19193,31 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         }
         return None;
     }
-    if source_definition_closure {
+    drop(kpset_state);
+    drop(classifier);
+    if !export_active {
+        let _ = leaf_state.borrow_mut().take();
+        let _ = retained_consistency_databox.take();
+        ctx = CalculationAlgorithmContextBase::new();
+        algo = CompletionTaskHandleAlgorithm::new();
+    }
+    if source_definition_closure && out.subsumptions.len() > initial_out_subsumptions_len {
         let before = out.subsumptions.len();
-        let closed = source_named_subsumer_closure_seeded(tin, &out.subsumptions);
-        out.subsumptions.extend(closed);
+        let closed = source_named_subsumer_closure_seeded_rows(
+            tin,
+            &out.subsumptions[initial_out_subsumptions_len..],
+        );
+        for (sub, row) in closed.into_iter().enumerate() {
+            if !subject_set.contains(&sub) {
+                continue;
+            }
+            for sup_u32 in row {
+                let sup = sup_u32 as usize;
+                if universe.contains(&sup) && saturation_known_pairs.insert((sub, sup)) {
+                    out.subsumptions.push((sub, sup));
+                }
+            }
+        }
         if progress {
             eprintln!(
                 "BRIDGE-SOURCE-POST-CLOSURE seeded={} combined={}",
@@ -18793,6 +19226,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             );
         }
     }
+    drop(saturation_known_pairs);
     out.unsatisfiable.sort_unstable();
     out.unsatisfiable.dedup();
     if !out.unsatisfiable.is_empty() {
@@ -33726,5 +34160,135 @@ mod bridge_equivalent_non_candidate_tests {
                 .contains(&(id(&tin.concepts, "Animal"), id(&tin.concepts, "Q"))),
             "Animal ⊑ ¬{{bob}} must hold since bob : Person and Animal ⊓ Person ⊑ ⊥"
         );
+    }
+
+    #[test]
+    fn cceq_absorption_truncates_failed_conjunct_triggers_and_extracts_partial_triggers() {
+        let _test_env = crate::test_env::write();
+        // Def is defined as A ⊓ (B ⊔ C), where A is triggerable and (B ⊔ C) is not.
+        // Full absorption of Def must fail and truncate the partial trigger list
+        // (leaving no stale A trigger in full_triggers), while partial absorption
+        // of Def ⊑ Target must traverse op::CCEQ to extract A as the guard trigger
+        // and derive Sub ⊑ Target when Sub ⊑ A and Sub ⊑ B.
+        let text = "Prefix(:=<http://example.org/cceq#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(Class(:B))\n\
+              Declaration(Class(:C))\n\
+              Declaration(Class(:Def))\n\
+              Declaration(Class(:Sub))\n\
+              Declaration(Class(:Target))\n\
+              EquivalentClasses(:Def ObjectIntersectionOf(:A ObjectUnionOf(:B :C)))\n\
+              SubClassOf(:Def :Target)\n\
+              SubClassOf(:Sub :A)\n\
+              SubClassOf(:Sub :B)\n\
+            )";
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .expect("classify CCEQ partial-absorption ontology");
+        assert!(res.consistent);
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "Sub"), id(&tin.concepts, "Def"))),
+            "Sub ⊑ A and Sub ⊑ B must entail Sub ⊑ Def"
+        );
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "Sub"), id(&tin.concepts, "Target"))),
+            "Sub ⊑ Def and Def ⊑ Target must entail Sub ⊑ Target"
+        );
+        assert!(
+            !res.subsumptions
+                .contains(&(id(&tin.concepts, "A"), id(&tin.concepts, "Def"))),
+            "truncated full trigger must not turn A alone into a full trigger for Def"
+        );
+    }
+
+    #[test]
+    fn native_nominal_saturation_outcome_requires_zero_unguarded_top_gcis() {
+        let _test_env = crate::test_env::write();
+        let _nom = crate::test_env::EnvVar::set("KM_NOMINALS", "1");
+        // Case 1: unguarded_top_gcis == 0. Pure TBox classes PureSub ⊑ ∃r.PureMid
+        // and ∃r.PureMid ⊑ PureSup are certified by precomputation saturation,
+        // while NominalTouch ⊑ ∃r.{a} is marked nominal-connected and verified
+        // through the native ABox (where a : PureMid).
+        let guarded = "Prefix(:=<http://example.org/nomsat#>)\n\
+            Ontology(\n\
+              Declaration(Class(:PureSub))\n\
+              Declaration(Class(:PureMid))\n\
+              Declaration(Class(:PureSup))\n\
+              Declaration(Class(:NominalTouch))\n\
+              Declaration(ObjectProperty(:r))\n\
+              Declaration(NamedIndividual(:a))\n\
+              ClassAssertion(:PureMid :a)\n\
+              SubClassOf(:PureSub ObjectSomeValuesFrom(:r :PureMid))\n\
+              SubClassOf(ObjectSomeValuesFrom(:r :PureMid) :PureSup)\n\
+              SubClassOf(:NominalTouch ObjectHasValue(:r :a))\n\
+            )";
+        // Case 2: unguarded_top_gcis > 0 via owl:Thing ⊑ {a} with a : ForcedByTop.
+        // Here a nominal-free saturation label for PureSub would miss ForcedByTop
+        // if saturation were trusted; the unguarded_top_gcis == 0 gate withholds
+        // saturation certification so completion derives PureSub ⊑ ForcedByTop.
+        let unguarded = "Prefix(:=<http://example.org/nomsat#>)\n\
+            Ontology(\n\
+              Declaration(Class(:PureSub))\n\
+              Declaration(Class(:ForcedByTop))\n\
+              Declaration(NamedIndividual(:a))\n\
+              ClassAssertion(:ForcedByTop :a)\n\
+              SubClassOf(owl:Thing ObjectOneOf(:a))\n\
+            )";
+        for (text, sub_name, sup_name) in [
+            (guarded, "PureSub", "PureSup"),
+            (guarded, "NominalTouch", "PureSup"),
+            (unguarded, "PureSub", "ForcedByTop"),
+        ] {
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+            let fr = crate::frontend::ofn_to_clauses(text);
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+            let fr = fr.expect("in fragment");
+            let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+            let projected = crate::orchestrate::race::native_nominal_bridge_clauses(
+                &fr.clauses,
+                &fr.nominal_abox,
+                &fr.definers,
+                true,
+                false,
+            );
+            let mut tin = crate::orchestrate::cb_to_ht::convert(
+                &projected,
+                Some(&fr.rbox),
+                &named,
+                &fr.cardinalities,
+                &fr.definers,
+                &fr.source_axioms,
+                true,
+                &fr.rules,
+                false,
+            );
+            tin.nominal_abox = fr.nominal_abox;
+            let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+                .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+            assert!(res.consistent);
+            assert!(
+                res.subsumptions
+                    .contains(&(id(&tin.concepts, sub_name), id(&tin.concepts, sup_name))),
+                "{sub_name} ⊑ {sup_name} must be derived"
+            );
+        }
     }
 }

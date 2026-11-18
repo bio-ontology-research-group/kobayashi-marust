@@ -464,6 +464,7 @@ pub struct ReapplyConceptLabelSet {
 
     // KONCLUDE-PORT-NOTE[ownership]: ambient `CProcessContext*` handle (opaque).
     pub process_context: Cint64, // mProcessContext
+    pub(crate) singleton_stamp: u64,
 }
 
 /// The three states of `mAdditionalConceptDesDepMap` (null / owned-overflow /
@@ -510,6 +511,7 @@ impl Default for ReapplyConceptLabelSet {
             concept_flags: ConceptSetFlags::default(),
             concept_count: 0,
             process_context: INVALID,
+            singleton_stamp: 0,
         }
     }
 }
