@@ -980,3 +980,53 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
     }
     Some(ents)
 }
+
+/// Check whether a concrete data star `ents` satisfies all data clauses of concept `a`.
+pub fn star_satisfies(d: &DataNf, ents: &[Entry], a: u32) -> bool {
+    let cnt = |u: u32, pos: &[u32], neg: &[u32]| -> u32 {
+        ents.iter()
+            .filter(|e| has(&e.label, u) && pos.iter().all(|p| has(&e.ty, *p)) && !neg.iter().any(|n| has(&e.ty, *n)))
+            .count() as u32
+    };
+    if let Some(ixs) = d.dsome_by.get(&a) {
+        for &i in ixs {
+            let c = &d.dsome[i];
+            if cnt(c.1, &c.2, &c.3) == 0 {
+                return false;
+            }
+        }
+    }
+    if let Some(ixs) = d.datleast_by.get(&a) {
+        for &i in ixs {
+            let c = &d.datleast[i];
+            if c.1 > 0 && cnt(c.2, &c.3, &c.4) < c.1 {
+                return false;
+            }
+        }
+    }
+    if let Some(ixs) = d.datmost_by.get(&a) {
+        for &i in ixs {
+            let c = &d.datmost[i];
+            if cnt(c.2, &c.3, &c.4) > c.1 {
+                return false;
+            }
+        }
+    }
+    if let Some(ixs) = d.dall_by.get(&a) {
+        for &i in ixs {
+            let c = &d.dall[i];
+            for e in ents {
+                if has(&e.label, c.1) {
+                    let ok = c.2.iter().any(|l| match *l {
+                        Lit::Pos(j) => has(&e.ty, j),
+                        Lit::Neg(j) => !has(&e.ty, j),
+                    });
+                    if !ok {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
+}

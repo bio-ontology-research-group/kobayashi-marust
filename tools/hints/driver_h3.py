@@ -102,6 +102,8 @@ def km_rows(km_path, idx_path):
         w = line.rstrip('\n').split('\t')
         if w[0] == 'SUB':
             sup.setdefault(w[1], set()).add(w[2])
+            if w[1] == THING:
+                top.add(w[2])
         elif w[0] == 'UNSAT':
             unsat.add(w[1])
         elif w[0] == 'TYPE':
@@ -157,8 +159,11 @@ def main():
             R['km_realize'] = old_R['km_realize']
         elif old_R.get('status') == 'km-failed' and 'km' in old_R:
             R['km_realize'] = old_R['km']
-        rc, s, m, _, err = run([KM, 'classify', '--lines', '--top', src], 300, out=kl)
+        rc, s, m, _, err = run([KM, 'classify', '--lines', '--top', src], 120, out=kl)
         clean_km_tmp()
+        if rc != 0:
+            rc, s, m, _, err = run([KM, 'classify', '--lines', src], 240, out=kl)
+            clean_km_tmp()
         R['km'] = {'rc': rc, 'secs': s, 'rss_mb': m, 'realized': False}
         if rc != 0:
             R['status'] = 'km-failed'
@@ -171,8 +176,11 @@ def main():
             R['km'] = {'rc': 0, 'secs': s, 'rss_mb': m, 'realized': True}
         else:
             R['km_realize'] = {'rc': rc, 'secs': s, 'rss_mb': m, 'err': (err or '')[-200:]}
-            rc2, s2, m2, _, err2 = run([KM, 'classify', '--lines', '--top', src], 300, out=kl)
+            rc2, s2, m2, _, err2 = run([KM, 'classify', '--lines', '--top', src], 120, out=kl)
             clean_km_tmp()
+            if rc2 != 0:
+                rc2, s2, m2, _, err2 = run([KM, 'classify', '--lines', src], 240, out=kl)
+                clean_km_tmp()
             R['km'] = {'rc': rc2, 'secs': s2, 'rss_mb': m2, 'realized': False, 'realize_timeout_secs': s}
             if rc2 != 0:
                 R['status'] = 'km-failed'
@@ -503,10 +511,16 @@ def main():
 
 
 def finish(R, outdir, t0):
-    for fn in ('km.lines', 'base.idx', 'base.cl'):
+    p_kl = os.path.join(outdir, 'km.lines')
+    try:
+        if os.path.exists(p_kl) and os.path.getsize(p_kl) > MAX_KEEP_BYTES:
+            os.remove(p_kl)
+    except OSError:
+        pass
+    for fn in ('base.idx', 'base.cl'):
         p_tmp = os.path.join(outdir, fn)
         try:
-            if os.path.exists(p_tmp) and os.path.getsize(p_tmp) > MAX_KEEP_BYTES:
+            if os.path.exists(p_tmp) and os.path.getsize(p_tmp) > 5 * 1024 * 1024:
                 os.remove(p_tmp)
         except OSError:
             pass

@@ -545,14 +545,14 @@ pub struct Engine<'a> {
     fwd_cache: FxMap<(u32, u32), u32>,
     bwd_cache: FxMap<(u32, u32), u32>,
     hcons_cache: FxMap<u32, bool>,
-    self_push: Vec<Vec<u32>>,
-    bounce: Vec<Vec<(u32, u32)>>,
-    has_bounce: bool,
+    pub self_push: Vec<Vec<u32>>,
+    pub bounce: Vec<Vec<(u32, u32)>>,
+    pub has_bounce: bool,
     r_direct_st: Vec<u32>,
     r_up_st: Vec<u32>,
     w_role_st: Vec<u32>,
     w_role_list: Vec<Vec<u32>>,
-    conflict_peers: Vec<Vec<u32>>,
+    pub conflict_peers: Vec<Vec<u32>>,
     hclose_len: Vec<u32>,
     memo: FxMap<(u32, u32, u32, bool), CloseRes>,
     pub bad: FxSet<u32>,
@@ -1289,7 +1289,7 @@ impl<'a> Engine<'a> {
                                 }
                             })
                     });
-                    if !is_pure_oneof_dall {
+                    if !is_pure_oneof_dall || self.data.as_ref().map_or(false, |(d, _)| d.dall.len() <= 256) {
                         for &u in &self.dprop_neg[cand as usize] {
                             self.empty_auto_by_dprop.entry(u).or_default().push(g);
                         }
@@ -2524,6 +2524,20 @@ impl<'a> Engine<'a> {
                 });
                 if !has_open_non_empty {
                     let has_active_dreq = !active_dprops.is_empty();
+                    let ents_opt = if has_active_dreq {
+                        if let Some((d, v)) = &self.data {
+                            let mut ds_cur: Vec<u32> =
+                                t.iter().copied().filter(|&a| self.has_data[a as usize]).collect();
+                            ds_cur.sort_unstable();
+                            ds_cur.dedup();
+                            let ds_filt = self.filter_active_data(&ds_cur);
+                            crate::data::star(d, v, &ds_filt)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
                     let mut inert_added = false;
                     for i_p in 0..pend.len() {
                         let g = pend[i_p];
@@ -2531,20 +2545,25 @@ impl<'a> Engine<'a> {
                         if !body.is_empty() || h.iter().any(|&x| self.mark[x as usize] == st) {
                             continue;
                         }
-                        let mut best_inert: Option<(bool, u32)> = None;
+                        let mut best_inert: Option<(bool, bool, u32)> = None;
                         for &cand in h {
                             if self.is_forbid(cand, fst, st) || self.cmark[cand as usize] == st {
                                 continue;
                             }
                             let check_atom = |x: u32, mark: &[u32], cstamp: &[u32], cnt: &[u32]| -> bool {
                                 let xu = x as usize;
+                                let dreq_ok = self.dreq[xu] == 0
+                                    || (has_active_dreq
+                                        && ents_opt.as_ref().map_or(false, |ents| {
+                                            crate::data::star_satisfies(&self.data.as_ref().unwrap().0, ents, x)
+                                        }));
                                 !nf.named[xu]
                                     && !nf.is_nom[xu]
                                     && nf.ex_by.get(x).is_empty()
                                     && nf.ge_by.get(x).is_empty()
                                     && nf.all_by.get(x).is_empty()
                                     && !nf.has_le[xu]
-                                    && self.dreq[xu] == 0
+                                    && dreq_ok
                                     && self.bounce[xu].is_empty()
                                     && nf.gci_by_body.get(x).iter().all(|&gi| {
                                         let giu = gi as usize;
@@ -2564,33 +2583,31 @@ impl<'a> Engine<'a> {
                                 if has_active_dreq
                                     && (self.has_data[cu] || self.self_push[cu].iter().any(|&c| self.has_data[c as usize]))
                                 {
-                                    let mut ds_try: Vec<u32> =
-                                        t.iter().copied().filter(|&a| self.has_data[a as usize]).collect();
-                                    if self.has_data[cu] {
-                                        ds_try.push(cand);
-                                    }
-                                    for &c in &self.self_push[cu] {
-                                        if self.has_data[c as usize] {
-                                            ds_try.push(c);
+                                    if let Some(ref ents) = ents_opt {
+                                        let d = &self.data.as_ref().unwrap().0;
+                                        let star_ok = (!self.has_data[cu] || crate::data::star_satisfies(d, ents, cand))
+                                            && self.self_push[cu]
+                                                .iter()
+                                                .all(|&c| !self.has_data[c as usize] || crate::data::star_satisfies(d, ents, c));
+                                        if !star_ok {
+                                            continue;
                                         }
-                                    }
-                                    ds_try.sort_unstable();
-                                    ds_try.dedup();
-                                    if !self.has_data_star(ds_try) {
-                                        self.cmark[cu] = st;
-                                        inert_added = true;
+                                    } else {
                                         continue;
                                     }
                                 }
-                                let k = (self.has_data[cu], cand);
+                                let k = (self.dreq[cu] > 0, self.has_data[cu], cand);
                                 if best_inert.map_or(true, |b| k < b) {
                                     best_inert = Some(k);
                                 }
                             }
                         }
-                        if let Some((_, cand)) = best_inert {
+                        if let Some((_, _, cand)) = best_inert {
                             add!(cand);
                             inert_added = true;
+                            if !nf.gci_by_body.get(cand).is_empty() || !self.self_push[cand as usize].is_empty() {
+                                break;
+                            }
                         }
                     }
                     if inert_added {

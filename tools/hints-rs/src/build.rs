@@ -188,7 +188,10 @@ fn build_witness(
         None => 0,
     };
     let cr = if use_clean {
-        en.close_clean(seed, forbid, target, true)
+        match en.close_clean(seed, forbid, target, true) {
+            CloseRes::Ok(t) => CloseRes::Ok(t),
+            _ => en.close(seed, forbid, target, true),
+        }
     } else {
         en.close(seed, forbid, target, true)
     };
@@ -312,7 +315,7 @@ fn try_witness(
     let max_attempts = retries.max(1);
     while attempts < max_attempts {
         s.m.begin();
-        match build_witness(cx, en, &mut s.m, a, local_forbid, target, forbid == 0 || attempts == 0) {
+        match build_witness(cx, en, &mut s.m, a, local_forbid, target, attempts == 0) {
             Ok(w) => {
                 let (is_poll, pnoms) = polluted(cx, en, s, check_nom);
                 if is_poll {
@@ -369,6 +372,9 @@ fn try_witness(
                     new = e.blame.iter().copied().filter(|&t| t != 0 && !en.bad.contains(&t)).collect();
                 }
                 if new.is_empty() {
+                    if attempts == 1 {
+                        continue;
+                    }
                     break;
                 }
                 en.bad.extend(new);

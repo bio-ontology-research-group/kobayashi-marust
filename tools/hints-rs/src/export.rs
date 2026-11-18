@@ -1622,38 +1622,88 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
             m.tm_clear();
             let try_add_clean_wit = |en: &mut Engine, m: &mut Model, c: u32, fb: u32, tgt: u32| -> Option<Id> {
                 let seed = en.sets.intern(vec![c]);
-                let (t, is_clean) = match en.close_clean(seed, fb, tgt, true) {
-                    CloseRes::Ok(t) => (t, true),
-                    _ => match en.close(seed, fb, tgt, true) {
-                        CloseRes::Ok(t) => (t, false),
-                        _ => return None,
-                    },
-                };
-                if en.sets.get(t).iter().any(|&o| en.nf.is_nom[o as usize]) {
-                    return None;
-                }
-                m.begin();
-                let w = en.new_elem_closed(m, seed, t, fb, tgt, false);
-                if !is_clean {
-                    m.em(w).owner = w;
-                }
-                if en.saturate(m).is_ok() {
-                    let w = m.find(w);
-                    let polluted = m.saved_iter().any(|(&i, old)| {
-                        let cur = m.find(i);
-                        m.elems[cur as usize].ty != old.ty
-                    });
-                    if !polluted
-                        && en.sets.has(m.elems[w as usize].ty, c)
-                        && (fb == 0 || !en.sets.get(fb).iter().any(|&b| en.sets.has(m.elems[w as usize].ty, b)))
-                    {
-                        m.em(w).pinned = true;
-                        m.commit();
-                        return Some(w);
+                let base_bad = en.bad.clone();
+                let mut res = None;
+                for attempt in 0..4 {
+                    let (t, is_clean) = if attempt == 0 {
+                        match en.close_clean(seed, fb, tgt, true) {
+                            CloseRes::Ok(t) => (t, true),
+                            _ => match en.close(seed, fb, tgt, true) {
+                                CloseRes::Ok(t) => (t, false),
+                                _ => break,
+                            },
+                        }
+                    } else {
+                        match en.close(seed, fb, tgt, true) {
+                            CloseRes::Ok(t) => (t, false),
+                            _ => break,
+                        }
+                    };
+                    if en.sets.get(t).iter().any(|&o| en.nf.is_nom[o as usize]) {
+                        break;
+                    }
+                    m.begin();
+                    let w = en.new_elem_closed(m, seed, t, fb, tgt, false);
+                    if !is_clean {
+                        m.em(w).owner = w;
+                    }
+                    match en.saturate(m) {
+                        Ok(()) => {
+                            let w = m.find(w);
+                            let polluted = m.saved_iter().any(|(&i, old)| {
+                                let cur = m.find(i);
+                                if cur != i {
+                                    return true;
+                                }
+                                let newt = m.elems[cur as usize].ty;
+                                if newt == old.ty {
+                                    return false;
+                                }
+                                en.sets
+                                    .get(newt)
+                                    .iter()
+                                    .any(|&a| (rowclass[a as usize] || nf.is_nom[a as usize]) && !en.sets.has(old.ty, a))
+                            });
+                            if !polluted
+                                && en.sets.has(m.elems[w as usize].ty, c)
+                                && (fb == 0 || !en.sets.get(fb).iter().any(|&b| en.sets.has(m.elems[w as usize].ty, b)))
+                            {
+                                m.em(w).pinned = true;
+                                m.commit();
+                                res = Some(w);
+                                break;
+                            }
+                            m.rollback();
+                            break;
+                        }
+                        Err(e) => {
+                            m.rollback();
+                            if e.is_budget() {
+                                break;
+                            }
+                            let new: Vec<u32> = e
+                                .blame
+                                .iter()
+                                .copied()
+                                .filter(|&bt| {
+                                    bt != 0
+                                        && !en.bad.contains(&bt)
+                                        && !en.sets.get(bt).iter().any(|&a| en.nf.is_nom[a as usize])
+                                })
+                                .collect();
+                            if new.is_empty() {
+                                break;
+                            }
+                            en.bad.extend(new);
+                            en.clear_memo();
+                        }
                     }
                 }
-                m.rollback();
-                None
+                if en.bad.len() != base_bad.len() {
+                    en.bad = base_bad;
+                    en.clear_memo();
+                }
+                res
             };
             for &c in &classes {
                 if Instant::now() > deadline || en.mem_exceeded() {
