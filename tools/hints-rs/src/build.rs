@@ -585,6 +585,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
     // precompute which nominals cannot be coalesced before/after saturation
     let mut unsafe_nom = vec![false; n];
     let mut ref_nom = vec![false; n];
+    let mut gci_nom = vec![false; n];
     for (body, head) in &nf.gci {
         if body.len() == 1
             && head.len() == 1
@@ -598,6 +599,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
             for &a in body {
                 if nf.is_nom[a as usize] {
                     ref_nom[a as usize] = true;
+                    gci_nom[a as usize] = true;
                 }
             }
         }
@@ -799,7 +801,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                         return;
                     }
                     let tx_s = en.sets.get(m.elems[x as usize].ty);
-                    let has_ref_nom = tx_s.iter().any(|&a| en.nf.is_nom[a as usize] && ref_nom[a as usize]);
+                    let has_ref_nom = tx_s.iter().any(|&a| en.nf.is_nom[a as usize] && gci_nom[a as usize]);
                     let has_dsome_x = strip_ex && tx_s.iter().any(|&a| in_dsome[a as usize]);
                     let mut placed = false;
                     'sub_loop: for (si, sub) in subs.iter_mut().enumerate() {

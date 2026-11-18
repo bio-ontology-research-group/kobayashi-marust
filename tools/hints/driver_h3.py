@@ -159,10 +159,10 @@ def main():
             R['km_realize'] = old_R['km_realize']
         elif old_R.get('status') == 'km-failed' and 'km' in old_R:
             R['km_realize'] = old_R['km']
-        rc, s, m, _, err = run([KM, 'classify', '--lines', '--top', src], 120, out=kl)
+        rc, s, m, _, err = run([KM, 'classify', '--lines', '--top', src], 60, out=kl)
         clean_km_tmp()
         if rc != 0:
-            rc, s, m, _, err = run([KM, 'classify', '--lines', src], 240, out=kl)
+            rc, s, m, _, err = run([KM, 'classify', '--lines', src], 300, out=kl)
             clean_km_tmp()
         R['km'] = {'rc': rc, 'secs': s, 'rss_mb': m, 'realized': False}
         if rc != 0:
@@ -176,10 +176,10 @@ def main():
             R['km'] = {'rc': 0, 'secs': s, 'rss_mb': m, 'realized': True}
         else:
             R['km_realize'] = {'rc': rc, 'secs': s, 'rss_mb': m, 'err': (err or '')[-200:]}
-            rc2, s2, m2, _, err2 = run([KM, 'classify', '--lines', '--top', src], 120, out=kl)
+            rc2, s2, m2, _, err2 = run([KM, 'classify', '--lines', '--top', src], 60, out=kl)
             clean_km_tmp()
             if rc2 != 0:
-                rc2, s2, m2, _, err2 = run([KM, 'classify', '--lines', src], 240, out=kl)
+                rc2, s2, m2, _, err2 = run([KM, 'classify', '--lines', src], 300, out=kl)
                 clean_km_tmp()
             R['km'] = {'rc': rc2, 'secs': s2, 'rss_mb': m2, 'realized': False, 'realize_timeout_secs': s}
             if rc2 != 0:
@@ -202,7 +202,7 @@ def main():
         o0 = R['route']
     else:
         # the witness route's translation, every class of the ontology requested
-        rc1, s1, m1, _, e1 = ref(['--witness-route', '--print-index'], src, 300, out=bi)
+        rc1, s1, m1, _, e1 = ref(['--witness-route', '--print-index'], src, 450, out=bi)
         rc2, s2, m2, _, e2 = (None, None, None, None, None)
         s0 = 0
         if rc1 == 0:
@@ -215,7 +215,7 @@ def main():
                 f.write('\n'.join(names + add) + '\n')
         if rc1 == 0:
             extra = ['--classes', cf] if os.path.exists(cf) else []
-            rc2, s2, m2, _, e2 = ref(['--witness-route'] + extra + ['--print-clauses'], src, 300, out=bc)
+            rc2, s2, m2, _, e2 = ref(['--witness-route'] + extra + ['--print-clauses'], src, 450, out=bc)
         R['dump'] = {'rc': rc2 if rc1 == 0 else rc1, 'secs': round((s1 or 0) + (s2 or 0), 2), 'rss_mb': max(m1 or 0, m2 or 0)}
         if rc1 != 0 or rc2 != 0:
             R['status'] = 'dump-failed'
@@ -418,8 +418,8 @@ def main():
     recompute_certified()
     search_cert_rows = C['certified_rows']
 
-    # Try `--export-model` fallback when search did not achieve `certified-full` (or `--try-export` requested)
-    if (C['certified_rows'] < R['rows_total'] or '--try-export' in a) and '--no-export' not in a and os.path.exists(KM_EXP):
+    # Try `--export-model` fallback when search did not achieve `model-full`/`certified-full` (or `--try-export` requested)
+    if ((C['certified_rows'] < R['rows_total'] and R.get('status') != 'model-full') or '--try-export' in a) and '--no-export' not in a and os.path.exists(KM_EXP):
         exp_dir = os.path.join(outdir, 'export_try')
         os.makedirs(exp_dir, exist_ok=True)
         exp_jsonl = os.path.join(exp_dir, 'export.jsonl')
