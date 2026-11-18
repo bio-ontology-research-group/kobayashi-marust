@@ -34,10 +34,27 @@ pub(super) struct SingletonLabelCache {
     /// Sorted singleton tags the cached entry lists were filtered to.
     filter_tags: Vec<Cint64>,
     labels: crate::fxhash::FxHashMap<usize, (
-        Vec<std::sync::Arc<super::super::process::satellites::ReapplyConceptLabelSet>>,
+        Vec<(*const super::super::process::satellites::ReapplyConceptLabelSet, u64)>,
         Vec<(Cint64, ConDescId)>,
         Vec<usize>,
     )>,
+}
+
+/// Snapshot of the single-carrier singleton state at a retained consistency
+/// leaf. Every singleton concept has at most one live carrier in
+/// `0..node_count`. As long as the arenas below `node_count`,
+/// `label_set_count`, and `con_desc_count` have no journaled mutations above
+/// `base_epoch_depth` / `base_spine_depth`, only nodes allocated at or above
+/// `node_count` need to be scanned for new singleton carriers.
+pub struct RetainedSingletonBase {
+    pub node_count: usize,
+    pub label_set_count: usize,
+    pub con_desc_count: usize,
+    pub base_epoch_depth: usize,
+    pub base_spine_depth: usize,
+    pub first_carrier_by_tag: crate::fxhash::FxHashMap<Cint64, (NodeId, TrackPointId)>,
+    pub all_singleton_tags: crate::fxhash::FxHashSet<Cint64>,
+    pub membership: Option<(Cint64, Vec<u64>)>,
 }
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -2072,14 +2089,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &self,
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) -> crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
-        let ctx = calc_alg_context.process_context();
-        let onto = calc_alg_context.ontology_arenas();
-        let mut carriers: crate::fxhash::FxHashMap<_, Vec<_>> = self.singleton_concepts.iter()
-            .map(|&concept| (onto.concept(concept).get_concept_tag(), Vec::new())).collect();
-        // Most visited labels are not literal singleton tags. An exact,
-        // bounded bitmap rejects those misses before hashing. Sparse or
-        // extreme tag ranges retain the original map-only lookup.
-        let membership = carriers.keys().min().copied().zip(carriers.keys().max().copied())
+        self.singleton_carriers_with_limit(calc_alg_context, 2)
+    }
+
+    fn singleton_tag_bitmap(
+        carriers: &crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>>,
+    ) -> Option<(Cint64, Vec<u64>)> {
+        carriers.keys().min().copied().zip(carriers.keys().max().copied())
             .and_then(|(first, last)| {
                 let span = usize::try_from(last.checked_sub(first)?.checked_add(1)?).ok()?;
                 if span > 1_048_576 { return None; }
@@ -2089,7 +2105,111 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     bits[offset / 64] |= 1 << (offset % 64);
                 }
                 Some((first, bits))
-            });
+            })
+    }
+
+    fn singleton_label_ref_counts(
+        &self,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Vec<u32> {
+        use super::super::process::satellites::{AdditionalDesDepMapRef, AdditionalMapSlot};
+        let ctx = calc_alg_context.process_context();
+        let mut counts = vec![0u32; ctx.label_set_count()];
+        for i in 0..ctx.node_count() {
+            if self.phantom_node_intervals.iter().any(|&(a, b)| i >= a && i < b) { continue; }
+            let node = ctx.node(NodeId::new(i as Cint64));
+            if node.has_merged_into_individual_node_id()
+                || node.has_purged_blocked_processing_restriction_flags()
+            {
+                continue;
+            }
+            let label = node.reapply_con_label_set;
+            if label.is_none() { continue; }
+            if let Some(slot) = counts.get_mut(label.index()) {
+                *slot = slot.saturating_add(1);
+            }
+            let mut next = match &ctx.label_set(label).additional_concept_des_dep_map {
+                AdditionalDesDepMapRef::Shared(alias) => Some(*alias),
+                _ => None,
+            };
+            while let Some(alias) = next {
+                if let Some(slot) = counts.get_mut(alias.label_set.index()) {
+                    *slot = slot.saturating_add(1);
+                }
+                next = match alias.which {
+                    AdditionalMapSlot::Main => None,
+                    AdditionalMapSlot::Additional => {
+                        match &ctx.label_set(alias.label_set).additional_concept_des_dep_map {
+                            AdditionalDesDepMapRef::Shared(alias) => Some(*alias),
+                            _ => None,
+                        }
+                    }
+                };
+            }
+        }
+        counts
+    }
+
+    fn adjust_singleton_label_ref_counts(
+        ctx: &super::super::process::context::ProcessContext,
+        label: super::super::process::LabelSetId,
+        counts: &mut Vec<u32>,
+        increment: bool,
+    ) {
+        use super::super::process::satellites::{AdditionalDesDepMapRef, AdditionalMapSlot};
+        if label.is_none() {
+            return;
+        }
+        if increment && label.index() >= counts.len() {
+            counts.resize(label.index() + 1, 0);
+        }
+        if let Some(slot) = counts.get_mut(label.index()) {
+            *slot = if increment {
+                slot.saturating_add(1)
+            } else {
+                slot.saturating_sub(1)
+            };
+        }
+        let mut next = match &ctx.label_set(label).additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Shared(alias) => Some(*alias),
+            _ => None,
+        };
+        while let Some(alias) = next {
+            if increment && alias.label_set.index() >= counts.len() {
+                counts.resize(alias.label_set.index() + 1, 0);
+            }
+            if let Some(slot) = counts.get_mut(alias.label_set.index()) {
+                *slot = if increment {
+                    slot.saturating_add(1)
+                } else {
+                    slot.saturating_sub(1)
+                };
+            }
+            next = match alias.which {
+                AdditionalMapSlot::Main => None,
+                AdditionalMapSlot::Additional => {
+                    match &ctx.label_set(alias.label_set).additional_concept_des_dep_map {
+                        AdditionalDesDepMapRef::Shared(alias) => Some(*alias),
+                        _ => None,
+                    }
+                }
+            };
+        }
+    }
+
+    fn singleton_carriers_with_limit(
+        &self,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+        max_per_tag: usize,
+    ) -> crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
+        let ctx = calc_alg_context.process_context();
+        let onto = calc_alg_context.ontology_arenas();
+        let mut carriers: crate::fxhash::FxHashMap<_, Vec<_>> = self.singleton_concepts.iter()
+            .map(|&concept| (onto.concept(concept).get_concept_tag(), Vec::new())).collect();
+        // Most visited labels are not literal singleton tags. An exact,
+        // bounded bitmap rejects those misses before hashing. Sparse or
+        // extreme tag ranges retain the original map-only lookup.
+        let membership = Self::singleton_tag_bitmap(&carriers);
         for i in 0..ctx.node_count() {
             if self.phantom_node_intervals.iter().any(|&(a, b)| i >= a && i < b) { continue; }
             let node_id = NodeId::new(i as Cint64);
@@ -2114,7 +2234,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if descriptor.is_none() || ctx.con_desc(descriptor).is_negated() { return; }
                 if additional && ctx.label_set(label).concept_des_dep_map.contains_key(&tag) { return; }
                 if let Some(pair) = carriers.get_mut(&tag) {
-                    if pair.len() < 2 && pair.last().is_none_or(|&(last, _)| last != node_id) {
+                    if pair.len() < max_per_tag && pair.last().is_none_or(|&(last, _)| last != node_id) {
                         pair.push((node_id, ctx.con_desc(descriptor).get_dependency_track_point()));
                     }
                 }
@@ -2123,10 +2243,153 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         carriers
     }
 
+    pub fn build_retained_singleton_base(
+        &self,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Option<std::sync::Arc<RetainedSingletonBase>> {
+        if self.singleton_concepts.is_empty() {
+            return None;
+        }
+        let carriers = self.singleton_carriers_with_limit(calc_alg_context, 2);
+        if carriers.values().any(|list| list.len() > 1) {
+            return None;
+        }
+        let membership = Self::singleton_tag_bitmap(&carriers);
+        let all_singleton_tags: crate::fxhash::FxHashSet<Cint64> =
+            carriers.keys().copied().collect();
+        let first_carrier_by_tag: crate::fxhash::FxHashMap<Cint64, (NodeId, TrackPointId)> =
+            carriers
+                .into_iter()
+                .filter_map(|(tag, mut list)| list.pop().map(|pair| (tag, pair)))
+                .collect();
+        let pc = calc_alg_context.process_context();
+        Some(std::sync::Arc::new(RetainedSingletonBase {
+            node_count: pc.node_count(),
+            label_set_count: pc.label_set_count(),
+            con_desc_count: pc.con_desc_count(),
+            base_epoch_depth: pc.branch_epoch_depth(),
+            base_spine_depth: pc.spine_epoch_depth(),
+            first_carrier_by_tag,
+            all_singleton_tags,
+            membership,
+        }))
+    }
+
+    fn singleton_carriers_from_retained_base(
+        &self,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+        base: &RetainedSingletonBase,
+    ) -> Option<Option<crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>>>> {
+        let ctx = calc_alg_context.process_context();
+        if !ctx.retained_singleton_base_unmodified(
+            base.node_count,
+            base.label_set_count,
+            base.con_desc_count,
+            base.base_epoch_depth,
+            base.base_spine_depth,
+        ) || !self
+            .phantom_node_intervals
+            .iter()
+            .all(|&(a, _)| a >= base.node_count)
+        {
+            return None;
+        }
+        let mut fresh_by_tag: crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>> =
+            Default::default();
+        let mut any_pair = false;
+        for i in base.node_count..ctx.node_count() {
+            if self
+                .phantom_node_intervals
+                .iter()
+                .any(|&(a, b)| i >= a && i < b)
+            {
+                continue;
+            }
+            let node_id = NodeId::new(i as Cint64);
+            let node = ctx.node(node_id);
+            if node.has_merged_into_individual_node_id()
+                || node.has_purged_blocked_processing_restriction_flags()
+            {
+                continue;
+            }
+            let label = node.reapply_con_label_set;
+            if label.is_none() {
+                continue;
+            }
+            ctx.label_set_visit_stored_descriptors(label, |tag, descriptor, additional| {
+                if let Some((first, bits)) = &base.membership {
+                    let Some(offset) = tag
+                        .checked_sub(*first)
+                        .and_then(|n| usize::try_from(n).ok())
+                    else {
+                        return;
+                    };
+                    if bits
+                        .get(offset / 64)
+                        .is_none_or(|word| word & (1 << (offset % 64)) == 0)
+                    {
+                        return;
+                    }
+                }
+                if descriptor.is_none() || ctx.con_desc(descriptor).is_negated() {
+                    return;
+                }
+                if additional
+                    && ctx
+                        .label_set(label)
+                        .concept_des_dep_map
+                        .contains_key(&tag)
+                {
+                    return;
+                }
+                if !base.all_singleton_tags.contains(&tag) {
+                    return;
+                }
+                let list = fresh_by_tag.entry(tag).or_default();
+                if list.last().is_none_or(|&(last, _)| last != node_id) {
+                    let has_base = base.first_carrier_by_tag.contains_key(&tag);
+                    if has_base || !list.is_empty() {
+                        any_pair = true;
+                    }
+                    list.push((node_id, ctx.con_desc(descriptor).get_dependency_track_point()));
+                }
+            });
+        }
+        if !any_pair {
+            return Some(None);
+        }
+        let onto = calc_alg_context.ontology_arenas();
+        let carriers: crate::fxhash::FxHashMap<_, Vec<_>> = self
+            .singleton_concepts
+            .iter()
+            .map(|&concept| {
+                let tag = onto.concept(concept).get_concept_tag();
+                let mut pair = Vec::new();
+                if let Some(&first) = base.first_carrier_by_tag.get(&tag) {
+                    pair.push(first);
+                }
+                if let Some(fresh) = fresh_by_tag.remove(&tag) {
+                    pair.extend(fresh);
+                }
+                (tag, pair)
+            })
+            .collect();
+        Some(Some(carriers))
+    }
+
     pub(super) fn singleton_first_carriers_cached(
         &self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
         cache: &mut SingletonLabelCache,
+    ) -> crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
+        self.singleton_carriers_cached_with_limit(calc_alg_context, cache, 2)
+    }
+
+    fn singleton_carriers_cached_with_limit(
+        &self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+        cache: &mut SingletonLabelCache,
+        max_per_tag: usize,
     ) -> crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>> {
         let epoch = calc_alg_context.process_context_mut().singleton_cache_scan_epoch();
         let changed = calc_alg_context.process_context_mut().take_singleton_changed_descriptors();
@@ -2160,6 +2423,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             cache.labels.clear();
             cache.filter_tags = filter_tags;
         }
+        let membership = Self::singleton_tag_bitmap(&carriers);
         // Phantom intervals as a sorted, merged list swept with a cursor:
         // the same membership test as `intervals.iter().any(..)` per node,
         // without rescanning every interval for every node.
@@ -2195,9 +2459,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 entry.1.clear();
                 entry.2.clear();
                 ctx.label_set_visit_stored_descriptors(label, |tag, descriptor, additional| {
+                    if let Some((first, bits)) = &membership {
+                        let Some(offset) = tag.checked_sub(*first).and_then(|n| usize::try_from(n).ok()) else { return; };
+                        if bits.get(offset / 64).is_none_or(|word| word & (1 << (offset % 64)) == 0) {
+                            return;
+                        }
+                    }
+                    if !carriers.contains_key(&tag) { return; }
                     if descriptor.is_some() { entry.2.push(descriptor.index()); }
                     if descriptor.is_none() || ctx.con_desc(descriptor).is_negated() { return; }
-                    if !carriers.contains_key(&tag) { return; }
                     if additional && ctx.label_set(label).concept_des_dep_map.contains_key(&tag) { return; }
                     entry.1.push((tag,descriptor));
                 });
@@ -2207,7 +2477,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             for &(tag, descriptor) in &entry.1 {
                 if let Some(pair) = carriers.get_mut(&tag) {
-                    if pair.len() < 2 && pair.last().is_none_or(|&(last,_)| last != node_id) {
+                    if pair.len() < max_per_tag && pair.last().is_none_or(|&(last,_)| last != node_id) {
                         pair.push((node_id,ctx.con_desc(descriptor).get_dependency_track_point()));
                     }
                 }
@@ -2260,11 +2530,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // live positive carriers in node order with their current dependencies.
         let scan_after_merge = super::ht_singleton_scan_after_merge_enabled();
         let singleton_concepts = self.singleton_concepts.clone(); // tiny (distinct literal values)
+        if let Some(base) = self.retained_singleton_base.as_deref() {
+            match self.singleton_carriers_from_retained_base(calc_alg_context, base) {
+                Some(None) => return false,
+                Some(Some(_)) | None => {}
+            }
+        }
         // A dry first scan needs no label snapshots or descriptor journals.
         // Use the differential-tested reference index initially; allocate the
         // cache only after a real merge requires repeated scans of this state.
-        let mut indexed = (singleton_concepts.len() >= 32)
-            .then(|| self.singleton_first_carriers(calc_alg_context));
+        let mut indexed = (singleton_concepts.len() >= 32).then(|| {
+            if let Some(base) = self.retained_singleton_base.as_deref() {
+                if let Some(Some(carriers)) =
+                    self.singleton_carriers_from_retained_base(calc_alg_context, base)
+                {
+                    return carriers;
+                }
+            }
+            self.singleton_carriers_with_limit(calc_alg_context, usize::MAX)
+        });
+        let membership = indexed.as_ref().and_then(Self::singleton_tag_bitmap);
+        let mut label_ref_counts = if indexed.is_some() {
+            let _ = calc_alg_context.process_context_mut().singleton_cache_scan_epoch();
+            let _ = calc_alg_context.process_context_mut().take_singleton_changed_descriptors();
+            self.singleton_label_ref_counts(calc_alg_context)
+        } else {
+            Vec::new()
+        };
         for &concept in &singleton_concepts {
             loop {
                 // Collect the first two LIVE positive carriers (read-only
@@ -2272,9 +2564,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // never allocate during the scan).
                 let mut first: Option<(NodeId, TrackPointId)> = None;
                 let mut second: Option<(NodeId, TrackPointId)> = None;
-                if let Some(index) = &indexed {
+                if let Some(index) = &mut indexed {
+                    let ctx = calc_alg_context.process_context();
                     let tag = calc_alg_context.ontology_arenas().concept(concept).get_concept_tag();
-                    if let Some(pair) = index.get(&tag) {
+                    if let Some(pair) = index.get_mut(&tag) {
+                        pair.retain(|&(node_id, _)| {
+                            let node = ctx.node(node_id);
+                            !node.has_merged_into_individual_node_id()
+                                && !node.has_purged_blocked_processing_restriction_flags()
+                        });
                         first = pair.first().copied();
                         second = pair.get(1).copied();
                     }
@@ -2386,6 +2684,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     from_tp,
                     calc_alg_context,
                 );
+                let into_label_before = calc_alg_context
+                    .process_context()
+                    .node(into)
+                    .reapply_con_label_set;
+                let from_label_before = calc_alg_context
+                    .process_context()
+                    .node(from)
+                    .reapply_con_label_set;
                 self.merge_individual_node_into(
                     into,
                     from,
@@ -2398,11 +2704,103 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     return true; // a clash raised during the merge unwinds to the drive
                 }
                 if indexed.is_some() {
-                    indexed = if scan_after_merge {
-                        None
+                    if scan_after_merge {
+                        indexed = None;
                     } else {
-                        Some(self.singleton_first_carriers_cached(calc_alg_context, cache))
-                    };
+                        let desc_changed = calc_alg_context
+                            .process_context_mut()
+                            .singleton_cache_has_semantic_descriptor_changes();
+                        let ctx = calc_alg_context.process_context();
+                        Self::adjust_singleton_label_ref_counts(
+                            ctx,
+                            from_label_before,
+                            &mut label_ref_counts,
+                            false,
+                        );
+                        let into_node = ctx.node(into);
+                        let into_label = into_node.reapply_con_label_set;
+                        if into_label != into_label_before {
+                            Self::adjust_singleton_label_ref_counts(
+                                ctx,
+                                into_label_before,
+                                &mut label_ref_counts,
+                                false,
+                            );
+                            Self::adjust_singleton_label_ref_counts(
+                                ctx,
+                                into_label,
+                                &mut label_ref_counts,
+                                true,
+                            );
+                        }
+                        let unique_into_label = into_label.is_some()
+                            && label_ref_counts.get(into_label.index()).copied() == Some(1);
+                        let can_fast_update = !desc_changed
+                            && !into_node.has_merged_into_individual_node_id()
+                            && !into_node.has_purged_blocked_processing_restriction_flags()
+                            && unique_into_label;
+                        if can_fast_update {
+                            let index = indexed.as_mut().unwrap();
+                            ctx.label_set_visit_stored_descriptors(
+                                into_label,
+                                |tag, descriptor, additional| {
+                                    if let Some((first_tag, bits)) = &membership {
+                                        let Some(offset) = tag
+                                            .checked_sub(*first_tag)
+                                            .and_then(|n| usize::try_from(n).ok())
+                                        else {
+                                            return;
+                                        };
+                                        if bits
+                                            .get(offset / 64)
+                                            .is_none_or(|word| word & (1 << (offset % 64)) == 0)
+                                        {
+                                            return;
+                                        }
+                                    }
+                                    if descriptor.is_none() {
+                                        return;
+                                    }
+                                    if ctx.con_desc(descriptor).is_negated() {
+                                        if !additional {
+                                            if let Some(pair) = index.get_mut(&tag) {
+                                                if let Ok(pos) =
+                                                    pair.binary_search_by_key(&into.raw, |&(n, _)| n.raw)
+                                                {
+                                                    pair.remove(pos);
+                                                }
+                                            }
+                                        }
+                                        return;
+                                    }
+                                    if additional
+                                        && ctx
+                                            .label_set(into_label)
+                                            .concept_des_dep_map
+                                            .contains_key(&tag)
+                                    {
+                                        return;
+                                    }
+                                    if let Some(pair) = index.get_mut(&tag) {
+                                        let tp =
+                                            ctx.con_desc(descriptor).get_dependency_track_point();
+                                        match pair.binary_search_by_key(&into.raw, |&(n, _)| n.raw)
+                                        {
+                                            Ok(pos) => pair[pos].1 = tp,
+                                            Err(pos) => pair.insert(pos, (into, tp)),
+                                        }
+                                    }
+                                },
+                            );
+                        } else {
+                            indexed = Some(self.singleton_carriers_cached_with_limit(
+                                calc_alg_context,
+                                cache,
+                                usize::MAX,
+                            ));
+                            label_ref_counts = self.singleton_label_ref_counts(calc_alg_context);
+                        }
+                    }
                 }
             }
         }
@@ -2632,6 +3030,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // Query-created identities still run at the final fixpoint below.
         if indi_proc_node.is_none() && self.or_branch_stack.is_empty()
             && self.retained_base_node_count == 0
+            && self.retained_singleton_base.is_none()
             && !self.singleton_base_prepared && !self.singleton_concepts.is_empty() {
             // This is a scheduling optimization only. Later identities still
             // run at candidate fixpoint, including after branch rollback.

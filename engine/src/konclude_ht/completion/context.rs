@@ -1202,6 +1202,14 @@ impl CalculationAlgorithmContextBase {
             .ht_check_dangling_satellites("pop_branch_epoch");
     }
 
+    /// Coalesce all open branch epochs above `target_depth` into `target_depth`.
+    pub fn coalesce_branch_epochs_to(&mut self, target_depth: usize) {
+        self.base
+            .used_process_context
+            .coalesce_branch_epochs_to(target_depth);
+        self.databox_epoch_stack.truncate(target_depth);
+    }
+
     /// Lazily materialize the branching tree's INDEPENDENT base dependency
     /// node and return a (cached) deterministic track point on it.
     ///

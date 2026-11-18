@@ -1068,6 +1068,9 @@ pub struct CompletionTaskHandleAlgorithm {
     /// Blocking candidates of the retained consistency base (u20
     /// `BlockingBaseIndex`); set at the base snapshot, `None` otherwise.
     pub blocking_base_index: Option<std::sync::Arc<super::u20::BlockingBaseIndex>>,
+    /// Singleton carrier snapshot of the retained consistency leaf (u02
+    /// `RetainedSingletonBase`); set on leaf jobs, `None` otherwise.
+    pub retained_singleton_base: Option<std::sync::Arc<super::u02::RetainedSingletonBase>>,
     /// Nodes taken off the backend-individual reuse-expansion queue
     /// (`u02` Probes 19/34 → `handle_backend_expansion_reuse_queue_node`).
     pub native_reuse_queue_drain_count: u64,
@@ -1734,6 +1737,7 @@ impl CompletionTaskHandleAlgorithm {
             native_reuse_pending_defer_count: 0,
             native_reuse_lazy_lookup_hit_count: 0,
             blocking_base_index: None,
+            retained_singleton_base: None,
             native_reuse_queue_drain_count: 0,
             native_reuse_check_pass_count: 0,
             native_reuse_check_decline_count: 0,

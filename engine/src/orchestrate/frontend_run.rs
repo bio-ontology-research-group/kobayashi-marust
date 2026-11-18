@@ -88,6 +88,12 @@ fn ht_typed_handoff_candidate(route: Option<crate::routing::Route>, source_bytes
         Some(crate::routing::Route::HtGeneral | crate::routing::Route::HtBridge) => {
             source_bytes < IN_PROCESS_GENERAL_HT_MAX
         }
+        Some(crate::routing::Route::Manual)
+            if std::env::var("KM_MECHANISM").as_deref() == Ok("ht")
+                && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge") =>
+        {
+            source_bytes <= 8 * 1024 * 1024
+        }
         _ => false,
     }
 }
@@ -257,7 +263,9 @@ fn run_ofn_in_process(
     text: &str,
     clauses_path: &Path,
 ) -> Result<(Meta, Option<crate::json_io::JInput>, Option<TempPath>), OrchestrateError> {
-    let result = match crate::frontend::ofn_to_clauses_for_classifier(text) {
+    let abort_on_uncarried = !data_assertions_as_class_requested()
+        && std::env::var_os("KM_KEEP_CLAUSES").is_none();
+    let result = match crate::frontend::ofn_to_clauses_for_classifier_pass(text, abort_on_uncarried) {
         Ok(r) => r,
         Err(e) => return Err(OrchestrateError::OutOfFragment(e.0)),
     };
@@ -292,6 +300,12 @@ fn run_ofn_in_process(
         },
         separable_abox_export: result.separable_abox_export,
     };
+    if abort_on_uncarried
+        && (meta.uncarried_data_assertions > 0
+            || (meta.named.is_empty() && result.clauses.is_empty()))
+    {
+        return Ok((meta, None, None));
+    }
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
         cb_typed_source: None,
@@ -427,7 +441,20 @@ fn run_ofn_split_cached_passes(
     // classification (the key is restored by the caller's environment guard).
     // Whatever stays uncarried after that (negative assertions, a literal
     // vocabulary above the cap) is published as dropped axioms.
-    if result.1.uncarried_data_assertions > 0 && !data_assertions_as_class_requested() {
+    let deferred_for_bounded_bridge = result.1.named.is_empty()
+        && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
+        && result
+            .1
+            .route
+            .parse::<crate::routing::Route>()
+            .ok()
+            .is_some_and(|route| {
+                crate::routing::bounded_bridge_first_candidate(route, &result.1.profile)
+            });
+    if result.1.uncarried_data_assertions > 0
+        && !data_assertions_as_class_requested()
+        && !deferred_for_bounded_bridge
+    {
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!(
                 "KM_TIMING frontend: {} data-property assertion(s) not carried; \
@@ -513,6 +540,8 @@ fn run_ofn_split_cached_once(
                 };
                 match parsed {
                     Ok((meta, cached, elc_binary)) => {
+                        drop(text);
+                        crate::mem::release_transient_heap();
                         if timing {
                             eprintln!(
                                 "KM_TIMING in-process frontend: read={read_s:.2}s screen={screen_s:.2}s \

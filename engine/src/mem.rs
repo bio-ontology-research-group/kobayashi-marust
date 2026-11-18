@@ -34,13 +34,7 @@ fn heap_trim_enabled() -> bool {
 /// resident-set accounting of pages that nobody reads any more changes.
 #[inline]
 pub fn release_transient_heap() {
-    if !heap_trim_enabled() {
-        return;
-    }
-    #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    unsafe {
-        libc::malloc_trim(0);
-    }
+    release_before_worker_wait();
 }
 
 /// Return freed pages to the kernel before the supervisor idles on a worker

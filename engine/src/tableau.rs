@@ -5473,7 +5473,7 @@ pub struct JClause {
 /// Input: integer-indexed clauses plus name tables and the named concepts to
 /// classify. `concepts`/`roles` map id → IRI for output; `queries` are the named
 /// concept ids to classify (default: all concepts).
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct TInput {
     /// Source-derived role sorts for finite rule-model verification only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -6785,6 +6785,123 @@ fn validate_native_abox(inp: &TInput) -> Result<ValidatedNativeAbox, String> {
     })
 }
 
+fn validate_producer_input_for_bridge(
+    inp: &crate::orchestrate::cb_to_ht::TInput,
+) -> Result<(), String> {
+    use crate::fxhash::FxHashSet as HashSet;
+    use crate::orchestrate::cb_to_ht::HAtom;
+
+    let check_atom = |atom: &HAtom| -> Result<(), String> {
+        match *atom {
+            HAtom::Concept { c, t, .. } => {
+                producer_id(c, "concept")?;
+                producer_id(t, "variable")?;
+            }
+            HAtom::Role { r, s, t } => {
+                producer_id(r, "role")?;
+                producer_id(s, "variable")?;
+                producer_id(t, "variable")?;
+            }
+            HAtom::Exist { r, c, t, .. } => {
+                producer_id(r, "role")?;
+                producer_id(c, "concept")?;
+                producer_id(t, "variable")?;
+            }
+            HAtom::Eq { s, t } => {
+                producer_id(s, "variable")?;
+                producer_id(t, "variable")?;
+            }
+        }
+        Ok(())
+    };
+    for clause in &inp.clauses {
+        for atom in &clause.body {
+            check_atom(atom)?;
+        }
+        for atom in &clause.head {
+            check_atom(atom)?;
+        }
+    }
+    for def in &inp.card_defs {
+        producer_id(def.marker, "cardinality marker")?;
+        producer_id(def.role, "cardinality role")?;
+        producer_id(def.filler, "cardinality filler")?;
+    }
+    for &id in &inp.queries {
+        producer_id(id, "query")?;
+    }
+    for &id in &inp.nominals {
+        producer_id(id, "nominal")?;
+    }
+    for &(a, b, c) in &inp.chains {
+        producer_id(a, "role")?;
+        producer_id(b, "role")?;
+        producer_id(c, "role")?;
+    }
+    for &id in &inp.transitive {
+        producer_id(id, "transitive role")?;
+    }
+    if inp.native_abox.is_empty() {
+        return Ok(());
+    }
+    if !inp.native_abox.complete {
+        return Err("incomplete native ABox payload".to_string());
+    }
+    let nominal_set: HashSet<usize> = inp.nominals.iter().copied().collect();
+    let mut proxy_owners = HashSet::default();
+    for individual in &inp.native_abox.individuals {
+        if individual.proxies.is_empty() {
+            return Err("native ABox individual has no singleton proxy".to_string());
+        }
+        for &id in &individual.proxies {
+            if id >= inp.concepts.len() {
+                return Err("native ABox concept id out of range".to_string());
+            }
+            if !nominal_set.contains(&id) {
+                return Err("native ABox proxy is absent from nominals".to_string());
+            }
+            if !proxy_owners.insert(id) {
+                return Err("native ABox proxy has duplicate ownership".to_string());
+            }
+            C::try_from(id).map_err(|_| "native ABox concept id overflow".to_string())?;
+        }
+        for &id in &individual.assertions {
+            if id >= inp.concepts.len() {
+                return Err("native ABox assertion id out of range".to_string());
+            }
+            C::try_from(id).map_err(|_| "native ABox assertion id overflow".to_string())?;
+        }
+    }
+    if proxy_owners != nominal_set {
+        return Err(
+            "native ABox does not assign every nominal proxy to exactly one individual".to_string(),
+        );
+    }
+    let ind_len = inp.native_abox.individuals.len();
+    let in_individual_range = |left: usize, right: usize| left < ind_len && right < ind_len;
+    if inp
+        .native_abox
+        .different
+        .iter()
+        .any(|&(left, right)| !in_individual_range(left, right))
+    {
+        return Err("native ABox individual index out of range".to_string());
+    }
+    let resolve_role = |role: usize, source: usize, target: usize| -> Result<R, String> {
+        if role >= inp.roles.len() || !in_individual_range(source, target) {
+            return Err("native ABox role/individual index out of range".to_string());
+        }
+        R::try_from(role).map_err(|_| "native ABox role id overflow".to_string())
+    };
+    for &(role, source, target) in &inp.native_abox.role_assertions {
+        resolve_role(role, source, target)?;
+    }
+    for &(role, source, target) in &inp.native_abox.negative_role_assertions {
+        resolve_role(role, source, target)?;
+    }
+    Ok(())
+}
+
 /// Read a `TInput` JSON string, classify, and return a `TOutput` JSON string.
 pub fn run_json(input: &str) -> Result<String, String> {
     run_json_inner(input, None)
@@ -6798,12 +6915,12 @@ pub fn run_json(input: &str) -> Result<String, String> {
 pub fn run_json_owned(input: String) -> Result<String, String> {
     let inp: TInput = serde_json::from_str(&input).map_err(|e| e.to_string())?;
     let raw_input = if std::env::var_os("KM_HT_BRIDGE").is_some() {
-        Some(input)
+        Some(std::borrow::Cow::Owned(input))
     } else {
         drop(input);
         None
     };
-    let output = run_tinput_inner(inp, raw_input.as_deref(), None)?;
+    let output = run_tinput_inner(inp, raw_input, None)?;
     serde_json::to_string(&output).map_err(|error| error.to_string())
 }
 
@@ -6824,17 +6941,14 @@ pub(crate) fn run_bridge_json_owned_compact(
     }
 
     // Preserve the established worker-side wire and native-ABox validation
-    // before entering the bridge. The producer value is parsed independently,
-    // exactly as the legacy bridge arm reparses `raw_input`.
-    let worker_input: TInput = serde_json::from_str(&input).map_err(|e| e.to_string())?;
-    validate_native_abox(&worker_input)?;
+    // before entering the bridge, without parsing the wire JSON twice.
     let producer_input: crate::orchestrate::cb_to_ht::TInput =
         serde_json::from_str(&input).map_err(|e| e.to_string())?;
-    drop(worker_input);
     drop(input);
-    // Return the duplicate validation parse and wire buffers before the bridge
-    // builds its completion structures. This mirrors the typed bridge path and
-    // keeps the transport optimization visible in peak RSS, not only live bytes.
+    validate_producer_input_for_bridge(&producer_input)?;
+    // Return the wire buffers before the bridge builds its completion
+    // structures. This mirrors the typed bridge path and keeps the transport
+    // optimization visible in peak RSS, not only live bytes.
     crate::mem::release_transient_heap();
 
     let (result, concepts, reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK, move || {
@@ -8423,13 +8537,13 @@ pub(crate) fn ht_lean_certification_requested() -> bool {
 /// always passes `None` and reads the selected mechanism from the environment.
 fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String> {
     let inp: TInput = serde_json::from_str(input).map_err(|e| e.to_string())?;
-    let output = run_tinput_inner(inp, Some(input), forced_ht)?;
+    let output = run_tinput_inner(inp, Some(std::borrow::Cow::Borrowed(input)), forced_ht)?;
     serde_json::to_string(&output).map_err(|error| error.to_string())
 }
 
 fn run_tinput_inner(
-    inp: TInput,
-    raw_input: Option<&str>,
+    mut inp: TInput,
+    mut raw_input: Option<std::borrow::Cow<'_, str>>,
     forced_ht: Option<bool>,
 ) -> Result<TOutput, String> {
     let native_abox = validate_native_abox(&inp)?;
@@ -8443,6 +8557,67 @@ fn run_tinput_inner(
     }
     if native_abox_active && (!ht_enabled || std::env::var_os("KM_RULES_CONSISTENCY").is_some()) {
         return Err("native ABox requires the hypertableau mechanism".to_string());
+    }
+    if std::env::var_os("KM_RULES_CONSISTENCY").is_none()
+        && std::env::var_os("KM_HT_BRIDGE").is_some()
+        && !lean_cert_requested
+    {
+        let bridge_only = std::env::var_os("KM_HT_BRIDGE_ONLY").is_some();
+        let mut bridge_concepts = if bridge_only {
+            let concepts = std::mem::take(&mut inp.concepts);
+            inp = TInput::default();
+            Some(concepts)
+        } else {
+            None
+        };
+        let raw = raw_input
+            .take()
+            .ok_or_else(|| "typed tableau input cannot enter the bridge route".to_string())?;
+        let tin_bridge: crate::orchestrate::cb_to_ht::TInput =
+            serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        drop(raw);
+        crate::mem::release_transient_heap();
+        let (res, defer_reason) = crate::bigstack::run(
+            "konclude_ht bridge",
+            crate::bigstack::DEEP_STACK,
+            move || {
+                let res = crate::konclude_ht::bridge::bridged_classify(&tin_bridge);
+                (res, crate::konclude_ht::bridge::take_bridge_defer_reason())
+            },
+        )?;
+        if let Some(r) = res {
+            let subs: Vec<(C, C)> = r
+                .subsumptions
+                .iter()
+                .map(|&(a, b)| (a as C, b as C))
+                .collect();
+            let concepts_slice = bridge_concepts.take().unwrap_or_else(|| std::mem::take(&mut inp.concepts));
+            let name = |c: C| {
+                concepts_slice
+                    .get(c as usize)
+                    .cloned()
+                    .unwrap_or_else(|| format!("C{c}"))
+            };
+            let out = TOutput {
+                consistent: r.consistent,
+                unsatisfiable: r.unsatisfiable.iter().map(|&c| name(c as C)).collect(),
+                subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
+            };
+            if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
+                let _ = std::fs::write(marker, b"bridge");
+            }
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
+                    .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
+                crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+                    &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
+                );
+            }
+            return Ok(out);
+        }
+        if bridge_only {
+            return Err(bridge_defer_message(defer_reason));
+        }
     }
     let native_individuals = native_abox.individuals;
     let native_different = native_abox.different;
@@ -8508,81 +8683,6 @@ fn run_tinput_inner(
             subsumptions: Vec::new(),
         };
         return Ok(out);
-    }
-
-    // KM_HT: route ALC(H) KBs (no number restrictions / nominals / inverses) to
-    // the ported HermiT hypertableau engine. Run on a large stack since the DFS
-    // recurses once per active branching point. Falls back to the legacy
-    // tableau if the KB is out of the ALC(H) fragment or the engine reports an
-    // out-of-fragment construct (returns None).
-    // KM_HT_FORCE bypasses the in-fragment gate so the Ht engine (incl. the
-    // experimental SHIQ inverse/number merge path + KM_HT_QO) actually runs on
-    // inverse/number onts for measurement — otherwise such onts fall through to
-    // the legacy tableau here, never reaching Ht.
-    // KM_HT_BRIDGE: route the KB to the konclude_ht bridge (the Rust port of
-    // Konclude's completion kernel). Sound+complete on its fragment by
-    // construction: deterministic subjects answer by canonical-model read-off,
-    // non-deterministic ones by candidate extraction + pairwise unsat probes.
-    // `None` ⇒ DEFER (unsupported clause shape / nominals / a STOPped drive):
-    // fall through to the other arms — the bridge only ever ADDS coverage.
-    if std::env::var_os("KM_HT_BRIDGE").is_some() && !lean_cert_requested {
-        // The bridge consumes the producer-side TInput (cb_to_ht) — same wire
-        // format as this worker's TInput; re-parse the raw input for it.
-        let tin_bridge: crate::orchestrate::cb_to_ht::TInput = serde_json::from_str(
-            raw_input
-                .ok_or_else(|| "typed tableau input cannot enter the bridge route".to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
-        let (res, defer_reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
-            move || {
-                let res = crate::konclude_ht::bridge::bridged_classify(&tin_bridge);
-                (res, crate::konclude_ht::bridge::take_bridge_defer_reason())
-            })?;
-        if let Some(r) = res {
-            let subs: Vec<(C, C)> = r
-                .subsumptions
-                .iter()
-                .map(|&(a, b)| (a as C, b as C))
-                .collect();
-            // `bridged_classify` publishes only a complete taxonomy (or defers),
-            // so its relation is already transitively closed.  The generic Ht
-            // closure repair below is needed for model-label candidate output,
-            // but repeating it here scans million-pair bridge taxonomies to add
-            // nothing (ORE14817).  Keep the certified bridge result directly.
-            let name = |c: C| {
-                inp.concepts
-                    .get(c as usize)
-                    .cloned()
-                    .unwrap_or_else(|| format!("C{c}"))
-            };
-            let out = TOutput {
-                consistent: r.consistent,
-                unsatisfiable: r.unsatisfiable.iter().map(|&c| name(c as C)).collect(),
-                subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
-            };
-            // Tell the orchestrator that this answer is the bridge's own
-            // complete taxonomy (not a fallback arm's). Scheduling metadata
-            // only; a failed write just keeps the conservative budget.
-            if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
-                let _ = std::fs::write(marker, b"bridge");
-            }
-            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
-                let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
-                    .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
-                crate::orchestrate::model_export::write_worker_model_payload_if_requested(
-                    &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
-                );
-            }
-            return Ok(out);
-        }
-        // The bridge declined. If it was the ONLY route this worker was
-        // spawned for (KM_HT_BRIDGE_ONLY, set by spawn_ht), emit NO answer —
-        // the legacy tableau below is not validated on this fragment and the
-        // orchestrator's CB arm must decide. Otherwise fall through to the
-        // route the worker was actually spawned for (monotone-safe).
-        if std::env::var_os("KM_HT_BRIDGE_ONLY").is_some() {
-            return Err(bridge_defer_message(defer_reason));
-        }
     }
 
     let ht_force = forced_ht == Some(true) || std::env::var_os("KM_HT_FORCE").is_some();

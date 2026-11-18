@@ -875,11 +875,13 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     // must make the same check inside a large node's
                                     // concept queue; checking only between nodes lets
                                     // one item overrun the whole saturation budget.
-                                    if t0.elapsed() >= budget {
+                                    rss_check_applications += 1;
+                                    if (rss_check_applications & 255) == 0
+                                        && t0.elapsed() >= budget
+                                    {
                                         report_timeout("concept-queue", self, calc_alg_context);
                                         return false;
                                     }
-                                    rss_check_applications += 1;
                                     if rss_limit_kib.is_some()
                                         && rss_check_applications % 8_192 == 0
                                     {

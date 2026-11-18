@@ -702,6 +702,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 (min_test_indi_node_id, min_test_anc_indi_depth) = calc_alg_context
                     .node_switch_history_min_bounds(node_switch_history, node_switch_tag, 1, 0);
             }
+            if let Some(index) = &self.blocking_base_index {
+                if max_valid_indi_id > index.base_hi
+                    && calc_alg_context
+                        .process_context()
+                        .retained_blocking_base_unmodified(
+                            index.base_node_count,
+                            index.base_label_set_count,
+                            index.base_epoch_depth,
+                        )
+                {
+                    min_test_indi_node_id = min_test_indi_node_id.max(index.base_hi + 1);
+                }
+            }
             if max_valid_indi_id >= testing_indi_id && min_test_indi_node_id >= testing_indi_id {
                 needs_hash_update = false;
             }
@@ -2042,6 +2055,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 pub struct BlockingBaseIndex {
     /// Largest positive node id of the base.
     pub base_hi: Cint64,
+    pub base_node_count: usize,
+    pub base_label_set_count: usize,
+    pub base_epoch_depth: usize,
     pub label_mod_tag: Cint64,
     pub node_switch_tag: Cint64,
     /// Per `(concept tag, negation)`, the candidate entries `(-id, node)` in
@@ -2104,6 +2120,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         BlockingBaseIndex {
             base_hi: hi.max(0),
+            base_node_count: pc.node_count(),
+            base_label_set_count: pc.label_set_count(),
+            base_epoch_depth: pc.branch_epoch_depth(),
             label_mod_tag: pc.used_process_tagger().get_current_concept_label_set_modification_tag(),
             node_switch_tag: pc.used_process_tagger().get_current_node_switch_tag(),
             by_key: lists.into_iter().map(|(k, v)| (k, std::sync::Arc::new(v))).collect(),

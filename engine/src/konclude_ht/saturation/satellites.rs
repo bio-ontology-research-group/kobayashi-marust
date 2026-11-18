@@ -880,6 +880,110 @@ impl IndividualSaturationSuccessorLinkDataLinker {
 // CLinkedRoleSaturationSuccessorData
 // ===========================================================================
 
+/// Compact sorted map from successor node id (`Cint64`) to
+/// `SaturationSuccessorDataId` (`CLinkedRoleSaturationSuccessorData::mSuccNodeDataMap`).
+///
+/// Nearly every `LinkedRoleSaturationSuccessorData` record has zero or one
+/// successor. `std::collections::BTreeMap<Cint64, SaturationSuccessorDataId>`
+/// allocates a 192-byte heap leaf node on the first insertion; storing up to one
+/// `(key, value)` pair inline in a sorted `SmallVec` keeps the struct size at
+/// 24 bytes, preserves ascending `Cint64` iteration order, and avoids heap
+/// allocation for zero- and one-successor buckets.
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct CompactSuccessorNodeDataMap(SmallVec<[(Cint64, SaturationSuccessorDataId); 1]>);
+
+impl CompactSuccessorNodeDataMap {
+    #[inline]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    #[inline]
+    pub fn get(&self, key: &Cint64) -> Option<&SaturationSuccessorDataId> {
+        match self.0.as_slice() {
+            [] => None,
+            [(k0, v0)] => (*k0 == *key).then_some(v0),
+            slice => slice
+                .binary_search_by_key(key, |(k, _)| *k)
+                .ok()
+                .map(|idx| &slice[idx].1),
+        }
+    }
+
+    #[inline]
+    pub fn contains_key(&self, key: &Cint64) -> bool {
+        self.get(key).is_some()
+    }
+
+    #[inline]
+    pub fn insert(
+        &mut self,
+        key: Cint64,
+        value: SaturationSuccessorDataId,
+    ) -> Option<SaturationSuccessorDataId> {
+        match self.0.as_mut_slice() {
+            [] => {
+                self.0.push((key, value));
+                None
+            }
+            [(k0, v0)] => {
+                if *k0 == key {
+                    Some(std::mem::replace(v0, value))
+                } else if *k0 < key {
+                    self.0.push((key, value));
+                    None
+                } else {
+                    self.0.insert(0, (key, value));
+                    None
+                }
+            }
+            slice => match slice.binary_search_by_key(&key, |(k, _)| *k) {
+                Ok(idx) => Some(std::mem::replace(&mut self.0[idx].1, value)),
+                Err(idx) => {
+                    self.0.insert(idx, (key, value));
+                    None
+                }
+            },
+        }
+    }
+
+    #[inline]
+    pub fn remove(&mut self, key: &Cint64) -> Option<SaturationSuccessorDataId> {
+        let idx = self.0.binary_search_by_key(key, |(k, _)| *k).ok()?;
+        Some(self.0.remove(idx).1)
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = (&Cint64, &SaturationSuccessorDataId)> {
+        self.0.iter().map(|(k, v)| (k, v))
+    }
+
+    #[inline]
+    pub fn values(&self) -> impl Iterator<Item = &SaturationSuccessorDataId> {
+        self.0.iter().map(|(_, v)| v)
+    }
+
+    #[inline]
+    pub fn keys(&self) -> impl Iterator<Item = &Cint64> {
+        self.0.iter().map(|(k, _)| k)
+    }
+}
+
 /// Port of `CLinkedRoleSaturationSuccessorData`.
 ///
 /// The per-role bucket in a `CLinkedRoleSaturationSuccessorHash`: a
@@ -891,10 +995,8 @@ pub struct LinkedRoleSaturationSuccessorData {
     /// `mSuccNodeDataMap` (`CPROCESSMAP<cint64,CSaturationSuccessorData*>`).
     /// KONCLUDE-PORT-NOTE[ordering]: `CPROCESSMAP` is a sorted map — every
     /// verdict-relevant walk (collectATMOSTConceptRelevantSuccessors, the
-    /// successor extensions) iterates it in individual-id order. A `HashMap`
-    /// here made the extension machinery nondeterministic; `BTreeMap` restores
-    /// the C++ iteration order.
-    pub succ_node_data_map: std::collections::BTreeMap<Cint64, SaturationSuccessorDataId>,
+    /// successor extensions) iterates it in individual-id order.
+    pub succ_node_data_map: CompactSuccessorNodeDataMap,
     /// `mLastLink`.
     pub last_link: SaturationSuccessorDataId,
     /// `mSuccCount`.
@@ -914,7 +1016,7 @@ pub struct LinkedRoleSaturationSuccessorData {
 impl Default for LinkedRoleSaturationSuccessorData {
     fn default() -> Self {
         LinkedRoleSaturationSuccessorData {
-            succ_node_data_map: std::collections::BTreeMap::new(),
+            succ_node_data_map: CompactSuccessorNodeDataMap::new(),
             last_link: SaturationSuccessorDataId::NONE,
             succ_count: 0,
             extension_data: SaturationSuccessorExtensionDataId::NONE,
@@ -932,15 +1034,11 @@ impl LinkedRoleSaturationSuccessorData {
         Self::default()
     }
     /// Port of `getSuccessorNodeDataMap` (`return &mSuccNodeDataMap`).
-    pub fn get_successor_node_data_map(
-        &self,
-    ) -> &std::collections::BTreeMap<Cint64, SaturationSuccessorDataId> {
+    pub fn get_successor_node_data_map(&self) -> &CompactSuccessorNodeDataMap {
         &self.succ_node_data_map
     }
     /// Mutable accessor for the successor-node map (`create == true` path).
-    pub fn get_successor_node_data_map_mut(
-        &mut self,
-    ) -> &mut std::collections::BTreeMap<Cint64, SaturationSuccessorDataId> {
+    pub fn get_successor_node_data_map_mut(&mut self) -> &mut CompactSuccessorNodeDataMap {
         &mut self.succ_node_data_map
     }
     /// Port of `getLastSuccessorLinkData` (`return mLastLink`).
@@ -3185,6 +3283,11 @@ pub struct SaturationIndividualNodeFunctionalConceptsExtensionData {
     pub functionality_added_roles: crate::fxhash::FxHashSet<RoleId>,
     /// `mCopyingInitializingRoleProcessLinker`.
     pub copying_initializing_role_process_linker: RoleSaturationProcessLinkerId,
+    /// Interned role chain of functional roles installed while this node owned a
+    /// `linked_role_succ_hash`, used to lazily populate
+    /// `role_functional_concepts_queuing_required` when a role bucket is first
+    /// materialized instead of pre-allocating empty buckets for every role.
+    pub functional_succ_queuing_role_process_linker: RoleSaturationProcessLinkerId,
     /// `mQualFuncAtmostConProcessLinker`.
     pub qual_func_atmost_con_process_linker: ConceptSaturationProcessLinkerId,
     /// `mLinkedPredecessorAddedRoleProcessLinker`.
@@ -3212,6 +3315,7 @@ impl Default for SaturationIndividualNodeFunctionalConceptsExtensionData {
             functionality_added_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             functionality_added_roles: Default::default(),
             copying_initializing_role_process_linker: RoleSaturationProcessLinkerId::NONE,
+            functional_succ_queuing_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             qual_func_atmost_con_process_linker: ConceptSaturationProcessLinkerId::NONE,
             linked_predecessor_added_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             predecessor_extension_process_linker: INVALID,
@@ -3241,6 +3345,7 @@ impl SaturationIndividualNodeFunctionalConceptsExtensionData {
         self.functionality_added_role_process_linker = RoleSaturationProcessLinkerId::NONE;
         self.functionality_added_roles.clear();
         self.copying_initializing_role_process_linker = RoleSaturationProcessLinkerId::NONE;
+        self.functional_succ_queuing_role_process_linker = RoleSaturationProcessLinkerId::NONE;
         self.successor_extension_initialized = false;
         self.extension_processing_queued = false;
         self.successor_extension_process_linker =
