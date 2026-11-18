@@ -3,8 +3,12 @@ use std::path::Path;
 use super::OrchestrateError;
 
 pub(super) fn automatic_candidate(path: &Path) -> Result<Option<&'static str>, OrchestrateError> {
-    if std::fs::metadata(path)?.len() > 4 * 1024 * 1024 { return Ok(None); }
+    let len = std::fs::metadata(path)?.len();
+    if len > 16 * 1024 * 1024 { return Ok(None); }
     let text = std::fs::read_to_string(path)?;
+    if len > 4 * 1024 * 1024 && !text.contains("DLSafeRule") && !text.contains("HasKey") {
+        return Ok(None);
+    }
     Ok(plan(&text))
 }
 
@@ -52,6 +56,7 @@ fn plan(text: &str) -> Option<&'static str> {
             && crate::frontend::ground_rule_source::compile(text, 100_000).is_ok())
             .then_some("KM_GROUND_RULE_SOURCE");
     }
+    if text.len() > 4 * 1024 * 1024 { return None; }
     // Functional numeric profiles need the exact source path even without
     // inverse-functional object roles. A successful bounded compiler is only
     // a scheduling hint; native admission still validates its complete output.

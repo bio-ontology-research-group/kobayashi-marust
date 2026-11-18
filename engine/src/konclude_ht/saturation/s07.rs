@@ -701,19 +701,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             let functional = calc_alg_context
                 .process_context()
                 .sat_indi_node_functional_concept_ext_data(functional);
-            if functional.successor_extension_process_linker.is_some()
-                || functional
-                    .linked_successor_added_role_process_linker
-                    .is_some()
+            if functional
+                .linked_successor_added_role_process_linker
+                .is_some()
                 || functional.functionality_added_role_process_linker.is_some()
-                || functional
-                    .copying_initializing_role_process_linker
-                    .is_some()
                 || functional.qual_func_atmost_con_process_linker.is_some()
                 || functional
                     .linked_predecessor_added_role_process_linker
                     .is_some()
-                || functional.predecessor_extension_process_linker != INVALID
             {
                 return true;
             }
@@ -1749,6 +1744,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let succ_indi_functional_con_ext_data = calc_alg_context
             .process_context_mut()
             .sat_successor_extension_functional_concepts_extension_data(succ_ext_data, true);
+        if self.conf_concepts_extension_processing
+            && !calc_alg_context
+                .process_context_mut()
+                .sat_indi_node_functional_concept_ext_data_mut(succ_indi_functional_con_ext_data)
+                .qualified_functional_atmost_concept_process_set
+                .insert(con_des)
+        {
+            return;
+        }
         self.add_successor_extension_to_processing_queue(indi_proc_sat_node, calc_alg_context);
 
         let old_head = calc_alg_context

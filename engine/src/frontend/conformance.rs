@@ -245,6 +245,7 @@ pub fn check_user_source(text: &str) -> Result<(), UserSourceError> {
     let mut entities = Slot::Live(entities::Checker::default());
     let mut datatypes = Slot::Live(datatypes::Checker::default());
     let cache_enabled = std::env::var_os("KM_CACHE_CONFORMANCE").is_some()
+        && !unknown_datatypes_free()
         && text.len() <= VALIDATED_SOURCE_CACHE_LIMIT;
     let mut profile = (cache_enabled && text.len() <= SOURCE_STATISTICS_BOUND)
         .then(super::profile::SourceProfileBuilder::new);
@@ -332,7 +333,7 @@ pub fn check_source(text: &str) -> Result<(), String> {
     let timing = std::env::var_os("KM_CONFORMANCE_TIMING").is_some();
     let start = timing.then(std::time::Instant::now);
     let mut reused = false;
-    let result = if std::env::var_os("KM_CACHE_CONFORMANCE").is_some() {
+    let result = if std::env::var_os("KM_CACHE_CONFORMANCE").is_some() && !unknown_datatypes_free() {
         // Take the retained copy out while validating so the lock is never
         // held across a long check; put it, or the new document, back after.
         let mut cache = VALIDATED_SOURCE.lock().unwrap_or_else(|e| e.into_inner()).take();
@@ -409,6 +410,9 @@ pub fn check_literal_datatypes(text: &str) -> Result<(), String> {
         let datatype = if datatype.is_empty() { stream.next().unwrap_or("") } else { datatype };
         let expanded = expand(datatype, &prefixes);
         if expanded == "http://www.w3.org/2000/01/rdf-schema#Literal" {
+            if unknown_datatypes_free() {
+                continue;
+            }
             let offset = literal.as_ptr() as usize - text.as_ptr() as usize;
             let line = text[..offset].bytes().filter(|b| *b == b'\n').count() + 1;
             return Err(format!("invalid OWL 2 DL input at line {line}: literal {literal}^^{datatype} uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."));

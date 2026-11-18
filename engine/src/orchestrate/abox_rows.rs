@@ -68,7 +68,28 @@ pub(super) fn extension(
     let mut out = String::new();
     let mut probes = BTreeMap::new();
     if values {
+        let role_bound = (roles.len().saturating_mul(individuals.len()) >= 256)
+            .then(|| crate::frontend::named_role_bound::NamedRoleBound::compute(text))
+            .flatten();
         for (r, role) in roles.iter().enumerate() {
+            let pub_role = public_name(role);
+            if let Some(bound) = &role_bound {
+                let has_self = bound.role_has_self_by_full_iri(&pub_role);
+                let targets = bound.reachable_targets_by_full_iri(&pub_role);
+                if !has_self {
+                    for (b, individual) in individuals.iter().enumerate() {
+                        if !targets.contains(&public_name(individual)) {
+                            continue;
+                        }
+                        let probe = format!("{ns}value{r}_{b}");
+                        out.push_str(&format!(
+                            "Declaration(Class(<{probe}>))\nEquivalentClasses(<{probe}> ObjectSomeValuesFrom({role} ObjectOneOf({individual})))\n"
+                        ));
+                        probes.insert(probe, Probe::Value(r, b));
+                    }
+                    continue;
+                }
+            }
             for (b, individual) in individuals.iter().enumerate() {
                 let probe = format!("{ns}value{r}_{b}");
                 out.push_str(&format!(
