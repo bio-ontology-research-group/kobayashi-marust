@@ -398,21 +398,24 @@ pub fn race_absorbed_plain(
     absorbed_path: &Path,
     engine_threads: &ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
-    if let Some(plain) = frontend_run::run_ofn_plain(cfg, ont, false) {
-        let threads = engine_threads.get().map(|t| t.to_string());
-        let (engine_prog, engine_pre) = cfg.engine_cmd();
-        let res = engine_run::run_engine(
-            &engine_prog,
-            &engine_pre,
-            plain.path(),
-            threads.as_deref(),
-            Some(cfg.par_mem_gb),
-            Some(cfg.absorb_probe_s),
-            &[],
-            false,
-        )?;
-        if res.code == 0 {
-            return parse_out(&res);
+    let skip_plain_probe = std::fs::metadata(absorbed_path).is_ok_and(|m| m.len() > 50_000_000);
+    if !skip_plain_probe {
+        if let Some(plain) = frontend_run::run_ofn_plain(cfg, ont, false) {
+            let threads = engine_threads.get().map(|t| t.to_string());
+            let (engine_prog, engine_pre) = cfg.engine_cmd();
+            let res = engine_run::run_engine(
+                &engine_prog,
+                &engine_pre,
+                plain.path(),
+                threads.as_deref(),
+                Some(cfg.par_mem_gb),
+                Some(cfg.absorb_probe_s),
+                &[],
+                false,
+            )?;
+            if res.code == 0 {
+                return parse_out(&res);
+            }
         }
     }
     // plain absent or did not finish fast: run the absorbed set with full budget

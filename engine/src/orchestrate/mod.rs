@@ -1356,7 +1356,12 @@ fn try_inproc_engine(
         };
         match rx.recv_timeout(wait) {
             Ok(out) => return Ok(out), // the probe (if any) is killed on drop
-            Err(RecvTimeoutError::Disconnected) => return Ok(None),
+            Err(RecvTimeoutError::Disconnected) => {
+                if probe.is_none() {
+                    return Ok(None);
+                }
+                std::thread::sleep(wait);
+            }
             Err(RecvTimeoutError::Timeout) => {}
         }
         if let Some(p) = probe.as_mut() {
