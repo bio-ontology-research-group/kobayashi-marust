@@ -863,6 +863,7 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
     let mut profile_excludes: Vec<(usize, usize)> = Vec::new();
     let mut digits_of: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>> = Default::default();
     let mut helper_guards: Vec<(usize, usize)> = Vec::new();
+    let mut helper_supers: Vec<(usize, usize)> = Vec::new();
     for clause in &tin.clauses {
         if !clause_mentions_value_aux(tin, clause) {
             continue;
@@ -880,6 +881,9 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
                 if t == ht && aux(*helper) && dt::value_aux_digit(name(*helper)).is_none()
                     && !aux(*range) && dt::bridge_tbox_atomic_name(name(*range)) =>
                 profile_includes.push((*helper, *range)),
+            ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: sup, t: ht }])
+                if !crate::routing::ground_rule_zero_rules_mode() && t == ht && aux(*helper) && !aux(*sup) =>
+                helper_supers.push((*helper, *sup)),
             ([HAtom::Concept { neg: false, c: left, t: lt }, HAtom::Concept { neg: false, c: right, t: rt }], [])
                 if lt == rt =>
             {
@@ -934,6 +938,28 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
             for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
                 if !disjoint.contains(&(value.min(guard), value.max(guard))) {
                     defer!("a helper is disjoint from a concept one of its values is not disjoint from");
+                }
+            }
+        }
+    }
+    // `H ⊑ D` (e.g. the two-sorted nominal encoding's `H ⊑ __data__` when
+    // `__data__` is retained) holds for `H` read as the union of its values
+    // when every such value `v` has the clause `v ⊑ D` itself.
+    if !helper_supers.is_empty() {
+        let mut subsumed: crate::fxhash::FxHashSet<(usize, usize)> = Default::default();
+        for clause in &tin.clauses {
+            if let ([HAtom::Concept { neg: false, c: a, t: at }], [HAtom::Concept { neg: false, c: b, t: bt }])
+                = (clause.body.as_slice(), clause.head.as_slice())
+            {
+                if at == bt {
+                    subsumed.insert((*a, *b));
+                }
+            }
+        }
+        for (helper, sup) in helper_supers {
+            for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
+                if !subsumed.contains(&(value, sup)) {
+                    defer!("a helper is subsumed by a concept one of its values is not subsumed by");
                 }
             }
         }
@@ -1480,7 +1506,9 @@ fn is_isolated_hub_axiom(
 /// special case checked by the original guard. Fail-closed: `None` when no
 /// witness is found within the search budget or a construct is unsupported.
 fn blank_data_node_witness_label(tin: &TInput) -> Option<Vec<String>> {
-    let isolated_hub = find_isolated_universal_role_hub(tin);
+    let isolated_hub = (!crate::routing::ground_rule_zero_rules_mode())
+        .then(|| find_isolated_universal_role_hub(tin))
+        .flatten();
     let axioms: Vec<&crate::json_io::SourceAxiomMeta> = tin
         .source_axioms
         .iter()
@@ -1880,8 +1908,9 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 let ranges_for_role = role_ranges.entry(role).or_default();
                 if !ranges_for_role.contains(&datatype) {
                     for &old in ranges_for_role.iter() {
-                        let separated = crate::frontend::datatypes::bridge_exact_atomic_disjoint(old, datatype)
-                            == Some(true)
+                        let separated = !crate::routing::ground_rule_zero_rules_mode()
+                            && crate::frontend::datatypes::bridge_exact_atomic_disjoint(old, datatype)
+                                == Some(true)
                             && tin
                                 .concepts
                                 .iter()
@@ -1970,8 +1999,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             if crate::frontend::datatypes::bridge_exact_atomic_subsumed(datatype, range) != Some(true)
                 && crate::frontend::datatypes::bridge_exact_atomic_subsumed(range, datatype)
                     != Some(true)
-                && !(crate::frontend::datatypes::bridge_exact_atomic_disjoint(datatype, range)
-                    == Some(true)
+                && !(!crate::routing::ground_rule_zero_rules_mode()
+                    && (!datatype.starts_with("__dt__val__")
+                        || std::env::var_os("KM_GROUND_RULE_HAS_RULES").is_some())
+                    && crate::frontend::datatypes::bridge_exact_atomic_disjoint(datatype, range)
+                        == Some(true)
                     && tin
                         .concepts
                         .iter()
@@ -7492,7 +7524,8 @@ fn bridge_tinput_with_trigger_absorption(
                         t: s2,
                     },
                 ],
-            ) if s == t
+            ) if !crate::routing::ground_rule_zero_rules_mode()
+                && s == t
                 && s == s2
                 && tin
                     .concepts

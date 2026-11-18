@@ -3742,6 +3742,7 @@ fn convert_with_rule_abox(
             eq_clauses.push(c.clone());
         } else {
             if !source_axioms.is_empty()
+                && !crate::routing::ground_rule_zero_rules_mode()
                 && matches!(
                     c.body.as_slice(),
                     [JAtom::Concept { concept, term: JTerm::Var { name: vx } }]
@@ -3796,7 +3797,7 @@ fn convert_with_rule_abox(
                         detected_chains.push(chain);
                     }
                 }
-                Some("chain-n") => {
+                Some("chain-n") if !crate::routing::ground_rule_zero_rules_mode() => {
                     // `normalise.rs` decomposes n-ary chains into binary chain
                     // clauses `r_1 o r_2 -> __chain__k` that `extract_chains`
                     // already collected into `detected_chains` (when `keep_chains`
@@ -6117,11 +6118,13 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     let mut used: HashSet<usize> = HashSet::new();
     for p in pairs {
         let (a, b) = p; // canonical a<=b == Python sorted(p) -> (a,b)
-        if con_names.get(a).is_some_and(|n| {
-            n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
-        }) || con_names.get(b).is_some_and(|n| {
-            n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
-        }) {
+        if !crate::routing::ground_rule_zero_rules_mode()
+            && (con_names.get(a).is_some_and(|n| {
+                n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
+            }) || con_names.get(b).is_some_and(|n| {
+                n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
+            }))
+        {
             continue;
         }
                         // Completeness: keep the excluded-middle ⊤⊑A∨B unfolded if a side both

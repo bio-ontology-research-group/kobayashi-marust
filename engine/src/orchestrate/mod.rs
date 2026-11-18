@@ -2113,13 +2113,19 @@ fn classify_with_evidence_inner(
         std::fs::write(private_file.path(), serde_json::to_vec(&grounded.private_classes)
             .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?)?;
         std::env::set_var("KM_GROUND_PRIVATE_CLASS_FILE", private_file.path());
+        if grounded.source_rules > 0 {
+            std::env::set_var("KM_GROUND_RULE_HAS_RULES", "1");
+        } else {
+            std::env::remove_var("KM_GROUND_RULE_HAS_RULES");
+        }
         // Consistency of the complete compiled ABox needs the benchmark's
         // native budget; the external supervisor still enforces its wall cap.
         std::env::set_var("KM_BRIDGE_PROBE_BUDGET_S", "180");
         let counters = PublicationCounters::capture();
         let mut evidence = match classify_with_evidence_mode(&Config::from_env(), input.path(), false) {
             Ok(evidence) => evidence,
-            Err(_) if std::env::var_os("KM_NO_BRIDGE_OBJECT_GUARD").is_none()
+            Err(_) if grounded.source_rules > 0
+                && std::env::var_os("KM_NO_BRIDGE_OBJECT_GUARD").is_none()
                 && std::env::var_os(crate::frontend::object_guard::ENV).is_none() =>
             {
                 counters.restore();

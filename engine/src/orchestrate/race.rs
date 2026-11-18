@@ -1004,7 +1004,8 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
                 (clause.body.as_slice(), clause.head.as_slice()),
                 ([cb_to_ht::HAtom::Role { r, s, t }, cb_to_ht::HAtom::Role { r: r2, s: s2, t: t2 }], [])
                     if r == r2 && s != t && s == t2 && t == s2
-            ))) || (fence.reason == "role-constraint"
+            ))) || (!crate::routing::ground_rule_zero_rules_mode()
+            && fence.reason == "role-constraint"
             && fence.detail == "DisjointObjectProperties"
             && tin.clauses.iter().any(|clause| matches!(
                 (clause.body.as_slice(), clause.head.as_slice()),
@@ -1035,7 +1036,10 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
                         },
                     ],
                 ) => {
-                    *r == role
+                    !crate::routing::ground_rule_zero_rules_mode()
+                        && (tin.fenced.iter().filter(|f| f.reason == "reflexivity").count() <= 4
+                            || !tin.transitive.contains(&role))
+                        && *r == role
                         && s == t
                         && s == s2
                         && tin
