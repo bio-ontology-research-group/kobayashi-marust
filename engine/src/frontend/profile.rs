@@ -1046,7 +1046,7 @@ impl<'a> SourceProfileBuilder<'a> {
     /// (declared or used), sorted; the frontend's sort encoding resolves them
     /// against the registry without assigning new names.
     /// Every class name the source mentions (declarations aside).
-    pub(super) fn class_names(&self) -> Vec<&'a str> {
+    pub(crate) fn class_names(&self) -> Vec<&'a str> {
         let mut names: Vec<_> = self.classes.iter().copied().collect();
         names.sort_unstable();
         names

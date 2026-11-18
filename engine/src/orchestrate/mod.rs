@@ -80,6 +80,53 @@ fn is_bottom(s: &str) -> bool {
     s == "owl:Nothing" || s == "http://www.w3.org/2002/07/owl#Nothing" || s == "\u{22A5}"
 }
 
+pub(crate) fn inconsistent_unsatisfiable_classes_from_text(
+    text: &str,
+) -> Result<Vec<String>, OrchestrateError> {
+    let canonical = crate::frontend::builtin_aliases::canonicalize(text)
+        .map_err(OrchestrateError::from_conformance)?;
+    let mut builder = crate::frontend::profile::SourceProfileBuilder::new();
+    crate::frontend::parse::for_each_ontology_child(&canonical, |node| {
+        builder.observe(&node);
+        Ok(())
+    })
+    .map_err(|e| OrchestrateError::OutOfFragment(e.0))?;
+    let mut out = std::collections::BTreeSet::new();
+    for raw in builder.class_names() {
+        let raw = raw.trim();
+        if raw.is_empty()
+            || raw.starts_with("_:")
+            || matches!(
+                raw,
+                "owl:Thing"
+                    | "owl:Nothing"
+                    | "<http://www.w3.org/2002/07/owl#Thing>"
+                    | "<http://www.w3.org/2002/07/owl#Nothing>"
+                    | "\u{22a4}"
+                    | "\u{22a5}"
+            )
+        {
+            continue;
+        }
+        let iri = raw
+            .strip_prefix('<')
+            .and_then(|s| s.strip_suffix('>'))
+            .unwrap_or(raw);
+        if !iri.is_empty() && !iri.starts_with("_:") {
+            out.insert(iri.to_string());
+        }
+    }
+    Ok(out.into_iter().collect())
+}
+
+pub(crate) fn inconsistent_unsatisfiable_classes(
+    ont: &Path,
+) -> Result<Vec<String>, OrchestrateError> {
+    let prepared = input::prepare_for_reasoning(ont)?;
+    let text = std::fs::read_to_string(prepared.path())?;
+    inconsistent_unsatisfiable_classes_from_text(&text)
+}
+
 /// Flatten full-IRI rows into the same lexicographic order as sorting all
 /// `[subject, superclass]` pairs globally, but compare each repeated subject
 /// only at row granularity.
@@ -2008,6 +2055,12 @@ fn classify_with_evidence_mode(
                         evidence.classification.dropped += route_only_total as usize;
                         evidence.classification.approximate = Some(reason);
                     }
+                }
+            } else {
+                evidence.classification.subsumptions.clear();
+                evidence.grouped_subsumptions = None;
+                if let Ok(classes) = inconsistent_unsatisfiable_classes(ont) {
+                    evidence.classification.unsatisfiable = classes;
                 }
             }
             if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
@@ -4204,7 +4257,9 @@ fn map_engine_out_to_evidence(
             consistency_certified: consistency_certified || out.dropped == 0,
         });
     }
-    let (subs, grouped_subsumptions) = if retain_grouped_output {
+    let (subs, grouped_subsumptions) = if out.inconsistent {
+        (Vec::new(), None)
+    } else if retain_grouped_output {
         (
             Vec::new(),
             Some(

@@ -1633,35 +1633,87 @@ pub(super) fn native_nominal_bridge_clauses<'a>(
         )
         .collect();
     let index = NativeNominalIndex::new(nominal_abox, definers);
+    let is_data_sort = |atom: &crate::json_io::JAtom| {
+        matches!(
+            atom,
+            crate::json_io::JAtom::Concept { concept, .. }
+                if concept == crate::frontend::sorts::DATA_SORT
+        )
+    };
+    let is_object_sort = |atom: &crate::json_io::JAtom| {
+        matches!(
+            atom,
+            crate::json_io::JAtom::Concept { concept, .. }
+                if concept == crate::frontend::sorts::OBJECT_SORT
+        )
+    };
     let mut projected: Vec<JClause> = clauses
-            .iter()
-            .filter(|clause| {
-                let redundant_universal_ground = matches!(
-                    (clause.body.as_slice(), clause.head.as_slice()),
-                    (
-                        [],
-                        [crate::json_io::JAtom::Concept {
-                            concept,
-                            term: crate::json_io::JTerm::Ind { .. },
-                        }]
-                    ) if universal_facts.contains(concept.as_str())
-                );
-                !redundant_universal_ground
-                    && !native_nominal_clause_represented(clause, &index)
-            })
-            .cloned()
-            .collect();
+        .iter()
+        .filter_map(|clause| {
+            if clause.body.iter().chain(&clause.head).any(is_object_sort) {
+                return None;
+            }
+            if clause.head.is_empty() && clause.body.iter().any(is_data_sort) {
+                return None;
+            }
+            if !clause.head.is_empty() && clause.head.iter().all(is_data_sort) {
+                return None;
+            }
+            let mut c = if clause.body.iter().chain(&clause.head).any(is_data_sort) {
+                JClause {
+                    body: clause
+                        .body
+                        .iter()
+                        .filter(|a| !is_data_sort(a))
+                        .cloned()
+                        .collect(),
+                    head: clause
+                        .head
+                        .iter()
+                        .filter(|a| !is_data_sort(a))
+                        .cloned()
+                        .collect(),
+                }
+            } else {
+                clause.clone()
+            };
+            let redundant_universal_ground = matches!(
+                (c.body.as_slice(), c.head.as_slice()),
+                (
+                    [],
+                    [crate::json_io::JAtom::Concept {
+                        concept,
+                        term: crate::json_io::JTerm::Ind { .. },
+                    }]
+                ) if universal_facts.contains(concept.as_str())
+            );
+            if redundant_universal_ground || native_nominal_clause_represented(&c, &index) {
+                return None;
+            }
+            let _ = &mut c;
+            Some(c)
+        })
+        .collect();
     // Moving assertions to the typed ABox must preserve the source concept
     // signature used by cb_to_ht to enumerate taxonomy queries. A class that
     // occurs only in C(a) still inherits every universal superclass. Register
     // vanished symbols through C(x) -> C(x): a tautology changes no models,
     // and internal names remain subject to the converter's query filter.
     let concepts = |input: &[JClause]| -> std::collections::BTreeSet<String> {
-        input.iter().flat_map(|clause| clause.body.iter().chain(&clause.head))
+        input
+            .iter()
+            .flat_map(|clause| clause.body.iter().chain(&clause.head))
             .filter_map(|atom| match atom {
-                crate::json_io::JAtom::Concept { concept, .. } => Some(concept.clone()),
+                crate::json_io::JAtom::Concept { concept, .. }
+                    if concept != crate::frontend::sorts::DATA_SORT
+                        && concept != crate::frontend::sorts::OBJECT_SORT
+                        && !concept.starts_with("__nom__") =>
+                {
+                    Some(concept.clone())
+                }
                 _ => None,
-            }).collect()
+            })
+            .collect()
     };
     let source_concepts = concepts(clauses);
     let retained_concepts = concepts(&projected);

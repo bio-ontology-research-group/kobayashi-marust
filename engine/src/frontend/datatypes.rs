@@ -2628,9 +2628,17 @@ fn exact_decimal_lexical(literal: &str) -> bool {
 ///   `NaN` (OWL 2 section 4.2, XSD 1.1 section 3.3.4).
 /// * `rdfs:Literal`, the top data range ("any set of data values that
 ///   contains the union of the value spaces of all datatypes").
+pub(crate) fn is_opaque_data_property_probe_value(name: &str) -> bool {
+    name.starts_with("__dt__val__\"v\"^^<http://km.invalid/dataproperties")
+        && name.ends_with("#free>")
+}
+
 pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
     if is_value_aux_name(name) {
         return None;
+    }
+    if is_opaque_data_property_probe_value(name) {
+        return Some("opaque_probe");
     }
     if let Some(family) = bridge_exact_atomic_family(name) {
         return Some(family);

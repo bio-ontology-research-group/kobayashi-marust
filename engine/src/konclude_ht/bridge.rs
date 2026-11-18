@@ -1767,6 +1767,9 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         }
     }
     for &(role, datatype) in &role_existentials {
+        if crate::frontend::datatypes::is_opaque_data_property_probe_value(datatype) {
+            continue;
+        }
         let Some(&range) = role_ranges.get(&role) else {
             continue;
         };
@@ -2211,7 +2214,12 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             defer!("a local datatype restriction symbol is absent from TInput concepts");
         };
         for &other in &datatype_ids {
-            if other == member || dt::bridge_tbox_atomic_family(&tin.concepts[other]) == Some("literal") {
+            if other == member
+                || matches!(
+                    dt::bridge_tbox_atomic_family(&tin.concepts[other]),
+                    Some("literal" | "opaque_probe")
+                )
+            {
                 continue;
             }
             let (left, right) = (local, tin.concepts[other].as_str());
@@ -2264,7 +2272,38 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some()
             })
     };
+    if values
+        .iter()
+        .any(|&v| crate::frontend::datatypes::is_opaque_data_property_probe_value(&tin.concepts[v]))
+        && (role_ranges
+            .values()
+            .copied()
+            .chain(local_foralls.iter().map(|&(_, d)| d))
+            .any(|d| {
+                matches!(
+                    crate::frontend::datatypes::bridge_tbox_atomic_family(d),
+                    Some("boolean" | "finite")
+                )
+            })
+            || role_ranges
+                .values()
+                .copied()
+                .filter(|&d| {
+                    crate::frontend::datatypes::bridge_tbox_atomic_family(d) != Some("literal")
+                })
+                .collect::<crate::fxhash::FxHashSet<_>>()
+                .len()
+                > 1)
+    {
+        defer!("opaque data-property probe literal co-occurs with finite, boolean, or multiple role ranges");
+    }
     for &value in &values {
+        if crate::frontend::datatypes::is_opaque_data_property_probe_value(&tin.concepts[value]) {
+            if !relations.singletons.contains(&value) && !singletons_elidable {
+                defer!("a datatype value lacks its singleton equality clause");
+            }
+            continue;
+        }
         if !relations.singletons.contains(&value)
             && !(singletons_elidable
                 && crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some())
@@ -2349,6 +2388,10 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let mut indexed_classes: crate::fxhash::FxHashSet<usize> = Default::default();
         let mut rest: Vec<usize> = Vec::new();
         for &value in &values {
+            if crate::frontend::datatypes::is_opaque_data_property_probe_value(&tin.concepts[value])
+            {
+                continue;
+            }
             match complete(value) {
                 Some(bits) => {
                     let class = relations.class(value);
@@ -2368,7 +2411,12 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             rest.iter().enumerate().map(|(position, &value)| (value, position)).collect();
         for (position, &left) in rest.iter().enumerate() {
             for &right in values.iter() {
-                if right == left || rest_position.get(&right).is_some_and(|&other| other <= position) {
+                if right == left
+                    || crate::frontend::datatypes::is_opaque_data_property_probe_value(
+                        &tin.concepts[right],
+                    )
+                    || rest_position.get(&right).is_some_and(|&other| other <= position)
+                {
                     continue;
                 }
                 if !relations.equal(left, right) && !relations.separated(left, right) {
@@ -2707,7 +2755,11 @@ fn cell_literals_and_requirement<'a>(
     }).flatten().filter(|name| !mentioned.contains(name) && !sensitive.contains(name)).collect();
     let literals: Vec<&str> = datatype_ids.iter()
         .map(|&concept| tin.concepts[concept].as_str())
-        .filter(|name| name.starts_with("__dt__val__") && (distinct || sensitive.contains(name)))
+        .filter(|name| {
+            name.starts_with("__dt__val__")
+                && !crate::frontend::datatypes::is_opaque_data_property_probe_value(name)
+                && (distinct || sensitive.contains(name))
+        })
         .filter(|name| !cover_only.contains(name))
         .collect();
     if disjoint_data {
@@ -2989,9 +3041,17 @@ fn tbox_extension_evidence_exact(
     if !datatype_ids.iter().any(|&concept| is_extension(concept)) {
         return true;
     }
-    let literal = |concept: usize| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("literal");
+    let literal = |concept: usize| {
+        matches!(
+            dt::bridge_tbox_atomic_family(&tin.concepts[concept]),
+            Some("literal" | "opaque_probe")
+        )
+    };
     let sensitive = body_sensitive_datatype_names(tin);
-    if datatype_ids.iter().any(|&concept| literal(concept) && sensitive.contains(tin.concepts[concept].as_str())) {
+    if datatype_ids.iter().any(|&concept| {
+        dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("literal")
+            && sensitive.contains(tin.concepts[concept].as_str())
+    }) {
         defer!("rdfs:Literal occurs in a body-sensitive position");
     }
     let included = |left: usize, right: usize| relations.includes(left, right);

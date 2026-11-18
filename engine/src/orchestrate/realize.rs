@@ -526,7 +526,18 @@ pub fn classify_extended(
         let realization = Realization { classification, types: Vec::new(), same: Vec::new() };
         return Ok(Extended { realization, properties: empty_properties, data_properties: empty_data, abox: empty_abox, top: None });
     }
-    let (mut extension, probes) = individual_extension(&text, &individuals);
+    let want_model_abox = (values || different)
+        && !individuals.is_empty()
+        && (!values || !roles.is_empty() || different)
+        && !text.contains("DLSafeRule(")
+        && !text.contains("HasKey(")
+        && std::env::var_os("KM_ABOX_PROBES_ONLY").is_none();
+    let need_ind_probes = mode.is_some() || ((values || different) && !want_model_abox);
+    let (mut extension, probes) = if need_ind_probes {
+        individual_extension(&text, &individuals)
+    } else {
+        (String::new(), Vec::new())
+    };
     let top_probe = if top {
         let (top_axioms, probe) = top_extension(&text);
         extension.push_str(&top_axioms);
@@ -534,14 +545,17 @@ pub fn classify_extended(
     } else {
         None
     };
+    let separate_prop_run = need_ind_probes && properties && roles.len() >= 100;
     let property_probes = if roles.is_empty() || !properties {
         None
+    } else if separate_prop_run {
+        Some(super::properties::extension(&text, &roles, shape))
     } else {
         let (property_extension, property_probes) = super::properties::extension(&text, &roles, shape);
         extension.push_str(&property_extension);
-        Some(property_probes)
+        Some((String::new(), property_probes))
     };
-    let abox_probes = if values || different {
+    let abox_probes = if (values || different) && !want_model_abox && !individuals.is_empty() {
         let (abox_extension, abox_probes) =
             super::abox_rows::extension(&text, &roles, &individuals, values, different);
         extension.push_str(&abox_extension);
@@ -549,12 +563,16 @@ pub fn classify_extended(
     } else {
         None
     };
+    let separate_data_run =
+        !data_roles.is_empty() && (need_ind_probes || property_probes.is_some() || want_model_abox);
     let data_probes = if data_roles.is_empty() {
         None
+    } else if separate_data_run {
+        Some(super::data_properties::extension(&text, &data_roles))
     } else {
         let (data_extension, data_probes) = super::data_properties::extension(&text, &data_roles);
         extension.push_str(&data_extension);
-        Some(data_probes)
+        Some((String::new(), data_probes))
     };
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(
@@ -564,29 +582,38 @@ pub fn classify_extended(
             data_roles.len()
         );
     }
-    // The rewrite is the validated source plus declared probe classes whose
-    // definitions only name individuals and object properties of that source,
-    // `owl:Thing` and `owl:topObjectProperty`.
-    // The data property probes use a literal of a fresh datatype, read as an
-    // opaque value (`--unknown-datatypes=free`). The source itself was
-    // validated above in the caller's mode.
-    let _free = data_probes.as_ref().map(|_| FreeDatatypes::enable());
-    let mut classification = classify_probe_source(cfg, &text, &extension, "-probes.ofn")?;
+    let caller_export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    if want_model_abox && !caller_export_active {
+        super::model_export::begin_session(None);
+        std::env::set_var("KM_EXPORT_ABOX_ONLY", "1");
+    }
+    let _free = (!separate_data_run && data_probes.is_some()).then(FreeDatatypes::enable);
+    let main_res = if extension.is_empty() {
+        super::classify_with_evidence(cfg, ont).map(|ev| ev.classification)
+    } else {
+        classify_probe_source(cfg, &text, &extension, "-probes.ofn")
+    };
     drop(_free);
+    let exported_model = if want_model_abox {
+        Some(super::model_export::resolve_session_model(!caller_export_active))
+    } else {
+        None
+    };
+    let mut classification = main_res?;
     let individual_probes: HashSet<&str> = probes.iter().map(|(probe, _)| probe.as_str()).collect();
     let top_classes = match &top_probe {
         Some(top_probe) => {
             let foreign = |name: &str| {
                 individual_probes.contains(name)
-                    || property_probes.as_ref().is_some_and(|p| p.is_probe(name))
-                    || data_probes.as_ref().is_some_and(|p| p.is_probe(name))
+                    || property_probes.as_ref().is_some_and(|(_, p)| p.is_probe(name))
+                    || data_probes.as_ref().is_some_and(|(_, p)| p.is_probe(name))
                     || abox_probes.as_ref().is_some_and(|p| p.is_probe(name))
             };
             Some(split_top(&mut classification, top_probe, &foreign)?)
         }
         None => None,
     };
-    let abox = match &abox_probes {
+    let mut abox = match &abox_probes {
         Some(abox_probes) => {
             let individual_of: BTreeMap<String, String> = probes.iter().cloned().collect();
             let rows = super::abox_rows::split(&mut classification, abox_probes, &individual_of)?;
@@ -594,30 +621,98 @@ pub fn classify_extended(
         }
         None => empty_abox.clone(),
     };
-    let data_hierarchy = match &data_probes {
-        Some(data_probes) => {
-            let foreign = |name: &str| {
-                individual_probes.contains(name)
-                    || property_probes.as_ref().is_some_and(|p| p.is_probe(name))
-            };
-            Some(super::data_properties::split(&mut classification, data_probes, &foreign)?)
+    let data_hierarchy = match data_probes {
+        Some((data_ext, data_probes)) => {
+            if separate_data_run {
+                if !classification.consistent {
+                    Some(super::data_properties::DataPropertyHierarchy::default())
+                } else {
+                    let _free = FreeDatatypes::enable();
+                    let mut data_cls =
+                        classify_probe_source(cfg, &text, &data_ext, "-data-probes.ofn")?;
+                    drop(_free);
+                    let foreign = |_: &str| false;
+                    Some(super::data_properties::split(
+                        &mut data_cls,
+                        &data_probes,
+                        &foreign,
+                    )?)
+                }
+            } else {
+                let foreign = |name: &str| {
+                    individual_probes.contains(name)
+                        || property_probes.as_ref().is_some_and(|(_, p)| p.is_probe(name))
+                };
+                Some(super::data_properties::split(
+                    &mut classification,
+                    &data_probes,
+                    &foreign,
+                )?)
+            }
         }
         None => empty_data,
     };
     let hierarchy = match property_probes {
-        Some(property_probes) => {
-            let foreign = |name: &str| individual_probes.contains(name);
-            let mut hierarchy =
-                super::properties::split(&mut classification, &property_probes, &foreign)?;
-            if classification.consistent && property_probes.ranges_by_assertion() {
-                hierarchy.ranges = range_run(cfg, &text, &property_probes, &hierarchy)?;
+        Some((prop_ext, property_probes)) => {
+            if separate_prop_run {
+                if !classification.consistent {
+                    Some(super::properties::PropertyHierarchy::default())
+                } else {
+                    let mut prop_cls =
+                        classify_probe_source(cfg, &text, &prop_ext, "-prop-probes.ofn")?;
+                    let foreign = |_: &str| false;
+                    let mut hierarchy =
+                        super::properties::split(&mut prop_cls, &property_probes, &foreign)?;
+                    if prop_cls.consistent && property_probes.ranges_by_assertion() {
+                        hierarchy.ranges = range_run(cfg, &text, &property_probes, &hierarchy)?;
+                    }
+                    Some(hierarchy)
+                }
+            } else {
+                let foreign = |name: &str| individual_probes.contains(name);
+                let mut hierarchy =
+                    super::properties::split(&mut classification, &property_probes, &foreign)?;
+                if classification.consistent && property_probes.ranges_by_assertion() {
+                    hierarchy.ranges = range_run(cfg, &text, &property_probes, &hierarchy)?;
+                }
+                Some(hierarchy)
             }
-            Some(hierarchy)
         }
         None => empty_properties,
     };
-    let realization = split(classification, &probes, mode.unwrap_or(TypeMode::All))?;
-    let mut realization = realization;
+    let mut realization = split(classification, &probes, mode.unwrap_or(TypeMode::All))?;
+    if want_model_abox && realization.classification.consistent {
+        let model_rows = exported_model
+            .and_then(|res| res.ok().flatten())
+            .and_then(|(raw, meta)| {
+                super::abox_rows::from_exported_model(
+                    &text,
+                    &roles,
+                    &individuals,
+                    values,
+                    different,
+                    &realization.classification,
+                    &realization,
+                    &raw,
+                    &meta,
+                )
+            });
+        if let Some(rows) = model_rows {
+            abox = rows;
+        } else {
+            let (mut abox_ext, ind_probes) = individual_extension(&text, &individuals);
+            let (ext2, abox_p) =
+                super::abox_rows::extension(&text, &roles, &individuals, values, different);
+            abox_ext.push_str(&ext2);
+            let mut abox_cls =
+                classify_probe_source(cfg, &text, &abox_ext, "-abox-probes.ofn")?;
+            let individual_of: BTreeMap<String, String> = ind_probes.into_iter().collect();
+            let rows = super::abox_rows::split(&mut abox_cls, &abox_p, &individual_of)?;
+            if abox_cls.consistent {
+                abox = rows;
+            }
+        }
+    }
     if mode.is_none() {
         // The individual probes were added only for --values or --different.
         realization.types.clear();

@@ -1851,11 +1851,16 @@ fn write_model<W: Write>(
                 s,
                 "owl:Thing" | "Thing" | "owl:Nothing" | "Nothing" | "⊤" | "⊥"
             ) && !s.starts_with("urn:km:")
+                && !s.starts_with("http://km.invalid/")
                 && !s.starts_with("__ground_assertion_")
                 && !meta
                     .iri_map
                     .get(s)
-                    .is_some_and(|u| u.starts_with("_:") || u.starts_with("urn:km:"))
+                    .is_some_and(|u| {
+                        u.starts_with("_:")
+                            || u.starts_with("urn:km:")
+                            || u.starts_with("http://km.invalid/")
+                    })
         })
         .collect();
     let data: HashSet<&str> = data_roles.iter().map(String::as_str).collect();
@@ -1888,6 +1893,9 @@ fn write_model<W: Write>(
         for name in label.iter().chain(std::iter::once(&raw.contexts[i])) {
             if let Some(a) = name.strip_prefix(NOMINAL_PREFIX) {
                 let a = iri(a);
+                if a.starts_with("http://km.invalid/") {
+                    continue;
+                }
                 if need_ind_to_eid && !is_cell(i) {
                     ind_to_eid.insert(a.clone(), ids[i].clone());
                 }

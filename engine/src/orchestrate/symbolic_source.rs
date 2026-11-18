@@ -108,10 +108,12 @@ fn map_output(output: crate::tableau::TOutput, names: &HashSet<String>,
     }
     let consistent = output.consistent && !frontend_inconsistent
         && !asserted.iter().any(|name| unsatisfiable.contains(&full(name)));
-    if !consistent {
-        return Classification { consistent: false, subsumptions: vec![], unsatisfiable: vec![], dropped: 0, approximate: None };
-    }
     let public: HashSet<String> = names.iter().map(|name| full(name)).collect();
+    if !consistent {
+        let mut all_public: Vec<String> = public.into_iter().collect();
+        all_public.sort();
+        return Classification { consistent: false, subsumptions: vec![], unsatisfiable: all_public, dropped: 0, approximate: None };
+    }
     Classification { consistent, subsumptions: pairs.into_iter().collect(),
         unsatisfiable: unsatisfiable.into_iter().filter(|name| public.contains(name)).collect(), dropped: 0, approximate: None }
 }
@@ -151,7 +153,8 @@ mod tests {
         for result in [map_output(output(), &names, &iris, &["B".into()], false),
             map_output(output(), &names, &iris, &[], true)] {
             assert!(!result.consistent);
-            assert!(result.subsumptions.is_empty() && result.unsatisfiable.is_empty());
+            assert!(result.subsumptions.is_empty());
+            assert_eq!(result.unsatisfiable, vec!["urn:A".to_owned(), "urn:B".to_owned()]);
         }
     }
 }
