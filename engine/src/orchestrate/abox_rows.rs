@@ -309,7 +309,9 @@ pub(super) fn from_exported_model(
         role_lookup.insert(exp_r, pub_r.clone());
         pub_role_to_idx.insert(pub_r, idx);
     }
+    let mut full_to_short: HashMap<&str, &str> = HashMap::with_capacity(meta.iri_map.len());
     for (short, full) in &meta.iri_map {
+        full_to_short.entry(full.as_str()).or_insert(short.as_str());
         if let Some(pub_r) = role_lookup.get(full).cloned() {
             role_lookup.entry(short.clone()).or_insert(pub_r);
         }
@@ -317,10 +319,11 @@ pub(super) fn from_exported_model(
     let resolve_role_short = |tok: &str| -> String {
         let pub_r = public_name(tok);
         let exp_r = expand_tok(tok);
-        for (short, full) in &meta.iri_map {
-            if full == &exp_r || full == &pub_r {
-                return short.clone();
-            }
+        if let Some(&short) = full_to_short
+            .get(exp_r.as_str())
+            .or_else(|| full_to_short.get(pub_r.as_str()))
+        {
+            return short.to_string();
         }
         pub_r
     };
@@ -962,32 +965,34 @@ pub(super) fn from_exported_model(
             }
         }
     }
-    let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut proved_edge_set);
-    let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut edge_set);
+    crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut proved_edge_set).ok()?;
+    crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut edge_set).ok()?;
 
     let mut dom_ran_added = false;
     let mut entailed_dom_ran_added = false;
-    for (u, r, v) in &proved_edge_set {
-        for (dr, dc) in &obj_domains {
-            if r == dr && entailed_elem_classes[*u].insert(dc.clone()) {
-                entailed_dom_ran_added = true;
+    if !obj_domains.is_empty() || !obj_ranges.is_empty() {
+        for (u, r, v) in &proved_edge_set {
+            for (dr, dc) in &obj_domains {
+                if r == dr && entailed_elem_classes[*u].insert(dc.clone()) {
+                    entailed_dom_ran_added = true;
+                }
+            }
+            for (rr, rc) in &obj_ranges {
+                if r == rr && entailed_elem_classes[*v].insert(rc.clone()) {
+                    entailed_dom_ran_added = true;
+                }
             }
         }
-        for (rr, rc) in &obj_ranges {
-            if r == rr && entailed_elem_classes[*v].insert(rc.clone()) {
-                entailed_dom_ran_added = true;
+        for (u, r, v) in &edge_set {
+            for (dr, dc) in &obj_domains {
+                if r == dr && elem_classes[*u].insert(dc.clone()) {
+                    dom_ran_added = true;
+                }
             }
-        }
-    }
-    for (u, r, v) in &edge_set {
-        for (dr, dc) in &obj_domains {
-            if r == dr && elem_classes[*u].insert(dc.clone()) {
-                dom_ran_added = true;
-            }
-        }
-        for (rr, rc) in &obj_ranges {
-            if r == rr && elem_classes[*v].insert(rc.clone()) {
-                dom_ran_added = true;
+            for (rr, rc) in &obj_ranges {
+                if r == rr && elem_classes[*v].insert(rc.clone()) {
+                    dom_ran_added = true;
+                }
             }
         }
     }
@@ -1027,6 +1032,72 @@ pub(super) fn from_exported_model(
     }
     if entailed_dom_ran_added {
         close_elem_classes(&mut entailed_elem_classes);
+    }
+
+    // Fast path for `--values` without `--different`: when the ontology has no
+    // `ObjectHasValue`, `ObjectOneOf`, or `ObjectHasSelf` constructs that could
+    // derive new role edges between named individuals during clause saturation,
+    // and every named-individual edge in `edge_set` is already in `proved_edge_set`,
+    // `proved_edge_set` and `edge_set` are already final on `0..n_elems`.
+    if !different_requested
+        && !text.contains("ObjectHasValue(")
+        && !text.contains("ObjectOneOf(")
+        && !text.contains("ObjectHasSelf(")
+        && edge_set
+            .iter()
+            .all(|e| e.0 >= n_elems || e.2 >= n_elems || proved_edge_set.contains(e))
+    {
+        let mut same_adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for (a, b) in &same_pairs {
+            same_adj.entry(a.as_str()).or_default().push(b.as_str());
+            same_adj.entry(b.as_str()).or_default().push(a.as_str());
+        }
+        let mut same_comp: HashMap<&str, usize> = HashMap::new();
+        let mut cid = 0usize;
+        for ind in &pub_individuals {
+            if same_comp.contains_key(ind.as_str()) {
+                continue;
+            }
+            cid += 1;
+            let mut stack = vec![ind.as_str()];
+            while let Some(cur) = stack.pop() {
+                if same_comp.insert(cur, cid).is_none() {
+                    if let Some(nbrs) = same_adj.get(cur) {
+                        stack.extend(nbrs.iter().copied());
+                    }
+                }
+            }
+        }
+        let mut plan = ModelAboxPlan::default();
+        if values_requested {
+            for (u, r, v) in &proved_edge_set {
+                if *u >= n_elems || *v >= n_elems {
+                    continue;
+                }
+                let full_r = meta.iri_map.get(r).map(String::as_str).unwrap_or(r.as_str());
+                let Some(pub_r) = role_lookup.get(full_r).or_else(|| role_lookup.get(r)) else {
+                    continue;
+                };
+                if u != v {
+                    for a in &elem_inds[*u] {
+                        for b in &elem_inds[*v] {
+                            plan.proved_values
+                                .insert([pub_r.clone(), a.clone(), b.clone()]);
+                        }
+                    }
+                } else {
+                    for a in &elem_inds[*u] {
+                        for b in &elem_inds[*u] {
+                            if a == b || same_comp.get(a.as_str()) == same_comp.get(b.as_str()) {
+                                plan.proved_values
+                                    .insert([pub_r.clone(), a.clone(), b.clone()]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return Some(plan);
     }
 
     // Parse normalized DL-clauses of `text` to run Horn saturation on merged
@@ -2082,6 +2153,18 @@ pub(super) fn from_exported_model(
     for _sk_round in 0..2 {
         let cur_limit = n_total_elems;
         let mut added_sk = false;
+        let mut proved_out: HashMap<(usize, String), Vec<usize>> = HashMap::new();
+        let mut proved_in: HashMap<(usize, String), Vec<usize>> = HashMap::new();
+        for &(s, ref r, t) in &proved_edge_set {
+            proved_out.entry((s, r.clone())).or_default().push(t);
+            proved_in.entry((t, r.clone())).or_default().push(s);
+        }
+        let mut model_out: HashMap<(usize, String), Vec<usize>> = HashMap::new();
+        let mut model_in: HashMap<(usize, String), Vec<usize>> = HashMap::new();
+        for &(s, ref r, t) in &edge_set {
+            model_out.entry((s, r.clone())).or_default().push(t);
+            model_in.entry((t, r.clone())).or_default().push(s);
+        }
         for (fn_name, grp) in &skolem_vec {
             let Some((ref r_short, inv)) = grp.role else {
                 continue;
@@ -2093,43 +2176,36 @@ pub(super) fn from_exported_model(
                 if !in_entailed && !in_model {
                     continue;
                 }
+                let key = (u, r_short.clone());
                 let existing_entailed = if in_entailed {
-                    proved_edge_set.iter().find_map(|(s, r, t)| {
-                        if r != r_short {
-                            return None;
-                        }
-                        let target = if inv {
-                            if *t == u { Some(*s) } else { None }
-                        } else if *s == u {
-                            Some(*t)
-                        } else {
-                            None
-                        }?;
-                        (target < entailed_elem_classes.len()
-                            && grp
-                                .fillers
-                                .iter()
-                                .all(|f| entailed_elem_classes[target].contains(f)))
-                        .then_some(target)
+                    let targets = if inv {
+                        proved_in.get(&key)
+                    } else {
+                        proved_out.get(&key)
+                    };
+                    targets.and_then(|list| {
+                        list.iter().copied().find(|&target| {
+                            target < entailed_elem_classes.len()
+                                && grp
+                                    .fillers
+                                    .iter()
+                                    .all(|f| entailed_elem_classes[target].contains(f))
+                        })
                     })
                 } else {
                     None
                 };
                 let existing_model = if in_model {
-                    edge_set.iter().find_map(|(s, r, t)| {
-                        if r != r_short {
-                            return None;
-                        }
-                        let target = if inv {
-                            if *t == u { Some(*s) } else { None }
-                        } else if *s == u {
-                            Some(*t)
-                        } else {
-                            None
-                        }?;
-                        (target < elem_classes.len()
-                            && grp.fillers.iter().all(|f| elem_classes[target].contains(f)))
-                        .then_some(target)
+                    let targets = if inv {
+                        model_in.get(&key)
+                    } else {
+                        model_out.get(&key)
+                    };
+                    targets.and_then(|list| {
+                        list.iter().copied().find(|&target| {
+                            target < elem_classes.len()
+                                && grp.fillers.iter().all(|f| elem_classes[target].contains(f))
+                        })
                     })
                 } else {
                     None
