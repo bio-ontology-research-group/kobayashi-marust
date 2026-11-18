@@ -3296,8 +3296,9 @@ pub struct SaturationIndividualNodeFunctionalConceptsExtensionData {
     pub predecessor_extension_process_linker: Cint64,
     /// `mForwardingPredMergedHash` (`CPROCESSHASH<CIndividualSaturationProcessNode*,CRole*>*`).
     pub forwarding_pred_merged_hash: HashMap<SatNodeId, HashSet<RoleId>>,
-    /// `mQualifiedFunctionalAtmostConceptProcessSet` (`CPROCESSSET<CConceptSaturationDescriptor*>*`, not yet ported).
-    pub qualified_functional_atmost_concept_process_set: Cint64,
+    /// `mQualifiedFunctionalAtmostConceptProcessSet` (`CPROCESSSET<CConceptSaturationDescriptor*>*`).
+    pub qualified_functional_atmost_concept_process_set:
+        crate::fxhash::FxHashSet<ConceptSaturationDescriptorId>,
 }
 
 impl Default for SaturationIndividualNodeFunctionalConceptsExtensionData {
@@ -3319,7 +3320,7 @@ impl Default for SaturationIndividualNodeFunctionalConceptsExtensionData {
             linked_predecessor_added_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             predecessor_extension_process_linker: INVALID,
             forwarding_pred_merged_hash: HashMap::default(),
-            qualified_functional_atmost_concept_process_set: INVALID,
+            qualified_functional_atmost_concept_process_set: Default::default(),
         }
     }
 }
@@ -3351,7 +3352,7 @@ impl SaturationIndividualNodeFunctionalConceptsExtensionData {
             SaturationSuccessorFunctionalConceptExtensionDataId::NONE;
         self.predecessor_extension_process_linker = INVALID;
         self.forwarding_pred_merged_hash.clear();
-        self.qualified_functional_atmost_concept_process_set = INVALID;
+        self.qualified_functional_atmost_concept_process_set.clear();
         self
     }
 

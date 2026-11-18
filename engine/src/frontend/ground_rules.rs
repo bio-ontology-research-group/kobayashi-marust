@@ -50,7 +50,7 @@ fn terms(atom: &RuleAtom) -> Result<Vec<&RuleTerm>, &'static str> {
 // Each remaining variable is existential only in the premise. Disconnected
 // components have independent witnesses; multiple edges count as a cycle.
 fn forest_grounding(body: &[RuleAtom], head: &[RuleAtom]) -> Option<BTreeSet<String>> {
-    if !body.iter().all(|a| matches!(a, RuleAtom::Class(..) | RuleAtom::Role(..))) {
+    if !body.iter().all(|a| matches!(a, RuleAtom::Class(..) | RuleAtom::Role(..) | RuleAtom::Same(..) | RuleAtom::Diff(..))) {
         return None;
     }
     let mut fixed = BTreeSet::new();
@@ -61,9 +61,19 @@ fn forest_grounding(body: &[RuleAtom], head: &[RuleAtom]) -> Option<BTreeSet<Str
     }
     let mut edges = Vec::new();
     for atom in body {
-        if let RuleAtom::Role(_, RuleTerm::Var(a), RuleTerm::Var(b)) = atom {
-            if a == b { return None; }
-            edges.push((a.clone(), b.clone()));
+        match atom {
+            RuleAtom::Role(_, RuleTerm::Var(a), RuleTerm::Var(b)) => {
+                if a == b {
+                    fixed.insert(a.clone());
+                } else {
+                    edges.push((a.clone(), b.clone()));
+                }
+            }
+            RuleAtom::Same(a, b) | RuleAtom::Diff(a, b) => {
+                if let RuleTerm::Var(va) = a { fixed.insert(va.clone()); }
+                if let RuleTerm::Var(vb) = b { fixed.insert(vb.clone()); }
+            }
+            _ => {}
         }
     }
     loop {

@@ -18,6 +18,7 @@ pub mod data_rules;
 pub mod ground_rules;
 mod rule_paths;
 pub mod ground_rule_source;
+pub mod named_role_bound;
 pub mod data_abox_projection;
 mod finite_data_rules;
 mod rule_assertions;
@@ -3494,8 +3495,26 @@ fn collect_rules(
     };
     let parsed_rule_count = ontology.rules().count() as u64;
     if parsed_rule_count + certified_unsupported_rules != source_rule_count {
+        let mut builtins = BTreeSet::new();
+        for rule in ontology.datatype_rules() {
+            if let Axiom::DataRule(body, head) = rule {
+                for atom in body.iter().chain(head) {
+                    if let RuleAtom::Builtin(iri, _) = atom {
+                        builtins.insert(iri.as_str());
+                    }
+                }
+            }
+        }
+        let detail = if builtins.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " (built-in atom(s): {})",
+                builtins.into_iter().collect::<Vec<_>>().join(", ")
+            )
+        };
         return Err(parse::OutOfFragment(format!(
-            "DL-safe rules: parsed {parsed_rule_count} and certified {certified_unsupported_rules} of {source_rule_count}; an atom or head shape is unsupported"
+            "DL-safe rules: parsed {parsed_rule_count} and certified {certified_unsupported_rules} of {source_rule_count}; an atom or head shape is unsupported{detail}"
         )));
     }
     let mut out = Vec::new();

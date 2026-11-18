@@ -134,15 +134,42 @@ final class DataValues {
             return true;
         }
 
-        boolean canUseAssertedValuesOnly(Set<OWLDataProperty> subPropertiesAndSelf) {
-            if (isPurelyAsserted(subPropertiesAndSelf)) return true;
-            if (outside != null || booleans || hasDataOneOf || hasRuleData || !integerTypes.isEmpty()) {
-                return false;
+        Set<OWLLiteral> candidatesForProperty(Set<OWLDataProperty> subPropertiesAndSelf,
+                                              Collection<OWLDataRange> statedRanges) {
+            Set<OWLLiteral> out = new LinkedHashSet<>();
+            for (OWLLiteral l : literals) {
+                boolean outsideRange = false;
+                if (statedRanges != null) {
+                    for (OWLDataRange r : statedRanges) {
+                        if (definitelyOutside(l, r)) {
+                            outsideRange = true;
+                            break;
+                        }
+                    }
+                }
+                if (outsideRange) continue;
+                IRI dt = l.getDatatype().getIRI();
+                boolean infiniteUnboundedType = !dt.equals(OWL2Datatype.XSD_BOOLEAN.getIRI())
+                        && !integerTypes.contains(dt)
+                        && !dt.equals(OWL2Datatype.XSD_INTEGER.getIRI())
+                        && floatCuts.isEmpty();
+                if (!hasDataOneOf && !hasRuleData
+                        && subPropertiesAndSelf != null && !subPropertiesAndSelf.isEmpty()
+                        && (isPurelyAsserted(subPropertiesAndSelf) || infiniteUnboundedType)) {
+                    Object key = valueKey(l);
+                    boolean occursOnProp = false;
+                    for (OWLDataProperty q : subPropertiesAndSelf) {
+                        Map<Object, OWLLiteral> mp = byProp.get(q);
+                        if (mp != null && mp.containsKey(key)) {
+                            occursOnProp = true;
+                            break;
+                        }
+                    }
+                    if (!occursOnProp) continue;
+                }
+                out.add(l);
             }
-            for (OWLDataProperty q : subPropertiesAndSelf) {
-                if (hasValueProperties.contains(q)) return false;
-            }
-            return true;
+            return out;
         }
 
         void addLiteral(OWLLiteral l) {
@@ -243,10 +270,14 @@ final class DataValues {
             for (OWLClassExpression ce : axiom.getNestedClassExpressions()) {
                 if (ce instanceof OWLDataHasValue) {
                     OWLDataHasValue dhv = (OWLDataHasValue) ce;
-                    out.addLiteral(dhv.getFiller());
+                    OWLLiteral lit = dhv.getFiller();
+                    out.addLiteral(lit);
                     if (!dhv.getProperty().isAnonymous()) {
-                        out.hasValueProperties.add(dhv.getProperty().asOWLDataProperty());
-                        out.positiveProperties.add(dhv.getProperty().asOWLDataProperty());
+                        OWLDataProperty dp = dhv.getProperty().asOWLDataProperty();
+                        out.hasValueProperties.add(dp);
+                        out.positiveProperties.add(dp);
+                        out.byProp.computeIfAbsent(dp, k -> new LinkedHashMap<>())
+                                .putIfAbsent(valueKey(lit), lit);
                     }
                 } else if (ce instanceof OWLDataSomeValuesFrom) {
                     OWLDataSomeValuesFrom dsv = (OWLDataSomeValuesFrom) ce;

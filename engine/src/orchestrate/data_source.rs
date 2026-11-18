@@ -31,8 +31,12 @@ fn cache_grounded(path: Option<&Path>, project_data_abox: bool, grounded: Ground
 }
 
 pub(super) fn automatic_candidate(path: &Path) -> Result<Option<&'static str>, OrchestrateError> {
-    if std::fs::metadata(path)?.len() > 4 * 1024 * 1024 { return Ok(None); }
+    let len = std::fs::metadata(path)?.len();
+    if len > 16 * 1024 * 1024 { return Ok(None); }
     let text = std::fs::read_to_string(path)?;
+    if len > 4 * 1024 * 1024 && !text.contains("DLSafeRule") && !text.contains("HasKey") {
+        return Ok(None);
+    }
     Ok(plan_with_path(Some(path), &text))
 }
 
@@ -81,7 +85,7 @@ fn plan_with_path(path: Option<&Path>, text: &str) -> Option<&'static str> {
         // Raw profile support is conservative (for example, an empty-head
         // constraint). The compiler's source/parsed coverage check is the
         // authoritative admission test for this reduction.
-        if source.imports == 0 && count("DataPropertyAssertion") <= 4_096 {
+        if source.imports == 0 {
             if let Ok(grounded) = crate::frontend::ground_rule_source::compile(text, 100_000) {
                 if grounded.text.len() <= 8 * 1024 * 1024 {
                     cache_grounded(path, false, grounded);
@@ -91,6 +95,7 @@ fn plan_with_path(path: Option<&Path>, text: &str) -> Option<&'static str> {
         }
         return None;
     }
+    if text.len() > 4 * 1024 * 1024 { return None; }
     // Functional numeric profiles need the exact source path even without
     // inverse-functional object roles. A successful bounded compiler is only
     // a scheduling hint; native admission still validates its complete output.

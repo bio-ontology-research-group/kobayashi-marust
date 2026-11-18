@@ -272,6 +272,284 @@ pub(super) fn source_shape(canonical: &str) -> Result<SourceShape, OrchestrateEr
     Ok(SourceShape { universal_possible: universal, inverse_free: !inverse })
 }
 
+/// Whether every model of `canonical` can be extended by one fresh isolated
+/// blank element (outside all named classes and nominals, with no object or
+/// data role edges). When true and `owl:topObjectProperty` does not occur
+/// outside `SubObjectPropertyOf(R, owl:topObjectProperty)`, no named object
+/// property can cover `Δ^I × Δ^I` in any model, so `P_⊤` is not needed.
+pub(super) fn isolated_blank_element_admissible(canonical: &str) -> bool {
+    fn mentions_top_role_non_tautology(node: &Node<'_>) -> bool {
+        let Node::List(head, args) = node else {
+            return matches!(node, Node::Atom(token) if is_universal_property(token));
+        };
+        match *head {
+            "Annotation" | "AnnotationAssertion" | "SubAnnotationPropertyOf"
+            | "AnnotationPropertyDomain" | "AnnotationPropertyRange" | "Declaration" => false,
+            "SubObjectPropertyOf" => {
+                let plain: Vec<&Node<'_>> =
+                    args.iter().filter(|arg| arg.head() != Some("Annotation")).collect();
+                if let [sub, Node::Atom(sup)] = plain.as_slice() {
+                    if is_universal_property(sup) && !mentions_universal_property(sub) {
+                        return false;
+                    }
+                }
+                args.iter().any(mentions_top_role_non_tautology)
+            }
+            _ => args.iter().any(mentions_top_role_non_tautology),
+        }
+    }
+    let mut has_top_role = false;
+    let mut raw_rbox = crate::frontend::rbox::RawRbox::default();
+    if crate::frontend::parse::for_each_ontology_child(canonical, |node| {
+        if mentions_top_role_non_tautology(node) {
+            has_top_role = true;
+        }
+        raw_rbox.observe(node);
+        Ok(())
+    })
+    .is_err()
+        || has_top_role
+    {
+        return false;
+    }
+    let mut registry = crate::frontend::iri::IriRegistry::new();
+    let Ok(ontology) = crate::frontend::parse::parse_axioms(&mut registry, canonical) else {
+        return false;
+    };
+    let rbox = raw_rbox.resolve(&mut registry);
+    use crate::frontend::rbox::RboxRecord;
+    use crate::frontend::syntax::{Axiom, Concept, Role};
+    let mut refl: HashSet<String> = HashSet::new();
+    for axiom in ontology.axioms_iter() {
+        if let Axiom::ReflexiveRole(r) = axiom {
+            refl.insert(r.clone());
+        }
+    }
+    loop {
+        let before = refl.len();
+        for axiom in ontology.axioms_iter() {
+            match axiom {
+                Axiom::RoleInclusion(sub, sup) => {
+                    if refl.contains(sub) {
+                        refl.insert(sup.clone());
+                    }
+                }
+                Axiom::InverseRoles(a, b) => {
+                    if refl.contains(a) || refl.contains(b) {
+                        refl.insert(a.clone());
+                        refl.insert(b.clone());
+                    }
+                }
+                Axiom::RoleChain(chain, sup) => {
+                    if chain.iter().all(|r| refl.contains(r)) {
+                        refl.insert(sup.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        for record in &rbox {
+            match record {
+                RboxRecord::Subrole(sub, sup) => {
+                    if refl.contains(sub) {
+                        refl.insert(sup.clone());
+                    }
+                }
+                RboxRecord::Inverse(a, b) => {
+                    if refl.contains(a) || refl.contains(b) {
+                        refl.insert(a.clone());
+                        refl.insert(b.clone());
+                    }
+                }
+                RboxRecord::Chain(r1, r2, sup) => {
+                    if refl.contains(r1) && refl.contains(r2) {
+                        refl.insert(sup.clone());
+                    }
+                }
+                RboxRecord::ChainN(chain, sup) => {
+                    if chain.iter().all(|r| refl.contains(r)) {
+                        refl.insert(sup.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        if refl.len() == before {
+            break;
+        }
+    }
+    for axiom in ontology.axioms_iter() {
+        match axiom {
+            Axiom::IrreflexiveRole(r) | Axiom::AsymmetricRole(r) if refl.contains(r) => {
+                return false;
+            }
+            Axiom::DisjointRoles(r1, r2) if refl.contains(r1) && refl.contains(r2) => {
+                return false;
+            }
+            _ => {}
+        }
+    }
+    let mut labels: HashSet<String> = HashSet::new();
+    for record in &rbox {
+        match record {
+            RboxRecord::Domain(r, c) | RboxRecord::Range(r, c)
+                if refl.contains(r)
+                    && !c.is_empty()
+                    && c != "owl:Thing"
+                    && c != "Thing" =>
+            {
+                if c == "owl:Nothing" || c == "Nothing" {
+                    return false;
+                }
+                labels.insert(c.clone());
+            }
+            _ => {}
+        }
+    }
+    loop {
+        let before = labels.len();
+        for axiom in ontology.axioms_iter() {
+            match axiom {
+                Axiom::SubClassOf(Concept::Name(a), Concept::Name(b))
+                    if !b.starts_with("__dt__") && labels.contains(a) =>
+                {
+                    labels.insert(b.clone());
+                }
+                Axiom::SubClassOf(Concept::And(cs), Concept::Name(b))
+                    if !b.starts_with("__dt__")
+                        && cs
+                            .iter()
+                            .all(|c| matches!(c, Concept::Name(a) if labels.contains(a))) =>
+                {
+                    labels.insert(b.clone());
+                }
+                Axiom::EquivalentClasses(Concept::Name(a), Concept::Name(b))
+                    if !a.starts_with("__dt__") && !b.starts_with("__dt__") =>
+                {
+                    if labels.contains(a) {
+                        labels.insert(b.clone());
+                    }
+                    if labels.contains(b) {
+                        labels.insert(a.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        if labels.len() == before {
+            break;
+        }
+    }
+    fn holds_at_isolated(
+        concept: &Concept,
+        labels: &HashSet<String>,
+        refl: &HashSet<String>,
+    ) -> Option<bool> {
+        Some(match concept {
+            Concept::Name(a) => {
+                if a.starts_with("__dt__") {
+                    return None;
+                }
+                labels.contains(a)
+            }
+            Concept::Top => true,
+            Concept::Bottom | Concept::Nominal(_) => false,
+            Concept::Not(inner) => !holds_at_isolated(inner, labels, refl)?,
+            Concept::And(conjuncts) => {
+                let mut value = true;
+                for c in conjuncts {
+                    value &= holds_at_isolated(c, labels, refl)?;
+                }
+                value
+            }
+            Concept::Or(disjuncts) => {
+                let mut value = false;
+                for d in disjuncts {
+                    value |= holds_at_isolated(d, labels, refl)?;
+                }
+                value
+            }
+            Concept::HasSelf(Role::Name(r) | Role::Inverse(r)) => refl.contains(r),
+            Concept::HasSelf(Role::Universal)
+            | Concept::Exists(Role::Universal, _)
+            | Concept::Forall(Role::Universal, _)
+            | Concept::AtLeast(_, Role::Universal, _)
+            | Concept::AtMost(_, Role::Universal, _) => return None,
+            Concept::Exists(Role::Name(r) | Role::Inverse(r), filler) => {
+                if refl.contains(r) {
+                    holds_at_isolated(filler, labels, refl)?
+                } else {
+                    false
+                }
+            }
+            Concept::Forall(Role::Name(r) | Role::Inverse(r), filler) => {
+                if refl.contains(r) {
+                    holds_at_isolated(filler, labels, refl)?
+                } else {
+                    true
+                }
+            }
+            Concept::AtLeast(n, Role::Name(r) | Role::Inverse(r), filler) => {
+                if *n <= 0 {
+                    true
+                } else if refl.contains(r) && *n == 1 {
+                    holds_at_isolated(filler, labels, refl)?
+                } else {
+                    false
+                }
+            }
+            Concept::AtMost(n, Role::Name(r) | Role::Inverse(r), filler) => {
+                if *n < 0 {
+                    false
+                } else if refl.contains(r) && *n == 0 {
+                    !holds_at_isolated(filler, labels, refl)?
+                } else {
+                    true
+                }
+            }
+        })
+    }
+    for axiom in ontology.axioms_iter() {
+        match axiom {
+            Axiom::SubClassOf(left, right) => {
+                let (Some(l), Some(r)) = (
+                    holds_at_isolated(left, &labels, &refl),
+                    holds_at_isolated(right, &labels, &refl),
+                ) else {
+                    return false;
+                };
+                if l && !r {
+                    return false;
+                }
+            }
+            Axiom::EquivalentClasses(left, right) => {
+                let (Some(l), Some(r)) = (
+                    holds_at_isolated(left, &labels, &refl),
+                    holds_at_isolated(right, &labels, &refl),
+                ) else {
+                    return false;
+                };
+                if l != r {
+                    return false;
+                }
+            }
+            Axiom::DisjointClasses(left, right) => {
+                let (Some(l), Some(r)) = (
+                    holds_at_isolated(left, &labels, &refl),
+                    holds_at_isolated(right, &labels, &refl),
+                ) else {
+                    return false;
+                };
+                if l && r {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
 /// The named object properties of the canonical source (see
 /// `realize::canonical_individuals` for the spelling invariant).
 pub(super) fn canonical_properties(canonical: &str) -> Result<Vec<String>, OrchestrateError> {
@@ -805,5 +1083,59 @@ mod tests {
             dropped: 0,
         };
         assert!(split(&mut extended, &probes(), &|_| false).is_err());
+    }
+
+    #[test]
+    fn isolated_blank_element_admissible_detects_universal_free_nominal_ontology() {
+        let _test_env = crate::test_env::read();
+        let admissible = r#"Prefix(:=<http://example.org/t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/t>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(ObjectProperty(:r))
+  Declaration(DataProperty(:dp))
+  Declaration(NamedIndividual(:a))
+  DataPropertyRange(:dp xsd:string)
+  SubObjectPropertyOf(:r owl:topObjectProperty)
+  ClassAssertion(:A :a)
+  SubClassOf(:A ObjectOneOf(:a))
+  SubClassOf(:A ObjectMaxCardinality(2 :r :B))
+  DLSafeRule(Body(ClassAtom(:A Variable(<urn:swrl:var#x>))) Head(ClassAtom(:B Variable(<urn:swrl:var#x>))))
+)"#;
+        assert!(isolated_blank_element_admissible(admissible));
+
+        let closed_domain = r#"Prefix(:=<http://example.org/t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/t>
+  Declaration(NamedIndividual(:a))
+  SubClassOf(owl:Thing ObjectOneOf(:a))
+)"#;
+        assert!(!isolated_blank_element_admissible(closed_domain));
+
+        let reflexive_ok = r#"Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+  Declaration(Class(:Sign))
+  Declaration(Class(:Object))
+  Declaration(ObjectProperty(:equals))
+  ReflexiveObjectProperty(:equals)
+  ObjectPropertyDomain(:equals :Sign)
+  ObjectPropertyRange(:equals :Sign)
+  SubClassOf(:Sign :Object)
+)"#;
+        assert!(isolated_blank_element_admissible(reflexive_ok));
+
+        let reflexive_needs_other_edge = r#"Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+  Declaration(Class(:Sign))
+  Declaration(Class(:Target))
+  Declaration(ObjectProperty(:equals))
+  Declaration(ObjectProperty(:other))
+  ReflexiveObjectProperty(:equals)
+  ObjectPropertyDomain(:equals :Sign)
+  SubClassOf(:Sign ObjectSomeValuesFrom(:other :Target))
+)"#;
+        assert!(!isolated_blank_element_admissible(reflexive_needs_other_edge));
     }
 }

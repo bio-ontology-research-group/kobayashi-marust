@@ -3741,7 +3741,27 @@ fn convert_with_rule_abox(
         {
             eq_clauses.push(c.clone());
         } else {
-            passthrough.push(c.clone());
+            if !source_axioms.is_empty()
+                && !crate::routing::ground_rule_zero_rules_mode()
+                && matches!(
+                    c.body.as_slice(),
+                    [JAtom::Concept { concept, term: JTerm::Var { name: vx } }]
+                        if concept == crate::frontend::sorts::DATA_SORT
+                            && !c.head.is_empty()
+                            && c.head.iter().all(|atom| matches!(
+                                atom,
+                                JAtom::Concept { concept: hc, term: JTerm::Var { name: hv } }
+                                    if hc.starts_with("__dt__") && hv == vx
+                            ))
+                )
+            {
+                passthrough.push(JClause {
+                    body: Vec::new(),
+                    head: c.head.clone(),
+                });
+            } else {
+                passthrough.push(c.clone());
+            }
         }
     }
 
@@ -3775,6 +3795,44 @@ fn convert_with_rule_abox(
                     let chain = (ids.rid(&ax[1]), ids.rid(&ax[2]), ids.rid(&ax[3]));
                     if !detected_chains.contains(&chain) {
                         detected_chains.push(chain);
+                    }
+                }
+                Some("chain-n") if !crate::routing::ground_rule_zero_rules_mode() => {
+                    // `normalise.rs` decomposes n-ary chains into binary chain
+                    // clauses `r_1 o r_2 -> __chain__k` that `extract_chains`
+                    // already collected into `detected_chains` (when `keep_chains`
+                    // is true). Verify the decomposed steps cover `ax[2..] -> ax[1]`
+                    // before accepting the metadata record unfenced.
+                    let covered = keep_chains && ax.len() >= 4 && {
+                        let sup = ids.rid(&ax[1]);
+                        let steps: Vec<usize> = ax[2..].iter().map(|r| ids.rid(r)).collect();
+                        let mut current = *steps.last().unwrap();
+                        let mut ok = true;
+                        for (idx, &left) in steps[..steps.len() - 1].iter().enumerate().rev() {
+                            let target_sup = if idx == 0 {
+                                Some(sup)
+                            } else {
+                                detected_chains.iter().find_map(|&(r1, r2, s)| {
+                                    (r1 == left && r2 == current).then_some(s)
+                                })
+                            };
+                            match target_sup {
+                                Some(s) if detected_chains.contains(&(left, current, s)) => {
+                                    current = s;
+                                }
+                                _ => {
+                                    ok = false;
+                                    break;
+                                }
+                            }
+                        }
+                        ok
+                    };
+                    if !covered {
+                        fenced.push(Fenced {
+                            reason: "unknown-rbox".into(),
+                            detail: format!("{:?}", ax),
+                        });
                     }
                 }
                 Some("fenced") if ax.get(1).map(String::as_str) == Some("symmetric-role") => {
@@ -6060,6 +6118,15 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     let mut used: HashSet<usize> = HashSet::new();
     for p in pairs {
         let (a, b) = p; // canonical a<=b == Python sorted(p) -> (a,b)
+        if !crate::routing::ground_rule_zero_rules_mode()
+            && (con_names.get(a).is_some_and(|n| {
+                n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
+            }) || con_names.get(b).is_some_and(|n| {
+                n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
+            }))
+        {
+            continue;
+        }
                         // Completeness: keep the excluded-middle ⊤⊑A∨B unfolded if a side both
                         // drives a consequence and is NOT independently (Horn) derivable — then
                         // dropping the disjunction would silence that consequence. A consequence
