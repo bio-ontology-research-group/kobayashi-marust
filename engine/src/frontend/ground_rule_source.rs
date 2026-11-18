@@ -5,13 +5,18 @@
 use super::{data_rules, ground_rules, iri::IriRegistry, parse, profile::SourceProfileBuilder,
     sexpr::{Node, Parser}, syntax::{Axiom, Concept, Role, RuleAtom}};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
 
+#[derive(Clone)]
 pub struct GroundedRuleSource {
     pub text: String,
     pub source_rules: u64,
     pub instances: usize,
     pub private_classes: BTreeSet<String>,
 }
+
+static CACHED_GROUNDED_SOURCE: Mutex<Option<(Arc<str>, usize, Result<GroundedRuleSource, String>)>> =
+    Mutex::new(None);
 fn render(node: &Node<'_>) -> String {
     match node {
         Node::Atom(s) => s.to_string(),
@@ -46,30 +51,76 @@ fn retained_axiom(node: &Node<'_>, definitions:&mut BTreeMap<String,String>,
 }
 
 pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, String> {
-    if text.len() > 4 * 1024 * 1024 { return Err("ground-rule source exceeds development size bound".into()); }
+    if text.len() > 16 * 1024 * 1024 { return Err("ground-rule source exceeds development size bound".into()); }
+    if let Some((_, _, cached)) = CACHED_GROUNDED_SOURCE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .filter(|(src, max_inst, _)| *max_inst == max_instances && &**src == text)
+    {
+        return cached.clone();
+    }
+    let result = compile_uncached(text, max_instances);
+    *CACHED_GROUNDED_SOURCE.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some((Arc::from(text), max_instances, result.clone()));
+    result
+}
+
+fn compile_uncached(text: &str, max_instances: usize) -> Result<GroundedRuleSource, String> {
+    if text.len() > 16 * 1024 * 1024 { return Err("ground-rule source exceeds development size bound".into()); }
     // Prototype integration: guarded finite numeric profiles precede rule
     // compilation; every resulting source axiom still faces native admission.
     let normalized = super::numeric_source::normalize(text, 256)?;
     let text = normalized.as_deref().unwrap_or(text);
     let mut registry = IriRegistry::new();
     let mut profile = SourceProfileBuilder::new();
-    let ontology = parse::parse_axioms_observed(&mut registry,text,|node| profile.observe(node))
-        .map_err(|e|e.0)?;
+    let mut finite_scan = (text.contains("DLSafeRule") && text.contains("DataPropertyAtom"))
+        .then(|| super::finite_data_rules::Scan::new(text));
+    let ontology = parse::parse_axioms_observed(&mut registry,text,|node| {
+        profile.observe(node);
+        if let Some(scan) = &mut finite_scan {
+            scan.observe(node);
+        }
+    }).map_err(|e|e.0)?;
     let names = profile.rule_individual_names().iter().map(|n|registry.short(n)).collect::<BTreeSet<_>>();
     let source = profile.finish(text.len() as u64).source;
     if source.imports != 0 { return Err("ground-rule source imports require closure evidence".into()); }
+    if source.rule_axioms == 0 && text.len() > 4 * 1024 * 1024 {
+        return Err("ground-rule source exceeds development size bound".into());
+    }
     let has_data_assertions = ["DataPropertyAssertion", "NegativeDataPropertyAssertion"]
         .iter().any(|kind| source.axiom_types.get(*kind).copied().unwrap_or(0) != 0);
     if source.rule_axioms == 0 && !has_data_assertions {
         return Err("source has neither rules nor data assertions to normalize".into());
     }
+    let mut finite_values = finite_scan.as_ref().map(|s| s.values.clone()).unwrap_or_default();
+    finite_values.sort();
+    finite_values.dedup();
     let mut rules: Vec<Axiom> = ontology.rules().cloned().collect();
+    let mut covered_rules = rules.len() as u64;
     for rule in ontology.datatype_rules() {
-        rules.push(data_rules::constant_data_rule_plan(rule)
-            .ok_or("concrete rule requires exact nonconstant normalization")?);
+        if let Some(lowered) = data_rules::constant_data_rule_plan(rule) {
+            rules.push(lowered);
+            covered_rules += 1;
+        } else if finite_scan.as_ref().is_some_and(super::finite_data_rules::Scan::certified) {
+            let lowered = data_rules::finite_data_rule_plan(rule, &finite_values, 100_000)
+                .ok_or("concrete rule requires exact nonconstant normalization")?;
+            rules.extend(lowered);
+            covered_rules += 1;
+        } else {
+            return Err("concrete rule requires exact nonconstant normalization".into());
+        }
     }
-    if rules.len() as u64 != source.rule_axioms {
+    if covered_rules != source.rule_axioms {
         return Err("ground-rule source/parsed rule coverage mismatch".into());
+    }
+    let role_bound = if source.rule_axioms > 0 && (names.len() >= 16 || rules.len() >= 16) {
+        super::named_role_bound::NamedRoleBound::compute(text)
+    } else {
+        None
+    };
+    if let Some(bound) = &role_bound {
+        rules.retain(|rule| bound.has_reachable_binding(rule));
     }
     let mut occupied: BTreeSet<_> = registry.owned_names().into_iter().collect();
     occupied.extend(super::sexpr::tokens(text).map(super::iri::short_base));
@@ -77,6 +128,7 @@ pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, S
     // The grounded object joins then refer to atomic classes, without moving a
     // datatype expression into an unsupported compound source-axiom position.
     let mut definitions: BTreeMap<Concept,String> = BTreeMap::new();
+    let mut alias_definitions: BTreeMap<String, Concept> = BTreeMap::new();
     let mut next=0usize;
     for rule in &mut rules {
         let Axiom::Rule(body,head)=rule else {unreachable!()};
@@ -87,15 +139,48 @@ pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, S
                 let name=format!("__ground_rule_atom_{next}");next+=1;
                 if occupied.insert(name.clone()) {break name}
             }).clone();
+            alias_definitions.insert(alias.clone(), c.clone());
             *c=Concept::Name(alias);
         }
     }
-    let paths = super::rule_paths::plan(&rules, &names, &occupied, max_instances)
-        .map_err(str::to_owned)?;
-    occupied.extend(paths.domain.iter().cloned());
-    let plan = ground_rules::plan(&paths.rules,&names,&occupied,max_instances - paths.instances)
-        .map_err(str::to_owned)?;
-    let generated: BTreeMap<_,_> = std::iter::once(&plan.anchor).chain(plan.links.values())
+    let (paths, plan) = if let Some((bound_axioms, bound_instances)) = role_bound
+        .as_ref()
+        .and_then(|bound| bound.compile_rules(&rules, &alias_definitions, max_instances))
+    {
+        (
+            super::rule_paths::PathPlan {
+                rules: Vec::new(),
+                axioms: bound_axioms,
+                domain: None,
+                instances: bound_instances,
+            },
+            ground_rules::GroundRulePlan {
+                anchor: String::new(),
+                cover: None,
+                links: BTreeMap::new(),
+                axioms: Vec::new(),
+                instances: 0,
+            },
+        )
+    } else {
+        let paths = super::rule_paths::plan(&rules, &names, &occupied, max_instances)
+            .map_err(str::to_owned)?;
+        occupied.extend(paths.domain.iter().cloned());
+        let plan = if paths.rules.is_empty() {
+            ground_rules::GroundRulePlan {
+                anchor: String::new(),
+                cover: None,
+                links: BTreeMap::new(),
+                axioms: Vec::new(),
+                instances: 0,
+            }
+        } else {
+            ground_rules::plan(&paths.rules,&names,&occupied,max_instances - paths.instances)
+                .map_err(str::to_owned)?
+        };
+        (paths, plan)
+    };
+    let generated: BTreeMap<_,_> = (!plan.anchor.is_empty()).then_some(&plan.anchor).into_iter().chain(plan.links.values())
         .chain(plan.cover.iter()).chain(paths.domain.iter()).chain(definitions.values())
         .map(|name|(name.clone(),format!("<urn:km:ground-rule#{name}>"))).collect();
     let name = |n: &str| -> Result<String,String> {
@@ -134,9 +219,10 @@ pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, S
         axioms.push(format!("Declaration(Class({alias}))"));
         axioms.push(format!("EquivalentClasses({alias} {expression})"));
     }
-    for iri in generated.values() {
-        // Object property declarations are emitted separately below.
-        if iri==&generated[&plan.anchor] {axioms.push(format!("Declaration(NamedIndividual({iri}))"));}
+    if !plan.anchor.is_empty() {
+        if let Some(iri) = generated.get(&plan.anchor) {
+            axioms.push(format!("Declaration(NamedIndividual({iri}))"));
+        }
     }
     for link in plan.links.values().chain(plan.cover.iter()) {axioms.push(format!("Declaration(ObjectProperty({}))",name(link)?));}
     for (expression,alias) in &definitions {

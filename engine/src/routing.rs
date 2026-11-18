@@ -2861,6 +2861,15 @@ pub(crate) struct EnvironmentGuard {
     values: Vec<(&'static str, Option<std::ffi::OsString>)>,
 }
 
+/// True inside a `KM_GROUND_RULE_SOURCE` attempt whose source had zero rules
+/// and zero keys (`grounded.source_rules == 0`). Such an attempt must keep the
+/// pre-`v170/rules-shoiq` admission gates so rule-free inputs take the exact
+/// code path of `km-f2eb0196`.
+pub(crate) fn ground_rule_zero_rules_mode() -> bool {
+    std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE").is_some()
+        && std::env::var_os("KM_GROUND_RULE_HAS_RULES").is_none()
+}
+
 impl EnvironmentGuard {
     pub(crate) fn capture() -> Self {
         let values = std::iter::once("KM_ROUTE")
@@ -2868,6 +2877,7 @@ impl EnvironmentGuard {
             .chain(std::iter::once("KM_TRANSITIVE_RULE_REDUCE"))
             .chain(std::iter::once("KM_RULE_JOIN_ORDER"))
             .chain(std::iter::once("KM_GROUND_RULE_SOURCE"))
+            .chain(std::iter::once("KM_GROUND_RULE_HAS_RULES"))
             .chain(std::iter::once("KM_GROUND_PRIVATE_CLASS_FILE"))
             .chain(std::iter::once("KM_BRIDGE_PUBLIC_SUBJECT_FILE"))
             .chain(std::iter::once("KM_PUBLIC_SUBJECT_IRIS_FILE"))

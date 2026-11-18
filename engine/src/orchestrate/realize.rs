@@ -505,11 +505,14 @@ pub fn classify_extended(
     } else {
         Vec::new()
     };
-    let shape = if roles.is_empty() {
+    let mut shape = if roles.is_empty() {
         super::properties::SourceShape::default()
     } else {
         super::properties::source_shape(&text)?
     };
+    if shape.universal_possible && super::properties::isolated_blank_element_admissible(&text) {
+        shape.universal_possible = false;
+    }
     let empty_properties = properties.then(super::properties::PropertyHierarchy::default);
     let data_roles = if data_properties {
         super::data_properties::canonical_data_properties(&text)?
