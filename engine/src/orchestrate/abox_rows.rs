@@ -332,51 +332,118 @@ pub(super) fn from_exported_model(
         meta.iri_map.get(&exp).cloned().unwrap_or(exp)
     };
 
-    let use_base = raw.route == "ht-bridge" && !raw.base_labels.is_empty();
-    let mut labels: Vec<Vec<String>> = if use_base {
-        raw.base_labels.clone()
-    } else {
-        raw.labels.clone()
-    };
-    let mut edge_set: HashSet<(usize, String, usize)> = if use_base {
-        raw.base_edges.iter().cloned().collect()
-    } else {
-        raw.edges.iter().cloned().collect()
-    };
-
-    let mut elem_inds: Vec<Vec<String>> = vec![Vec::new(); labels.len()];
-    let mut ind_to_elem: HashMap<String, usize> = HashMap::new();
-    for (u, lbl) in labels.iter().enumerate() {
-        for item in lbl {
-            if let Some(rest) = item.strip_prefix("__nom__") {
-                let full = meta.iri_map.get(rest).map(String::as_str).unwrap_or(rest);
-                if let Some(pub_ind) = ind_lookup
-                    .get(full)
-                    .or_else(|| ind_lookup.get(rest))
-                    .cloned()
-                {
-                    if !elem_inds[u].contains(&pub_ind) {
-                        elem_inds[u].push(pub_ind.clone());
-                    }
-                    ind_to_elem.entry(pub_ind).or_insert(u);
-                }
-            }
-        }
-        elem_inds[u].sort();
-        elem_inds[u].dedup();
-    }
-
     let mut one_refl: HashSet<(usize, String, usize)> = HashSet::new();
     let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, 1, &mut one_refl);
     let refl_roles: Vec<String> = one_refl.into_iter().map(|(_, r, _)| r).collect();
-    for pub_ind in &pub_individuals {
-        if !ind_to_elem.contains_key(pub_ind) {
+
+    let use_base = raw.route == "ht-bridge" && !raw.base_labels.is_empty();
+    let mut labels: Vec<Vec<String>>;
+    let mut edge_set: HashSet<(usize, String, usize)>;
+    let mut elem_inds: Vec<Vec<String>>;
+    let mut ind_to_elem: HashMap<String, usize> = HashMap::new();
+
+    if raw.abox_elided || raw.route == "el-canonical" {
+        let mut init_same: Vec<(String, String)> = Vec::new();
+        for [a, b] in &realization.same {
+            init_same.push((a.clone(), b.clone()));
+        }
+        if text.contains("SameIndividual(") {
+            let _ = crate::frontend::parse::for_each_ontology_child(text, |node| {
+                let Node::List(head, args) = node else {
+                    return Ok(());
+                };
+                if *head == "SameIndividual" {
+                    let inds: Vec<String> = args
+                        .iter()
+                        .filter(|a| a.head() != Some("Annotation"))
+                        .filter_map(|n| n.as_atom())
+                        .filter_map(|t| {
+                            ind_lookup
+                                .get(&expand_tok(t))
+                                .or_else(|| ind_lookup.get(&public_name(t)))
+                                .cloned()
+                        })
+                        .collect();
+                    for w in inds.windows(2) {
+                        init_same.push((w[0].clone(), w[1].clone()));
+                    }
+                }
+                Ok(())
+            });
+        }
+        let mut s_adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for (a, b) in &init_same {
+            s_adj.entry(a.as_str()).or_default().push(b.as_str());
+            s_adj.entry(b.as_str()).or_default().push(a.as_str());
+        }
+        labels = Vec::new();
+        edge_set = HashSet::new();
+        elem_inds = Vec::new();
+        for pub_ind in &pub_individuals {
+            if ind_to_elem.contains_key(pub_ind) {
+                continue;
+            }
+            let mut comp: Vec<String> = Vec::new();
+            let mut stack = vec![pub_ind.as_str()];
             let u_new = labels.len();
-            labels.push(vec![format!("__nom__{pub_ind}")]);
-            elem_inds.push(vec![pub_ind.clone()]);
-            ind_to_elem.insert(pub_ind.clone(), u_new);
+            while let Some(cur) = stack.pop() {
+                if !ind_to_elem.contains_key(cur) {
+                    ind_to_elem.insert(cur.to_string(), u_new);
+                    comp.push(cur.to_string());
+                    if let Some(nbrs) = s_adj.get(cur) {
+                        stack.extend(nbrs.iter().copied());
+                    }
+                }
+            }
+            comp.sort();
+            comp.dedup();
+            let lbl: Vec<String> = comp.iter().map(|i| format!("__nom__{i}")).collect();
+            labels.push(lbl);
+            elem_inds.push(comp);
             for r in &refl_roles {
                 edge_set.insert((u_new, r.clone(), u_new));
+            }
+        }
+    } else {
+        labels = if use_base {
+            raw.base_labels.clone()
+        } else {
+            raw.labels.clone()
+        };
+        edge_set = if use_base {
+            raw.base_edges.iter().cloned().collect()
+        } else {
+            raw.edges.iter().cloned().collect()
+        };
+        elem_inds = vec![Vec::new(); labels.len()];
+        for (u, lbl) in labels.iter().enumerate() {
+            for item in lbl {
+                if let Some(rest) = item.strip_prefix("__nom__") {
+                    let full = meta.iri_map.get(rest).map(String::as_str).unwrap_or(rest);
+                    if let Some(pub_ind) = ind_lookup
+                        .get(full)
+                        .or_else(|| ind_lookup.get(rest))
+                        .cloned()
+                    {
+                        if !elem_inds[u].contains(&pub_ind) {
+                            elem_inds[u].push(pub_ind.clone());
+                        }
+                        ind_to_elem.entry(pub_ind).or_insert(u);
+                    }
+                }
+            }
+            elem_inds[u].sort();
+            elem_inds[u].dedup();
+        }
+        for pub_ind in &pub_individuals {
+            if !ind_to_elem.contains_key(pub_ind) {
+                let u_new = labels.len();
+                labels.push(vec![format!("__nom__{pub_ind}")]);
+                elem_inds.push(vec![pub_ind.clone()]);
+                ind_to_elem.insert(pub_ind.clone(), u_new);
+                for r in &refl_roles {
+                    edge_set.insert((u_new, r.clone(), u_new));
+                }
             }
         }
     }
@@ -385,6 +452,13 @@ pub(super) fn from_exported_model(
     let mut elem_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
     let mut entailed_elem_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
     let mut elem_dvp: Vec<HashMap<(String, String), String>> = vec![HashMap::new(); n_elems];
+    for u in 0..n_elems {
+        for ind in &elem_inds[u] {
+            let nom = format!("__nom__{ind}");
+            elem_classes[u].insert(nom.clone());
+            entailed_elem_classes[u].insert(nom);
+        }
+    }
     for (u, lbl) in labels.iter().enumerate() {
         for item in lbl {
             if let Some(rest) = item.strip_prefix("__dvp__") {

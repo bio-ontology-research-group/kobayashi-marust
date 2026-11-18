@@ -59,6 +59,10 @@ pub(crate) struct RawModel {
     /// adjoining per-class witness roots).
     pub base_labels: Vec<Vec<String>>,
     pub base_edges: Vec<(usize, String, usize)>,
+    /// True when the solver elided or quotiented the ABox during TBox
+    /// classification and `apply_post_hooks` / `flat_nf1` attached individuals
+    /// to shared TBox or universal elements.
+    pub abox_elided: bool,
 }
 
 #[derive(Default)]
@@ -277,6 +281,7 @@ fn build_raw_model_from_el(
         extra_values: Vec::new(),
         base_labels: Vec::new(),
         base_edges: Vec::new(),
+        abox_elided: false,
     }))
 }
 
@@ -306,6 +311,7 @@ fn build_raw_model_from_cb(m: crate::engine::CbExportModel) -> Option<RawModel> 
         extra_values: Vec::new(),
         base_labels: Vec::new(),
         base_edges: Vec::new(),
+        abox_elided: false,
     })
 }
 
@@ -393,6 +399,7 @@ fn build_raw_model_from_bridge(
         extra_values: Vec::new(),
         base_labels: bm.base_labels,
         base_edges,
+        abox_elided: false,
     }))
 }
 
@@ -669,6 +676,7 @@ fn build_raw_model_from_flat_nf1(
         extra_values: Vec::new(),
         base_labels: Vec::new(),
         base_edges: Vec::new(),
+        abox_elided: !state.individuals.is_empty(),
     };
     Ok((raw, meta))
 }
@@ -752,6 +760,7 @@ fn apply_post_hooks(
 
     // 1. Separable ABox elided by `omit_separable_abox` in `frontend/mod.rs`
     if let Some(mut sep) = meta.separable_abox_export.take() {
+        raw.abox_elided = true;
         sep_projected_data_assertions = std::mem::take(&mut sep.projected_data_assertions);
         let mut need_rbox_close = false;
         if !sep.atomic_individual_classes.is_empty() {
@@ -964,6 +973,7 @@ fn apply_post_hooks(
     // 2. `positive_abox_quotient`: expand `<urn:km:positive-abox-quotient>` into
     //    the source `SameIndividual` equivalence classes.
     if let Some(comps) = positive_abox_quotient_comps {
+        raw.abox_elided = true;
         if !comps.is_empty() {
             for list in &comps[..] {
                 for iri in list {
@@ -1029,6 +1039,7 @@ fn apply_post_hooks(
 
     // 3. `abox_quotient`: attach atomic-mode individuals or expand block representatives.
     if let Some(pairs) = abox_quotient_atomic {
+        raw.abox_elided = true;
         let mut full_to_short: HashMap<String, String> = HashMap::new();
         for (short, full) in &meta.iri_map {
             full_to_short.insert(full.clone(), short.clone());
@@ -1081,6 +1092,7 @@ fn apply_post_hooks(
             raw.labels[elem].dedup();
         }
     } else if let Some(blocks) = abox_quotient_blocks {
+        raw.abox_elided = true;
         let block_map: HashMap<&str, &[String]> = blocks
             .iter()
             .map(|(rep, members)| (rep.as_str(), members.as_slice()))
@@ -1122,6 +1134,7 @@ fn apply_post_hooks(
             .iter()
             .any(|lbl| lbl.iter().any(|c| c.starts_with(NOMINAL_PREFIX)))
     {
+        raw.abox_elided = true;
         let mut ctx_idx: HashMap<String, usize> = HashMap::default();
         for (i, c) in raw.contexts.iter().enumerate() {
             ctx_idx.entry(c.clone()).or_insert(i);
