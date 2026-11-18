@@ -10616,6 +10616,7 @@ fn reset_classification_algorithm_on_retained_base(
     fresh.or_branch_learning_stats = branch_learning;
     // Immutable index of the same retained base (u20 `BlockingBaseIndex`).
     fresh.blocking_base_index = algo.blocking_base_index.clone();
+    fresh.retained_singleton_base = algo.retained_singleton_base.clone();
     *algo = fresh;
     if let Some(snapshot) = replay_snapshot {
         // Only immutable input is shared; every mutable per-job field is fresh.
@@ -15537,6 +15538,22 @@ fn source_named_subsumer_closure_seeded(
     tin: &TInput,
     seed_pairs: &[(usize, usize)],
 ) -> crate::fxhash::FxHashSet<(usize, usize)> {
+    let supers = source_named_subsumer_closure_seeded_rows(tin, seed_pairs);
+    let total: usize = supers.iter().map(Vec::len).sum();
+    let mut closure: crate::fxhash::FxHashSet<(usize, usize)> =
+        crate::fxhash::FxHashSet::with_capacity_and_hasher(total, Default::default());
+    for (sub, row) in supers.into_iter().enumerate() {
+        for sup in row {
+            closure.insert((sub, sup as usize));
+        }
+    }
+    closure
+}
+
+fn source_named_subsumer_closure_seeded_rows(
+    tin: &TInput,
+    seed_pairs: &[(usize, usize)],
+) -> Vec<Vec<u32>> {
     let index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -15660,10 +15677,13 @@ fn source_named_subsumer_closure_seeded(
     }
 
     // Seed the per-class state from the asserted superclass sides.
-    let mut upper: Vec<crate::fxhash::FxHashSet<usize>> = vec![Default::default(); n_named];
-    let mut key_subjects: Vec<Vec<usize>> = vec![Vec::new(); keys.len()];
-    let mut pair_stack: Vec<(usize, usize)> = direct_pairs;
-    let mut key_stack: Vec<(usize, usize)> = Vec::new();
+    let mut adj: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut direct_key_owners: Vec<Vec<u32>> = vec![Vec::new(); keys.len()];
+    for (sub, sup) in direct_pairs {
+        if sub != sup && sub < n_named && sup < n_named {
+            adj[sub].push(sup as u32);
+        }
+    }
     {
         let mut seed = |left: &SourceConcept, right: &SourceConcept| {
             let SourceConcept::Name(left) = left else {
@@ -15678,15 +15698,14 @@ fn source_named_subsumer_closure_seeded(
                 match part {
                     SourceConcept::Name(name) => {
                         if let Some(&sup) = index.get(name.as_str()) {
-                            pair_stack.push((sub, sup));
+                            if sub != sup {
+                                adj[sub].push(sup as u32);
+                            }
                         }
                     }
                     other => {
                         if let Some(&key) = keys.get(other) {
-                            if upper[sub].insert(key) {
-                                key_subjects[key].push(sub);
-                                key_stack.push((sub, key));
-                            }
+                            direct_key_owners[key].push(sub as u32);
                         }
                     }
                 }
@@ -15709,43 +15728,106 @@ fn source_named_subsumer_closure_seeded(
         // encounter. Every seed is already an established entailment, and the
         // only additional rule is conjunction introduction followed by the
         // asserted `D ⊑ M` definition direction.
-        pair_stack.extend(seed_pairs.iter().copied());
+        for &(sub, sup) in seed_pairs {
+            if sub != sup && sub < n_named && sup < n_named {
+                adj[sub].push(sup as u32);
+            }
+        }
+    }
+    for list in &mut adj {
+        list.sort_unstable();
+        list.dedup();
+    }
+    for owners in &mut direct_key_owners {
+        owners.sort_unstable();
+        owners.dedup();
     }
 
-    let mut closure: crate::fxhash::FxHashSet<(usize, usize)> = crate::fxhash::FxHashSet::default();
-    let mut supers: Vec<Vec<usize>> = vec![Vec::new(); n_named];
-    let mut subs: Vec<Vec<usize>> = vec![Vec::new(); n_named];
+    let mut supers: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut subs: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut upper: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut key_subjects: Vec<Vec<u32>> = vec![Vec::new(); keys.len()];
+    let mut seen: Vec<u32> = vec![0; n_named];
+    let mut epoch: u32 = 0;
+    let mut stack: Vec<u32> = Vec::new();
+    let next_epoch = |seen: &mut Vec<u32>, epoch: &mut u32| -> u32 {
+        *epoch = epoch.wrapping_add(1);
+        if *epoch == 0 {
+            seen.fill(0);
+            *epoch = 1;
+        }
+        *epoch
+    };
     loop {
         // Propagate the current facts to a fixpoint: transitivity of the pair
         // relation, and inheritance of a superclass's conjuncts by its
         // subclasses (`N ⊑ M ⊑ D` ⇒ `N ⊑ D`).
-        while !pair_stack.is_empty() || !key_stack.is_empty() {
-            while let Some((sub, sup)) = pair_stack.pop() {
-                if sub == sup || sub >= n_named || sup >= n_named || !closure.insert((sub, sup)) {
-                    continue;
-                }
-                supers[sub].push(sup);
-                subs[sup].push(sub);
-                let inherited: Vec<usize> = upper[sup].iter().copied().collect();
-                for key in inherited {
-                    if upper[sub].insert(key) {
-                        key_subjects[key].push(sub);
-                        key_stack.push((sub, key));
-                    }
-                }
-                for i in 0..supers[sup].len() {
-                    pair_stack.push((sub, supers[sup][i]));
-                }
-                for i in 0..subs[sub].len() {
-                    pair_stack.push((subs[sub][i], sup));
+        for v in &mut subs {
+            v.clear();
+        }
+        for u in 0..n_named {
+            supers[u].clear();
+            if adj[u].is_empty() {
+                continue;
+            }
+            let ep = next_epoch(&mut seen, &mut epoch);
+            seen[u] = ep;
+            for &v in &adj[u] {
+                let vi = v as usize;
+                if vi < n_named && seen[vi] != ep {
+                    seen[vi] = ep;
+                    stack.push(v);
                 }
             }
-            while let Some((sub, key)) = key_stack.pop() {
-                for i in 0..subs[sub].len() {
-                    let descendant = subs[sub][i];
-                    if upper[descendant].insert(key) {
-                        key_subjects[key].push(descendant);
-                        key_stack.push((descendant, key));
+            while let Some(v) = stack.pop() {
+                let vi = v as usize;
+                supers[u].push(v);
+                subs[vi].push(u as u32);
+                if vi < u {
+                    let v_len = supers[vi].len();
+                    for idx in 0..v_len {
+                        let w = supers[vi][idx];
+                        let wi = w as usize;
+                        if seen[wi] != ep {
+                            seen[wi] = ep;
+                            supers[u].push(w);
+                            subs[wi].push(u as u32);
+                        }
+                    }
+                } else {
+                    for &w in &adj[vi] {
+                        let wi = w as usize;
+                        if wi < n_named && seen[wi] != ep {
+                            seen[wi] = ep;
+                            stack.push(w);
+                        }
+                    }
+                }
+            }
+            supers[u].sort_unstable();
+        }
+        if !providers.is_empty() {
+            for u in &mut upper {
+                u.clear();
+            }
+            for key in 0..keys.len() {
+                key_subjects[key].clear();
+                let ep = next_epoch(&mut seen, &mut epoch);
+                let key_u32 = key as u32;
+                for &owner in &direct_key_owners[key] {
+                    let oi = owner as usize;
+                    if seen[oi] != ep {
+                        seen[oi] = ep;
+                        key_subjects[key].push(owner);
+                        upper[oi].push(key_u32);
+                    }
+                    for &desc in &subs[oi] {
+                        let di = desc as usize;
+                        if seen[di] != ep {
+                            seen[di] = ep;
+                            key_subjects[key].push(desc);
+                            upper[di].push(key_u32);
+                        }
                     }
                 }
             }
@@ -15755,6 +15837,7 @@ fn source_named_subsumer_closure_seeded(
         // discharge a body if it already carries every one of its conjuncts.
         let mut derived = false;
         for (sup, named, structural) in &providers {
+            let sup_u32 = *sup as u32;
             let mut best: Option<(usize, bool, usize)> = None;
             for &class in named {
                 let len = subs[class].len() + 1;
@@ -15768,25 +15851,28 @@ fn source_named_subsumer_closure_seeded(
                     best = Some((len, false, key));
                 }
             }
-            let candidates: Vec<usize> = match best {
+            let candidates: Vec<u32> = match best {
                 Some((_, true, class)) => {
                     let mut candidates = subs[class].clone();
-                    candidates.push(class);
+                    candidates.push(class as u32);
                     candidates
                 }
                 Some((_, false, key)) => key_subjects[key].clone(),
                 None => continue,
             };
-            for sub in candidates {
-                if sub == *sup || closure.contains(&(sub, *sup)) {
+            for sub_u32 in candidates {
+                let sub = sub_u32 as usize;
+                if sub == *sup || supers[sub].binary_search(&sup_u32).is_ok() {
                     continue;
                 }
-                let discharged = structural.iter().all(|key| upper[sub].contains(key))
-                    && named
-                        .iter()
-                        .all(|&class| class == sub || closure.contains(&(sub, class)));
+                let discharged = structural
+                    .iter()
+                    .all(|&key| upper[sub].binary_search(&(key as u32)).is_ok())
+                    && named.iter().all(|&class| {
+                        class == sub || supers[sub].binary_search(&(class as u32)).is_ok()
+                    });
                 if discharged {
-                    pair_stack.push((sub, *sup));
+                    adj[sub].push(sup_u32);
                     derived = true;
                 }
             }
@@ -15795,7 +15881,7 @@ fn source_named_subsumer_closure_seeded(
             break;
         }
     }
-    closure
+    supers
 }
 
 fn source_named_subsumer_closure(tin: &TInput) -> crate::fxhash::FxHashSet<(usize, usize)> {
@@ -17017,6 +17103,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             }
                             algo.blocking_base_index = Some(std::sync::Arc::new(index));
                         }
+                        algo.retained_singleton_base = algo.build_retained_singleton_base(&ctx);
                         ctx.push_branch_epoch();
                         retained_consistency_base = true;
                     } else if progress {
@@ -19080,14 +19167,19 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     }
     if source_definition_closure && out.subsumptions.len() > initial_out_subsumptions_len {
         let before = out.subsumptions.len();
-        let closed =
-            source_named_subsumer_closure_seeded(tin, &out.subsumptions[initial_out_subsumptions_len..]);
-        for (sub, sup) in closed {
-            if subject_set.contains(&sub)
-                && universe.contains(&sup)
-                && saturation_known_pairs.insert((sub, sup))
-            {
-                out.subsumptions.push((sub, sup));
+        let closed = source_named_subsumer_closure_seeded_rows(
+            tin,
+            &out.subsumptions[initial_out_subsumptions_len..],
+        );
+        for (sub, row) in closed.into_iter().enumerate() {
+            if !subject_set.contains(&sub) {
+                continue;
+            }
+            for sup_u32 in row {
+                let sup = sup_u32 as usize;
+                if universe.contains(&sup) && saturation_known_pairs.insert((sub, sup)) {
+                    out.subsumptions.push((sub, sup));
+                }
             }
         }
         if progress {
@@ -33416,5 +33508,135 @@ mod bridge_equivalent_non_candidate_tests {
                 .contains(&(id(&tin.concepts, "Animal"), id(&tin.concepts, "Q"))),
             "Animal ⊑ ¬{{bob}} must hold since bob : Person and Animal ⊓ Person ⊑ ⊥"
         );
+    }
+
+    #[test]
+    fn cceq_absorption_truncates_failed_conjunct_triggers_and_extracts_partial_triggers() {
+        let _test_env = crate::test_env::write();
+        // Def is defined as A ⊓ (B ⊔ C), where A is triggerable and (B ⊔ C) is not.
+        // Full absorption of Def must fail and truncate the partial trigger list
+        // (leaving no stale A trigger in full_triggers), while partial absorption
+        // of Def ⊑ Target must traverse op::CCEQ to extract A as the guard trigger
+        // and derive Sub ⊑ Target when Sub ⊑ A and Sub ⊑ B.
+        let text = "Prefix(:=<http://example.org/cceq#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(Class(:B))\n\
+              Declaration(Class(:C))\n\
+              Declaration(Class(:Def))\n\
+              Declaration(Class(:Sub))\n\
+              Declaration(Class(:Target))\n\
+              EquivalentClasses(:Def ObjectIntersectionOf(:A ObjectUnionOf(:B :C)))\n\
+              SubClassOf(:Def :Target)\n\
+              SubClassOf(:Sub :A)\n\
+              SubClassOf(:Sub :B)\n\
+            )";
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .expect("classify CCEQ partial-absorption ontology");
+        assert!(res.consistent);
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "Sub"), id(&tin.concepts, "Def"))),
+            "Sub ⊑ A and Sub ⊑ B must entail Sub ⊑ Def"
+        );
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "Sub"), id(&tin.concepts, "Target"))),
+            "Sub ⊑ Def and Def ⊑ Target must entail Sub ⊑ Target"
+        );
+        assert!(
+            !res.subsumptions
+                .contains(&(id(&tin.concepts, "A"), id(&tin.concepts, "Def"))),
+            "truncated full trigger must not turn A alone into a full trigger for Def"
+        );
+    }
+
+    #[test]
+    fn native_nominal_saturation_outcome_requires_zero_unguarded_top_gcis() {
+        let _test_env = crate::test_env::write();
+        let _nom = crate::test_env::EnvVar::set("KM_NOMINALS", "1");
+        // Case 1: unguarded_top_gcis == 0. Pure TBox classes PureSub ⊑ ∃r.PureMid
+        // and ∃r.PureMid ⊑ PureSup are certified by precomputation saturation,
+        // while NominalTouch ⊑ ∃r.{a} is marked nominal-connected and verified
+        // through the native ABox (where a : PureMid).
+        let guarded = "Prefix(:=<http://example.org/nomsat#>)\n\
+            Ontology(\n\
+              Declaration(Class(:PureSub))\n\
+              Declaration(Class(:PureMid))\n\
+              Declaration(Class(:PureSup))\n\
+              Declaration(Class(:NominalTouch))\n\
+              Declaration(ObjectProperty(:r))\n\
+              Declaration(NamedIndividual(:a))\n\
+              ClassAssertion(:PureMid :a)\n\
+              SubClassOf(:PureSub ObjectSomeValuesFrom(:r :PureMid))\n\
+              SubClassOf(ObjectSomeValuesFrom(:r :PureMid) :PureSup)\n\
+              SubClassOf(:NominalTouch ObjectHasValue(:r :a))\n\
+            )";
+        // Case 2: unguarded_top_gcis > 0 via owl:Thing ⊑ {a} with a : ForcedByTop.
+        // Here a nominal-free saturation label for PureSub would miss ForcedByTop
+        // if saturation were trusted; the unguarded_top_gcis == 0 gate withholds
+        // saturation certification so completion derives PureSub ⊑ ForcedByTop.
+        let unguarded = "Prefix(:=<http://example.org/nomsat#>)\n\
+            Ontology(\n\
+              Declaration(Class(:PureSub))\n\
+              Declaration(Class(:ForcedByTop))\n\
+              Declaration(NamedIndividual(:a))\n\
+              ClassAssertion(:ForcedByTop :a)\n\
+              SubClassOf(owl:Thing ObjectOneOf(:a))\n\
+            )";
+        for (text, sub_name, sup_name) in [
+            (guarded, "PureSub", "PureSup"),
+            (guarded, "NominalTouch", "PureSup"),
+            (unguarded, "PureSub", "ForcedByTop"),
+        ] {
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+            let fr = crate::frontend::ofn_to_clauses(text);
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+            let fr = fr.expect("in fragment");
+            let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+            let projected = crate::orchestrate::race::native_nominal_bridge_clauses(
+                &fr.clauses,
+                &fr.nominal_abox,
+                &fr.definers,
+                true,
+                false,
+            );
+            let mut tin = crate::orchestrate::cb_to_ht::convert(
+                &projected,
+                Some(&fr.rbox),
+                &named,
+                &fr.cardinalities,
+                &fr.definers,
+                &fr.source_axioms,
+                true,
+                &fr.rules,
+                false,
+            );
+            tin.nominal_abox = fr.nominal_abox;
+            let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+                .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+            assert!(res.consistent);
+            assert!(
+                res.subsumptions
+                    .contains(&(id(&tin.concepts, sub_name), id(&tin.concepts, sup_name))),
+                "{sub_name} ⊑ {sup_name} must be derived"
+            );
+        }
     }
 }

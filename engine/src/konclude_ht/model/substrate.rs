@@ -304,6 +304,26 @@ impl<T> Arena<T> {
             .take_while(|frame| frame.hi > base_open_depth)
             .any(|frame| frame.saves.iter().any(|&(ix, _)| ix < watermark))
     }
+    /// True if any item below `watermark` saved in a journal frame opened
+    /// after `base_open_depth` satisfies `predicate(index, saved_original, current)`.
+    #[inline]
+    pub fn has_matching_save_below_since_depth(
+        &self,
+        watermark: usize,
+        base_open_depth: usize,
+        mut predicate: impl FnMut(usize, &T, &T) -> bool,
+    ) -> bool {
+        self.journal_stack
+            .iter()
+            .rev()
+            .take_while(|frame| frame.hi > base_open_depth)
+            .any(|frame| {
+                frame
+                    .saves
+                    .iter()
+                    .any(|(ix, orig)| *ix < watermark && predicate(*ix, orig, &self.items[*ix]))
+            })
+    }
     /// Materialize the frame of the innermost open journaled epoch before the
     /// first change of this arena inside it. Every open depth above the last
     /// materialized frame was opened while the arena was untouched, so the
@@ -600,5 +620,49 @@ mod tests {
                 assert!(arena.iter().copied().eq(snapshot.iter().copied()));
             }
         }
+    }
+
+    #[test]
+    fn coalesce_epochs_to_preserves_earliest_pre_target_saves_and_watermark() {
+        let _test_env = crate::test_env::read();
+        let mut arena: Arena<String> = Arena::new();
+        let id0 = arena.push("a0".to_string());
+        let id1 = arena.push("b0".to_string());
+
+        // Epoch 1: mutate slot 0 ("a0" -> "a1") and allocate slot 2 ("c1").
+        arena.push_epoch();
+        *arena.get_mut_journaled(id0) = "a1".to_string();
+        let id2 = arena.push("c1".to_string());
+
+        // Epoch 2: mutate slot 0 again ("a1" -> "a2"), mutate slot 1 for the
+        // first time ("b0" -> "b2"), and allocate slot 3 ("d2").
+        arena.push_epoch();
+        *arena.get_mut_journaled(id0) = "a2".to_string();
+        *arena.get_mut_journaled(id1) = "b2".to_string();
+        let id3 = arena.push("d2".to_string());
+
+        // Epoch 3: mutate slot 1 again ("b2" -> "b3") and mutate slot 2 ("c1" -> "c3").
+        arena.push_epoch();
+        *arena.get_mut_journaled(id1) = "b3".to_string();
+        *arena.get_mut_journaled(id2) = "c3".to_string();
+        assert_eq!(arena.open_depth(), 3);
+
+        // Coalesce epochs 1..=3 into target_depth = 1. Current live values must
+        // remain unchanged while the open depth collapses to 1.
+        arena.coalesce_epochs_to(1);
+        assert_eq!(arena.open_depth(), 1);
+        assert_eq!(arena.len(), 4);
+        assert_eq!(arena.get(id0), "a2");
+        assert_eq!(arena.get(id1), "b3");
+        assert_eq!(arena.get(id2), "c3");
+        assert_eq!(arena.get(id3), "d2");
+
+        // Popping the single coalesced epoch 1 must restore the exact pre-epoch-1
+        // state: length 2 with ["a0", "b0"] (not the intermediate "a1" or "b2").
+        arena.pop_epoch();
+        assert_eq!(arena.open_depth(), 0);
+        assert_eq!(arena.len(), 2);
+        assert_eq!(arena.get(id0), "a0");
+        assert_eq!(arena.get(id1), "b0");
     }
 }

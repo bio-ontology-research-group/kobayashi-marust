@@ -1928,9 +1928,42 @@ impl ProcessContext {
             && self.con_descs.len() >= con_desc_count
             && self.branch_epoch_depth >= base_epoch_depth
             && self.con_descs.open_depth() >= base_spine_depth
-            && !self.nodes.has_saves_below_since_depth(node_count, base_epoch_depth)
+            && !self.nodes.has_matching_save_below_since_depth(
+                node_count,
+                base_epoch_depth,
+                |_, orig, cur| {
+                    cur.reapply_con_label_set != orig.reapply_con_label_set
+                        || cur.has_merged_into_individual_node_id()
+                            != orig.has_merged_into_individual_node_id()
+                        || cur.has_purged_blocked_processing_restriction_flags()
+                            != orig.has_purged_blocked_processing_restriction_flags()
+                },
+            )
             && !self.label_sets.has_saves_below_since_depth(label_set_count, base_epoch_depth)
             && !self.con_descs.has_saves_below_since_depth(con_desc_count, base_spine_depth)
+    }
+
+    #[inline]
+    pub fn retained_blocking_base_unmodified(
+        &self,
+        node_count: usize,
+        label_set_count: usize,
+        base_epoch_depth: usize,
+    ) -> bool {
+        self.nodes.len() >= node_count
+            && self.label_sets.len() >= label_set_count
+            && self.branch_epoch_depth >= base_epoch_depth
+            && !self.label_sets.has_saves_below_since_depth(label_set_count, base_epoch_depth)
+            && !self.nodes.has_matching_save_below_since_depth(
+                node_count,
+                base_epoch_depth,
+                |_, orig, cur| {
+                    cur.use_reapply_con_label_set != orig.use_reapply_con_label_set
+                        || cur.has_merged_into_individual_node_id()
+                            != orig.has_merged_into_individual_node_id()
+                        || cur.is_blockable_individual() != orig.is_blockable_individual()
+                },
+            )
     }
 
     pub fn node_count(&self) -> usize {

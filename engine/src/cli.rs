@@ -253,9 +253,12 @@ pub fn run_ofn(args: &[String]) {
     let classifier_extended_atomic =
         std::env::var_os(crate::frontend::CLASSIFIER_EXTENDED_ATOMIC_ABOX_ENV)
             .is_some_and(|v| v == std::ffi::OsStr::new("1"));
+    let abort_on_uncarried = classifier_extended_atomic
+        && std::env::var_os("KM_DATA_ASSERTION_AS_CLASS").is_none_or(|v| v == "0")
+        && std::env::var_os("KM_KEEP_CLAUSES").is_none();
     let parse_ofn = || {
         if classifier_extended_atomic {
-            crate::frontend::ofn_to_clauses_for_classifier(&text)
+            crate::frontend::ofn_to_clauses_for_classifier_pass(&text, abort_on_uncarried)
         } else {
             ofn_to_clauses(&text)
         }

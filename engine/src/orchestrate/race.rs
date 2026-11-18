@@ -2870,19 +2870,20 @@ impl PreparedHt {
             forward_ht_worker_errors(stderr);
         }
         let stdin = child.stdin.take()?;
-        let bytes = serde_json::to_vec(&tin).ok()?;
+        let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
+        let bridge_queries = bridge_candidate.then_some(tin.queries.len());
         thread::spawn(move || {
-            let mut w = stdin;
-            let _ = w.write_all(&bytes);
-            // The serialised TInput is the largest transient this process holds
-            // while the worker runs, and it is dead once the pipe has drained. The
+            let mut w = std::io::BufWriter::with_capacity(1 << 20, stdin);
+            let _ = serde_json::to_writer(&mut w, &tin);
+            let _ = w.flush();
+            // The TInput is the largest transient this process holds while the
+            // worker runs, and it is dead once the pipe has drained. The
             // callers' trim runs before this write finishes, so release it here
             // exactly as `spawn_tableau` does.
             drop(w);
-            drop(bytes);
+            drop(tin);
             release_transient_heap();
         });
-        let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
         // The third element gates the SHORT race budget: true for the fast certify-or-
         // defer arms (SHOQ fast-Ht AND the QO hybrid). Both emit an answer ONLY when
         // they soundly+completely certify (CERTIFY_ONLY), so harvesting that answer as
@@ -2900,7 +2901,7 @@ impl PreparedHt {
             child,
             out_path,
             short_race,
-            bridge_candidate.then_some(tin.queries.len()),
+            bridge_queries,
             // Whether KM_HT_BRIDGE_ONLY was set on this worker: only then does the
             // race scheduler's instant (0 s) trigger-absorb harvest apply — any
             // other worker can answer from a non-bridge arm without the bridge's

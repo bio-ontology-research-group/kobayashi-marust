@@ -6785,6 +6785,123 @@ fn validate_native_abox(inp: &TInput) -> Result<ValidatedNativeAbox, String> {
     })
 }
 
+fn validate_producer_input_for_bridge(
+    inp: &crate::orchestrate::cb_to_ht::TInput,
+) -> Result<(), String> {
+    use crate::fxhash::FxHashSet as HashSet;
+    use crate::orchestrate::cb_to_ht::HAtom;
+
+    let check_atom = |atom: &HAtom| -> Result<(), String> {
+        match *atom {
+            HAtom::Concept { c, t, .. } => {
+                producer_id(c, "concept")?;
+                producer_id(t, "variable")?;
+            }
+            HAtom::Role { r, s, t } => {
+                producer_id(r, "role")?;
+                producer_id(s, "variable")?;
+                producer_id(t, "variable")?;
+            }
+            HAtom::Exist { r, c, t, .. } => {
+                producer_id(r, "role")?;
+                producer_id(c, "concept")?;
+                producer_id(t, "variable")?;
+            }
+            HAtom::Eq { s, t } => {
+                producer_id(s, "variable")?;
+                producer_id(t, "variable")?;
+            }
+        }
+        Ok(())
+    };
+    for clause in &inp.clauses {
+        for atom in &clause.body {
+            check_atom(atom)?;
+        }
+        for atom in &clause.head {
+            check_atom(atom)?;
+        }
+    }
+    for def in &inp.card_defs {
+        producer_id(def.marker, "cardinality marker")?;
+        producer_id(def.role, "cardinality role")?;
+        producer_id(def.filler, "cardinality filler")?;
+    }
+    for &id in &inp.queries {
+        producer_id(id, "query")?;
+    }
+    for &id in &inp.nominals {
+        producer_id(id, "nominal")?;
+    }
+    for &(a, b, c) in &inp.chains {
+        producer_id(a, "role")?;
+        producer_id(b, "role")?;
+        producer_id(c, "role")?;
+    }
+    for &id in &inp.transitive {
+        producer_id(id, "transitive role")?;
+    }
+    if inp.native_abox.is_empty() {
+        return Ok(());
+    }
+    if !inp.native_abox.complete {
+        return Err("incomplete native ABox payload".to_string());
+    }
+    let nominal_set: HashSet<usize> = inp.nominals.iter().copied().collect();
+    let mut proxy_owners = HashSet::default();
+    for individual in &inp.native_abox.individuals {
+        if individual.proxies.is_empty() {
+            return Err("native ABox individual has no singleton proxy".to_string());
+        }
+        for &id in &individual.proxies {
+            if id >= inp.concepts.len() {
+                return Err("native ABox concept id out of range".to_string());
+            }
+            if !nominal_set.contains(&id) {
+                return Err("native ABox proxy is absent from nominals".to_string());
+            }
+            if !proxy_owners.insert(id) {
+                return Err("native ABox proxy has duplicate ownership".to_string());
+            }
+            C::try_from(id).map_err(|_| "native ABox concept id overflow".to_string())?;
+        }
+        for &id in &individual.assertions {
+            if id >= inp.concepts.len() {
+                return Err("native ABox assertion id out of range".to_string());
+            }
+            C::try_from(id).map_err(|_| "native ABox assertion id overflow".to_string())?;
+        }
+    }
+    if proxy_owners != nominal_set {
+        return Err(
+            "native ABox does not assign every nominal proxy to exactly one individual".to_string(),
+        );
+    }
+    let ind_len = inp.native_abox.individuals.len();
+    let in_individual_range = |left: usize, right: usize| left < ind_len && right < ind_len;
+    if inp
+        .native_abox
+        .different
+        .iter()
+        .any(|&(left, right)| !in_individual_range(left, right))
+    {
+        return Err("native ABox individual index out of range".to_string());
+    }
+    let resolve_role = |role: usize, source: usize, target: usize| -> Result<R, String> {
+        if role >= inp.roles.len() || !in_individual_range(source, target) {
+            return Err("native ABox role/individual index out of range".to_string());
+        }
+        R::try_from(role).map_err(|_| "native ABox role id overflow".to_string())
+    };
+    for &(role, source, target) in &inp.native_abox.role_assertions {
+        resolve_role(role, source, target)?;
+    }
+    for &(role, source, target) in &inp.native_abox.negative_role_assertions {
+        resolve_role(role, source, target)?;
+    }
+    Ok(())
+}
+
 /// Read a `TInput` JSON string, classify, and return a `TOutput` JSON string.
 pub fn run_json(input: &str) -> Result<String, String> {
     run_json_inner(input, None)
@@ -6824,17 +6941,14 @@ pub(crate) fn run_bridge_json_owned_compact(
     }
 
     // Preserve the established worker-side wire and native-ABox validation
-    // before entering the bridge. The producer value is parsed independently,
-    // exactly as the legacy bridge arm reparses `raw_input`.
-    let worker_input: TInput = serde_json::from_str(&input).map_err(|e| e.to_string())?;
-    validate_native_abox(&worker_input)?;
-    drop(worker_input);
+    // before entering the bridge, without parsing the wire JSON twice.
     let producer_input: crate::orchestrate::cb_to_ht::TInput =
         serde_json::from_str(&input).map_err(|e| e.to_string())?;
     drop(input);
-    // Return the duplicate validation parse and wire buffers before the bridge
-    // builds its completion structures. This mirrors the typed bridge path and
-    // keeps the transport optimization visible in peak RSS, not only live bytes.
+    validate_producer_input_for_bridge(&producer_input)?;
+    // Return the wire buffers before the bridge builds its completion
+    // structures. This mirrors the typed bridge path and keeps the transport
+    // optimization visible in peak RSS, not only live bytes.
     crate::mem::release_transient_heap();
 
     let (result, concepts, reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK, move || {

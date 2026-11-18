@@ -2682,7 +2682,7 @@ fn classify_with_evidence_inner(
             return checked_finite_rule_taxonomy(evidence);
         }
     }
-    let selected_route = meta
+    let mut selected_route = meta
         .route
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
@@ -2833,11 +2833,14 @@ fn classify_with_evidence_inner(
         }
         if meta.named.is_empty() && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
         {
-            let _full_frontend_guard = crate::routing::EnvironmentGuard::capture();
             std::env::set_var("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT", "1");
-            (clauses_path, meta, cached_input, elc_binary) =
-                frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
+            let full_res = frontend_run::run_ofn_split_cached(initial_cfg, ont);
+            std::env::remove_var("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT");
+            (clauses_path, meta, cached_input, elc_binary) = full_res?;
             positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
+            selected_route = meta.route.parse::<crate::routing::Route>().map_err(|error| {
+                OrchestrateError::OutOfFragment(format!("configuration: {error}"))
+            })?;
         }
     }
     let elc_input_path = elc_binary

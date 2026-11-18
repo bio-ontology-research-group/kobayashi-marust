@@ -32690,4 +32690,42 @@ mod tests {
         let mut t = ht(vec![Clause::new(vec![Atom::Eq { s: X, t: y }], Vec::new())]);
         assert_eq!(t.consistent(&[]), Some(false));
     }
+
+    #[test]
+    fn phase2_root_model_and_transitive_closure_pruning_matches_naive_classify() {
+        let _test_env = crate::test_env::write();
+        let _wit = crate::test_env::EnvVar::set("KM_HT_WITREUSE", "1");
+        let _mp = crate::test_env::EnvVar::set("KM_HT_MODELPRUNE", "1");
+        // A ⊑ B, B ⊑ C ⊔ D, C ⊑ E, D ⊑ E, plus F ⊑ A.
+        // Transitive subsumptions: F ⊑ A ⊑ B ⊑ E and C ⊑ E, D ⊑ E, while
+        // neither A, B, nor F is subsumed by C or D. A single model of F
+        // carrying {F, A, B, C, E} (missing D) refutes D for all of {F, A, B, C, E}
+        // simultaneously, while a model carrying {F, A, B, D, E} refutes C.
+        let c_con: C = 2;
+        let e: C = 4;
+        let f: C = 5;
+        let clauses = vec![
+            Clause::new(vec![con(false, f, X)], vec![con(false, A, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, B, X)]),
+            Clause::new(
+                vec![con(false, B, X)],
+                vec![con(false, c_con, X), con(false, D, X)],
+            ),
+            Clause::new(vec![con(false, c_con, X)], vec![con(false, e, X)]),
+            Clause::new(vec![con(false, D, X)], vec![con(false, e, X)]),
+        ];
+        let queries = vec![A, B, c_con, D, e, f];
+        let mut fast = ht(clauses.clone());
+        let mut naive = ht(clauses);
+        naive.naive = true;
+        let (c_fast, u_fast, mut s_fast) = fast.classify(&queries).expect("fast classify");
+        let (c_naive, u_naive, mut s_naive) = naive.classify(&queries).expect("naive classify");
+        s_fast.sort_unstable();
+        s_fast.dedup();
+        s_naive.sort_unstable();
+        s_naive.dedup();
+        assert_eq!(c_fast, c_naive);
+        assert_eq!(u_fast, u_naive);
+        assert_eq!(s_fast, s_naive);
+    }
 }
