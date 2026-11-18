@@ -417,7 +417,7 @@ pub(super) fn from_exported_model(
         };
         elem_inds = vec![Vec::new(); labels.len()];
         for (u, lbl) in labels.iter().enumerate() {
-            for item in lbl {
+            for item in lbl.iter().chain(raw.contexts.get(u)) {
                 if let Some(rest) = item.strip_prefix("__nom__") {
                     let full = meta.iri_map.get(rest).map(String::as_str).unwrap_or(rest);
                     if let Some(pub_ind) = ind_lookup
@@ -1015,60 +1015,6 @@ pub(super) fn from_exported_model(
         for r in &refl_roles {
             proved_edge_set.insert((u, r.clone(), u));
         }
-        for (c_iri, r_short) in &class_has_self {
-            if entailed_elem_classes[u].contains(c_iri) {
-                proved_edge_set.insert((u, r_short.clone(), u));
-            }
-            if elem_classes[u].contains(c_iri) {
-                edge_set.insert((u, r_short.clone(), u));
-            }
-        }
-        for (c_iri, r_short, inv, target_ind) in &class_has_value {
-            if let Some(&v) = ind_to_elem.get(target_ind) {
-                let edge = if *inv {
-                    (v, r_short.clone(), u)
-                } else {
-                    (u, r_short.clone(), v)
-                };
-                if entailed_elem_classes[u].contains(c_iri) {
-                    proved_edge_set.insert(edge.clone());
-                }
-                if elem_classes[u].contains(c_iri) {
-                    edge_set.insert(edge);
-                }
-            }
-        }
-    }
-    crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut proved_edge_set).ok()?;
-    crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut edge_set).ok()?;
-
-    let mut dom_ran_added = false;
-    let mut entailed_dom_ran_added = false;
-    if !obj_domains.is_empty() || !obj_ranges.is_empty() {
-        for (u, r, v) in &proved_edge_set {
-            for (dr, dc) in &obj_domains {
-                if r == dr && entailed_elem_classes[*u].insert(dc.clone()) {
-                    entailed_dom_ran_added = true;
-                }
-            }
-            for (rr, rc) in &obj_ranges {
-                if r == rr && entailed_elem_classes[*v].insert(rc.clone()) {
-                    entailed_dom_ran_added = true;
-                }
-            }
-        }
-        for (u, r, v) in &edge_set {
-            for (dr, dc) in &obj_domains {
-                if r == dr && elem_classes[*u].insert(dc.clone()) {
-                    dom_ran_added = true;
-                }
-            }
-            for (rr, rc) in &obj_ranges {
-                if r == rr && elem_classes[*v].insert(rc.clone()) {
-                    dom_ran_added = true;
-                }
-            }
-        }
     }
     for (owner_iri, prop_iri, lit) in &raw.extra_values {
         if let Some(&u) = ind_lookup
@@ -1079,6 +1025,8 @@ pub(super) fn from_exported_model(
         }
     }
     let mut closed_data_assertions: Vec<(usize, String, String)> = Vec::new();
+    let mut init_data_dom_added = false;
+    let mut init_entailed_data_dom_added = false;
     for (u, p, lit) in source_data_assertions {
         let mut stack = vec![p];
         let mut seen = HashSet::new();
@@ -1087,10 +1035,10 @@ pub(super) fn from_exported_model(
                 for (dp, dc) in &data_domains {
                     if &cur == dp {
                         if elem_classes[u].insert(dc.clone()) {
-                            dom_ran_added = true;
+                            init_data_dom_added = true;
                         }
                         if entailed_elem_classes[u].insert(dc.clone()) {
-                            entailed_dom_ran_added = true;
+                            init_entailed_data_dom_added = true;
                         }
                     }
                 }
@@ -1101,11 +1049,87 @@ pub(super) fn from_exported_model(
             }
         }
     }
-    if dom_ran_added {
+    if init_data_dom_added {
         close_elem_classes(&mut elem_classes);
     }
-    if entailed_dom_ran_added {
+    if init_entailed_data_dom_added {
         close_elem_classes(&mut entailed_elem_classes);
+    }
+
+    for round in 0..8 {
+        let mut round_edge_added = false;
+        for u in 0..n_elems {
+            for (c_iri, r_short) in &class_has_self {
+                if entailed_elem_classes[u].contains(c_iri)
+                    && proved_edge_set.insert((u, r_short.clone(), u))
+                {
+                    round_edge_added = true;
+                }
+                if elem_classes[u].contains(c_iri) && edge_set.insert((u, r_short.clone(), u)) {
+                    round_edge_added = true;
+                }
+            }
+            for (c_iri, r_short, inv, target_ind) in &class_has_value {
+                if let Some(&v) = ind_to_elem.get(target_ind) {
+                    let edge = if *inv {
+                        (v, r_short.clone(), u)
+                    } else {
+                        (u, r_short.clone(), v)
+                    };
+                    if entailed_elem_classes[u].contains(c_iri)
+                        && proved_edge_set.insert(edge.clone())
+                    {
+                        round_edge_added = true;
+                    }
+                    if elem_classes[u].contains(c_iri) && edge_set.insert(edge) {
+                        round_edge_added = true;
+                    }
+                }
+            }
+        }
+        if round == 0 || round_edge_added {
+            crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut proved_edge_set)
+                .ok()?;
+            crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut edge_set).ok()?;
+        }
+
+        let mut dom_ran_added = false;
+        let mut entailed_dom_ran_added = false;
+        if !obj_domains.is_empty() || !obj_ranges.is_empty() {
+            for (u, r, v) in &proved_edge_set {
+                for (dr, dc) in &obj_domains {
+                    if r == dr && entailed_elem_classes[*u].insert(dc.clone()) {
+                        entailed_dom_ran_added = true;
+                    }
+                }
+                for (rr, rc) in &obj_ranges {
+                    if r == rr && entailed_elem_classes[*v].insert(rc.clone()) {
+                        entailed_dom_ran_added = true;
+                    }
+                }
+            }
+            for (u, r, v) in &edge_set {
+                for (dr, dc) in &obj_domains {
+                    if r == dr && elem_classes[*u].insert(dc.clone()) {
+                        dom_ran_added = true;
+                    }
+                }
+                for (rr, rc) in &obj_ranges {
+                    if r == rr && elem_classes[*v].insert(rc.clone()) {
+                        dom_ran_added = true;
+                    }
+                }
+            }
+        }
+        if dom_ran_added {
+            close_elem_classes(&mut elem_classes);
+        }
+        if entailed_dom_ran_added {
+            close_elem_classes(&mut entailed_elem_classes);
+        }
+        if !dom_ran_added && !entailed_dom_ran_added {
+            break;
+        }
     }
 
     // Fast path for `--values` without `--different`: when the ontology has no
@@ -2034,6 +2058,25 @@ pub(super) fn from_exported_model(
         .into_iter()
         .map(|((fn_name, _), grp)| (fn_name, grp))
         .collect();
+    for (_, grp) in &skolem_vec {
+        if let Some((ref r_short, inv)) = grp.role {
+            for f in &grp.fillers {
+                if let Some(rest) = f.strip_prefix("__nom__") {
+                    if let Some(&target_elem) = ind_to_elem
+                        .get(rest)
+                        .or_else(|| ind_lookup.get(rest).and_then(|p| ind_to_elem.get(p)))
+                    {
+                        has_value_rules.push(HasValueClauseRule {
+                            body: grp.body.clone(),
+                            role: r_short.clone(),
+                            inv,
+                            target_elem,
+                        });
+                    }
+                }
+            }
+        }
+    }
 
     // Build trigger indexes for fast rule lookup
     let mut empty_body_concept_rules: Vec<usize> = Vec::new();
@@ -2357,27 +2400,70 @@ pub(super) fn from_exported_model(
     let mut plan = ModelAboxPlan::default();
 
     if values_requested {
-        for (u, r, v) in &proved_edge_set {
-            if *u >= n_elems || *v >= n_elems {
-                continue;
-            }
-            let full_r = meta.iri_map.get(r).map(String::as_str).unwrap_or(r.as_str());
-            let Some(pub_r) = role_lookup.get(full_r).or_else(|| role_lookup.get(r)) else {
-                continue;
-            };
-            if u != v {
-                for a in &elem_inds[*u] {
-                    for b in &elem_inds[*v] {
-                        plan.proved_values
-                            .insert([pub_r.clone(), a.clone(), b.clone()]);
-                    }
+        let has_non_horn_elem_merge = !raw.abox_elided
+            && raw.route != "el-canonical"
+            && (0..n_elems).any(|u| {
+                elem_inds[u].len() > 1 && {
+                    let c0 = same_comp.get(elem_inds[u][0].as_str());
+                    elem_inds[u][1..]
+                        .iter()
+                        .any(|ind| same_comp.get(ind.as_str()) != c0)
                 }
-            } else {
-                for a in &elem_inds[*u] {
-                    for b in &elem_inds[*u] {
-                        if a == b || same_comp.get(a.as_str()) == same_comp.get(b.as_str()) {
+            });
+        if has_non_horn_elem_merge {
+            let raw_elided = super::model_export::RawModel {
+                route: raw.route,
+                contexts: Vec::new(),
+                labels: Vec::new(),
+                edges: Vec::new(),
+                blocked: Vec::new(),
+                witness_exact: raw.witness_exact,
+                witness_exact_by_class: BTreeMap::new(),
+                witnesses: BTreeMap::new(),
+                extra_witnesses: Vec::new(),
+                closure: raw.closure,
+                partial_reason: None,
+                extra_values: raw.extra_values.clone(),
+                base_labels: Vec::new(),
+                base_edges: Vec::new(),
+                abox_elided: true,
+            };
+            if let Some(unmerged_plan) = from_exported_model(
+                text,
+                roles,
+                individuals,
+                true,
+                false,
+                classification,
+                realization,
+                &raw_elided,
+                meta,
+            ) {
+                plan.proved_values = unmerged_plan.proved_values;
+            }
+        } else {
+            for (u, r, v) in &proved_edge_set {
+                if *u >= n_elems || *v >= n_elems {
+                    continue;
+                }
+                let full_r = meta.iri_map.get(r).map(String::as_str).unwrap_or(r.as_str());
+                let Some(pub_r) = role_lookup.get(full_r).or_else(|| role_lookup.get(r)) else {
+                    continue;
+                };
+                if u != v {
+                    for a in &elem_inds[*u] {
+                        for b in &elem_inds[*v] {
                             plan.proved_values
                                 .insert([pub_r.clone(), a.clone(), b.clone()]);
+                        }
+                    }
+                } else {
+                    for a in &elem_inds[*u] {
+                        for b in &elem_inds[*u] {
+                            if a == b || same_comp.get(a.as_str()) == same_comp.get(b.as_str()) {
+                                plan.proved_values
+                                    .insert([pub_r.clone(), a.clone(), b.clone()]);
+                            }
                         }
                     }
                 }

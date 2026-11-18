@@ -447,3 +447,43 @@ Exported JSON lines:
 {"kind":"witness","class":"http://example.org/C","element":"e3","exact":true}
 {"kind":"witness","class":"http://example.org/D","element":"e4","exact":true}
 ```
+
+---
+
+## Using the Exported Model for ABox Queries (`--values` and `--different`)
+
+When `km classify` runs with `--values` or `--different`, `orchestrate::abox_rows::from_exported_model` uses the consistency model `M_0` (`raw.base_labels` / `raw.base_edges` on `ht-bridge`, or `raw.labels` / `raw.edges` on `cb-horn` and `el-canonical`) to compute a sound lower bound (`proved_values`, `proved_different`) and a sound upper bound (`edge_set`, unrefuted pairs) before running any residual exact probe classification.
+
+### 1. When Deterministic Consistency Completion Is Sufficient for `VALUE` on `ht-bridge` (P2)
+
+For a consistent ontology `O`, two named individuals `a, b`, and a named object property `r`, `O` entails `r(a, b)` if and only if `(a^M, b^M) in r^M` holds in every model `M` of `O`. Let `M_0` be the consistency completion model extracted from `ht-bridge`, and let `Horn(O)` be the deterministic 1-head Horn consequence set computed on the explicit `SameIndividual` equivalence classes of `O` by iterating:
+
+1. explicit `ObjectPropertyAssertion(r, a, b)` and `ReflexiveObjectProperty(r)` edges;
+2. `ObjectHasSelf(r)` and `ObjectHasValue(r, target)` rules triggered by entailed classes of each individual;
+3. RBox closure (`close_edges_under_rbox_rows`: sub-roles, inverses, symmetry, transitivity, and role chains);
+4. `ObjectPropertyDomain(r, C)`, `ObjectPropertyRange(r, C)`, and `DataPropertyDomain(p, C)` propagation into entailed individual classes, followed by class subsumption closure and re-evaluation of steps 2--4 to fixpoint; and
+5. 1-head Horn normalized DL-clauses and Skolem existential witness materialization (`saturate_horn_in_place`).
+
+Every edge in `Horn(O)` holds in all models of `O` by soundness of the Horn rules, and every edge entailed by `O` holds in the specific model `M_0`:
+
+```text
+Horn(O)  <=  { r(a, b) | O |= r(a, b) }  <=  { r(a, b) | M_0 |= r(a, b) }
+```
+
+This sandwich inequality characterizes when a single consistency completion `M_0` on `ht-bridge` decides `VALUE` without residual probes:
+
+- **Sufficiency condition (0 residual probes)**: When `M_0` performs no non-Horn nominal merge (every element `u` of `M_0` contains named individuals from at most one explicit `SameIndividual` equivalence class) and every named-individual role edge in `M_0` belongs to `Horn(O)` (`{ r(a, b) | M_0 |= r(a, b) } == Horn(O)`), the lower and upper bounds coincide. Then `Horn(O)` is the exact set of entailed `VALUE` rows and no probe run is needed.
+- **Residual probe fallback**: A role edge `(a, r, b)` can hold in `M_0` without belonging to `Horn(O)` only when `M_0` made a nondeterministic branch choice that affects named-individual edges:
+  1. a nondeterministic nominal merge in `M_0` (for example, `a in C` with `C == ObjectOneOf(b_1, ..., b_k)`, where `ht-bridge` merges `a` with `b_i` in `M_0`, as on `ore_ont_6822`),
+  2. a disjunctive role or concept choice along a chain between named individuals, or
+  3. an at-most or functional cardinality merge between role successors.
+  Whenever `M_0` merges individuals from distinct `SameIndividual` components onto the same element, `from_exported_model` computes `proved_values = Horn(O)` on the unmerged `SameIndividual` components and places every edge in `{ r(a, b) | M_0 |= r(a, b) } \ Horn(O)` into `residual_value_targets` and `residual_value_sources`. The orchestrator then runs the exact probe reduction `P_a <= exists r. P_b` on those residual candidates.
+
+### 2. Soundness and Completeness of `DIFFERENT` via Merged-Pair Horn Saturation (P1)
+
+For a consistent ontology `O` and two named individuals `a, b`, `O` entails `a != b` if and only if `O union { a = b }` is inconsistent.
+
+1. **Constructive difference (`proved_different`)**: `from_exported_model` records `a != b` as constructively proved when `a` and `b` are separated in `Horn(O)` by an explicit `DifferentIndividuals` axiom, a `NegativeObjectPropertyAssertion(r, a, b)` coupled with an entailed `r(a, b)` edge (or an entailed `r(a, b)` on an `IrreflexiveObjectProperty(r)`), a `NegativeDataPropertyAssertion(p, a, v)` coupled with an asserted `p(b, v)`, disjoint entailed classes `C(a)` and `D(b)`, or distinct literals on a `FunctionalDataProperty`.
+2. **Model-quotient non-difference certificate**: For each remaining pair `(u, v)` with `u != v` in `M_0` (when the ontology has no unhandled non-Horn clauses), `from_exported_model` forms the quotient structure `M_0 / (u = v)` by merging `u` and `v`, runs `saturate_horn_in_place` to fixpoint (propagating multi-conjunct concept rules, universal restrictions across Skolem existential witnesses, functional object/data role cascading merges, and cardinality checks), and tests whether the saturated quotient satisfies all normalized clauses and cardinalities of `O` without a clash. If `M_0 / (u = v)` is a valid model of `O union { u = v }`, then `O` does not entail `u != v` and the pair is pruned.
+3. **Exact probe test on residual pairs**: Every pair not constructively proved different in step 1 and not certified consistent by `M_0 / (u = v)` in step 2 is placed in `residual_different_pairs` and tested by the exact probe reduction `ObjectIntersectionOf(P_a P_b) <= owl:Nothing`.
+

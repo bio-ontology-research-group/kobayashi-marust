@@ -760,7 +760,15 @@ fn apply_post_hooks(
 
     // 1. Separable ABox elided by `omit_separable_abox` in `frontend/mod.rs`
     if let Some(mut sep) = meta.separable_abox_export.take() {
-        raw.abox_elided = true;
+        if !sep.atomic_individual_classes.is_empty()
+            || sep.top_identity_separable
+            || (sep.positive_separable && !sep.ind_components.is_empty())
+            || !sep.existential_assertions.is_empty()
+            || !sep.inert_probes.is_empty()
+            || !sep.inert_extra_individuals.is_empty()
+        {
+            raw.abox_elided = true;
+        }
         sep_projected_data_assertions = std::mem::take(&mut sep.projected_data_assertions);
         let mut need_rbox_close = false;
         if !sep.atomic_individual_classes.is_empty() {
