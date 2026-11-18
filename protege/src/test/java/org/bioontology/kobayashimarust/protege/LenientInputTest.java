@@ -87,6 +87,10 @@ public class LenientInputTest {
         assertTrue(h.getSuperClasses(a, true).containsEntity(b));
         assertTrue(k.getSuperClasses(a, true).containsEntity(b));
         assertEquals(h.getInstances(b, false).getFlattened(), k.getInstances(b, false).getFlattened());
+        assertEquals(h.getInstances(df.getOWLThing(), false).getFlattened(),
+                k.getInstances(df.getOWLThing(), false).getFlattened());
+        assertEquals(h.getObjectPropertyValues(x, df.getOWLObjectProperty(IRI.create(NS + "r"))).getFlattened(),
+                k.getObjectPropertyValues(x, df.getOWLObjectProperty(IRI.create(NS + "r"))).getFlattened());
         assertTrue(k.getInstances(b, false).containsEntity(x));
         assertEquals(1, k.getInstances(b, false).getFlattened().size());
         assertNotNull(Classifier.lastLoggedModeNote());

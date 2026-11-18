@@ -118,7 +118,9 @@ fn individuals_in<'a>(node: &Node<'a>, out: &mut Vec<&'a str>) {
         "Declaration" => {
             if let Some(Node::List("NamedIndividual", inner)) = plain.first().copied() {
                 if let Some(Node::Atom(token)) = inner.first() {
-                    if !token.starts_with("_:") {
+                    if !token.starts_with("_:")
+                        && !crate::frontend::lenient::is_skolem_anon_iri(token)
+                    {
                         out.push(token);
                     }
                 }
