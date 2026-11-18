@@ -1230,11 +1230,14 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
         // ---- split base models for dirty individuals ----
         if stopped.is_none() && !inds.is_empty() && !cfg.no_realize {
             let slots_before = slots.len();
+            let saved_bad = en.bad.clone();
             let mut ever_dirty: crate::engine::FxSet<u32> = crate::engine::FxSet::default();
             for _round in 0..8 {
                 if slots.len() >= cfg.max_models + 6 || Instant::now() > deadline {
                     break;
                 }
+                en.bad = saved_bad.clone();
+                en.clear_memo();
                 let mut rem_dirty: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
                 for (&g, os) in &groups {
                     let o0 = os[0];
@@ -1265,7 +1268,14 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                 if rem_dirty.is_empty() {
                     break;
                 }
+                let any_clean_dirty = rem_dirty.iter().any(|(&g, d)| {
+                    let seed = en.sets.intern(groups[&g].clone());
+                    let gt = gtarget[&g];
+                    let f_all = en.sets.intern(d.clone());
+                    matches!(en.close_clean(seed, f_all, gt, true), CloseRes::Ok(_))
+                });
                 let mut skip_fb: crate::engine::FxSet<u32> = crate::engine::FxSet::default();
+                let mut half_fb: crate::engine::FxSet<u32> = crate::engine::FxSet::default();
                 let mut ind_m = Model::new();
                 let mut sat_ok = false;
                 for attempt in 0..32 {
@@ -1285,14 +1295,19 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                         let mut fb = 0u32;
                         if !skip_fb.contains(&g) {
                             if let Some(d) = rem_dirty.get(&g) {
-                                let f_all = en.sets.intern(d.clone());
+                                let d_use = if half_fb.contains(&g) && d.len() > 1 {
+                                    &d[..1]
+                                } else {
+                                    d.as_slice()
+                                };
+                                let f_all = en.sets.intern(d_use.to_vec());
                                 if matches!(en.close(seed, f_all, gt, true), CloseRes::Ok(_)) {
                                     fb = f_all;
                                     any_forbid = true;
-                                } else if d.len() > 1 {
-                                    let h = d.len() / 2;
-                                    let f_h1 = en.sets.intern(d[..h].to_vec());
-                                    let f_h2 = en.sets.intern(d[h..].to_vec());
+                                } else if d_use.len() > 1 {
+                                    let h = d_use.len() / 2;
+                                    let f_h1 = en.sets.intern(d_use[..h].to_vec());
+                                    let f_h2 = en.sets.intern(d_use[h..].to_vec());
                                     if matches!(en.close(seed, f_h1, gt, true), CloseRes::Ok(_)) {
                                         fb = f_h1;
                                         any_forbid = true;
@@ -1300,7 +1315,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                                         fb = f_h2;
                                         any_forbid = true;
                                     } else {
-                                        for &b in d {
+                                        for &b in d_use {
                                             let f1 = en.sets.intern(vec![b]);
                                             if matches!(en.close(seed, f1, gt, true), CloseRes::Ok(_)) {
                                                 fb = f1;
@@ -1337,11 +1352,14 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                                 }
                             }
                         }
-                        let cr = if fb == 0 && ever_dirty.contains(&g) {
+                        let mut cr = if fb == 0 && ever_dirty.contains(&g) {
                             en.close(seed, 0, gt, true)
                         } else {
                             en.close_clean(seed, fb, gt, true)
                         };
+                        if !matches!(cr, CloseRes::Ok(_)) && fb != 0 && !any_clean_dirty {
+                            cr = en.close(seed, fb, gt, true);
+                        }
                         match cr {
                             CloseRes::Ok(t) => {
                                 let el = en.new_elem_closed(&mut ind_m, seed, t, fb, gt, true);
@@ -1400,16 +1418,22 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                                         && !en.sets.get(t).iter().any(|&a| en.nf.is_nom[a as usize])
                                 })
                                 .collect();
-                            if !new.is_empty() {
+                            if !new.is_empty() && attempt < 4 {
                                 en.bad.extend(new);
                                 en.clear_memo();
                             } else {
+                                en.bad = saved_bad.clone();
+                                en.clear_memo();
                                 let mut dropped_any = false;
                                 if let Some(&t0) = e.blame.first() {
                                     for &(g, el) in &elem_of_g {
                                         let el = ind_m.find(el);
-                                        if ind_m.elems[el as usize].ty == t0 && skip_fb.insert(g) {
-                                            dropped_any = true;
+                                        if ind_m.elems[el as usize].ty == t0 {
+                                            if rem_dirty.get(&g).map(|d| d.len() > 1).unwrap_or(false) && half_fb.insert(g) {
+                                                dropped_any = true;
+                                            } else if skip_fb.insert(g) {
+                                                dropped_any = true;
+                                            }
                                         }
                                     }
                                 }
@@ -1417,8 +1441,23 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                                     for &(g, el) in &elem_of_g {
                                         let el = ind_m.find(el);
                                         let ty_el = ind_m.elems[el as usize].ty;
-                                        if e.blame.contains(&ty_el) && skip_fb.insert(g) {
+                                        if e.blame.contains(&ty_el) {
+                                            if rem_dirty.get(&g).map(|d| d.len() > 1).unwrap_or(false) && half_fb.insert(g) {
+                                                dropped_any = true;
+                                            } else if skip_fb.insert(g) {
+                                                dropped_any = true;
+                                            }
+                                        }
+                                    }
+                                }
+                                if !dropped_any {
+                                    for &(g, _) in elem_of_g.iter().rev() {
+                                        if rem_dirty.get(&g).map(|d| d.len() > 1).unwrap_or(false) && half_fb.insert(g) {
                                             dropped_any = true;
+                                            break;
+                                        } else if skip_fb.insert(g) {
+                                            dropped_any = true;
+                                            break;
                                         }
                                     }
                                 }
@@ -1429,6 +1468,8 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                         }
                     }
                 }
+                en.bad = saved_bad.clone();
+                en.clear_memo();
                 if !sat_ok {
                     break;
                 }

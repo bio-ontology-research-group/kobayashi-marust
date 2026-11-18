@@ -133,6 +133,27 @@ impl Sets {
     pub fn len(&self) -> usize {
         self.v.len()
     }
+    pub fn intersects(&self, a: u32, b: u32) -> bool {
+        let (a, b) = (a & !CLEAN_FB, b & !CLEAN_FB);
+        if a == 0 || b == 0 {
+            return false;
+        }
+        if a == b {
+            return !self.v[a as usize].is_empty();
+        }
+        let (a, b) = (&self.v[a as usize], &self.v[b as usize]);
+        let (mut i, mut j) = (0, 0);
+        while i < a.len() && j < b.len() {
+            if a[i] < b[j] {
+                i += 1;
+            } else if a[i] > b[j] {
+                j += 1;
+            } else {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 pub fn merge_sorted(a: &[u32], b: &[u32]) -> Vec<u32> {
@@ -3472,6 +3493,56 @@ impl<'a> Engine<'a> {
                 }
                 continue;
             }
+            if nomseed.is_none() {
+                if let Some(&y_raw) = m.nom_elem.get(&o) {
+                    let y = m.find(y_raw);
+                    let ey = &m.elems[y as usize];
+                    let fb_y = ey.forbid;
+                    let tg_y = ey.target;
+                    let forced_y = ey.forced;
+                    let base_y = if ey.ty != 0 { ey.ty } else { forced_y };
+                    let f_tx_l = if base_y != 0 { self.fwd(tx, l) } else { 0 };
+                    let add_y = self.sets.union(seed, f_tx_l);
+                    let mut bad_nom = fb_y != 0
+                        && (self.sets.intersects(add_y, fb_y) || self.sets.intersects(t, fb_y));
+                    if !bad_nom && base_y != 0 && (!self.sets.subset(add_y, base_y) || fb_y != 0) {
+                        let u = self.sets.union(base_y, add_y);
+                        if !matches!(self.close(u, fb_y, tg_y, true), CloseRes::Ok(_)) {
+                            let uf = self.sets.union(forced_y, add_y);
+                            if !matches!(self.close(uf, fb_y, tg_y, true), CloseRes::Ok(_)) {
+                                bad_nom = true;
+                            }
+                        }
+                    }
+                    if !bad_nom && base_y != 0 {
+                        let bk = self.fwd(base_y, fl);
+                        if bk != 0 && !self.sets.subset(bk, tx) {
+                            let ex = &m.elems[x as usize];
+                            let (fb_x, tg_x, forced_x, nom_x) = (ex.forbid, ex.target, ex.forced, ex.nom);
+                            let ux = self.sets.union(tx, bk);
+                            if fb_x != 0 && self.sets.intersects(bk, fb_x) {
+                                bad_nom = true;
+                            } else if !matches!(self.close(ux, fb_x, tg_x, nom_x), CloseRes::Ok(_)) {
+                                let ufx = self.sets.union(forced_x, bk);
+                                if !matches!(self.close(ufx, fb_x, tg_x, nom_x), CloseRes::Ok(_)) {
+                                    bad_nom = true;
+                                }
+                            }
+                        }
+                    }
+                    if bad_nom {
+                        let mut try_noms = used_noms.clone();
+                        try_noms.push(o);
+                        try_noms.sort_unstable();
+                        try_noms.dedup();
+                        if let Ok(t2) = close_succ(self, seed, &try_noms) {
+                            used_noms = try_noms;
+                            t = t2;
+                            continue;
+                        }
+                    }
+                }
+            }
             let y = match m.nom_elem.get(&o) {
                 Some(&y) => m.find(y),
                 None => {
@@ -3935,11 +4006,17 @@ impl<'a> Engine<'a> {
                     CloseRes::Budget => return Err(Fail::new("closure budget", vec![ty0])),
                     CloseRes::Clash => {
                         self.stats.reclose_scratch += 1;
-                        let r_f1 = if owner0 == NONE {
+                        let mut r_f1 = if owner0 == NONE {
                             self.close_clean(f1, forbid, target, nom)
                         } else {
                             self.close(f1, forbid, target, nom)
                         };
+                        if matches!(r_f1, CloseRes::Clash) && owner0 == NONE && (forbid & CLEAN_FB) == 0 {
+                            r_f1 = self.close(s1, forbid, target, nom);
+                            if matches!(r_f1, CloseRes::Clash) {
+                                r_f1 = self.close(f1, forbid, target, nom);
+                            }
+                        }
                         match r_f1 {
                             CloseRes::Ok(t) => t,
                             CloseRes::Budget => return Err(Fail::new("closure budget", vec![ty0])),
