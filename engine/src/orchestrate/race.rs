@@ -459,14 +459,25 @@ fn ordinary_ht_workers(clause_count: usize, available: usize) -> usize {
 /// hundreds-of-MB) output goes straight to a temp file, never an undrained pipe.
 /// Not registered in the LIVE engine set — it is killed directly, mirroring
 /// `owl_classify` where `elc_race` is never added to `_LIVE_ENGINES`.
-fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
+fn spawn_elc_cert(
+    cfg: &Config,
+    clauses_path: &Path,
+    nice: bool,
+) -> Option<(Child, super::tmpfile::TempPath)> {
     let out_path = super::tmpfile::TempPath::new(".elcrace.json");
     let cert = std::env::var("KM_ELC_CERT").unwrap_or_else(|_| "2".to_string());
     let (elc_prog, elc_pre) = cfg.elc_cmd();
-    let mut cmd = Command::new(&elc_prog);
+    let mut cmd = if nice && cfg.tab_race_nice {
+        let mut c = Command::new("nice");
+        c.arg("-n").arg("19").arg(&elc_prog).args(&elc_pre);
+        c
+    } else {
+        let mut c = Command::new(&elc_prog);
+        c.args(&elc_pre);
+        c
+    };
     cmd.env("KM_ELC_OUTPUT_BINARY", "1");
-    cmd.args(&elc_pre)
-        .stdin(File::open(clauses_path).ok()?)
+    cmd.stdin(File::open(clauses_path).ok()?)
         .stdout(File::create(out_path.path()).ok()?)
         .stderr(Stdio::null())
         .env("KM_ELC_CERT", &cert);
@@ -529,7 +540,7 @@ fn sequential_elc_then_residue(
     clauses_path: &Path,
     engine_threads: &ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
-    let Some((mut elc, elc_out)) = spawn_elc_cert(cfg, clauses_path) else {
+    let Some((mut elc, elc_out)) = spawn_elc_cert(cfg, clauses_path, false) else {
         return run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads);
     };
     let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
@@ -623,7 +634,7 @@ pub fn race_adaptive_vs_elc(
     if std::env::var_os("KM_ELC_SEQUENTIAL").is_some() {
         return sequential_elc_then_residue(cfg, ont, clauses_path, &engine_threads);
     }
-    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path) {
+    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path, true) {
         Some(x) => x,
         // elc could not start: the engine answers alone.
         None => return run_elc_portfolio_cb(cfg, ont, clauses_path, &engine_threads),
@@ -2172,6 +2183,24 @@ fn spawn_ht(
     prepare_ht(cfg, clauses_path, named)?.launch()
 }
 
+fn spawn_ht_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    cached_input: Option<JInput>,
+) -> Option<(
+    Child,
+    super::tmpfile::TempPath,
+    bool,
+    Option<usize>,
+    bool,
+    bool,
+    Option<ProxyAboxCertificate>,
+    Option<super::tmpfile::TempPath>,
+)> {
+    prepare_ht_with_input(cfg, clauses_path, named, cached_input)?.launch()
+}
+
 /// Owns the validated input and command before any HT worker exists.
 /// Output/marker paths retain their original RAII cleanup while preparation
 /// is dropped or launch fails. Serialization remains part of launch.
@@ -2194,6 +2223,15 @@ fn prepare_ht(
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
 ) -> Option<PreparedHt> {
+    prepare_ht_with_input(cfg, clauses_path, named, None)
+}
+
+fn prepare_ht_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    cached_input: Option<JInput>,
+) -> Option<PreparedHt> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, rbox, cards, definers, source_axioms, nominal_abox, rules, data_roles): (
         Vec<JClause>,
@@ -2205,10 +2243,14 @@ fn prepare_ht(
         Vec<crate::json_io::JRule>,
         Vec<String>,
     ) = {
-        // from_slice on a read buffer, not from_reader — the clause file is
-        // multi-MB on large onts and the reader path is markedly slower.
-        let buf = std::fs::read(clauses_path).ok()?;
-        let mut v: JInput = serde_json::from_slice(&buf).ok()?;
+        let mut v: JInput = if let Some(v) = cached_input {
+            v
+        } else {
+            // from_slice on a read buffer, not from_reader — the clause file is
+            // multi-MB on large onts and the reader path is markedly slower.
+            let buf = std::fs::read(clauses_path).ok()?;
+            serde_json::from_slice(&buf).ok()?
+        };
         if std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some() {
             v.nominal_abox = crate::json_io::NominalAboxMeta::default();
         }
@@ -2920,21 +2962,31 @@ impl HtFirstProbe {
         if mode == "race" || ht_first_deadline().is_none() {
             return None;
         }
-        let (child, out, fast_certify, _, bridge_exclusive, typed_nominal_exclusive, proxy, marker) =
-            spawn_ht(cfg, clauses_path, named)?;
+        let prepared = prepare_ht(cfg, clauses_path, named)?;
         let trigger_absorb = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
         let budget = ht_acceptance_budget(
             trigger_absorb,
-            bridge_exclusive,
-            fast_certify,
+            prepared.bridge_exclusive,
+            prepared.short_race,
             cfg.shoq_budget_s,
             cfg.ht_budget_s,
         );
+        let typed_nominal_exclusive =
+            typed_nominal_bridge_exclusive(&prepared.tin, prepared.bridge_exclusive);
+        if (typed_nominal_exclusive && prepared.cb_first_structural_source)
+            || !(budget == 0.0
+                || prepared.bridge_answer_marker.is_some()
+                || prepared.proxy_abox_certificate.is_some())
+        {
+            return None;
+        }
+        let (child, out, fast_certify, _, _bridge_exclusive, _typed_nominal_exclusive, proxy, marker) =
+            prepared.launch()?;
         let cap_gb = std::env::var("KM_HT_MEM_GB")
             .ok()
             .and_then(|v| v.parse::<f64>().ok())
             .unwrap_or(12.0);
-        let mut probe = HtFirstProbe {
+        Some(HtFirstProbe {
             child,
             out,
             proxy,
@@ -2946,13 +2998,7 @@ impl HtFirstProbe {
             ht_budget_s: cfg.ht_budget_s,
             cap_bytes: (cap_gb * (1u64 << 30) as f64) as u64,
             finished: false,
-        };
-        // The race's HT-first phase runs only these workers.
-        if typed_nominal_exclusive || !(budget == 0.0 || probe.marker.is_some()) {
-            probe.stop();
-            return None;
-        }
-        Some(probe)
+        })
     }
 
     pub fn bridge_answered(&self) -> bool {
@@ -2993,7 +3039,7 @@ impl HtFirstProbe {
                         self.ht_budget_s,
                     );
                 }
-                if budget == 0.0 {
+                if budget == 0.0 || self.proxy.is_some() {
                     HtFirstProbeState::Accepted(answer)
                 } else {
                     HtFirstProbeState::NoAnswer
@@ -3196,6 +3242,7 @@ pub fn run_ht_shoq_in_process(
         nominal_abox,
         rules,
     ));
+    release_transient_heap();
 
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
@@ -3277,6 +3324,7 @@ pub fn run_ht_general_in_process(
         nominal_abox,
         rules,
     ));
+    release_transient_heap();
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
         ("KM_HT", "1"),
@@ -3387,6 +3435,7 @@ pub fn run_ht_bridge_in_process(
         nominal_abox,
         rules,
     ));
+    release_transient_heap();
 
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
@@ -3438,13 +3487,24 @@ pub fn run_ht_only_until(
     named: &std::collections::HashSet<String>,
     deadline: Instant,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    run_ht_only_until_with_input(cfg, clauses_path, named, deadline, None)
+}
+
+pub fn run_ht_only_until_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    deadline: Instant,
+    cached_input: Option<JInput>,
+) -> Result<Option<EngineOut>, OrchestrateError> {
     let now = Instant::now();
-    run_ht_only_bounded_from(
+    run_ht_only_bounded_from_with_input(
         cfg,
         clauses_path,
         named,
         deadline.saturating_duration_since(now),
         Some(now),
+        cached_input,
     )
 }
 
@@ -3455,8 +3515,19 @@ fn run_ht_only_bounded_from(
     budget: Duration,
     charged_from: Option<Instant>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    run_ht_only_bounded_from_with_input(cfg, clauses_path, named, budget, charged_from, None)
+}
+
+fn run_ht_only_bounded_from_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    budget: Duration,
+    charged_from: Option<Instant>,
+    cached_input: Option<JInput>,
+) -> Result<Option<EngineOut>, OrchestrateError> {
     let Some((mut child, out_path, _, _, _, _, proxy_abox_certificate, _)) =
-        spawn_ht(cfg, clauses_path, named)
+        spawn_ht_with_input(cfg, clauses_path, named, cached_input)
     else {
         return Ok(None);
     };

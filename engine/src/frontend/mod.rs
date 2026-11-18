@@ -1621,14 +1621,28 @@ fn ofn_to_clauses_representation_with(
     if abort_on_uncarried_data_assertions
         && !symbolic
         && !omit_separable_abox
-        && ontology.data_assertions_as_class() == 0
-        && !data_abox.positive_assertions_redundant()
-        && data_abox.functional_string_projection().is_none()
     {
-        let source_count = |kind: &str| profile.source.axiom_types.get(kind).copied().unwrap_or(0);
-        let uncarried =
-            source_count("DataPropertyAssertion") + source_count("NegativeDataPropertyAssertion");
-        if uncarried > 0 {
+        let uncarried = if ontology.data_assertions_as_class() == 0
+            && !data_abox.positive_assertions_redundant()
+            && data_abox.functional_string_projection().is_none()
+        {
+            let source_count =
+                |kind: &str| profile.source.axiom_types.get(kind).copied().unwrap_or(0);
+            source_count("DataPropertyAssertion") + source_count("NegativeDataPropertyAssertion")
+        } else {
+            0
+        };
+        let bounded_bridge_short_circuit = automatic
+            && !profile.atomic_class_abox_candidate
+            && profile.normalized_finite_data_rules == 0
+            && profile.finite_rule_class_projection.is_none()
+            && std::env::var("KM_REFERENCE_FORCE").as_deref() != Ok("1")
+            && std::env::var_os("KM_ABOX_QUOTIENT_ACTIVE").is_none()
+            && std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE").is_none()
+            && std::env::var_os("KM_PUBLIC_SUBJECT_IRIS_FILE").is_none()
+            && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
+            && crate::routing::bounded_bridge_first_candidate(route, &profile);
+        if uncarried > 0 || bounded_bridge_short_circuit {
             if !rule_independent_abox_inconsistent && std::env::var_os("KM_NO_HT_RULES").is_none() {
                 let _ = collect_rules(
                     &ontology,

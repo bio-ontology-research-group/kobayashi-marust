@@ -366,6 +366,42 @@ impl<T: Clone> Arena<T> {
             }
         }
     }
+    /// Merge all open journaled epochs above `target_depth` into `target_depth`
+    /// without rolling back their mutations. When `target_depth == 0`, all open
+    /// journaled epochs are committed permanently into depth 0 and their saved
+    /// rollback clones are released. When `target_depth > 0`, epochs
+    /// `target_depth..=open_depth` collapse into a single epoch at
+    /// `target_depth` that retains only the earliest pre-`target_depth` clone
+    /// per slot below `target_depth`'s watermark.
+    pub fn coalesce_epochs_to(&mut self, target_depth: usize) {
+        if self.open_depth <= target_depth {
+            return;
+        }
+        self.open_depth = target_depth;
+        if target_depth == 0 {
+            self.journal_stack.clear();
+            self.journal_stack.shrink_to_fit();
+            return;
+        }
+        let first_idx = self
+            .journal_stack
+            .partition_point(|frame| frame.hi < target_depth);
+        if first_idx >= self.journal_stack.len() {
+            return;
+        }
+        let watermark = self.journal_stack[first_idx].watermark;
+        let tail: Vec<EpochJournalFrame<T>> = self.journal_stack.drain((first_idx + 1)..).collect();
+        let target_frame = &mut self.journal_stack[first_idx];
+        target_frame.hi = target_depth;
+        for frame in tail {
+            for (ix, val) in frame.saves {
+                if ix < watermark && target_frame.saved_keys.insert(ix) {
+                    target_frame.saves.push((ix, val));
+                }
+            }
+        }
+        target_frame.saves.shrink_to_fit();
+    }
     /// The mutate path under branch epochs: the first mutation of a
     /// pre-epoch slot in the CURRENT epoch saves a rollback clone (zero-cost
     /// when no journaled epoch is open). The `ProcessContext` accessor macro

@@ -2180,9 +2180,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 let name = tin.concepts[concept].as_str();
                 source_concept_mentions_name(&axiom.left, name) || source_concept_mentions_name(&axiom.right, name)
             });
-        let complements: Vec<(usize, usize)> = datatype_ids.iter().filter(|&&concept| mentioned(concept)).filter_map(|&concept| {
+        let complements: Vec<(usize, usize)> = datatype_ids.iter().filter_map(|&concept| {
             let operand = dt::bridge_exact_complement_operand(&tin.concepts[concept])?;
-            Some((concept, tin.concepts.iter().position(|name| *name == operand).unwrap_or(usize::MAX)))
+            mentioned(concept).then(|| {
+                (concept, tin.concepts.iter().position(|name| *name == operand).unwrap_or(usize::MAX))
+            })
         }).collect();
         if !complements.is_empty() {
             if datatype_ids.iter().any(|&concept| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("anyURI")) {
@@ -9868,9 +9870,9 @@ fn fresh_bridge_env_with_trigger_absorption_init(
         bridged.has_native_nominals(),
         std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
     );
-    let source_tbox_preproc = bridged.source_tbox && !bridged.has_native_nominals() && !tin.number;
-    algo.conf_direct_rule_preprocessing = card_nominal_profile || source_tbox_preproc;
-    algo.conf_cache_oriented_or_ordering = card_nominal_profile || bridged.source_tbox;
+    algo.conf_direct_rule_preprocessing = card_nominal_profile;
+    algo.conf_cache_oriented_or_ordering =
+        card_nominal_profile || (bridged.source_tbox && tin.number && !bridged.has_native_nominals());
     if algo.conf_direct_rule_preprocessing {
         // Konclude's null-configuration production defaults allow eager
         // preprocessing to recurse through 300 nested rule applications. A
@@ -10555,6 +10557,8 @@ fn build_retained_consistency_leaf(
     algo.or_branch_stack.clear();
     ctx.clear_pending_signal();
     ctx.base.set_current_individual_node(NodeId::NONE);
+    ctx.coalesce_branch_epochs_to(base_depth + 1);
+    crate::mem::release_before_worker_wait();
     let depth = ctx.process_context().branch_epoch_depth();
     let databox = ctx.processing_data_box().clone();
     let next_id = ctx.processing_data_box_mut().next_individual_node_id(false);
@@ -10860,7 +10864,7 @@ fn reset_probe_env_impl(
 /// even when dependency-directed backjumping itself remains opt-in.
 fn configure_production_search(algo: &mut CompletionTaskHandleAlgorithm) {
     algo.conf_build_dependencies = true;
-    if algo.conf_cache_oriented_or_ordering {
+    if algo.conf_cache_oriented_or_ordering && algo.conf_direct_rule_preprocessing {
         // The representative-batch profile replays learned disjunct
         // priorities. Its alternatives must therefore remain disjoint. Keep
         // the legacy nominal-only and cardinality-only schedules unchanged.
@@ -16614,7 +16618,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 resume_fork = false;
                                 drained_konclude = true;
                             }
-                            bridged.retained_base_depth.set(1);
+                            ctx.coalesce_branch_epochs_to(0);
+                            crate::mem::release_before_worker_wait();
+                            bridged.retained_base_depth.set(0);
                         } else {
                             drain_failed = true;
                             while let Some(open) = algo.or_branch_stack.pop() {
@@ -16754,6 +16760,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                         algo.or_branch_stack.clear();
                                         ctx.clear_pending_signal();
                                         ctx.base.set_current_individual_node(NodeId::NONE);
+                                        ctx.coalesce_branch_epochs_to(1);
+                                        crate::mem::release_before_worker_wait();
                                         let depth = ctx.process_context().branch_epoch_depth();
                                         let databox = ctx.processing_data_box().clone();
                                         let next_id = ctx

@@ -11330,7 +11330,7 @@ fn repair_certify(
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(64);
-            if rooted_domain || unresolved.len() <= cap {
+            if rooted_domain || (unresolved.len() <= cap && unresolved.len() < base_alive_named.len()) {
                 if debug {
                     eprintln!(
                         "KM_ELC_CERT partial: {} unresolved subject(s) left for the \

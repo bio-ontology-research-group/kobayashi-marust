@@ -957,20 +957,19 @@ fn run_budgeted_bridge_attempt(
     named: &HashSet<String>,
     cached_input: &mut Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
-    if let Some(input) = cached_input.take() {
-        // The typed in-process handoff skipped the clause file. Serialize the
-        // identical frontend value exactly as the uncached frontend would.
-        let mut w = std::io::BufWriter::new(File::create(clauses_path)?);
-        serde_json::to_writer(&mut w, &input)?;
-        w.flush()?;
-    }
     let deadline = bridge_attempt_deadline().unwrap_or_else(std::time::Instant::now);
     if deadline <= std::time::Instant::now() {
         return Err(OrchestrateError::OutOfFragment(
             "speculative native bridge attempt exhausted its budget".into(),
         ));
     }
-    match race::run_ht_only_until(cfg, clauses_path, named, deadline)? {
+    match race::run_ht_only_until_with_input(
+        cfg,
+        clauses_path,
+        named,
+        deadline,
+        cached_input.take(),
+    )? {
         Some(out) => Ok(Some(out)),
         None => Err(OrchestrateError::OutOfFragment(
             "speculative native bridge attempt deferred or exceeded its budget".into(),
@@ -1323,11 +1322,14 @@ fn try_inproc_engine(
     } else {
         None
     };
-    if timing && probe.is_some() {
-        eprintln!(
-            "KM_TIMING in-process engine: HT-first probe started @ {:.2}s",
-            started.elapsed().as_secs_f64()
-        );
+    if probe.is_some() {
+        stop_inproc("yielded to HT-first probe");
+        if timing {
+            eprintln!(
+                "KM_TIMING in-process engine: HT-first probe started @ {:.2}s",
+                started.elapsed().as_secs_f64()
+            );
+        }
     }
     let export_ext_deadline = deadline + budget + std::time::Duration::from_secs(3);
     loop {
@@ -2593,7 +2595,7 @@ fn classify_with_evidence_inner(
             });
         }
     }
-    let (clauses_path, meta, mut cached_input, elc_binary) =
+    let (mut clauses_path, mut meta, mut cached_input, mut elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
     // Owned here so it is released with this classification on every path.
     let mut positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
@@ -2663,10 +2665,6 @@ fn classify_with_evidence_inner(
             return checked_finite_rule_taxonomy(evidence);
         }
     }
-    let elc_input_path = elc_binary
-        .as_ref()
-        .map(|path| path.path())
-        .unwrap_or_else(|| clauses_path.path());
     let selected_route = meta
         .route
         .parse::<crate::routing::Route>()
@@ -2761,7 +2759,7 @@ fn classify_with_evidence_inner(
                 let _deadline = BridgeAttemptDeadline::install(budget);
                 crate::routing::Route::HtBridge.apply_environment();
                 std::env::set_var("KM_ROUTE", crate::routing::Route::HtBridge.as_str());
-                if convert_data_assertions {
+                if convert_data_assertions || meta.uncarried_data_assertions > 0 {
                     std::env::set_var("KM_DATA_ASSERTION_AS_CLASS", "1");
                 }
                 if object_guard {
@@ -2816,7 +2814,19 @@ fn classify_with_evidence_inner(
                 }
             }
         }
+        if meta.named.is_empty() && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
+        {
+            let _full_frontend_guard = crate::routing::EnvironmentGuard::capture();
+            std::env::set_var("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT", "1");
+            (clauses_path, meta, cached_input, elc_binary) =
+                frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
+            positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
+        }
     }
+    let elc_input_path = elc_binary
+        .as_ref()
+        .map(|path| path.path())
+        .unwrap_or_else(|| clauses_path.path());
 
     // Compact expressive object-ABoxes benefit from the exact typed bridge,
     // whose source-definition hierarchy can reuse negative witnesses across
@@ -3866,6 +3876,11 @@ fn classify_with_evidence_inner(
             if out.is_none()
                 && small
                 && !meta.el_rbox_safe
+                && meta.profile.source.logical_axioms <= 1_500
+                && !matches!(
+                    selected_route,
+                    crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
+                )
                 && std::env::var_os("KM_NO_INPROC_ENGINE").is_none()
             {
                 // Directly retaining frontend-built vectors wins both time and

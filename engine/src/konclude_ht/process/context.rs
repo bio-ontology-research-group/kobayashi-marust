@@ -769,22 +769,22 @@ impl ProcessContext {
             singleton_descriptor_changes: HashMap::default(),            branch_epoch_depth: 0,
             branch_epoch_release_frames: Vec::new(),
             released_dependency_individuals: Default::default(),
-            nodes: Arena::new(),
+            nodes: Arena::new_tight(),
             sat_nodes: Arena::new_tight(),
-            edges: Arena::new(),
-            distinct_edges: Arena::new(),
-            disjoint_edges: Arena::new(),
-            con_descs: Arena::new(),
-            con_proc_descs: Arena::new(),
-            clash_descs: Arena::new(),
-            dep_nodes: Arena::new(),
-            track_points: Arena::new(),
-            dep_links: Arena::new(),
-            branch_nodes: Arena::new(),
-            branch_instrs: Arena::new(),
-            label_sets: Arena::new(),
-            core_con_descs: Arena::new(),
-            role_succ_hashes: Arena::new(),
+            edges: Arena::new_tight(),
+            distinct_edges: Arena::new_tight(),
+            disjoint_edges: Arena::new_tight(),
+            con_descs: Arena::new_tight(),
+            con_proc_descs: Arena::new_tight(),
+            clash_descs: Arena::new_tight(),
+            dep_nodes: Arena::new_tight(),
+            track_points: Arena::new_tight(),
+            dep_links: Arena::new_tight(),
+            branch_nodes: Arena::new_tight(),
+            branch_instrs: Arena::new_tight(),
+            label_sets: Arena::new_tight(),
+            core_con_descs: Arena::new_tight(),
+            role_succ_hashes: Arena::new_tight(),
             restriction_specs: Arena::new(),
             branching_merging_candidate_linkers: Arena::new(),
             indi_sat_block_datas: Arena::new(),
@@ -871,11 +871,11 @@ impl ProcessContext {
             marker_indi_node_datas: Arena::new(),
             unsat_cache_ret_datas: Arena::new(),
             referred_individual_tracking_vectors: Arena::new(),
-            concept_process_linkers: Arena::new(),
-            individual_process_node_linkers: Arena::new(),
-            backward_prop_links: Arena::new(),
-            backward_prop_reapply_descs: Arena::new(),
-            role_backward_prop_hashes: Arena::new(),
+            concept_process_linkers: Arena::new_tight(),
+            individual_process_node_linkers: Arena::new_tight(),
+            backward_prop_links: Arena::new_tight(),
+            backward_prop_reapply_descs: Arena::new_tight(),
+            role_backward_prop_hashes: Arena::new_tight(),
             con_sat_descs: Arena::new_tight(),
             con_sat_proc_linkers: Arena::new_tight(),
             role_sat_proc_linkers: Arena::new_tight(),
@@ -916,16 +916,16 @@ impl ProcessContext {
             sat_modified_process_update_linkers: Arena::new_tight(),
             indi_sat_process_node_linkers: Arena::new_tight(),
             individual_merging_hashes: Arena::new(),
-            succ_role_hashes: Arena::new(),
+            succ_role_hashes: Arena::new_tight(),
             indi_unsorted_proc_queues: Arena::new(),
             indi_rotation_proc_queues: Arena::new(),
             indi_depth_proc_queues: Arena::new(),
-            indi_proc_node_descs: Arena::new(),
+            indi_proc_node_descs: Arena::new_tight(),
             indi_proc_queues: Arena::new(),
             indi_custom_priority_proc_queues: Arena::new(),
             indi_concept_batch_proc_queues: Arena::new(),
             indi_reactivation_proc_queues: Arena::new(),
-            concept_proc_queues: Arena::new(),
+            concept_proc_queues: Arena::new_tight(),
             used_mem_man: INVALID,
             used_process_tagger: ProcessTagger::new(),
             used_process_stat_gath: INVALID,
@@ -3681,6 +3681,173 @@ impl ProcessContext {
         self.var_binding_trigger_linkers.pop_epoch();
         // dependency spine arenas: epoch-exempt (see push_branch_epoch).
         self.branch_epoch_depth -= 1;
+    }
+
+    /// Merge all open branch epochs above `target_depth` into `target_depth`
+    /// without rolling back their state.
+    pub fn coalesce_branch_epochs_to(&mut self, target_depth: usize) {
+        if self.branch_epoch_depth <= target_depth {
+            return;
+        }
+        self.assign_new_dependency_individuals_to_epochs();
+        while self.branch_epoch_release_frames.len() > target_depth {
+            let popped = self.branch_epoch_release_frames.pop().unwrap();
+            if let Some(target_frame) = self.branch_epoch_release_frames.last_mut() {
+                target_frame.pending.extend(popped.pending);
+                target_frame.cursor = popped.cursor;
+            }
+        }
+        self.additional_data_assertion_linkers.coalesce_epochs_to(target_depth);
+        self.additional_role_assertion_linkers.coalesce_epochs_to(target_depth);
+        self.analized_con_exp_datas.coalesce_epochs_to(target_depth);
+        self.analized_con_exp_linkers.coalesce_epochs_to(target_depth);
+        self.backend_neighbour_expansion_controlling_datas
+            .coalesce_epochs_to(target_depth);
+        self.backend_sync_datas.coalesce_epochs_to(target_depth);
+        self.backward_prop_links.coalesce_epochs_to(target_depth);
+        self.backward_prop_reapply_descs.coalesce_epochs_to(target_depth);
+        self.backward_sat_prop_links.coalesce_epochs_to(target_depth);
+        self.backward_sat_prop_reapply_descs.coalesce_epochs_to(target_depth);
+        self.blocking_alt_datas.coalesce_epochs_to(target_depth);
+        self.blocking_follow_sets.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_cand_datas.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_cand_hashes.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_linked_cand_datas.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_linked_cand_hashes.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_linkers.coalesce_epochs_to(target_depth);
+        self.blocking_test_datas.coalesce_epochs_to(target_depth);
+        self.branching_merging_candidate_linkers.coalesce_epochs_to(target_depth);
+        self.branching_trees.coalesce_epochs_to(target_depth);
+        self.branch_instrs.coalesce_epochs_to(target_depth);
+        self.concept_nominal_schema_grounding_datas.coalesce_epochs_to(target_depth);
+        self.concept_nominal_schema_grounding_hashes.coalesce_epochs_to(target_depth);
+        self.concept_process_linkers.coalesce_epochs_to(target_depth);
+        self.concept_proc_queues.coalesce_epochs_to(target_depth);
+        self.cond_reapply_con_descs.coalesce_epochs_to(target_depth);
+        self.conn_succ_corr_hashes.coalesce_epochs_to(target_depth);
+        self.conn_succ_sets.coalesce_epochs_to(target_depth);
+        self.con_proc_descs.coalesce_epochs_to(target_depth);
+        self.con_prop_binding_set_hashes.coalesce_epochs_to(target_depth);
+        self.con_rep_prop_set_hashes.coalesce_epochs_to(target_depth);
+        self.con_sat_descs.coalesce_epochs_to(target_depth);
+        self.con_sat_proc_linkers.coalesce_epochs_to(target_depth);
+        self.con_var_bind_path_set_hashes.coalesce_epochs_to(target_depth);
+        self.core_con_descs.coalesce_epochs_to(target_depth);
+        self.critical_pred_role_card_datas.coalesce_epochs_to(target_depth);
+        self.critical_pred_role_card_hashes.coalesce_epochs_to(target_depth);
+        self.critical_sat_concept_queues.coalesce_epochs_to(target_depth);
+        self.critical_sat_concept_type_queues.coalesce_epochs_to(target_depth);
+        self.datatypes_value_space_datas.coalesce_epochs_to(target_depth);
+        self.data_value_role_assertion_linkers.coalesce_epochs_to(target_depth);
+        self.disjoint_edges.coalesce_epochs_to(target_depth);
+        self.disjoint_succ_role_hashes.coalesce_epochs_to(target_depth);
+        self.distinct_edges.coalesce_epochs_to(target_depth);
+        self.distinct_hashes.coalesce_epochs_to(target_depth);
+        self.edges.coalesce_epochs_to(target_depth);
+        self.extended_con_ref_linking_datas.coalesce_epochs_to(target_depth);
+        self.imp_reapply_con_sat_descs.coalesce_epochs_to(target_depth);
+        self.inc_exp_datas.coalesce_epochs_to(target_depth);
+        self.indi_concept_batch_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_custom_priority_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_depth_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_proc_node_descs.coalesce_epochs_to(target_depth);
+        self.indi_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_reactivation_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_rotation_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_sat_block_datas.coalesce_epochs_to(target_depth);
+        self.indi_sat_node_ext_datas.coalesce_epochs_to(target_depth);
+        self.indi_sat_process_node_linkers.coalesce_epochs_to(target_depth);
+        self.indi_sat_succ_link_data_linkers.coalesce_epochs_to(target_depth);
+        self.indi_unsorted_proc_queues.coalesce_epochs_to(target_depth);
+        self.individual_merging_hashes.coalesce_epochs_to(target_depth);
+        self.individual_process_node_linkers.coalesce_epochs_to(target_depth);
+        self.label_sets.coalesce_epochs_to(target_depth);
+        self.linked_data_value_assertion_datas.coalesce_epochs_to(target_depth);
+        self.linked_role_sat_succ_datas.coalesce_epochs_to(target_depth);
+        self.linked_role_sat_succ_hashes.coalesce_epochs_to(target_depth);
+        self.marker_indi_node_datas.coalesce_epochs_to(target_depth);
+        self.marker_indi_node_hashes.coalesce_epochs_to(target_depth);
+        self.nodes.coalesce_epochs_to(target_depth);
+        self.node_switch_histories.coalesce_epochs_to(target_depth);
+        self.nominal_caching_loss_reactivation_datas.coalesce_epochs_to(target_depth);
+        self.nominal_caching_loss_reactivation_hashes.coalesce_epochs_to(target_depth);
+        self.nominal_conn_sets.coalesce_epochs_to(target_depth);
+        self.process_asserted_data_literal_linkers.coalesce_epochs_to(target_depth);
+        self.prop_binding_descs.coalesce_epochs_to(target_depth);
+        self.prop_binding_reapply_con_descs.coalesce_epochs_to(target_depth);
+        self.prop_binding_reapply_con_hashes.coalesce_epochs_to(target_depth);
+        self.prop_bindings.coalesce_epochs_to(target_depth);
+        self.prop_binding_sets.coalesce_epochs_to(target_depth);
+        self.prop_rep_trans_exts.coalesce_epochs_to(target_depth);
+        self.prop_var_bind_trans_exts.coalesce_epochs_to(target_depth);
+        self.reapply_con_descs.coalesce_epochs_to(target_depth);
+        self.reapply_con_sat_label_sets.coalesce_epochs_to(target_depth);
+        self.referred_individual_tracking_vectors.coalesce_epochs_to(target_depth);
+        self.rep_joining_datas.coalesce_epochs_to(target_depth);
+        self.rep_joining_hashes.coalesce_epochs_to(target_depth);
+        self.rep_prop_descs.coalesce_epochs_to(target_depth);
+        self.rep_prop_sets.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_hashes.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_joining_key_datas.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_joining_key_hashes.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_datas.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_hashes.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_joining_datas.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_joining_hashes.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_migrate_datas.coalesce_epochs_to(target_depth);
+        self.restriction_specs.coalesce_epochs_to(target_depth);
+        self.reusing_con_exp_datas.coalesce_epochs_to(target_depth);
+        self.reusing_review_datas.coalesce_epochs_to(target_depth);
+        self.role_backward_prop_hashes.coalesce_epochs_to(target_depth);
+        self.role_backward_sat_prop_hashes.coalesce_epochs_to(target_depth);
+        self.role_sat_proc_linkers.coalesce_epochs_to(target_depth);
+        self.role_succ_hashes.coalesce_epochs_to(target_depth);
+        self.sat_atmost_successor_merging_datas.coalesce_epochs_to(target_depth);
+        self.sat_atmost_successor_merging_hashes.coalesce_epochs_to(target_depth);
+        self.sat_concept_extension_maps.coalesce_epochs_to(target_depth);
+        self.sat_critical_ind_node_con_test_sets.coalesce_epochs_to(target_depth);
+        self.sat_critical_ind_node_proc_queues.coalesce_epochs_to(target_depth);
+        self.sat_disjunct_common_concept_extraction_datas
+            .coalesce_epochs_to(target_depth);
+        self.sat_disjunct_extraction_linkers.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_all_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_datatype_datas.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_ext_resolve_datas.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_ext_resolve_hashes.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_functional_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_succ_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_influenced_nominal_sets.coalesce_epochs_to(target_depth);
+        self.sat_linked_succ_indi_all_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_modified_process_update_linkers.coalesce_epochs_to(target_depth);
+        self.sat_nodes.coalesce_epochs_to(target_depth);
+        self.sat_nominal_dependent_node_datas.coalesce_epochs_to(target_depth);
+        self.sat_nominal_dependent_node_hashes.coalesce_epochs_to(target_depth);
+        self.sat_nominal_handling_datas.coalesce_epochs_to(target_depth);
+        self.sat_succ_datas.coalesce_epochs_to(target_depth);
+        self.sat_successor_all_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_successor_concept_extension_maps.coalesce_epochs_to(target_depth);
+        self.sat_successor_functional_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_succ_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_succ_ext_ind_node_proc_queues.coalesce_epochs_to(target_depth);
+        self.sat_succ_role_assertion_linkers.coalesce_epochs_to(target_depth);
+        self.sig_block_cand_hashes.coalesce_epochs_to(target_depth);
+        self.sig_block_con_exp_datas.coalesce_epochs_to(target_depth);
+        self.signature_blocking_review_sets.coalesce_epochs_to(target_depth);
+        self.successor_individual_atmost_reactivation_datas
+            .coalesce_epochs_to(target_depth);
+        self.succ_role_hashes.coalesce_epochs_to(target_depth);
+        self.unsat_cache_ret_datas.coalesce_epochs_to(target_depth);
+        self.var_binding_descs.coalesce_epochs_to(target_depth);
+        self.var_binding_path_descs.coalesce_epochs_to(target_depth);
+        self.var_binding_path_join_datas.coalesce_epochs_to(target_depth);
+        self.var_binding_path_join_hashes.coalesce_epochs_to(target_depth);
+        self.var_binding_path_merging_hashes.coalesce_epochs_to(target_depth);
+        self.var_binding_paths.coalesce_epochs_to(target_depth);
+        self.var_binding_path_sets.coalesce_epochs_to(target_depth);
+        self.var_bindings.coalesce_epochs_to(target_depth);
+        self.var_binding_trigger_hashes.coalesce_epochs_to(target_depth);
+        self.var_binding_trigger_linkers.coalesce_epochs_to(target_depth);
+        self.branch_epoch_depth = target_depth;
     }
 
     /// The dependency spine is epoch-exempt, the node arena is not: a

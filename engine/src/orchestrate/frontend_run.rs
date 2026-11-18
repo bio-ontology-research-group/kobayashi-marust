@@ -73,7 +73,7 @@ fn manual_route() -> String {
 /// (multi-GB on the giants) stays isolated in the subprocess: at 4 MB the
 /// in-process transient peak is only tens of MB and is freed before the engine
 /// runs, so the classify RSS high-water-mark is unaffected.
-const IN_PROCESS_OFN_MAX: u64 = 8 << 20;
+const IN_PROCESS_OFN_MAX: u64 = 4 << 20;
 /// Retain a parsed general-HT input across the frontend/solver boundary only
 /// for the measured small-source band.  Large sources that pass the lexical
 /// EL screen can still select general HT after full profiling; retaining their
@@ -300,7 +300,10 @@ fn run_ofn_in_process(
         },
         separable_abox_export: result.separable_abox_export,
     };
-    if abort_on_uncarried && meta.uncarried_data_assertions > 0 {
+    if abort_on_uncarried
+        && (meta.uncarried_data_assertions > 0
+            || (meta.named.is_empty() && result.clauses.is_empty()))
+    {
         return Ok((meta, None, None));
     }
     let mut out = crate::json_io::JInput {
@@ -438,7 +441,20 @@ fn run_ofn_split_cached_passes(
     // classification (the key is restored by the caller's environment guard).
     // Whatever stays uncarried after that (negative assertions, a literal
     // vocabulary above the cap) is published as dropped axioms.
-    if result.1.uncarried_data_assertions > 0 && !data_assertions_as_class_requested() {
+    let deferred_for_bounded_bridge = result.1.named.is_empty()
+        && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
+        && result
+            .1
+            .route
+            .parse::<crate::routing::Route>()
+            .ok()
+            .is_some_and(|route| {
+                crate::routing::bounded_bridge_first_candidate(route, &result.1.profile)
+            });
+    if result.1.uncarried_data_assertions > 0
+        && !data_assertions_as_class_requested()
+        && !deferred_for_bounded_bridge
+    {
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!(
                 "KM_TIMING frontend: {} data-property assertion(s) not carried; \
@@ -524,6 +540,8 @@ fn run_ofn_split_cached_once(
                 };
                 match parsed {
                     Ok((meta, cached, elc_binary)) => {
+                        drop(text);
+                        crate::mem::release_transient_heap();
                         if timing {
                             eprintln!(
                                 "KM_TIMING in-process frontend: read={read_s:.2}s screen={screen_s:.2}s \
