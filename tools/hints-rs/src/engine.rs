@@ -1494,10 +1494,10 @@ impl<'a> Engine<'a> {
                 for bucket in by_ty_idx.values_mut() {
                     bucket.sort_unstable();
                     bucket.dedup();
-                    if bucket.len() > 1 && bucket.len() <= 64 {
+                    if bucket.len() > 1 && bucket.len() <= 1024 {
                         for i in 0..bucket.len() {
                             for &a2 in &bucket[i + 1..] {
-                                if (in_pos[bucket[i] as usize] || in_pos[a2 as usize]) && pair_checks < 100_000 {
+                                if (in_pos[bucket[i] as usize] || in_pos[a2 as usize]) && pair_checks < 500_000 {
                                     pair_checks += 1;
                                     check_pair(self, bucket[i], a2);
                                 }

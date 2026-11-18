@@ -1723,7 +1723,12 @@ fn write_model<W: Write>(
             !matches!(
                 s,
                 "owl:Thing" | "Thing" | "owl:Nothing" | "Nothing" | "⊤" | "⊥"
-            ) && !meta.iri_map.get(s).is_some_and(|u| u.starts_with("_:"))
+            ) && !s.starts_with("urn:km:")
+                && !s.starts_with("__ground_assertion_")
+                && !meta
+                    .iri_map
+                    .get(s)
+                    .is_some_and(|u| u.starts_with("_:") || u.starts_with("urn:km:"))
         })
         .collect();
     let data: HashSet<&str> = data_roles.iter().map(String::as_str).collect();

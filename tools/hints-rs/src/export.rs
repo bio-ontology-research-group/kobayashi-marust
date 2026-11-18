@@ -463,9 +463,21 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
     }
 
     // Resolve `blocked` pairs by copying blocker classes and outgoing edges to the blocked element
+    for e in &mut exp_elems {
+        e.classes.sort_unstable();
+        e.classes.dedup();
+    }
     if !exp_blocked.is_empty() {
-        let mut edge_set: std::collections::HashSet<(String, String, String)> =
-            exp_edges.iter().cloned().collect();
+        let mut edge_set: std::collections::HashSet<(usize, String, usize)> =
+            std::collections::HashSet::with_capacity(exp_edges.len() * 2);
+        let mut out_by_elem: Vec<Vec<(String, usize)>> = vec![Vec::new(); exp_elems.len()];
+        for (f, r, t) in &exp_edges {
+            if let (Some(&fi), Some(&ti)) = (id_to_idx.get(f), id_to_idx.get(t)) {
+                if edge_set.insert((fi, r.clone(), ti)) {
+                    out_by_elem[fi].push((r.clone(), ti));
+                }
+            }
+        }
         for _pass in 0..4 {
             for (el_id, blk_id) in &exp_blocked {
                 let (Some(&ei), Some(&bi)) = (id_to_idx.get(el_id), id_to_idx.get(blk_id)) else { continue };
@@ -473,32 +485,30 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                 exp_elems[ei].classes.extend(blk_classes);
                 exp_elems[ei].classes.sort_unstable();
                 exp_elems[ei].classes.dedup();
-                let el_roles: std::collections::HashSet<String> = exp_edges
+                let blk_out: Vec<(String, usize)> = out_by_elem[bi]
                     .iter()
-                    .filter(|(f, _, _)| f == el_id)
-                    .map(|(_, r, _)| r.clone())
-                    .collect();
-                let blk_out: Vec<(String, String)> = exp_edges
-                    .iter()
-                    .filter(|(f, r, t)| {
-                        if f != blk_id {
-                            return false;
-                        }
-                        if el_roles.contains(r) {
-                            if let Some(&ti) = id_to_idx.get(t) {
-                                if ti < bi && exp_elems[ti].individuals.is_empty() {
-                                    return false;
-                                }
+                    .filter(|(r, ti)| {
+                        if *ti < bi && exp_elems[*ti].individuals.is_empty() {
+                            let ti_classes = &exp_elems[*ti].classes;
+                            let covered = out_by_elem[ei].iter().any(|(r2, ey)| {
+                                r2 == r
+                                    && ti_classes
+                                        .iter()
+                                        .all(|c| exp_elems[*ey].classes.binary_search(c).is_ok())
+                            });
+                            if covered {
+                                return false;
                             }
                         }
                         true
                     })
-                    .map(|(_, r, t)| (r.clone(), t.clone()))
+                    .cloned()
                     .collect();
-                for (r, t) in blk_out {
-                    let edge = (el_id.clone(), r, t);
-                    if edge_set.insert(edge.clone()) {
-                        exp_edges.push(edge);
+                for (r, ti) in blk_out {
+                    let target_i = if ti == ei && ei != bi { bi } else { ti };
+                    if edge_set.insert((ei, r.clone(), target_i)) {
+                        out_by_elem[ei].push((r.clone(), target_i));
+                        exp_edges.push((el_id.clone(), r, exp_elems[target_i].id.clone()));
                     }
                 }
             }
@@ -527,26 +537,64 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
 
     let mut m = Model::new();
     let k_elems = exp_elems.len();
-    let mut pos: Vec<Vec<bool>> = vec![vec![false; n]; k_elems];
-    let mut neg: Vec<Vec<bool>> = vec![vec![false; n]; k_elems];
+    struct BitMatrix {
+        words_per_row: usize,
+        data: Vec<u64>,
+    }
+    impl BitMatrix {
+        fn new(rows: usize, cols: usize) -> Self {
+            let words_per_row = (cols + 63) / 64;
+            Self {
+                words_per_row,
+                data: vec![0u64; rows * words_per_row],
+            }
+        }
+        #[inline]
+        fn get(&self, r: usize, c: usize) -> bool {
+            let idx = r * self.words_per_row + (c >> 6);
+            (self.data[idx] >> (c & 63)) & 1 != 0
+        }
+        #[inline]
+        fn set(&mut self, r: usize, c: usize, val: bool) {
+            let idx = r * self.words_per_row + (c >> 6);
+            let mask = 1u64 << (c & 63);
+            if val {
+                self.data[idx] |= mask;
+            } else {
+                self.data[idx] &= !mask;
+            }
+        }
+    }
+    let mut pos = BitMatrix::new(k_elems, n);
+    let mut pos_list: Vec<Vec<u32>> = vec![Vec::new(); k_elems];
 
     for (idx, ee) in exp_elems.iter().enumerate() {
         if let Some(tc) = thing_c {
-            pos[idx][tc as usize] = true;
+            if !pos.get(idx, tc as usize) {
+                pos.set(idx, tc as usize, true);
+                pos_list[idx].push(tc);
+            }
         }
         for c_iri in &ee.classes {
             if let Some(&c) = nf.cidx.get(c_iri.as_str()) {
-                pos[idx][c as usize] = true;
+                if !pos.get(idx, c as usize) {
+                    pos.set(idx, c as usize, true);
+                    pos_list[idx].push(c);
+                }
             }
         }
         let mut has_nom = false;
         for i_iri in &ee.individuals {
             if let Some(&o) = nom_map.get(i_iri.as_str()) {
-                pos[idx][o as usize] = true;
+                if !pos.get(idx, o as usize) {
+                    pos.set(idx, o as usize, true);
+                    pos_list[idx].push(o);
+                }
                 has_nom = true;
             }
         }
-        let seed_vec: Vec<u32> = (0..n as u32).filter(|&a| pos[idx][a as usize]).collect();
+        let mut seed_vec = pos_list[idx].clone();
+        seed_vec.sort_unstable();
         let seed_id = en.sets.intern(seed_vec);
         let el_id = m.push_elem(Elem {
             ty: seed_id,
@@ -641,39 +689,757 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
         for &g in &nf.gci_empty {
             let h = &nf.gci[g as usize].1;
             if h.len() == 1 {
-                pos[x][h[0] as usize] = true;
+                let h0 = h[0];
+                if !pos.get(x, h0 as usize) {
+                    pos.set(x, h0 as usize, true);
+                    pos_list[x].push(h0);
+                }
             }
         }
-        for a in 0..n as u32 {
-            if pos[x][a as usize] {
-                q_pos.push((x, a));
+        for &a in &pos_list[x] {
+            q_pos.push((x, a));
+        }
+    }
+    while let Some((x, a)) = q_pos.pop() {
+        for &g in nf.gci_by_body.get(a) {
+            let (body, head) = &nf.gci[g as usize];
+            if head.len() == 1 && !pos.get(x, head[0] as usize) && body.iter().all(|&b| pos.get(x, b as usize)) {
+                let h0 = head[0];
+                pos.set(x, h0 as usize, true);
+                pos_list[x].push(h0);
+                q_pos.push((x, h0));
+            }
+        }
+        for &(s, c) in nf.all_by.get(a) {
+            for &(y, l) in &m.elems[x].edges {
+                if en.labs.has(l, s) && !pos.get(y as usize, c as usize) {
+                    pos.set(y as usize, c as usize, true);
+                    pos_list[y as usize].push(c);
+                    q_pos.push((y as usize, c));
+                }
+            }
+        }
+        for &(r, b) in nf.ex_by.get(a) {
+            if nf.named[b as usize] || nf.is_nom[b as usize] {
+                continue;
+            }
+            let mut already = false;
+            let mut only_y = 0usize;
+            let mut cnt = 0usize;
+            for &(y, l) in &m.elems[x].edges {
+                if en.labs.has(l, r) {
+                    if pos.get(y as usize, b as usize) {
+                        already = true;
+                        break;
+                    }
+                    only_y = y as usize;
+                    cnt += 1;
+                }
+            }
+            if !already && cnt == 1 && !pos.get(only_y, b as usize) {
+                pos.set(only_y, b as usize, true);
+                pos_list[only_y].push(b);
+                q_pos.push((only_y, b));
+            }
+        }
+        for &(k, r, b) in nf.ge_by.get(a) {
+            if nf.named[b as usize] || nf.is_nom[b as usize] {
+                continue;
+            }
+            let cands: Vec<usize> = m.elems[x]
+                .edges
+                .iter()
+                .filter_map(|&(y, l)| en.labs.has(l, r).then_some(y as usize))
+                .collect();
+            if cands.len() == k as usize {
+                for y0 in cands {
+                    if !pos.get(y0, b as usize) {
+                        pos.set(y0, b as usize, true);
+                        pos_list[y0].push(b);
+                        q_pos.push((y0, b));
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 1b: Filter multi-target existentials by required source superclasses and outgoing roles
+    fn can_satisfy_filler_rec(
+        y: usize,
+        b: u32,
+        depth: usize,
+        nf: &Nf,
+        pos: &BitMatrix,
+        pos_list: &[Vec<u32>],
+        m: &Model,
+        en: &Engine,
+    ) -> bool {
+        let bi = b as usize;
+        if pos.get(y, bi) {
+            return true;
+        }
+        if (nf.named[bi] || nf.is_nom[bi]) && !pos.get(y, bi) {
+            return false;
+        }
+        if en.has_data[bi] {
+            if en.dreq.get(bi).copied().unwrap_or(0) > 0 {
+                return false;
+            }
+            if pos_list[y].iter().any(|&p| en.has_conflict_peer(b, p)) {
+                return false;
+            }
+        }
+        let mut local_added: Vec<u32> = vec![b];
+        let mut idx = 0usize;
+        while idx < local_added.len() && local_added.len() <= 32 {
+            let cur = local_added[idx];
+            idx += 1;
+            for &(s, c) in nf.ex_by.get(cur) {
+                let has_s = m.elems[y].edges.iter().any(|&(z, l)| {
+                    en.labs.has(l, s)
+                        && (pos.get(z as usize, c as usize)
+                            || (depth < 4
+                                && can_satisfy_filler_rec(
+                                    z as usize,
+                                    c,
+                                    depth + 1,
+                                    nf,
+                                    pos,
+                                    pos_list,
+                                    m,
+                                    en,
+                                )))
+                });
+                if !has_s {
+                    return false;
+                }
+            }
+            for &(k, s, c) in nf.ge_by.get(cur) {
+                let cnt_s = m.elems[y]
+                    .edges
+                    .iter()
+                    .filter(|&&(z, l)| {
+                        en.labs.has(l, s)
+                            && (pos.get(z as usize, c as usize)
+                                || (depth < 4
+                                    && can_satisfy_filler_rec(
+                                        z as usize,
+                                        c,
+                                        depth + 1,
+                                        nf,
+                                        pos,
+                                        pos_list,
+                                        m,
+                                        en,
+                                    )))
+                    })
+                    .count();
+                if cnt_s < k as usize {
+                    return false;
+                }
+            }
+            if nf.has_le[cur as usize] {
+                for &(k, s, c) in nf.le_by.get(cur) {
+                    let cnt_s = m.elems[y]
+                        .edges
+                        .iter()
+                        .filter(|&&(z, l)| en.labs.has(l, s) && pos.get(z as usize, c as usize))
+                        .count();
+                    if cnt_s > k as usize {
+                        return false;
+                    }
+                }
+            }
+            for &(s, c) in nf.all_by.get(cur) {
+                for &(z, l) in &m.elems[y].edges {
+                    if en.labs.has(l, s)
+                        && !pos.get(z as usize, c as usize)
+                        && (depth >= 4
+                            || !can_satisfy_filler_rec(
+                                z as usize,
+                                c,
+                                depth + 1,
+                                nf,
+                                pos,
+                                pos_list,
+                                m,
+                                en,
+                            ))
+                    {
+                        return false;
+                    }
+                }
+            }
+            for &gi in nf.gci_by_body.get(cur) {
+                let (body_g, head_g) = &nf.gci[gi as usize];
+                if body_g
+                    .iter()
+                    .all(|&x_b| pos.get(y, x_b as usize) || local_added.contains(&x_b))
+                {
+                    if head_g.is_empty() {
+                        return false;
+                    }
+                    if head_g.len() == 1 {
+                        let h0 = head_g[0];
+                        let h0i = h0 as usize;
+                        if (nf.named[h0i] || nf.is_nom[h0i]) && !pos.get(y, h0i) {
+                            return false;
+                        }
+                        if !pos.get(y, h0i) && !local_added.contains(&h0) {
+                            if en.has_data[h0i]
+                                && (en.dreq.get(h0i).copied().unwrap_or(0) > 0
+                                    || pos_list[y].iter().any(|&p| en.has_conflict_peer(h0, p)))
+                            {
+                                return false;
+                            }
+                            local_added.push(h0);
+                        }
+                    } else {
+                        let mut sat_h: Option<u32> = None;
+                        let mut sat_cnt = 0usize;
+                        for &h in head_g {
+                            let hi = h as usize;
+                            let ok = if pos.get(y, hi) || local_added.contains(&h) {
+                                true
+                            } else if nf.named[hi] || nf.is_nom[hi] {
+                                false
+                            } else if depth < 4 {
+                                can_satisfy_filler_rec(y, h, depth + 1, nf, pos, pos_list, m, en)
+                            } else {
+                                true
+                            };
+                            if ok {
+                                sat_h = Some(h);
+                                sat_cnt += 1;
+                                if sat_cnt > 1 {
+                                    break;
+                                }
+                            }
+                        }
+                        if sat_cnt == 0 {
+                            return false;
+                        }
+                        if sat_cnt == 1 {
+                            let h0 = sat_h.unwrap();
+                            let h0i = h0 as usize;
+                            if !pos.get(y, h0i) && !local_added.contains(&h0) {
+                                if en.has_data[h0i]
+                                    && (en.dreq.get(h0i).copied().unwrap_or(0) > 0
+                                        || pos_list[y].iter().any(|&p| en.has_conflict_peer(h0, p)))
+                                {
+                                    return false;
+                                }
+                                local_added.push(h0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+    let can_satisfy_filler =
+        |y: usize, b: u32, pos: &BitMatrix, pos_list: &[Vec<u32>], m: &Model, en: &Engine| -> bool {
+            can_satisfy_filler_rec(y, b, 0, nf, pos, pos_list, m, en)
+        };
+    for x in 0..k_elems {
+        let pos_x = pos_list[x].clone();
+        for a in pos_x {
+            for &(r, b) in nf.ex_by.get(a) {
+                let already = m.elems[x]
+                    .edges
+                    .iter()
+                    .any(|&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize));
+                if !already {
+                    let mut first_y: Option<usize> = None;
+                    let mut cnt = 0usize;
+                    for &(y, l) in &m.elems[x].edges {
+                        if en.labs.has(l, r) && can_satisfy_filler(y as usize, b, &pos, &pos_list, &m, &en) {
+                            if first_y.is_none() {
+                                first_y = Some(y as usize);
+                            }
+                            cnt += 1;
+                            if cnt > 1 {
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(only_y) = first_y {
+                        if (cnt == 1 || !(nf.named[b as usize] || nf.is_nom[b as usize]))
+                            && !pos.get(only_y, b as usize)
+                        {
+                            pos.set(only_y, b as usize, true);
+                            pos_list[only_y].push(b);
+                            q_pos.push((only_y, b));
+                        }
+                    }
+                }
             }
         }
     }
     while let Some((x, a)) = q_pos.pop() {
         for &g in nf.gci_by_body.get(a) {
             let (body, head) = &nf.gci[g as usize];
-            if head.len() == 1 && !pos[x][head[0] as usize] && body.iter().all(|&b| pos[x][b as usize]) {
+            if head.len() == 1 && !pos.get(x, head[0] as usize) && body.iter().all(|&b| pos.get(x, b as usize)) {
                 let h0 = head[0];
-                pos[x][h0 as usize] = true;
+                pos.set(x, h0 as usize, true);
+                pos_list[x].push(h0);
                 q_pos.push((x, h0));
             }
         }
         for &(s, c) in nf.all_by.get(a) {
             for &(y, l) in &m.elems[x].edges {
-                if en.labs.has(l, s) && !pos[y as usize][c as usize] {
-                    pos[y as usize][c as usize] = true;
+                if en.labs.has(l, s) && !pos.get(y as usize, c as usize) {
+                    pos.set(y as usize, c as usize, true);
+                    pos_list[y as usize].push(c);
                     q_pos.push((y as usize, c));
+                }
+            }
+        }
+        for &(r, b) in nf.ex_by.get(a) {
+            let already = m.elems[x]
+                .edges
+                .iter()
+                .any(|&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize));
+            if !already {
+                let mut first_y: Option<usize> = None;
+                let mut cnt = 0usize;
+                for &(y, l) in &m.elems[x].edges {
+                    if en.labs.has(l, r) && can_satisfy_filler(y as usize, b, &pos, &pos_list, &m, &en) {
+                        if first_y.is_none() {
+                            first_y = Some(y as usize);
+                        }
+                        cnt += 1;
+                        if cnt > 1 {
+                            break;
+                        }
+                    }
+                }
+                if let Some(only_y) = first_y {
+                    if (cnt == 1 || !(nf.named[b as usize] || nf.is_nom[b as usize]))
+                        && !pos.get(only_y, b as usize)
+                    {
+                        pos.set(only_y, b as usize, true);
+                        pos_list[only_y].push(b);
+                        q_pos.push((only_y, b));
+                    }
                 }
             }
         }
     }
 
-    // Initialize `neg[x]` for all source concepts (`named` or `is_nom`) not in `pos[x]`
+    let named_or_nom: Vec<u32> = (0..n as u32)
+        .filter(|&c| nf.named[c as usize] || nf.is_nom[c as usize])
+        .collect();
+    let data_rel_concepts: Vec<u32> = if en.data.is_some() {
+        (0..n as u32).filter(|&a| en.has_data[a as usize]).collect()
+    } else {
+        Vec::new()
+    };
+
+    let mut any_modal_filler = vec![false; n];
+    for &(_, _, b) in &nf.ex {
+        if (b as usize) < n {
+            any_modal_filler[b as usize] = true;
+        }
+    }
+    for &(_, _, _, b) in &nf.ge {
+        if (b as usize) < n {
+            any_modal_filler[b as usize] = true;
+        }
+    }
+    for &(_, _, _, b) in &nf.le {
+        if (b as usize) < n {
+            any_modal_filler[b as usize] = true;
+        }
+    }
+    for &(_, _, b) in &nf.all {
+        if (b as usize) < n {
+            any_modal_filler[b as usize] = true;
+        }
+    }
+
+    let is_simple_inert_on = |y: usize, c: u32, pos: &BitMatrix, pos_list: &[Vec<u32>], en: &Engine| -> bool {
+        let ci = c as usize;
+        if ci >= n
+            || nf.named[ci]
+            || nf.is_nom[ci]
+            || (en.has_data[ci]
+                && (en.dreq.get(ci).copied().unwrap_or(0) > 0
+                    || pos_list[y].iter().any(|&p| en.has_conflict_peer(c, p))))
+            || !nf.ex_by.get(c).is_empty()
+            || !nf.ge_by.get(c).is_empty()
+            || !nf.all_by.get(c).is_empty()
+            || nf.has_le[ci]
+        {
+            return false;
+        }
+        for &gi2 in nf.gci_by_body.get(c) {
+            let b_g = &nf.gci[gi2 as usize].0;
+            if !b_g
+                .iter()
+                .any(|&b| b != c && (nf.named[b as usize] || nf.is_nom[b as usize]) && !pos.get(y, b as usize))
+            {
+                return false;
+            }
+        }
+        true
+    };
+
+    let is_locally_inert_disjunct = |x: usize, h: u32, pos: &BitMatrix, pos_list: &[Vec<u32>], m: &Model, en: &Engine| -> bool {
+        let hi = h as usize;
+        if hi >= n
+            || nf.named[hi]
+            || nf.is_nom[hi]
+            || (en.has_data[hi]
+                && (en.dreq.get(hi).copied().unwrap_or(0) > 0
+                    || pos_list[x].iter().any(|&p| en.has_conflict_peer(h, p))))
+            || any_modal_filler[hi]
+        {
+            return false;
+        }
+        for &(r, b) in nf.ex_by.get(h) {
+            if !m.elems[x]
+                .edges
+                .iter()
+                .any(|&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize))
+            {
+                return false;
+            }
+        }
+        for &(k, r, b) in nf.ge_by.get(h) {
+            if m.elems[x]
+                .edges
+                .iter()
+                .filter(|&&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize))
+                .count()
+                < k as usize
+            {
+                return false;
+            }
+        }
+        if nf.has_le[hi] {
+            for &(k, r, _) in nf.le_by.get(h) {
+                if m.elems[x]
+                    .edges
+                    .iter()
+                    .filter(|&&(_, l)| en.labs.has(l, r))
+                    .count()
+                    > k as usize
+                {
+                    return false;
+                }
+            }
+        }
+        for &(s, c) in nf.all_by.get(h) {
+            for &(y, l) in &m.elems[x].edges {
+                if en.labs.has(l, s)
+                    && !pos.get(y as usize, c as usize)
+                    && !is_simple_inert_on(y as usize, c, pos, pos_list, en)
+                {
+                    return false;
+                }
+            }
+        }
+        for &gi2 in nf.gci_by_body.get(h) {
+            let b_g = &nf.gci[gi2 as usize].0;
+            if !b_g
+                .iter()
+                .any(|&b| b != h && (nf.named[b as usize] || nf.is_nom[b as usize]) && !pos.get(x, b as usize))
+            {
+                return false;
+            }
+        }
+        true
+    };
+
+    let is_giant = k_elems.saturating_mul(n) > 50_000_000;
+    let empty_disj_gis: Vec<u32> = nf
+        .gci_empty
+        .iter()
+        .copied()
+        .filter(|&gi| nf.gci[gi as usize].1.len() >= 2)
+        .collect();
+    if is_giant {
     for x in 0..k_elems {
-        for c in 0..n {
-            if (nf.named[c] || nf.is_nom[c]) && !pos[x][c] {
-                neg[x][c] = true;
+        for &gi in &empty_disj_gis {
+            let head = &nf.gci[gi as usize].1;
+            if head.iter().any(|&h| pos.get(x, h as usize)) {
+                continue;
+            }
+            if let Some(&h) = head
+                .iter()
+                .find(|&&h| is_locally_inert_disjunct(x, h, &pos, &pos_list, &m, &en))
+            {
+                pos.set(x, h as usize, true);
+                pos_list[x].push(h);
+                for &(s, c) in nf.all_by.get(h) {
+                    for &(y, l) in &m.elems[x].edges {
+                        if en.labs.has(l, s) && !pos.get(y as usize, c as usize) {
+                            pos.set(y as usize, c as usize, true);
+                            pos_list[y as usize].push(c);
+                        }
+                    }
+                }
+            }
+        }
+        let pos_x = pos_list[x].clone();
+        for a in pos_x {
+            for &gi in nf.gci_by_body.get(a) {
+                let (body, head) = &nf.gci[gi as usize];
+                if head.len() >= 2
+                    && body.iter().all(|&b| pos.get(x, b as usize))
+                    && !head.iter().any(|&h| pos.get(x, h as usize))
+                {
+                    if let Some(&h) = head
+                        .iter()
+                        .find(|&&h| is_locally_inert_disjunct(x, h, &pos, &pos_list, &m, &en))
+                    {
+                        pos.set(x, h as usize, true);
+                        pos_list[x].push(h);
+                        for &(s, c) in nf.all_by.get(h) {
+                            for &(y, l) in &m.elems[x].edges {
+                                if en.labs.has(l, s) && !pos.get(y as usize, c as usize) {
+                                    pos.set(y as usize, c as usize, true);
+                                    pos_list[y as usize].push(c);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    }
+
+    // Find concepts and elements that can participate in any remaining open disjunctive GCI or unmet existential
+    let mut can_affect_pos = vec![!is_giant; n];
+    let mut seed_q: Vec<u32> = Vec::new();
+    let mut active_elem = vec![!is_giant; k_elems];
+    let mut x_open_vec = vec![!is_giant; k_elems];
+    let mut elem_q: Vec<usize> = if is_giant { Vec::new() } else { (0..k_elems).collect() };
+    if is_giant {
+    for &a in &data_rel_concepts {
+        if !can_affect_pos[a as usize] {
+            can_affect_pos[a as usize] = true;
+            seed_q.push(a);
+        }
+    }
+    for x in 0..k_elems {
+        let mut x_open = false;
+        for &gi in &empty_disj_gis {
+            let head = &nf.gci[gi as usize].1;
+            if !head.iter().any(|&h| pos.get(x, h as usize)) {
+                x_open = true;
+                for &h in head {
+                    if !can_affect_pos[h as usize] {
+                        can_affect_pos[h as usize] = true;
+                        seed_q.push(h);
+                    }
+                }
+            }
+        }
+        for &a in &pos_list[x] {
+            if nf.has_le[a as usize] {
+                for &(k, r, b) in nf.le_by.get(a) {
+                    let pos_cnt = m.elems[x]
+                        .edges
+                        .iter()
+                        .filter(|&&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize))
+                        .count();
+                    let tot_cnt = m.elems[x]
+                        .edges
+                        .iter()
+                        .filter(|&&(_, l)| en.labs.has(l, r))
+                        .count();
+                    if pos_cnt >= k as usize && tot_cnt > k as usize {
+                        x_open = true;
+                        if !can_affect_pos[b as usize] {
+                            can_affect_pos[b as usize] = true;
+                            seed_q.push(b);
+                        }
+                    }
+                }
+            }
+            for &gi in nf.gci_by_body.get(a) {
+                let (body, head) = &nf.gci[gi as usize];
+                if !head.is_empty()
+                    && body.iter().all(|&b| pos.get(x, b as usize))
+                    && !head.iter().any(|&h| pos.get(x, h as usize))
+                {
+                    x_open = true;
+                    for &h in head {
+                        if !can_affect_pos[h as usize] {
+                            can_affect_pos[h as usize] = true;
+                            seed_q.push(h);
+                        }
+                    }
+                }
+            }
+            for &(r, b) in nf.ex_by.get(a) {
+                let met = m.elems[x]
+                    .edges
+                    .iter()
+                    .any(|&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize));
+                if !met {
+                    x_open = true;
+                    if !can_affect_pos[b as usize] {
+                        can_affect_pos[b as usize] = true;
+                        seed_q.push(b);
+                    }
+                }
+            }
+            for &(k, r, b) in nf.ge_by.get(a) {
+                let cnt = m.elems[x]
+                    .edges
+                    .iter()
+                    .filter(|&&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize))
+                    .count();
+                if cnt < k as usize {
+                    x_open = true;
+                    if !can_affect_pos[b as usize] {
+                        can_affect_pos[b as usize] = true;
+                        seed_q.push(b);
+                    }
+                }
+            }
+        }
+        if x_open {
+            x_open_vec[x] = true;
+            active_elem[x] = true;
+            elem_q.push(x);
+        }
+    }
+    }
+    let has_open_work = !elem_q.is_empty();
+    let mut ever_pos = vec![!is_giant; n];
+    if is_giant {
+    for x in 0..k_elems {
+        for &a in &pos_list[x] {
+            ever_pos[a as usize] = true;
+        }
+    }
+    }
+    let mut fwd_idx = 0usize;
+    while fwd_idx < seed_q.len() {
+        let a = seed_q[fwd_idx];
+        fwd_idx += 1;
+        for &gi in nf.gci_by_body.get(a) {
+            let (body, head) = &nf.gci[gi as usize];
+            if body
+                .iter()
+                .all(|&b| ever_pos[b as usize] || can_affect_pos[b as usize])
+            {
+                for &h in head {
+                    if !can_affect_pos[h as usize] {
+                        can_affect_pos[h as usize] = true;
+                        seed_q.push(h);
+                    }
+                }
+            }
+        }
+        for &(_, c) in nf.all_by.get(a) {
+            if !can_affect_pos[c as usize] {
+                can_affect_pos[c as usize] = true;
+                seed_q.push(c);
+            }
+        }
+        for &(_, b) in nf.ex_by.get(a) {
+            if !can_affect_pos[b as usize] {
+                can_affect_pos[b as usize] = true;
+                seed_q.push(b);
+            }
+        }
+        for &(_, _, b) in nf.ge_by.get(a) {
+            if !can_affect_pos[b as usize] {
+                can_affect_pos[b as usize] = true;
+                seed_q.push(b);
+            }
+        }
+    }
+    let mut bwd_idx = 0usize;
+    while bwd_idx < seed_q.len() {
+        let a = seed_q[bwd_idx];
+        bwd_idx += 1;
+        if !nf.named[a as usize] && !nf.is_nom[a as usize] {
+            for &gi in nf.gci_by_body.get(a) {
+                let (body, head) = &nf.gci[gi as usize];
+                if body
+                    .iter()
+                    .all(|&b| b == a || ever_pos[b as usize] || can_affect_pos[b as usize])
+                {
+                    for &h in head {
+                        if !can_affect_pos[h as usize] {
+                            can_affect_pos[h as usize] = true;
+                            seed_q.push(h);
+                        }
+                    }
+                }
+            }
+            for &(_, b) in nf.ex_by.get(a) {
+                if !can_affect_pos[b as usize] {
+                    can_affect_pos[b as usize] = true;
+                    seed_q.push(b);
+                }
+            }
+            for &(_, _, b) in nf.ge_by.get(a) {
+                if !can_affect_pos[b as usize] {
+                    can_affect_pos[b as usize] = true;
+                    seed_q.push(b);
+                }
+            }
+            for &(_, c) in nf.all_by.get(a) {
+                if !can_affect_pos[c as usize] {
+                    can_affect_pos[c as usize] = true;
+                    seed_q.push(c);
+                }
+            }
+        }
+    }
+
+    if has_open_work {
+    let mut in_edges: Vec<Vec<(usize, u32)>> = vec![Vec::new(); k_elems];
+    for x in 0..k_elems {
+        for &(y, l) in &m.elems[x].edges {
+            if (y as usize) < k_elems {
+                in_edges[y as usize].push((x, l));
+            }
+        }
+    }
+    let mut eq_idx = 0usize;
+    while eq_idx < elem_q.len() {
+        let u = elem_q[eq_idx];
+        eq_idx += 1;
+        if (!m.elems[u].nom && in_edges[u].len() <= 8) || x_open_vec[u] {
+            for &(v, _) in &m.elems[u].edges {
+                let vi = v as usize;
+                if vi < k_elems && !active_elem[vi] {
+                    active_elem[vi] = true;
+                    elem_q.push(vi);
+                }
+            }
+            for &(p, _) in &in_edges[u] {
+                if !active_elem[p] {
+                    active_elem[p] = true;
+                    elem_q.push(p);
+                }
+            }
+        }
+    }
+    elem_q.sort_unstable();
+    let active_elems = elem_q;
+
+    let mut neg = BitMatrix::new(k_elems, n);
+    let relevant_named_or_nom: Vec<u32> = named_or_nom
+        .iter()
+        .copied()
+        .filter(|&c| can_affect_pos[c as usize])
+        .collect();
+    // Initialize `neg[x]` for relevant source concepts (`named` or `is_nom`) not in `pos[x]`
+    for &x in &active_elems {
+        for &c in &relevant_named_or_nom {
+            if !pos.get(x, c as usize) {
+                neg.set(x, c as usize, true);
             }
         }
     }
@@ -683,30 +1449,64 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
     // `is_modal_filler` (concepts appearing as the target of a modal clause),
     // and incoming element neighbours `in_elems[y]`
     let mut head_by: Vec<Vec<u32>> = vec![Vec::new(); n];
-    for (gi, (_, head)) in nf.gci.iter().enumerate() {
-        for &h in head {
-            head_by[h as usize].push(gi as u32);
+    for (gi, (body, head)) in nf.gci.iter().enumerate() {
+        if !is_giant {
+            for &h in head {
+                head_by[h as usize].push(gi as u32);
+            }
+            continue;
+        }
+        let can_bwd = body.iter().any(|&b| {
+            let open_b = b as usize;
+            !nf.named[open_b] && !nf.is_nom[open_b] && can_affect_pos[open_b]
+        }) && body
+            .iter()
+            .all(|&b| ever_pos[b as usize] || can_affect_pos[b as usize]);
+        let can_fwd_disj = head.len() >= 2
+            && head.iter().any(|&h| can_affect_pos[h as usize])
+            && body
+                .iter()
+                .all(|&b| ever_pos[b as usize] || can_affect_pos[b as usize]);
+        if can_bwd || can_fwd_disj {
+            for &h in head {
+                head_by[h as usize].push(gi as u32);
+            }
         }
     }
     let mut is_modal_filler = vec![false; n];
-    for &(_, _, b) in &nf.ex {
-        if (b as usize) < n {
+    for &(a, _, b) in &nf.ex {
+        if (b as usize) < n && can_affect_pos[a as usize] {
             is_modal_filler[b as usize] = true;
         }
     }
-    for &(_, _, _, b) in &nf.ge {
-        if (b as usize) < n {
+    for &(a, _, _, b) in &nf.ge {
+        if (b as usize) < n && can_affect_pos[a as usize] {
             is_modal_filler[b as usize] = true;
         }
     }
-    for &(_, _, _, b) in &nf.le {
-        if (b as usize) < n {
+    for &(a, _, _, b) in &nf.le {
+        if (b as usize) < n && can_affect_pos[a as usize] {
             is_modal_filler[b as usize] = true;
         }
     }
-    for &(_, _, b) in &nf.all {
-        if (b as usize) < n {
+    for &(a, _, b) in &nf.all {
+        if (b as usize) < n && can_affect_pos[a as usize] {
             is_modal_filler[b as usize] = true;
+        }
+    }
+    let mut gci_neg_init_cands: Vec<u32> = Vec::new();
+    for (gi, (body, head)) in nf.gci.iter().enumerate() {
+        if body.len() == 1 {
+            let b0 = body[0] as usize;
+            if b0 < n
+                && can_affect_pos[b0]
+                && !nf.named[b0]
+                && !nf.is_nom[b0]
+                && (!head_by[b0].is_empty() || is_modal_filler[b0])
+                && head.iter().all(|&h| (h as usize) < n && can_affect_pos[h as usize] && (nf.named[h as usize] || nf.is_nom[h as usize]))
+            {
+                gci_neg_init_cands.push(gi as u32);
+            }
         }
     }
     let modal_concepts: Vec<u32> = (0..n as u32)
@@ -717,34 +1517,112 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                 || !nf.all_by.get(a).is_empty()
         })
         .collect();
-    let mut in_elems: Vec<Vec<usize>> = vec![Vec::new(); k_elems];
-    for x in 0..k_elems {
-        for &(y, _) in &m.elems[x].edges {
-            if (y as usize) < k_elems {
-                in_elems[y as usize].push(x);
+    let refutable_modal_concepts: Vec<u32> = modal_concepts
+        .iter()
+        .copied()
+        .filter(|&a| can_affect_pos[a as usize] && (!head_by[a as usize].is_empty() || is_modal_filler[a as usize]))
+        .collect();
+    let ex_ge_refutable_concepts: Vec<u32> = refutable_modal_concepts
+        .iter()
+        .copied()
+        .filter(|&a| {
+            !nf.ex_by.get(a).is_empty() || nf.ge_by.get(a).iter().any(|&(k, _, _)| k > 0)
+        })
+        .collect();
+    let num_dir_roles = nf.m * 2;
+    let mut ex_ge_by_first_role: Vec<Vec<u32>> = vec![Vec::new(); num_dir_roles];
+    for &a in &ex_ge_refutable_concepts {
+        let first_r = nf
+            .ex_by
+            .get(a)
+            .first()
+            .map(|&(r, _)| r)
+            .or_else(|| {
+                nf.ge_by
+                    .get(a)
+                    .iter()
+                    .find(|&&(k, _, _)| k > 0)
+                    .map(|&(_, r, _)| r)
+            });
+        if let Some(r0) = first_r {
+            if (r0 as usize) < num_dir_roles {
+                ex_ge_by_first_role[r0 as usize].push(a);
             }
         }
     }
-    for v in &mut in_elems {
+    let mut all_le_by_role: Vec<Vec<u32>> = vec![Vec::new(); num_dir_roles];
+    for &a in &refutable_modal_concepts {
+        for &(s, _) in nf.all_by.get(a) {
+            if (s as usize) < num_dir_roles {
+                all_le_by_role[s as usize].push(a);
+            }
+        }
+        if nf.has_le[a as usize] {
+            for &(_, r, _) in nf.le_by.get(a) {
+                if (r as usize) < num_dir_roles {
+                    all_le_by_role[r as usize].push(a);
+                }
+            }
+        }
+    }
+    for v in &mut all_le_by_role {
+        v.sort_unstable();
+        v.dedup();
+    }
+    let mut is_refutable_modal = vec![false; n];
+    for &a in &refutable_modal_concepts {
+        is_refutable_modal[a as usize] = true;
+    }
+    let mut modal_parents_by_filler: Vec<Vec<(u32, u32)>> = vec![Vec::new(); n];
+    for &(a, r, b) in &nf.ex {
+        if (b as usize) < n {
+            modal_parents_by_filler[b as usize].push((r, a));
+        }
+    }
+    for &(a, _, r, b) in &nf.ge {
+        if (b as usize) < n {
+            modal_parents_by_filler[b as usize].push((r, a));
+        }
+    }
+    for &(a, _, r, b) in &nf.le {
+        if (b as usize) < n {
+            modal_parents_by_filler[b as usize].push((r, a));
+        }
+    }
+    for &(a, s, b) in &nf.all {
+        if (b as usize) < n {
+            modal_parents_by_filler[b as usize].push((s, a));
+        }
+    }
+    for v in &mut modal_parents_by_filler {
         v.sort_unstable();
         v.dedup();
     }
 
+    let mut is_modal_concept = vec![false; n];
+    for &a in &modal_concepts {
+        is_modal_concept[a as usize] = true;
+    }
+
     let check_gci_unit = |gi: u32,
                           x: usize,
-                          pos: &mut [Vec<bool>],
-                          neg: &mut [Vec<bool>],
+                          pos: &mut BitMatrix,
+                          pos_list: &mut [Vec<u32>],
+                          neg: &mut BitMatrix,
                           q_lit: &mut Vec<(usize, u32, bool)>| {
         let (body, head) = &nf.gci[gi as usize];
-        let body_true = body.iter().all(|&b| pos[x][b as usize]);
+        if body.len() == 2 && !pos.get(x, body[0] as usize) && !pos.get(x, body[1] as usize) {
+            return;
+        }
+        let body_true = body.iter().all(|&b| pos.get(x, b as usize));
         if body_true {
-            if head.iter().any(|&h| pos[x][h as usize]) {
+            if head.iter().any(|&h| pos.get(x, h as usize)) {
                 return;
             }
             let mut open_h = NONE;
             let mut cnt_h = 0usize;
             for &h in head {
-                if !neg[x][h as usize] {
+                if !neg.get(x, h as usize) {
                     open_h = h;
                     cnt_h += 1;
                     if cnt_h > 1 {
@@ -752,18 +1630,19 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                     }
                 }
             }
-            if cnt_h == 1 && !pos[x][open_h as usize] {
-                pos[x][open_h as usize] = true;
+            if cnt_h == 1 && !pos.get(x, open_h as usize) {
+                pos.set(x, open_h as usize, true);
+                pos_list[x].push(open_h);
                 q_lit.push((x, open_h, true));
             }
-        } else if head.iter().all(|&h| neg[x][h as usize]) {
-            if body.iter().any(|&b| neg[x][b as usize]) {
+        } else if head.iter().all(|&h| neg.get(x, h as usize)) {
+            if body.iter().any(|&b| neg.get(x, b as usize)) {
                 return;
             }
             let mut open_b = NONE;
             let mut cnt_b = 0usize;
             for &b in body {
-                if !pos[x][b as usize] {
+                if !pos.get(x, b as usize) {
                     open_b = b;
                     cnt_b += 1;
                     if cnt_b > 1 {
@@ -771,43 +1650,257 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                     }
                 }
             }
-            if cnt_b == 1 && !neg[x][open_b as usize] {
-                neg[x][open_b as usize] = true;
+            if cnt_b == 1 && !neg.get(x, open_b as usize) {
+                neg.set(x, open_b as usize, true);
                 q_lit.push((x, open_b, false));
             }
         }
     };
 
-    let data_rel_concepts: Vec<u32> = if en.data.is_some() {
-        (0..n as u32).filter(|&a| en.has_data[a as usize]).collect()
-    } else {
-        Vec::new()
+    let check_one_modal_refuted = |x: usize,
+                                   a: u32,
+                                   pos: &BitMatrix,
+                                   neg: &BitMatrix,
+                                   m: &Model,
+                                   en: &Engine|
+     -> bool {
+        for &(r, b) in nf.ex_by.get(a) {
+            let has_poss = m.elems[x]
+                .edges
+                .iter()
+                .any(|&(y, l)| en.labs.has(l, r) && !neg.get(y as usize, b as usize));
+            if !has_poss {
+                return true;
+            }
+        }
+        for &(k, r, b) in nf.ge_by.get(a) {
+            let poss_cnt = m.elems[x]
+                .edges
+                .iter()
+                .filter(|&&(y, l)| en.labs.has(l, r) && !neg.get(y as usize, b as usize))
+                .count();
+            if poss_cnt < k as usize {
+                return true;
+            }
+        }
+        if nf.has_le[a as usize] {
+            for &(k, r, b) in nf.le_by.get(a) {
+                let forced_cnt = m.elems[x]
+                    .edges
+                    .iter()
+                    .filter(|&&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize))
+                    .count();
+                if forced_cnt > k as usize {
+                    return true;
+                }
+            }
+        }
+        for &(s, c) in nf.all_by.get(a) {
+            let bad_all = m.elems[x]
+                .edges
+                .iter()
+                .any(|&(y, l)| en.labs.has(l, s) && neg.get(y as usize, c as usize));
+            if bad_all {
+                return true;
+            }
+        }
+        false
     };
+
+    let propagate_one_pos_modal = |x: usize,
+                                   a: u32,
+                                   pos: &mut BitMatrix,
+                                   pos_list: &mut [Vec<u32>],
+                                   neg: &mut BitMatrix,
+                                   q_lit: &mut Vec<(usize, u32, bool)>,
+                                   m: &Model,
+                                   en: &Engine| {
+        for &(s, c) in nf.all_by.get(a) {
+            for &(y, l) in &m.elems[x].edges {
+                if en.labs.has(l, s) && !pos.get(y as usize, c as usize) && !neg.get(y as usize, c as usize) {
+                    pos.set(y as usize, c as usize, true);
+                    pos_list[y as usize].push(c);
+                    q_lit.push((y as usize, c, true));
+                }
+            }
+        }
+        for &(r, b) in nf.ex_by.get(a) {
+            let already = m.elems[x]
+                .edges
+                .iter()
+                .any(|&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize));
+            if !already {
+                let mut only_y: Option<usize> = None;
+                let mut cnt = 0usize;
+                for &(y, l) in &m.elems[x].edges {
+                    if en.labs.has(l, r) && !neg.get(y as usize, b as usize) {
+                        only_y = Some(y as usize);
+                        cnt += 1;
+                        if cnt > 1 {
+                            break;
+                        }
+                    }
+                }
+                if cnt == 1 {
+                    let y0 = only_y.unwrap();
+                    if !pos.get(y0, b as usize) {
+                        pos.set(y0, b as usize, true);
+                        pos_list[y0].push(b);
+                        q_lit.push((y0, b, true));
+                    }
+                }
+            }
+        }
+        for &(k, r, b) in nf.ge_by.get(a) {
+            let cands: Vec<Id> = m.elems[x]
+                .edges
+                .iter()
+                .filter(|&&(y, l)| en.labs.has(l, r) && !neg.get(y as usize, b as usize))
+                .map(|e| e.0)
+                .collect();
+            if cands.len() == k as usize {
+                for y0 in cands {
+                    if !pos.get(y0 as usize, b as usize) {
+                        pos.set(y0 as usize, b as usize, true);
+                        pos_list[y0 as usize].push(b);
+                        q_lit.push((y0 as usize, b, true));
+                    }
+                }
+            }
+        }
+        if nf.has_le[a as usize] {
+            for &(k, r, b) in nf.le_by.get(a) {
+                let pos_cnt = m.elems[x]
+                    .edges
+                    .iter()
+                    .filter(|&&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize))
+                    .count();
+                if pos_cnt == k as usize {
+                    for &(y, l) in &m.elems[x].edges {
+                        if en.labs.has(l, r) && !pos.get(y as usize, b as usize) && !neg.get(y as usize, b as usize) {
+                            neg.set(y as usize, b as usize, true);
+                            q_lit.push((y as usize, b, false));
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    let mut is_pure_oneof_dall_vec = vec![false; n];
+    if let Some((d, _)) = en.data.as_ref() {
+        for &a in &data_rel_concepts {
+            if en.dreq.get(a as usize).copied().unwrap_or(0) == 0
+                && !d.datmost_by.contains_key(&a)
+                && d.dall_by.get(&a).map_or(false, |ixs| {
+                    ixs.len() == 1 && {
+                        let lits = &d.dall[ixs[0]].2;
+                        lits.len() == 1
+                            && matches!(lits[0], crate::data::Lit::Neg(j) if d.is_oneof_atom.get(&j).copied().unwrap_or(false))
+                    }
+                })
+            {
+                is_pure_oneof_dall_vec[a as usize] = true;
+            }
+        }
+    }
 
     // Incremental forward (`pos`) + backward (`neg`) fixpoint starting from dirty elements / literals
     let propagate_incremental = |dirty_seed: &[usize],
                                  seed_lits: &[(usize, u32, bool)],
                                  full_gci_scan: bool,
-                                 pos: &mut [Vec<bool>],
-                                 neg: &mut [Vec<bool>],
+                                 pos: &mut BitMatrix,
+                                 pos_list: &mut [Vec<u32>],
+                                 neg: &mut BitMatrix,
                                  m: &Model,
                                  en: &Engine| {
         let mut q_lit: Vec<(usize, u32, bool)> = seed_lits.to_vec();
-        let mut dirty_modal: Vec<bool> = vec![false; k_elems];
-        let mut modal_q: Vec<usize> = Vec::new();
+        let mut sat_ex_ge_mark = vec![false; n];
         for &x in dirty_seed {
-            if !dirty_modal[x] {
-                dirty_modal[x] = true;
-                modal_q.push(x);
+            if m.elems[x].edges.is_empty() {
+                for &a in &ex_ge_refutable_concepts {
+                    if !pos.get(x, a as usize) && !neg.get(x, a as usize) {
+                        neg.set(x, a as usize, true);
+                        if !head_by[a as usize].is_empty() || is_modal_filler[a as usize] {
+                            q_lit.push((x, a, false));
+                        }
+                    }
+                }
+            } else {
+                let mut active_roles: Vec<u32> = Vec::new();
+                for &(_, l) in &m.elems[x].edges {
+                    for &r in en.labs.get(l).iter() {
+                        if (r as usize) < num_dir_roles && !active_roles.contains(&r) {
+                            active_roles.push(r);
+                        }
+                    }
+                }
+                let mut sat_list: Vec<u32> = Vec::new();
+                for &r_act in &active_roles {
+                    for &a in &ex_ge_by_first_role[r_act as usize] {
+                        if pos.get(x, a as usize) || neg.get(x, a as usize) {
+                            continue;
+                        }
+                        if !check_one_modal_refuted(x, a, pos, neg, m, en) {
+                            sat_ex_ge_mark[a as usize] = true;
+                            sat_list.push(a);
+                        }
+                    }
+                }
+                for &a in &ex_ge_refutable_concepts {
+                    if !pos.get(x, a as usize) && !neg.get(x, a as usize) && !sat_ex_ge_mark[a as usize] {
+                        neg.set(x, a as usize, true);
+                        if !head_by[a as usize].is_empty() || is_modal_filler[a as usize] {
+                            q_lit.push((x, a, false));
+                        }
+                    }
+                }
+                for a in sat_list {
+                    sat_ex_ge_mark[a as usize] = false;
+                }
+                for r_act in active_roles {
+                    for &a in &all_le_by_role[r_act as usize] {
+                        if !pos.get(x, a as usize)
+                            && !neg.get(x, a as usize)
+                            && check_one_modal_refuted(x, a, pos, neg, m, en)
+                        {
+                            neg.set(x, a as usize, true);
+                            if !head_by[a as usize].is_empty() || is_modal_filler[a as usize] {
+                                q_lit.push((x, a, false));
+                            }
+                        }
+                    }
+                }
+                let pos_x = pos_list[x].clone();
+                for a in pos_x {
+                    if is_modal_concept[a as usize] {
+                        propagate_one_pos_modal(x, a, pos, pos_list, neg, &mut q_lit, m, en);
+                    }
+                }
             }
             if full_gci_scan {
-                for gi in 0..nf.gci.len() as u32 {
-                    check_gci_unit(gi, x, pos, neg, &mut q_lit);
+                if !is_giant {
+                    for gi in 0..nf.gci.len() as u32 {
+                        check_gci_unit(gi, x, pos, pos_list, neg, &mut q_lit);
+                    }
+                } else {
+                    for &gi in &nf.gci_empty {
+                        check_gci_unit(gi, x, pos, pos_list, neg, &mut q_lit);
+                    }
+                    for &gi in &gci_neg_init_cands {
+                        check_gci_unit(gi, x, pos, pos_list, neg, &mut q_lit);
+                    }
+                    let pos_x = pos_list[x].clone();
+                    for a in pos_x {
+                        for &gi in nf.gci_by_body.get(a) {
+                            check_gci_unit(gi, x, pos, pos_list, neg, &mut q_lit);
+                        }
+                    }
                 }
             }
         }
         let mut steps = 0usize;
-        loop {
+        for _wave in 0..2 {
             while let Some((x, a, is_pos)) = q_lit.pop() {
                 steps += 1;
                 if steps & 4095 == 0 && Instant::now() > deadline {
@@ -817,224 +1910,105 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                     if !data_rel_concepts.is_empty() && data_rel_concepts.binary_search(&a).is_ok() {
                         for &peer in &data_rel_concepts {
                             if peer != a
-                                && !neg[x][peer as usize]
-                                && !pos[x][peer as usize]
+                                && !neg.get(x, peer as usize)
+                                && !pos.get(x, peer as usize)
                                 && en.has_conflict_peer(a, peer)
                             {
-                                neg[x][peer as usize] = true;
+                                neg.set(x, peer as usize, true);
                                 q_lit.push((x, peer, false));
                             }
                         }
                     }
                     for &gi in nf.gci_by_body.get(a) {
-                        check_gci_unit(gi, x, pos, neg, &mut q_lit);
+                        check_gci_unit(gi, x, pos, pos_list, neg, &mut q_lit);
                     }
-                    if !nf.all_by.get(a).is_empty()
-                        || !nf.ex_by.get(a).is_empty()
-                        || !nf.ge_by.get(a).is_empty()
-                        || nf.has_le[a as usize]
-                    {
-                        if !dirty_modal[x] {
-                            dirty_modal[x] = true;
-                            modal_q.push(x);
-                        }
+                    if is_modal_concept[a as usize] && !m.elems[x].edges.is_empty() {
+                        propagate_one_pos_modal(x, a, pos, pos_list, neg, &mut q_lit, m, en);
                     }
                 } else {
                     for &gi in &head_by[a as usize] {
-                        check_gci_unit(gi, x, pos, neg, &mut q_lit);
+                        check_gci_unit(gi, x, pos, pos_list, neg, &mut q_lit);
                     }
                 }
-                if is_modal_filler[a as usize] {
-                    for &pred in &in_elems[x] {
-                        if !dirty_modal[pred] {
-                            dirty_modal[pred] = true;
-                            modal_q.push(pred);
-                        }
-                    }
-                }
-            }
-            let Some(x) = modal_q.pop() else { break };
-            dirty_modal[x] = false;
-            steps += 1;
-            if steps & 1023 == 0 && Instant::now() > deadline {
-                return;
-            }
-            if m.elems[x].edges.is_empty() {
-                // Only `ex_by` / `ge_by` with k > 0 can refute `a` when `x` has no outgoing edges
-                for &a in &modal_concepts {
-                    if pos[x][a as usize] || neg[x][a as usize] {
-                        continue;
-                    }
-                    if !nf.ex_by.get(a).is_empty() || nf.ge_by.get(a).iter().any(|&(k, _, _)| k > 0) {
-                        neg[x][a as usize] = true;
-                        q_lit.push((x, a, false));
-                    }
-                }
-                continue;
-            }
-            // Backward refutation from missing/violated edges on `x`
-            for &a in &modal_concepts {
-                if pos[x][a as usize] || neg[x][a as usize] {
-                    continue;
-                }
-                let mut ref_a = false;
-                for &(r, b) in nf.ex_by.get(a) {
-                    let has_poss = m.elems[x]
-                        .edges
-                        .iter()
-                        .any(|&(y, l)| en.labs.has(l, r) && !neg[y as usize][b as usize]);
-                    if !has_poss {
-                        ref_a = true;
-                        break;
-                    }
-                }
-                if !ref_a {
-                    for &(k, r, b) in nf.ge_by.get(a) {
-                        let poss_cnt = m.elems[x]
-                            .edges
-                            .iter()
-                            .filter(|&&(y, l)| en.labs.has(l, r) && !neg[y as usize][b as usize])
-                            .count();
-                        if poss_cnt < k as usize {
-                            ref_a = true;
-                            break;
-                        }
-                    }
-                }
-                if !ref_a && nf.has_le[a as usize] {
-                    for &(k, r, b) in nf.le_by.get(a) {
-                        let forced_cnt = m.elems[x]
-                            .edges
-                            .iter()
-                            .filter(|&&(y, l)| en.labs.has(l, r) && pos[y as usize][b as usize])
-                            .count();
-                        if forced_cnt > k as usize {
-                            ref_a = true;
-                            break;
-                        }
-                    }
-                }
-                if !ref_a {
-                    for &(s, c) in nf.all_by.get(a) {
-                        let bad_all = m.elems[x]
-                            .edges
-                            .iter()
-                            .any(|&(y, l)| en.labs.has(l, s) && neg[y as usize][c as usize]);
-                        if bad_all {
-                            ref_a = true;
-                            break;
-                        }
-                    }
-                }
-                if ref_a {
-                    neg[x][a as usize] = true;
-                    q_lit.push((x, a, false));
-                }
-            }
-            // Edge propagation from `pos[x]`
-            for &a in &modal_concepts {
-                if !pos[x][a as usize] {
-                    continue;
-                }
-                for &(s, c) in nf.all_by.get(a) {
-                    for &(y, l) in &m.elems[x].edges {
-                        if en.labs.has(l, s) && !pos[y as usize][c as usize] && !neg[y as usize][c as usize] {
-                            pos[y as usize][c as usize] = true;
-                            q_lit.push((y as usize, c, true));
-                        }
-                    }
-                }
-                for &(r, b) in nf.ex_by.get(a) {
-                    let already = m.elems[x]
-                        .edges
-                        .iter()
-                        .any(|&(y, l)| en.labs.has(l, r) && pos[y as usize][b as usize]);
-                    if !already {
-                        let mut only_y: Option<usize> = None;
-                        let mut cnt = 0usize;
-                        for &(y, l) in &m.elems[x].edges {
-                            if en.labs.has(l, r) && !neg[y as usize][b as usize] {
-                                only_y = Some(y as usize);
-                                cnt += 1;
-                                if cnt > 1 {
-                                    break;
-                                }
+                if !in_edges[x].is_empty() && !modal_parents_by_filler[a as usize].is_empty() {
+                    for &(r, parent_a) in &modal_parents_by_filler[a as usize] {
+                        for &(pred, l) in &in_edges[x] {
+                            if !active_elem[pred] || !en.labs.has(l, r) {
+                                continue;
                             }
-                        }
-                        if cnt == 1 {
-                            let y0 = only_y.unwrap();
-                            if !pos[y0][b as usize] {
-                                pos[y0][b as usize] = true;
-                                q_lit.push((y0, b, true));
+                            if is_refutable_modal[parent_a as usize]
+                                && !pos.get(pred, parent_a as usize)
+                                && !neg.get(pred, parent_a as usize)
+                                && check_one_modal_refuted(pred, parent_a, pos, neg, m, en)
+                            {
+                                neg.set(pred, parent_a as usize, true);
+                                q_lit.push((pred, parent_a, false));
+                            } else if pos.get(pred, parent_a as usize) {
+                                propagate_one_pos_modal(
+                                    pred,
+                                    parent_a,
+                                    pos,
+                                    pos_list,
+                                    neg,
+                                    &mut q_lit,
+                                    m,
+                                    en,
+                                );
                             }
                         }
                     }
                 }
-                for &(k, r, b) in nf.ge_by.get(a) {
-                    let cands: Vec<Id> = m.elems[x]
-                        .edges
-                        .iter()
-                        .filter(|&&(y, l)| en.labs.has(l, r) && !neg[y as usize][b as usize])
-                        .map(|e| e.0)
-                        .collect();
-                    if cands.len() == k as usize {
-                        for y0 in cands {
-                            if !pos[y0 as usize][b as usize] {
-                                pos[y0 as usize][b as usize] = true;
-                                q_lit.push((y0 as usize, b, true));
-                            }
-                        }
+            }
+            if !full_gci_scan {
+                break;
+            }
+            for &x in dirty_seed {
+                let pos_x = pos_list[x].clone();
+                for a in pos_x {
+                    for &gi in nf.gci_by_body.get(a) {
+                        check_gci_unit(gi, x, pos, pos_list, neg, &mut q_lit);
                     }
                 }
-                if nf.has_le[a as usize] {
-                    for &(k, r, b) in nf.le_by.get(a) {
-                        let pos_cnt = m.elems[x]
-                            .edges
-                            .iter()
-                            .filter(|&&(y, l)| en.labs.has(l, r) && pos[y as usize][b as usize])
-                            .count();
-                        if pos_cnt == k as usize {
-                            for &(y, l) in &m.elems[x].edges {
-                                if en.labs.has(l, r) && !pos[y as usize][b as usize] && !neg[y as usize][b as usize] {
-                                    neg[y as usize][b as usize] = true;
-                                    q_lit.push((y as usize, b, false));
-                                }
-                            }
-                        }
-                    }
-                }
+            }
+            if q_lit.is_empty() {
+                break;
             }
         }
     };
 
-    let all_elems: Vec<usize> = (0..k_elems).collect();
-    propagate_incremental(&all_elems, &[], true, &mut pos, &mut neg, &m, &en);
+    propagate_incremental(&active_elems, &[], true, &mut pos, &mut pos_list, &mut neg, &m, &en);
 
     // Step 3: Close any remaining open disjunctive GCIs or existentials on each element
     // avoiding `neg[x]` (and preferring 0-requirement fresh concepts such as `dall`)
     let test_candidate_on_elem = |x: usize,
                                   cand_lit: u32,
-                                  pos: &[Vec<bool>],
-                                  neg: &[Vec<bool>],
+                                  pos: &mut BitMatrix,
+                                  neg: &mut BitMatrix,
                                   en: &mut Engine|
      -> bool {
-        if neg[x][cand_lit as usize] {
+        if neg.get(x, cand_lit as usize) {
             return false;
         }
-        let mut px = pos[x].clone();
-        let mut nx = neg[x].clone();
-        px[cand_lit as usize] = true;
+        let mut undo_p: Vec<u32> = Vec::new();
+        let mut undo_n: Vec<u32> = Vec::new();
+        if !pos.get(x, cand_lit as usize) {
+            pos.set(x, cand_lit as usize, true);
+            undo_p.push(cand_lit);
+        }
         let mut q: Vec<(u32, bool)> = vec![(cand_lit, true)];
-        while let Some((a, is_p)) = q.pop() {
+        let mut ok = true;
+        'bfs: while let Some((a, is_p)) = q.pop() {
             if is_p {
                 if !data_rel_concepts.is_empty() && data_rel_concepts.binary_search(&a).is_ok() {
                     for &peer in &data_rel_concepts {
                         if peer != a && en.has_conflict_peer(a, peer) {
-                            if px[peer as usize] {
-                                return false;
+                            if pos.get(x, peer as usize) {
+                                ok = false;
+                                break 'bfs;
                             }
-                            if !nx[peer as usize] {
-                                nx[peer as usize] = true;
+                            if !neg.get(x, peer as usize) {
+                                neg.set(x, peer as usize, true);
+                                undo_n.push(peer);
                                 q.push((peer, false));
                             }
                         }
@@ -1042,14 +2016,14 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                 }
                 for &g in nf.gci_by_body.get(a) {
                     let (b_g, h_g) = &nf.gci[g as usize];
-                    if b_g.iter().all(|&b| px[b as usize]) {
-                        if h_g.iter().any(|&h| px[h as usize]) {
+                    if b_g.iter().all(|&b| pos.get(x, b as usize)) {
+                        if h_g.iter().any(|&h| pos.get(x, h as usize)) {
                             continue;
                         }
                         let mut open_h = NONE;
                         let mut cnt = 0usize;
                         for &h in h_g {
-                            if !nx[h as usize] {
+                            if !neg.get(x, h as usize) {
                                 open_h = h;
                                 cnt += 1;
                                 if cnt > 1 {
@@ -1058,10 +2032,12 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                             }
                         }
                         if cnt == 0 {
-                            return false;
+                            ok = false;
+                            break 'bfs;
                         }
-                        if cnt == 1 && !px[open_h as usize] {
-                            px[open_h as usize] = true;
+                        if cnt == 1 && !pos.get(x, open_h as usize) {
+                            pos.set(x, open_h as usize, true);
+                            undo_p.push(open_h);
                             q.push((open_h, true));
                         }
                     }
@@ -1069,14 +2045,14 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
             } else {
                 for &g in &head_by[a as usize] {
                     let (b_g, h_g) = &nf.gci[g as usize];
-                    if b_g.iter().all(|&b| px[b as usize]) {
-                        if h_g.iter().any(|&h| px[h as usize]) {
+                    if b_g.iter().all(|&b| pos.get(x, b as usize)) {
+                        if h_g.iter().any(|&h| pos.get(x, h as usize)) {
                             continue;
                         }
                         let mut open_h = NONE;
                         let mut cnt = 0usize;
                         for &h in h_g {
-                            if !nx[h as usize] {
+                            if !neg.get(x, h as usize) {
                                 open_h = h;
                                 cnt += 1;
                                 if cnt > 1 {
@@ -1085,20 +2061,22 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                             }
                         }
                         if cnt == 0 {
-                            return false;
+                            ok = false;
+                            break 'bfs;
                         }
-                        if cnt == 1 && !px[open_h as usize] {
-                            px[open_h as usize] = true;
+                        if cnt == 1 && !pos.get(x, open_h as usize) {
+                            pos.set(x, open_h as usize, true);
+                            undo_p.push(open_h);
                             q.push((open_h, true));
                         }
-                    } else if h_g.iter().all(|&h| nx[h as usize]) {
-                        if b_g.iter().any(|&b| nx[b as usize]) {
+                    } else if h_g.iter().all(|&h| neg.get(x, h as usize)) {
+                        if b_g.iter().any(|&b| neg.get(x, b as usize)) {
                             continue;
                         }
                         let mut open_b = NONE;
                         let mut cnt = 0usize;
                         for &b in b_g {
-                            if !px[b as usize] {
+                            if !pos.get(x, b as usize) {
                                 open_b = b;
                                 cnt += 1;
                                 if cnt > 1 {
@@ -1107,36 +2085,51 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                             }
                         }
                         if cnt == 0 {
-                            return false;
+                            ok = false;
+                            break 'bfs;
                         }
-                        if cnt == 1 && !nx[open_b as usize] {
-                            nx[open_b as usize] = true;
+                        if cnt == 1 && !neg.get(x, open_b as usize) {
+                            neg.set(x, open_b as usize, true);
+                            undo_n.push(open_b);
                             q.push((open_b, false));
                         }
                     }
                 }
             }
         }
-        if !data_rel_concepts.is_empty() {
+        if ok && !data_rel_concepts.is_empty() {
             let active_d: Vec<u32> = data_rel_concepts
                 .iter()
                 .copied()
-                .filter(|&a| px[a as usize])
+                .filter(|&a| pos.get(x, a as usize))
                 .collect();
-            for i in 0..active_d.len() {
+            'dchk: for i in 0..active_d.len() {
                 for j in (i + 1)..active_d.len() {
                     if en.has_conflict_peer(active_d[i], active_d[j]) {
-                        return false;
+                        ok = false;
+                        break 'dchk;
                     }
                 }
             }
-            if !active_d.is_empty() && !en.has_data_star(active_d) {
-                return false;
+            if ok {
+                let star_d: Vec<u32> = active_d
+                    .into_iter()
+                    .filter(|&a| !is_pure_oneof_dall_vec[a as usize])
+                    .collect();
+                if !star_d.is_empty() && !en.has_data_star(star_d) {
+                    ok = false;
+                }
             }
         }
-        true
+        for a in undo_p {
+            pos.set(x, a as usize, false);
+        }
+        for a in undo_n {
+            neg.set(x, a as usize, false);
+        }
+        ok
     };
-    for x in 0..k_elems {
+    for &x in &active_elems {
         if Instant::now() > deadline || en.mem_exceeded() {
             let why = if en.mem_hit { "memory cap (8 GB) exceeded" } else { "from-export time budget exceeded" };
             return format!(
@@ -1148,50 +2141,66 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
         }
         for _pass in 0..3 {
             let mut any_change = false;
-            for gi in 0..nf.gci.len() {
+            let mut cand_gis: Vec<usize> = nf.gci_empty.iter().map(|&g| g as usize).collect();
+            for &a in &pos_list[x] {
+                for &gi in nf.gci_by_body.get(a) {
+                    cand_gis.push(gi as usize);
+                }
+            }
+            cand_gis.sort_unstable();
+            cand_gis.dedup();
+            for gi in cand_gis {
                 let (body, head) = &nf.gci[gi];
-                if !body.iter().all(|&b| pos[x][b as usize]) || head.iter().any(|&h| pos[x][h as usize]) {
+                if !body.iter().all(|&b| pos.get(x, b as usize)) || head.iter().any(|&h| pos.get(x, h as usize)) {
                     continue;
                 }
+                let mut open_heads: Vec<((bool, usize, u32), u32)> = head
+                    .iter()
+                    .copied()
+                    .filter(|&h| !neg.get(x, h as usize))
+                    .map(|h| {
+                        let is_src = nf.named[h as usize] || nf.is_nom[h as usize];
+                        let reqs = nf.ex_by.get(h).len()
+                            + nf.ge_by.get(h).len()
+                            + en.dreq.get(h as usize).copied().unwrap_or(0) as usize;
+                        ((is_src, reqs, h), h)
+                    })
+                    .collect();
+                open_heads.sort_unstable_by_key(|k| k.0);
                 let mut best_h: Option<((bool, usize, u32), u32)> = None;
                 let mut newly_neg: Vec<(usize, u32, bool)> = Vec::new();
-                for &h in head {
-                    if neg[x][h as usize] {
-                        continue;
-                    }
-                    if !test_candidate_on_elem(x, h, &pos, &neg, &mut en) {
-                        neg[x][h as usize] = true;
+                for (key, h) in open_heads {
+                    if !test_candidate_on_elem(x, h, &mut pos, &mut neg, &mut en) {
+                        neg.set(x, h as usize, true);
                         newly_neg.push((x, h, false));
                         continue;
                     }
-                    let is_src = nf.named[h as usize] || nf.is_nom[h as usize];
-                    let reqs = nf.ex_by.get(h).len()
-                        + nf.ge_by.get(h).len()
-                        + en.dreq.get(h as usize).copied().unwrap_or(0) as usize;
-                    let key = (is_src, reqs, h);
-                    if best_h.map(|b| key < b.0).unwrap_or(true) {
+                    if best_h.is_none() {
                         best_h = Some((key, h));
+                        if is_giant {
+                            break;
+                        }
                     }
                 }
                 if !newly_neg.is_empty() {
-                    propagate_incremental(&[], &newly_neg, false, &mut pos, &mut neg, &m, &en);
+                    propagate_incremental(&[], &newly_neg, false, &mut pos, &mut pos_list, &mut neg, &m, &en);
                     any_change = true;
                 }
-                if head.iter().any(|&h| pos[x][h as usize]) {
+                if head.iter().any(|&h| pos.get(x, h as usize)) {
                     continue;
                 }
                 if let Some((_, h)) = best_h {
-                    if !neg[x][h as usize] {
-                        pos[x][h as usize] = true;
+                    if !neg.get(x, h as usize) {
+                        if !pos.get(x, h as usize) {
+                            pos.set(x, h as usize, true);
+                            pos_list[x].push(h);
+                        }
                         any_change = true;
                         let is_inert = nf.gci_by_body.get(h).is_empty()
-                            && nf.all_by.get(h).is_empty()
-                            && nf.ex_by.get(h).is_empty()
-                            && nf.ge_by.get(h).is_empty()
-                            && !nf.has_le[h as usize]
+                            && !is_modal_concept[h as usize]
                             && !is_modal_filler[h as usize];
                         if !is_inert {
-                            propagate_incremental(&[], &[(x, h, true)], false, &mut pos, &mut neg, &m, &en);
+                            propagate_incremental(&[], &[(x, h, true)], false, &mut pos, &mut pos_list, &mut neg, &m, &en);
                         }
                     }
                 }
@@ -1201,63 +2210,79 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
             }
         }
         // If an active existential `some a r b` on `x` is still unmet among `r`-neighbours,
-        // pick a compatible `r`-neighbour `y` with `!neg[y][b]`
-        for &a in &modal_concepts {
-            if !pos[x][a as usize] {
+        // pick a compatible `r`-neighbour `y` with `!neg.get(y, b)`
+        let pos_x = pos_list[x].clone();
+        for a in pos_x {
+            if !is_modal_concept[a as usize] {
                 continue;
             }
             for &(r, b) in nf.ex_by.get(a) {
                 let met = m.elems[x]
                     .edges
                     .iter()
-                    .any(|&(y, l)| en.labs.has(l, r) && pos[y as usize][b as usize]);
+                    .any(|&(y, l)| en.labs.has(l, r) && pos.get(y as usize, b as usize));
                 if !met {
                     let chosen_y = m.elems[x]
                         .edges
                         .iter()
                         .find(|&&(y, l)| {
                             en.labs.has(l, r)
-                                && !neg[y as usize][b as usize]
-                                && test_candidate_on_elem(y as usize, b, &pos, &neg, &mut en)
+                                && !neg.get(y as usize, b as usize)
+                                && test_candidate_on_elem(y as usize, b, &mut pos, &mut neg, &mut en)
                         })
                         .or_else(|| {
                             m.elems[x]
                                 .edges
                                 .iter()
-                                .find(|&&(y, l)| en.labs.has(l, r) && !neg[y as usize][b as usize])
+                                .find(|&&(y, l)| en.labs.has(l, r) && !neg.get(y as usize, b as usize))
                         });
                     if let Some(&(y, _)) = chosen_y {
-                        pos[y as usize][b as usize] = true;
-                        propagate_incremental(&[], &[(y as usize, b, true)], false, &mut pos, &mut neg, &m, &en);
+                        if !pos.get(y as usize, b as usize) {
+                            pos.set(y as usize, b as usize, true);
+                            pos_list[y as usize].push(b);
+                        }
+                        propagate_incremental(&[], &[(y as usize, b, true)], false, &mut pos, &mut pos_list, &mut neg, &m, &en);
                     }
                 }
             }
         }
     }
+    }
 
     // Store closed types into `m`
     for x in 0..k_elems {
-        let p_vec: Vec<u32> = (0..n as u32).filter(|&a| pos[x][a as usize]).collect();
-        let f_vec: Vec<u32> = (0..n as u32)
-            .filter(|&a| (nf.named[a as usize] || nf.is_nom[a as usize]) && !pos[x][a as usize])
-            .collect();
+        let mut p_vec = std::mem::take(&mut pos_list[x]);
+        p_vec.sort_unstable();
+        p_vec.dedup();
         let tid = en.sets.intern(p_vec);
-        let fid = en.sets.intern(f_vec);
-        let tgt_vec: Vec<u32> = (0..n as u32)
-            .filter(|&a| pos[x][a as usize] && (nf.named[a as usize] || nf.is_nom[a as usize]))
-            .collect();
-        let tgt_id = en.sets.intern(tgt_vec);
         let e = m.em(x as Id);
         e.ty = tid;
         e.forced = tid;
-        e.forbid = fid;
-        e.target = tgt_id;
+        e.forbid = 0;
+        e.target = 0;
         m.tm_push(tid, x as Id);
     }
 
     // Self-check, with optional bounded saturation repair if an exported node needed an unexpanded filler
     let mut rep = check::verify(&mut en, &m);
     if rep.violations > 0 && Instant::now() < deadline && !en.mem_exceeded() {
+        for x in 0..k_elems {
+            let f_vec: Vec<u32> = named_or_nom
+                .iter()
+                .copied()
+                .filter(|&a| !pos.get(x, a as usize))
+                .collect();
+            let tgt_vec: Vec<u32> = named_or_nom
+                .iter()
+                .copied()
+                .filter(|&a| pos.get(x, a as usize))
+                .collect();
+            let fid = en.sets.intern(f_vec);
+            let tgt_id = en.sets.intern(tgt_vec);
+            let e = m.em(x as Id);
+            e.forbid = fid;
+            e.target = tgt_id;
+        }
         let rep_deadline = deadline.min(Instant::now() + std::time::Duration::from_secs(10));
         en.opt.deadline = Some(rep_deadline);
         for &bad_x in &rep.bad {
@@ -1331,7 +2356,14 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
     // non-superclasses across its current witnesses in `wits`, check if any other
     // existing canonical element in `m` separates them.
     if let Some(km_ref) = km {
-        let canon_elems: Vec<Id> = m.canonical().collect();
+        let mut elems_by_class: Vec<Vec<Id>> = vec![Vec::new(); n];
+        for x in m.canonical() {
+            for &a in en.sets.get(m.elems[x as usize].ty).iter() {
+                if (a as usize) < n && rowclass[a as usize] {
+                    elems_by_class[a as usize].push(x);
+                }
+            }
+        }
         for &c in &classes {
             let c_iri = nf.cname_of(c);
             if km_ref.unsat.contains(c_iri) {
@@ -1341,18 +2373,21 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                 .iter()
                 .filter_map(|&(wc, w)| if wc == Some(c) { Some(m.find(w)) } else { None })
                 .collect();
-            if cur_wits.is_empty() {
+            let Some(&first_w) = cur_wits.first() else {
                 continue;
-            }
+            };
             let sup_set = km_ref.sup.get(c_iri);
-            let mut unsep: Vec<u32> = classes
+            let first_ty = en.sets.get(m.elems[first_w as usize].ty);
+            let mut unsep: Vec<u32> = first_ty
                 .iter()
                 .copied()
                 .filter(|&b| {
-                    b != c
+                    (b as usize) < n
+                        && rowclass[b as usize]
+                        && b != c
                         && !km_ref.top.contains(nf.cname_of(b))
                         && !sup_set.map(|s| s.contains(nf.cname_of(b))).unwrap_or(false)
-                        && cur_wits
+                        && cur_wits[1..]
                             .iter()
                             .all(|&w| en.sets.has(m.elems[w as usize].ty, b))
                 })
@@ -1360,11 +2395,8 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
             if unsep.is_empty() {
                 continue;
             }
-            for &x in &canon_elems {
+            for &x in &elems_by_class[c as usize] {
                 let ty = m.elems[x as usize].ty;
-                if !en.sets.has(ty, c) {
-                    continue;
-                }
                 if unsep.iter().any(|&b| !en.sets.has(ty, b)) {
                     if wit_pairs.insert((Some(c), x)) {
                         wits.push((Some(c), x));
