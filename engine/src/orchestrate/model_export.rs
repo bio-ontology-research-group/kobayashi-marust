@@ -28,6 +28,7 @@ pub(crate) enum WorkerModelPayload {
 }
 
 /// A model over internal (clause-stream) names, before the source mapping.
+#[derive(Clone, Debug)]
 pub(crate) struct RawModel {
     pub route: &'static str,
     /// Internal context or node name per element (for the `context` field).
@@ -52,8 +53,12 @@ pub(crate) struct RawModel {
     /// witnesses were constructed (`"status": "partial"`).
     pub partial_reason: Option<String>,
     /// Projected data-property assertions `(owner_iri, prop_iri, literal)` from
-    /// `data_abox_projection`.
+    /// `data_abox_projection` or `value_projection`.
     pub extra_values: Vec<(String, String, String)>,
+    /// Consistency-only labels and edges (`base_comp` on `ht-bridge`, before
+    /// adjoining per-class witness roots).
+    pub base_labels: Vec<Vec<String>>,
+    pub base_edges: Vec<(usize, String, usize)>,
 }
 
 #[derive(Default)]
@@ -72,6 +77,7 @@ struct ExportSession {
     abox_quotient_blocks: Option<Vec<(String, Vec<String>)>>,
     positive_abox_quotient_comps: Option<Vec<Vec<String>>>,
     mirror_specs: Option<Vec<(String, String, Option<String>)>>,
+    resolved_model: Option<Result<Option<(RawModel, frontend_run::Meta)>, String>>,
 }
 
 static SESSION: Mutex<ExportSession> = Mutex::new(ExportSession {
@@ -89,6 +95,7 @@ static SESSION: Mutex<ExportSession> = Mutex::new(ExportSession {
     abox_quotient_blocks: None,
     positive_abox_quotient_comps: None,
     mirror_specs: None,
+    resolved_model: None,
 });
 
 /// Arm model export before `km classify` runs so the answering route captures
@@ -189,6 +196,16 @@ pub(crate) fn record_projected_data_assertions(values: Vec<(String, String, Stri
     g.projected_data_assertions = values;
 }
 
+pub(crate) fn append_projected_data_assertions(values: &[(String, String, String)]) {
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_none() || values.is_empty() {
+        return;
+    }
+    let mut g = SESSION.lock().unwrap_or_else(|e| e.into_inner());
+    g.projected_data_assertions.extend_from_slice(values);
+    g.projected_data_assertions.sort();
+    g.projected_data_assertions.dedup();
+}
+
 pub(crate) fn record_abox_quotient_atomic(pairs: Vec<(String, String)>) {
     let mut g = SESSION.lock().unwrap_or_else(|e| e.into_inner());
     g.abox_quotient_atomic = Some(pairs);
@@ -258,6 +275,8 @@ fn build_raw_model_from_el(
         closure: "none: the edges of each role are its extension (sub-roles lifted, chains and transitivity composed)",
         partial_reason: m.partial_reason,
         extra_values: Vec::new(),
+        base_labels: Vec::new(),
+        base_edges: Vec::new(),
     }))
 }
 
@@ -285,6 +304,8 @@ fn build_raw_model_from_cb(m: crate::engine::CbExportModel) -> Option<RawModel> 
         closure: "none: the edges of each role are closed under the RBox (sub-roles, inverses, symmetry, reflexivity, transitivity, and role chains)",
         partial_reason: m.partial_reason,
         extra_values: Vec::new(),
+        base_labels: Vec::new(),
+        base_edges: Vec::new(),
     })
 }
 
@@ -297,23 +318,25 @@ fn build_raw_model_from_bridge(
         return Ok(None);
     }
     if !nominal_abox.same.is_empty() {
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for (a, b) in &nominal_abox.same {
-                let na = format!("__nom__{a}");
-                let nb = format!("__nom__{b}");
-                for lbl in &mut bm.labels {
-                    let has_a = lbl.contains(&na);
-                    let has_b = lbl.contains(&nb);
-                    if has_a && !has_b {
-                        lbl.push(nb.clone());
-                        lbl.sort();
-                        changed = true;
-                    } else if has_b && !has_a {
-                        lbl.push(na.clone());
-                        lbl.sort();
-                        changed = true;
+        for target_labels in [&mut bm.labels, &mut bm.base_labels] {
+            let mut changed = true;
+            while changed {
+                changed = false;
+                for (a, b) in &nominal_abox.same {
+                    let na = format!("__nom__{a}");
+                    let nb = format!("__nom__{b}");
+                    for lbl in target_labels.iter_mut() {
+                        let has_a = lbl.contains(&na);
+                        let has_b = lbl.contains(&nb);
+                        if has_a && !has_b {
+                            lbl.push(nb.clone());
+                            lbl.sort();
+                            changed = true;
+                        } else if has_b && !has_a {
+                            lbl.push(na.clone());
+                            lbl.sort();
+                            changed = true;
+                        }
                     }
                 }
             }
@@ -323,6 +346,17 @@ fn build_raw_model_from_bridge(
     crate::engine::close_edges_under_rbox_rows(rbox, bm.contexts.len(), &mut edge_set)?;
     let mut edges: Vec<(usize, String, usize)> = edge_set.into_iter().collect();
     edges.sort();
+
+    let base_edges = if !bm.base_labels.is_empty() {
+        let mut base_edge_set: HashSet<(usize, String, usize)> =
+            bm.base_edges.into_iter().collect();
+        crate::engine::close_edges_under_rbox_rows(rbox, bm.base_labels.len(), &mut base_edge_set)?;
+        let mut v: Vec<(usize, String, usize)> = base_edge_set.into_iter().collect();
+        v.sort();
+        v
+    } else {
+        Vec::new()
+    };
 
     let mut witnesses = BTreeMap::new();
     let mut extra_witnesses = Vec::new();
@@ -357,6 +391,8 @@ fn build_raw_model_from_bridge(
         closure,
         partial_reason: bm.partial_reason,
         extra_values: Vec::new(),
+        base_labels: bm.base_labels,
+        base_edges,
     }))
 }
 
@@ -631,6 +667,8 @@ fn build_raw_model_from_flat_nf1(
         closure: "none: the edges of each role are its extension (sub-roles lifted, chains and transitivity composed)",
         partial_reason: None,
         extra_values: Vec::new(),
+        base_labels: Vec::new(),
+        base_edges: Vec::new(),
     };
     Ok((raw, meta))
 }
@@ -710,9 +748,11 @@ fn apply_post_hooks(
     mirror_specs: Option<&[(String, String, Option<String>)]>,
 ) -> Result<(), String> {
     let unsat_set: HashSet<&str> = unsat_iris.iter().map(String::as_str).collect();
+    let mut sep_projected_data_assertions: Vec<(String, String, String)> = Vec::new();
 
     // 1. Separable ABox elided by `omit_separable_abox` in `frontend/mod.rs`
-    if let Some(sep) = meta.separable_abox_export.take() {
+    if let Some(mut sep) = meta.separable_abox_export.take() {
+        sep_projected_data_assertions = std::mem::take(&mut sep.projected_data_assertions);
         let mut need_rbox_close = false;
         if !sep.atomic_individual_classes.is_empty() {
             let mut label_first_elem: Option<HashMap<String, usize>> = None;
@@ -1151,9 +1191,90 @@ fn apply_post_hooks(
         }
     }
 
-    // 4. `data_abox_projection`: attach projected data-property assertions.
-    if !projected_data_assertions.is_empty() {
-        raw.extra_values.extend_from_slice(projected_data_assertions);
+    // 4. `data_abox_projection` / `value_projection`: attach projected data-property assertions.
+    if !projected_data_assertions.is_empty() || !sep_projected_data_assertions.is_empty() {
+        let mut all_projected: Vec<(String, String, String)> = projected_data_assertions.to_vec();
+        if !sep_projected_data_assertions.is_empty() {
+            all_projected.extend(sep_projected_data_assertions);
+            all_projected.sort();
+            all_projected.dedup();
+        }
+        let mut present_owners: HashSet<String> = HashSet::new();
+        for u in 0..raw.contexts.len() {
+            for name in raw.labels[u].iter().chain(std::iter::once(&raw.contexts[u])) {
+                if let Some(short) = name.strip_prefix(NOMINAL_PREFIX) {
+                    let full = meta
+                        .iri_map
+                        .get(short)
+                        .cloned()
+                        .unwrap_or_else(|| short.to_string());
+                    present_owners.insert(full);
+                    present_owners.insert(short.to_string());
+                }
+            }
+        }
+        let mut missing_owners: Vec<String> = Vec::new();
+        for (owner_iri, prop_iri, _) in &all_projected {
+            meta.iri_map
+                .entry(owner_iri.clone())
+                .or_insert_with(|| owner_iri.clone());
+            meta.iri_map
+                .entry(prop_iri.clone())
+                .or_insert_with(|| prop_iri.clone());
+            if !present_owners.contains(owner_iri.as_str()) {
+                present_owners.insert(owner_iri.clone());
+                missing_owners.push(owner_iri.clone());
+            }
+        }
+        if !missing_owners.is_empty() {
+            let top_elem = raw
+                .witnesses
+                .get("owl:Thing")
+                .or_else(|| raw.witnesses.get("Thing"))
+                .or_else(|| raw.witnesses.get("⊤"))
+                .copied()
+                .or_else(|| {
+                    raw.contexts
+                        .iter()
+                        .position(|c| matches!(c.as_str(), "⊤" | "owl:Thing" | "Thing"))
+                });
+            let top_labels: Vec<String> = top_elem
+                .and_then(|u| raw.labels.get(u))
+                .map(|lbl| {
+                    lbl.iter()
+                        .filter(|s| !s.starts_with(NOMINAL_PREFIX))
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mut one_refl: HashSet<(usize, String, usize)> = HashSet::default();
+            let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, 1, &mut one_refl);
+            let mut refl_roles: Vec<String> = one_refl.into_iter().map(|(_, r, _)| r).collect();
+            refl_roles.sort();
+            refl_roles.dedup();
+            let has_base = !raw.base_labels.is_empty();
+            for ind in missing_owners {
+                let nom_tok = format!("{NOMINAL_PREFIX}{ind}");
+                let mut lbl = top_labels.clone();
+                lbl.push(nom_tok.clone());
+                lbl.sort();
+                lbl.dedup();
+                let u_new = raw.contexts.len();
+                raw.contexts.push(nom_tok);
+                raw.labels.push(lbl.clone());
+                for r in &refl_roles {
+                    raw.edges.push((u_new, r.clone(), u_new));
+                }
+                if has_base {
+                    let b_new = raw.base_labels.len();
+                    raw.base_labels.push(lbl);
+                    for r in &refl_roles {
+                        raw.base_edges.push((b_new, r.clone(), b_new));
+                    }
+                }
+            }
+        }
+        raw.extra_values.extend(all_projected);
     }
 
     // 5. `mirror`: reconstruct private negative-existential definitions `N_F ≡ ¬∃R.F`.
@@ -1266,81 +1387,68 @@ fn apply_post_hooks(
     Ok(())
 }
 
-/// Finish the model export session captured during `km classify` and write it
-/// to `out`. Never re-parses or re-classifies the ontology when the answering
-/// route recorded its state.
-pub fn finish_and_write(
-    _cfg: &Config,
-    _ont: &Path,
-    out: &Path,
-) -> Result<String, OrchestrateError> {
-    std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
-    std::env::remove_var("KM_EXPORT_MODEL_BUDGET_S");
-
+pub(crate) fn resolve_session_model(
+    consume: bool,
+) -> Result<Option<(RawModel, frontend_run::Meta)>, String> {
+    if consume {
+        std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+        std::env::remove_var("KM_EXPORT_MODEL_BUDGET_S");
+        std::env::remove_var("KM_EXPORT_ABOX_ONLY");
+    }
     let mut session = {
         let mut g = SESSION.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(cached) = g.resolved_model.take() {
+            if !consume {
+                g.resolved_model = Some(cached.clone());
+            } else {
+                *g = ExportSession::default();
+            }
+            return cached;
+        }
         std::mem::take(&mut *g)
     };
 
-    let file = std::fs::File::create(out)?;
-    let mut w = std::io::BufWriter::with_capacity(1 << 20, file);
-
-    if session.inconsistent {
-        line(
-            &mut w,
-            serde_json::json!({"kind": "model", "format": "km-model-v1", "status": "inconsistent"}),
-        )?;
-        w.flush()?;
-        return Ok("model export: the ontology is inconsistent, no model".to_string());
-    }
-
-    if let Some(reason) = session.declined_reason.take() {
-        line(
-            &mut w,
-            serde_json::json!({"kind": "model", "format": "km-model-v1", "status": "declined", "reason": reason}),
-        )?;
-        w.flush()?;
-        return Ok(format!("model export declined: {reason}"));
-    }
-
-    let resolved: Result<Option<(RawModel, frontend_run::Meta)>, String> =
-        if let Some(flat_state) = session.flat_nf1_state.take() {
-            build_raw_model_from_flat_nf1(flat_state).map(Some)
-        } else if let Some(meta) = session.engine_meta.take() {
-            let dropped: u64 = meta.dropped_source_axioms.values().sum();
-            if dropped > 0 || meta.uncarried_data_assertions > 0 {
-                Err("source ontology has dropped or uncarried axioms".to_string())
-            } else if meta.abox_inconsistent {
-                Ok(None)
-            } else {
-                let payload_opt: Option<WorkerModelPayload> =
-                    if let Some(p) = session.worker_model_payload.take() {
-                        Some((*p).clone())
-                    } else if let Some(path) = session.worker_model_path.take() {
-                        std::fs::File::open(&path)
-                            .ok()
-                            .and_then(|f| serde_json::from_reader(std::io::BufReader::new(f)).ok())
-                    } else {
-                        session.inproc_payload.take()
-                    };
-                match payload_opt {
-                    Some(WorkerModelPayload::El(res)) => res.and_then(|m| {
-                        build_raw_model_from_el(m, &meta.rbox).map(|opt| opt.map(|raw| (raw, meta)))
-                    }),
-                    Some(WorkerModelPayload::Cb(res)) => {
-                        res.map(|m| build_raw_model_from_cb(m).map(|raw| (raw, meta)))
-                    }
-                    Some(WorkerModelPayload::Bridge(res)) => res.and_then(|bm| {
-                        build_raw_model_from_bridge(bm, &meta.rbox, &meta.nominal_abox)
-                            .map(|opt| opt.map(|raw| (raw, meta)))
-                    }),
-                    Some(WorkerModelPayload::Declined(reason)) => Err(reason),
-                    None => Err("answering route did not record a model payload".to_string()),
-                }
-            }
+    let resolved: Result<Option<(RawModel, frontend_run::Meta)>, String> = if session.inconsistent {
+        Ok(None)
+    } else if let Some(reason) = session.declined_reason.take() {
+        Err(reason)
+    } else if let Some(flat_state) = session.flat_nf1_state.take() {
+        build_raw_model_from_flat_nf1(flat_state).map(Some)
+    } else if let Some(meta) = session.engine_meta.take() {
+        let dropped: u64 = meta.dropped_source_axioms.values().sum();
+        if dropped > 0 || meta.uncarried_data_assertions > 0 {
+            Err("source ontology has dropped or uncarried axioms".to_string())
+        } else if meta.abox_inconsistent {
+            Ok(None)
         } else {
-            Err("answering route did not record a model payload".to_string())
-        };
+            let payload_opt: Option<WorkerModelPayload> =
+                if let Some(p) = session.worker_model_payload.take() {
+                    Some((*p).clone())
+                } else if let Some(path) = session.worker_model_path.take() {
+                    std::fs::File::open(&path)
+                        .ok()
+                        .and_then(|f| serde_json::from_reader(std::io::BufReader::new(f)).ok())
+                } else {
+                    session.inproc_payload.take()
+                };
+            match payload_opt {
+                Some(WorkerModelPayload::El(res)) => res.and_then(|m| {
+                    build_raw_model_from_el(m, &meta.rbox).map(|opt| opt.map(|raw| (raw, meta)))
+                }),
+                Some(WorkerModelPayload::Cb(res)) => {
+                    res.map(|m| build_raw_model_from_cb(m).map(|raw| (raw, meta)))
+                }
+                Some(WorkerModelPayload::Bridge(res)) => res.and_then(|bm| {
+                    build_raw_model_from_bridge(bm, &meta.rbox, &meta.nominal_abox)
+                        .map(|opt| opt.map(|raw| (raw, meta)))
+                }),
+                Some(WorkerModelPayload::Declined(reason)) => Err(reason),
+                None => Err("answering route did not record a model payload".to_string()),
+            }
+        }
+    } else {
+        Err("answering route did not record a model payload".to_string())
+    };
 
     let resolved = match resolved {
         Ok(Some((mut raw, mut meta))) => apply_post_hooks(
@@ -1356,6 +1464,25 @@ pub fn finish_and_write(
         .map(|()| Some((raw, meta))),
         other => other,
     };
+
+    if !consume {
+        let mut g = SESSION.lock().unwrap_or_else(|e| e.into_inner());
+        g.resolved_model = Some(resolved.clone());
+    }
+    resolved
+}
+
+/// Finish the model export session captured during `km classify` and write it
+/// to `out`. Never re-parses or re-classifies the ontology when the answering
+/// route recorded its state.
+pub fn finish_and_write(
+    _cfg: &Config,
+    _ont: &Path,
+    out: &Path,
+) -> Result<String, OrchestrateError> {
+    let resolved = resolve_session_model(true);
+    let file = std::fs::File::create(out)?;
+    let mut w = std::io::BufWriter::with_capacity(1 << 20, file);
 
     let status = match resolved {
         Ok(Some((raw, meta))) => {

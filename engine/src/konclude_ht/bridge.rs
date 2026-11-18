@@ -15975,15 +15975,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
                     Some(false) => {
                         if export_active {
-                            store_last_bridge_export_model(Ok(BridgeExportModel {
-                                contexts: Vec::new(),
-                                labels: Vec::new(),
-                                edges: Vec::new(),
-                                blocked: Vec::new(),
-                                class_witnesses: Vec::new(),
-                                inconsistent: true,
-                                partial_reason: None,
-                            }));
+                            store_last_bridge_export_model(Ok(BridgeExportModel::inconsistent()));
                         }
                         return Some(BridgedClassification {
                             consistent: false,
@@ -16145,15 +16137,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     match consistency {
                         Some(false) => {
                             if export_active {
-                                store_last_bridge_export_model(Ok(BridgeExportModel {
-                                    contexts: Vec::new(),
-                                    labels: Vec::new(),
-                                    edges: Vec::new(),
-                                    blocked: Vec::new(),
-                                    class_witnesses: Vec::new(),
-                                    inconsistent: true,
-                                    partial_reason: None,
-                                }));
+                                store_last_bridge_export_model(Ok(
+                                    BridgeExportModel::inconsistent(),
+                                ));
                             }
                             return Some(BridgedClassification {
                                 consistent: false,
@@ -16496,15 +16482,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
                             Some(false) => {
                                 if export_active {
-                                    store_last_bridge_export_model(Ok(BridgeExportModel {
-                                        contexts: Vec::new(),
-                                        labels: Vec::new(),
-                                        edges: Vec::new(),
-                                        blocked: Vec::new(),
-                                        class_witnesses: Vec::new(),
-                                        inconsistent: true,
-                                        partial_reason: None,
-                                    }));
+                                    store_last_bridge_export_model(Ok(
+                                        BridgeExportModel::inconsistent(),
+                                    ));
                                 }
                                 return Some(BridgedClassification {
                                     consistent: false,
@@ -18505,15 +18485,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     if progress {
                         eprintln!("BRIDGE-CLASSIFY: owl:Thing is unsatisfiable, the ontology is inconsistent");
                     }
-                    store_last_bridge_export_model(Ok(BridgeExportModel {
-                        contexts: Vec::new(),
-                        labels: Vec::new(),
-                        edges: Vec::new(),
-                        blocked: Vec::new(),
-                        class_witnesses: Vec::new(),
-                        inconsistent: true,
-                        partial_reason: None,
-                    }));
+                    store_last_bridge_export_model(Ok(BridgeExportModel::inconsistent()));
                     return Some(BridgedClassification {
                         consistent: false,
                         unsatisfiable: Vec::new(),
@@ -18616,7 +18588,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
 
 /// Exported completion model from the native bridge (`km classify --export-model`,
 /// `docs/MODEL-EXPORT.md`).
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BridgeExportModel {
     pub contexts: Vec<String>,
     pub labels: Vec<Vec<String>>,
@@ -18625,6 +18597,19 @@ pub(crate) struct BridgeExportModel {
     pub class_witnesses: Vec<(String, usize, bool)>,
     pub inconsistent: bool,
     pub partial_reason: Option<String>,
+    #[serde(default)]
+    pub base_labels: Vec<Vec<String>>,
+    #[serde(default)]
+    pub base_edges: Vec<(usize, String, usize)>,
+}
+
+impl BridgeExportModel {
+    pub(crate) fn inconsistent() -> Self {
+        Self {
+            inconsistent: true,
+            ..Self::default()
+        }
+    }
 }
 
 static LAST_BRIDGE_EXPORT_MODEL: std::sync::Mutex<Option<Result<BridgeExportModel, String>>> =
@@ -20836,15 +20821,7 @@ fn finish_bridge_export_model_from_live_state(
     ) -> Option<()>,
 ) -> Result<BridgeExportModel, String> {
     if !classified.consistent {
-        return Ok(BridgeExportModel {
-            contexts: Vec::new(),
-            labels: Vec::new(),
-            edges: Vec::new(),
-            blocked: Vec::new(),
-            class_witnesses: Vec::new(),
-            inconsistent: true,
-            partial_reason: None,
-        });
+        return Ok(BridgeExportModel::inconsistent());
     }
 
     // Clear associated-expansion cache entries on saturation nodes before any
@@ -21147,15 +21124,7 @@ fn finish_bridge_export_model_from_live_state(
         }
     }
 
-    let mut model = BridgeExportModel {
-        contexts: Vec::new(),
-        labels: Vec::new(),
-        edges: Vec::new(),
-        blocked: Vec::new(),
-        class_witnesses: Vec::new(),
-        inconsistent: false,
-        partial_reason: None,
-    };
+    let mut model = BridgeExportModel::default();
     let mut global_nominal_elem: HashMap<Cint64, usize> = HashMap::default();
     let mut global_nominal_by_name: HashMap<String, usize> = HashMap::default();
     let mut global_sat_elem: HashMap<Cint64, usize> = HashMap::default();
@@ -21389,6 +21358,183 @@ fn finish_bridge_export_model_from_live_state(
         &mut unblocked_elems_by_subject,
     );
 
+    let mut role_dom_by_name: HashMap<String, Vec<usize>> = HashMap::default();
+    let mut role_ran_by_name: HashMap<String, Vec<usize>> = HashMap::default();
+    for &(r_idx, c_idx) in &tin.role_domains {
+        if let Some(r_name) = tin.roles.get(r_idx) {
+            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
+                if let Some(base) = r_name.strip_prefix("__inv__") {
+                    role_ran_by_name.entry(base.to_string()).or_default().push(c_idx);
+                } else {
+                    role_dom_by_name.entry(r_name.clone()).or_default().push(c_idx);
+                }
+            }
+        }
+    }
+    for &(r_idx, c_idx) in &tin.role_ranges {
+        if let Some(r_name) = tin.roles.get(r_idx) {
+            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
+                if let Some(base) = r_name.strip_prefix("__inv__") {
+                    role_dom_by_name.entry(base.to_string()).or_default().push(c_idx);
+                } else {
+                    role_ran_by_name.entry(r_name.clone()).or_default().push(c_idx);
+                }
+            }
+        }
+    }
+    let propagate_dom_ran =
+        |labels: &mut [Vec<String>], edges: &HashSet<(usize, String, usize)>| -> bool {
+            if role_dom_by_name.is_empty() && role_ran_by_name.is_empty() {
+                return false;
+            }
+            let mut dom_ran_added = false;
+            for (u, r_name, v) in edges {
+                if let Some(doms) = role_dom_by_name.get(r_name.as_str()) {
+                    for &c_idx in doms {
+                        let cname = &tin.concepts[c_idx];
+                        if labels[*u].binary_search(cname).is_err() {
+                            labels[*u].push(cname.clone());
+                            labels[*u].sort();
+                            dom_ran_added = true;
+                        }
+                    }
+                }
+                if let Some(rans) = role_ran_by_name.get(r_name.as_str()) {
+                    for &c_idx in rans {
+                        let cname = &tin.concepts[c_idx];
+                        if labels[*v].binary_search(cname).is_err() {
+                            labels[*v].push(cname.clone());
+                            labels[*v].sort();
+                            dom_ran_added = true;
+                        }
+                    }
+                }
+            }
+            dom_ran_added
+        };
+    let close_labels_and_edges =
+        |labels: &mut [Vec<String>],
+         edges: &mut HashSet<(usize, String, usize)>,
+         nom_by_name: &HashMap<String, usize>|
+         -> Result<(), String> {
+            let n_elems = labels.len();
+            crate::engine::close_edges_under_rbox_rows(rbox, n_elems, edges)?;
+            close_labels(labels);
+            if propagate_dom_ran(labels, edges) {
+                close_labels(labels);
+            }
+            if !nom_by_name.is_empty() {
+                fn collect_nom_existentials<'a>(
+                    c: &'a SourceConcept,
+                    out: &mut Vec<(&'a crate::frontend::syntax::Role, &'a str)>,
+                ) {
+                    match c {
+                        SourceConcept::And(ops) => {
+                            for op in ops {
+                                collect_nom_existentials(op, out);
+                            }
+                        }
+                        SourceConcept::Exists(r, filler) => {
+                            if let SourceConcept::Nominal(nom) = filler.as_ref() {
+                                out.push((r, nom.as_str()));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let mut class_nom_edges: Vec<(usize, String, bool, usize)> = Vec::new();
+                for ax in &tin.source_axioms {
+                    let mut pairs = Vec::new();
+                    match ax.kind {
+                        crate::json_io::SourceAxiomKind::SubClass => {
+                            pairs.push((&ax.left, &ax.right))
+                        }
+                        crate::json_io::SourceAxiomKind::Equivalent => {
+                            pairs.push((&ax.left, &ax.right));
+                            pairs.push((&ax.right, &ax.left));
+                        }
+                        crate::json_io::SourceAxiomKind::Disjoint => {}
+                    }
+                    for (lhs, rhs) in pairs {
+                        let SourceConcept::Name(cname) = lhs else {
+                            continue;
+                        };
+                        let Some(&c_idx) = concept_name_to_idx.get(cname.as_str()) else {
+                            continue;
+                        };
+                        let mut exs = Vec::new();
+                        collect_nom_existentials(rhs, &mut exs);
+                        for (srole, nom_name) in exs {
+                            let nom_key = format!("__nom__{nom_name}");
+                            let Some(&nom_elem) = nom_by_name
+                                .get(&nom_key)
+                                .or_else(|| nom_by_name.get(nom_name))
+                            else {
+                                continue;
+                            };
+                            if nom_elem >= n_elems {
+                                continue;
+                            }
+                            let (r_name, inv) = match srole {
+                                crate::frontend::syntax::Role::Name(r) => {
+                                    if let Some(base) = r.strip_prefix("__inv__") {
+                                        (base.to_string(), true)
+                                    } else {
+                                        (r.clone(), false)
+                                    }
+                                }
+                                crate::frontend::syntax::Role::Inverse(r) => {
+                                    if let Some(base) = r.strip_prefix("__inv__") {
+                                        (base.to_string(), false)
+                                    } else {
+                                        (r.clone(), true)
+                                    }
+                                }
+                                crate::frontend::syntax::Role::Universal => continue,
+                            };
+                            class_nom_edges.push((c_idx, r_name, inv, nom_elem));
+                        }
+                    }
+                }
+                if !class_nom_edges.is_empty() {
+                    let mut added_edge = false;
+                    for u in 0..n_elems {
+                        for &(c_idx, ref r_name, inv, nom_elem) in &class_nom_edges {
+                            if labels[u].binary_search(&tin.concepts[c_idx]).is_ok() {
+                                let edge = if inv {
+                                    (nom_elem, r_name.clone(), u)
+                                } else {
+                                    (u, r_name.clone(), nom_elem)
+                                };
+                                if edges.insert(edge) {
+                                    added_edge = true;
+                                }
+                            }
+                        }
+                    }
+                    if added_edge {
+                        crate::engine::close_edges_under_rbox_rows(rbox, n_elems, edges)?;
+                        if propagate_dom_ran(labels, edges) {
+                            close_labels(labels);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        };
+
+    {
+        let mut base_labels = model.labels.clone();
+        let mut base_edge_set = global_edges.clone();
+        if !base_labels.is_empty() {
+            close_labels_and_edges(&mut base_labels, &mut base_edge_set, &global_nominal_by_name)?;
+        }
+        let mut base_edges: Vec<(usize, String, usize)> = base_edge_set.into_iter().collect();
+        base_edges.sort();
+        model.base_labels = base_labels;
+        model.base_edges = base_edges;
+    }
+
     let elem_active_classes = |labels: &[String]| -> HashSet<usize> {
         labels
             .iter()
@@ -21418,8 +21564,15 @@ fn finish_bridge_export_model_from_live_state(
             })
     };
 
+    let abox_only = std::env::var_os("KM_EXPORT_ABOX_ONLY").is_some();
     let mut witnessed: HashSet<usize> = HashSet::default();
+    if abox_only {
+        witnessed.extend(satisfiable_subjects.iter().copied());
+    }
     for &s in &satisfiable_subjects {
+        if witnessed.contains(&s) {
+            continue;
+        }
         let want = &entailed_supers[&s];
         if let Some(elem_idx) =
             find_exact_elem(s, want, &model.labels, &unblocked_elems_by_subject)
@@ -21882,172 +22035,7 @@ fn finish_bridge_export_model_from_live_state(
     }
     model.blocked.sort_unstable();
     model.blocked.dedup();
-    crate::engine::close_edges_under_rbox_rows(rbox, model.contexts.len(), &mut global_edges)?;
-
-    // Close every element's positive named labels under all entailed named
-    // subsumptions (including intermediate substitute nodes skipped by
-    // saturation-data root/successor initialization and told/definition closure),
-    // propagate named role domains and ranges across `global_edges`, and
-    // materialize singleton-nominal existential edges `A ⊑ ∃R.{a}`.
-    close_labels(&mut model.labels);
-
-    let mut role_dom_by_name: HashMap<String, Vec<usize>> = HashMap::default();
-    let mut role_ran_by_name: HashMap<String, Vec<usize>> = HashMap::default();
-    for &(r_idx, c_idx) in &tin.role_domains {
-        if let Some(r_name) = tin.roles.get(r_idx) {
-            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
-                if let Some(base) = r_name.strip_prefix("__inv__") {
-                    role_ran_by_name.entry(base.to_string()).or_default().push(c_idx);
-                } else {
-                    role_dom_by_name.entry(r_name.clone()).or_default().push(c_idx);
-                }
-            }
-        }
-    }
-    for &(r_idx, c_idx) in &tin.role_ranges {
-        if let Some(r_name) = tin.roles.get(r_idx) {
-            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
-                if let Some(base) = r_name.strip_prefix("__inv__") {
-                    role_dom_by_name.entry(base.to_string()).or_default().push(c_idx);
-                } else {
-                    role_ran_by_name.entry(r_name.clone()).or_default().push(c_idx);
-                }
-            }
-        }
-    }
-    let propagate_dom_ran =
-        |labels: &mut [Vec<String>], edges: &HashSet<(usize, String, usize)>| -> bool {
-            if role_dom_by_name.is_empty() && role_ran_by_name.is_empty() {
-                return false;
-            }
-            let mut dom_ran_added = false;
-            for (u, r_name, v) in edges {
-                if let Some(doms) = role_dom_by_name.get(r_name.as_str()) {
-                    for &c_idx in doms {
-                        let cname = &tin.concepts[c_idx];
-                        if labels[*u].binary_search(cname).is_err() {
-                            labels[*u].push(cname.clone());
-                            labels[*u].sort();
-                            dom_ran_added = true;
-                        }
-                    }
-                }
-                if let Some(rans) = role_ran_by_name.get(r_name.as_str()) {
-                    for &c_idx in rans {
-                        let cname = &tin.concepts[c_idx];
-                        if labels[*v].binary_search(cname).is_err() {
-                            labels[*v].push(cname.clone());
-                            labels[*v].sort();
-                            dom_ran_added = true;
-                        }
-                    }
-                }
-            }
-            dom_ran_added
-        };
-    if propagate_dom_ran(&mut model.labels, &global_edges) {
-        close_labels(&mut model.labels);
-    }
-
-    if !global_nominal_by_name.is_empty() {
-        fn collect_nom_existentials<'a>(
-            c: &'a SourceConcept,
-            out: &mut Vec<(&'a crate::frontend::syntax::Role, &'a str)>,
-        ) {
-            match c {
-                SourceConcept::And(ops) => {
-                    for op in ops {
-                        collect_nom_existentials(op, out);
-                    }
-                }
-                SourceConcept::Exists(r, filler) => {
-                    if let SourceConcept::Nominal(nom) = filler.as_ref() {
-                        out.push((r, nom.as_str()));
-                    }
-                }
-                _ => {}
-            }
-        }
-        let mut class_nom_edges: Vec<(usize, String, bool, usize)> = Vec::new();
-        for ax in &tin.source_axioms {
-            let mut pairs = Vec::new();
-            match ax.kind {
-                crate::json_io::SourceAxiomKind::SubClass => pairs.push((&ax.left, &ax.right)),
-                crate::json_io::SourceAxiomKind::Equivalent => {
-                    pairs.push((&ax.left, &ax.right));
-                    pairs.push((&ax.right, &ax.left));
-                }
-                crate::json_io::SourceAxiomKind::Disjoint => {}
-            }
-            for (lhs, rhs) in pairs {
-                let SourceConcept::Name(cname) = lhs else {
-                    continue;
-                };
-                let Some(&c_idx) = concept_name_to_idx.get(cname.as_str()) else {
-                    continue;
-                };
-                let mut exs = Vec::new();
-                collect_nom_existentials(rhs, &mut exs);
-                for (srole, nom_name) in exs {
-                    let nom_key = format!("__nom__{nom_name}");
-                    let Some(&nom_elem) = global_nominal_by_name
-                        .get(&nom_key)
-                        .or_else(|| global_nominal_by_name.get(nom_name))
-                    else {
-                        continue;
-                    };
-                    let (r_name, inv) = match srole {
-                        crate::frontend::syntax::Role::Name(r) => {
-                            if let Some(base) = r.strip_prefix("__inv__") {
-                                (base.to_string(), true)
-                            } else {
-                                (r.clone(), false)
-                            }
-                        }
-                        crate::frontend::syntax::Role::Inverse(r) => {
-                            if let Some(base) = r.strip_prefix("__inv__") {
-                                (base.to_string(), false)
-                            } else {
-                                (r.clone(), true)
-                            }
-                        }
-                        crate::frontend::syntax::Role::Universal => continue,
-                    };
-                    class_nom_edges.push((c_idx, r_name, inv, nom_elem));
-                }
-            }
-        }
-        if !class_nom_edges.is_empty() {
-            let mut added_edge = false;
-            for u in 0..model.labels.len() {
-                for &(c_idx, ref r_name, inv, nom_elem) in &class_nom_edges {
-                    if model.labels[u]
-                        .binary_search(&tin.concepts[c_idx])
-                        .is_ok()
-                    {
-                        let edge = if inv {
-                            (nom_elem, r_name.clone(), u)
-                        } else {
-                            (u, r_name.clone(), nom_elem)
-                        };
-                        if global_edges.insert(edge) {
-                            added_edge = true;
-                        }
-                    }
-                }
-            }
-            if added_edge {
-                crate::engine::close_edges_under_rbox_rows(
-                    rbox,
-                    model.contexts.len(),
-                    &mut global_edges,
-                )?;
-                if propagate_dom_ran(&mut model.labels, &global_edges) {
-                    close_labels(&mut model.labels);
-                }
-            }
-        }
-    }
+    close_labels_and_edges(&mut model.labels, &mut global_edges, &global_nominal_by_name)?;
 
     let data_role_set: HashSet<&str> = tin
         .data_roles
@@ -22681,15 +22669,7 @@ pub(crate) fn bridge_model(
     let classified = classified.ok_or_else(|| "bridge deferred classification".to_string())?;
     if !classified.consistent {
         let _ = take_last_bridge_export_model();
-        return Ok(BridgeExportModel {
-            contexts: Vec::new(),
-            labels: Vec::new(),
-            edges: Vec::new(),
-            blocked: Vec::new(),
-            class_witnesses: Vec::new(),
-            inconsistent: true,
-            partial_reason: None,
-        });
+        return Ok(BridgeExportModel::inconsistent());
     }
     take_last_bridge_export_model()
         .unwrap_or_else(|| Err("bridge did not produce an export model".to_string()))

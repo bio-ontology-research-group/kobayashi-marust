@@ -8483,15 +8483,7 @@ fn run_tinput_inner(
             if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
                 let payload = if !consistent {
                     crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
-                        crate::konclude_ht::bridge::BridgeExportModel {
-                            contexts: Vec::new(),
-                            labels: Vec::new(),
-                            edges: Vec::new(),
-                            blocked: Vec::new(),
-                            class_witnesses: Vec::new(),
-                            inconsistent: true,
-                            partial_reason: None,
-                        },
+                        crate::konclude_ht::bridge::BridgeExportModel::inconsistent(),
                     ))
                 } else {
                     crate::orchestrate::model_export::WorkerModelPayload::Declined(
@@ -9395,15 +9387,7 @@ fn run_tinput_inner(
                 if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
                     let payload = if !consistent {
                         crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
-                            crate::konclude_ht::bridge::BridgeExportModel {
-                                contexts: Vec::new(),
-                                labels: Vec::new(),
-                                edges: Vec::new(),
-                                blocked: Vec::new(),
-                                class_witnesses: Vec::new(),
-                                inconsistent: true,
-                                partial_reason: None,
-                            },
+                            crate::konclude_ht::bridge::BridgeExportModel::inconsistent(),
                         ))
                     } else {
                         crate::orchestrate::model_export::WorkerModelPayload::Declined(
@@ -9437,15 +9421,7 @@ fn run_tinput_inner(
             if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
                 let payload = if !consistent {
                     crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
-                        crate::konclude_ht::bridge::BridgeExportModel {
-                            contexts: Vec::new(),
-                            labels: Vec::new(),
-                            edges: Vec::new(),
-                            blocked: Vec::new(),
-                            class_witnesses: Vec::new(),
-                            inconsistent: true,
-                            partial_reason: None,
-                        },
+                        crate::konclude_ht::bridge::BridgeExportModel::inconsistent(),
                     ))
                 } else {
                     crate::orchestrate::model_export::WorkerModelPayload::Declined(
@@ -9503,15 +9479,7 @@ fn run_tinput_inner(
     if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
         let payload = if !consistent {
             crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
-                crate::konclude_ht::bridge::BridgeExportModel {
-                    contexts: Vec::new(),
-                    labels: Vec::new(),
-                    edges: Vec::new(),
-                    blocked: Vec::new(),
-                    class_witnesses: Vec::new(),
-                    inconsistent: true,
-                    partial_reason: None,
-                },
+                crate::konclude_ht::bridge::BridgeExportModel::inconsistent(),
             ))
         } else {
             crate::orchestrate::model_export::WorkerModelPayload::Declined(
