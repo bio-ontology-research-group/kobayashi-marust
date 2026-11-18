@@ -634,7 +634,8 @@ pub fn race_adaptive_vs_elc(
     if std::env::var_os("KM_ELC_SEQUENTIAL").is_some() {
         return sequential_elc_then_residue(cfg, ont, clauses_path, &engine_threads);
     }
-    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path, true) {
+    let nice_elc = std::fs::metadata(ont).is_ok_and(|m| m.len() < 1_000_000);
+    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path, nice_elc) {
         Some(x) => x,
         // elc could not start: the engine answers alone.
         None => return run_elc_portfolio_cb(cfg, ont, clauses_path, &engine_threads),

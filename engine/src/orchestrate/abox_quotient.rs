@@ -1760,7 +1760,7 @@ fn build_from_text(
         );
     }
     let blocks = representative.len();
-    if sandwich && blocks > 64 {
+    if sandwich && blocks > 64 && lines.len().saturating_mul(64) > assertions {
         return { decline_trace(7); Ok(None) };
     }
     if lines.len().saturating_mul(min_reduction) > assertions {

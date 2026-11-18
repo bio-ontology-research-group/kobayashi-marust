@@ -1212,6 +1212,7 @@ fn try_inproc_engine(
     clauses_path: &Path,
     budget: std::time::Duration,
     ht_first_probe: Option<&dyn Fn() -> Option<race::HtFirstProbe>>,
+    cb_only_ok: bool,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
     use crate::json_io::JInput;
     let buf = std::fs::read(clauses_path)?;
@@ -1330,6 +1331,9 @@ fn try_inproc_engine(
                 started.elapsed().as_secs_f64()
             );
         }
+    } else if !cb_only_ok {
+        stop_inproc("no HT-first probe on large/nominal route");
+        return Ok(None);
     }
     let export_ext_deadline = deadline + budget + std::time::Duration::from_secs(3);
     loop {
@@ -3896,11 +3900,6 @@ fn classify_with_evidence_inner(
             if out.is_none()
                 && small
                 && !meta.el_rbox_safe
-                && meta.profile.source.logical_axioms <= 1_500
-                && !matches!(
-                    selected_route,
-                    crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
-                )
                 && std::env::var_os("KM_NO_INPROC_ENGINE").is_none()
             {
                 // Directly retaining frontend-built vectors wins both time and
@@ -3912,6 +3911,11 @@ fn classify_with_evidence_inner(
                     .ok()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(4.0);
+                let cb_only_ok = meta.profile.source.logical_axioms <= 1_500
+                    && !matches!(
+                        selected_route,
+                        crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
+                    );
                 // The race below runs an HT-first phase only with cfg.ht_race.
                 let spawn_probe = || {
                     race::HtFirstProbe::spawn(cfg, clauses_path.path(), &named_set, ht_mode)
@@ -3922,6 +3926,7 @@ fn classify_with_evidence_inner(
                     std::time::Duration::from_secs_f64(budget_s),
                     cfg.ht_race
                         .then_some(&spawn_probe as &dyn Fn() -> Option<race::HtFirstProbe>),
+                    cb_only_ok,
                 )?;
                 drop(released);
                 if timing && out.is_some() {
