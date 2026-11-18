@@ -289,6 +289,41 @@ impl<T> Arena<T> {
     pub fn epoch_open(&self) -> bool {
         self.open_depth > 0 || !self.wm_stack.is_empty()
     }
+    /// Number of open journaled epochs.
+    #[inline]
+    pub fn open_depth(&self) -> usize {
+        self.open_depth
+    }
+    /// True if any item below `watermark` has been saved (mutated in place)
+    /// in any journal frame opened after `base_open_depth`.
+    #[inline]
+    pub fn has_saves_below_since_depth(&self, watermark: usize, base_open_depth: usize) -> bool {
+        self.journal_stack
+            .iter()
+            .rev()
+            .take_while(|frame| frame.hi > base_open_depth)
+            .any(|frame| frame.saves.iter().any(|&(ix, _)| ix < watermark))
+    }
+    /// True if any item below `watermark` saved in a journal frame opened
+    /// after `base_open_depth` satisfies `predicate(index, saved_original, current)`.
+    #[inline]
+    pub fn has_matching_save_below_since_depth(
+        &self,
+        watermark: usize,
+        base_open_depth: usize,
+        mut predicate: impl FnMut(usize, &T, &T) -> bool,
+    ) -> bool {
+        self.journal_stack
+            .iter()
+            .rev()
+            .take_while(|frame| frame.hi > base_open_depth)
+            .any(|frame| {
+                frame
+                    .saves
+                    .iter()
+                    .any(|(ix, orig)| *ix < watermark && predicate(*ix, orig, &self.items[*ix]))
+            })
+    }
     /// Materialize the frame of the innermost open journaled epoch before the
     /// first change of this arena inside it. Every open depth above the last
     /// materialized frame was opened while the arena was untouched, so the
@@ -350,6 +385,42 @@ impl<T: Clone> Arena<T> {
                 self.items[ix] = v;
             }
         }
+    }
+    /// Merge all open journaled epochs above `target_depth` into `target_depth`
+    /// without rolling back their mutations. When `target_depth == 0`, all open
+    /// journaled epochs are committed permanently into depth 0 and their saved
+    /// rollback clones are released. When `target_depth > 0`, epochs
+    /// `target_depth..=open_depth` collapse into a single epoch at
+    /// `target_depth` that retains only the earliest pre-`target_depth` clone
+    /// per slot below `target_depth`'s watermark.
+    pub fn coalesce_epochs_to(&mut self, target_depth: usize) {
+        if self.open_depth <= target_depth {
+            return;
+        }
+        self.open_depth = target_depth;
+        if target_depth == 0 {
+            self.journal_stack.clear();
+            self.journal_stack.shrink_to_fit();
+            return;
+        }
+        let first_idx = self
+            .journal_stack
+            .partition_point(|frame| frame.hi < target_depth);
+        if first_idx >= self.journal_stack.len() {
+            return;
+        }
+        let watermark = self.journal_stack[first_idx].watermark;
+        let tail: Vec<EpochJournalFrame<T>> = self.journal_stack.drain((first_idx + 1)..).collect();
+        let target_frame = &mut self.journal_stack[first_idx];
+        target_frame.hi = target_depth;
+        for frame in tail {
+            for (ix, val) in frame.saves {
+                if ix < watermark && target_frame.saved_keys.insert(ix) {
+                    target_frame.saves.push((ix, val));
+                }
+            }
+        }
+        target_frame.saves.shrink_to_fit();
     }
     /// The mutate path under branch epochs: the first mutation of a
     /// pre-epoch slot in the CURRENT epoch saves a rollback clone (zero-cost
@@ -549,5 +620,49 @@ mod tests {
                 assert!(arena.iter().copied().eq(snapshot.iter().copied()));
             }
         }
+    }
+
+    #[test]
+    fn coalesce_epochs_to_preserves_earliest_pre_target_saves_and_watermark() {
+        let _test_env = crate::test_env::read();
+        let mut arena: Arena<String> = Arena::new();
+        let id0 = arena.push("a0".to_string());
+        let id1 = arena.push("b0".to_string());
+
+        // Epoch 1: mutate slot 0 ("a0" -> "a1") and allocate slot 2 ("c1").
+        arena.push_epoch();
+        *arena.get_mut_journaled(id0) = "a1".to_string();
+        let id2 = arena.push("c1".to_string());
+
+        // Epoch 2: mutate slot 0 again ("a1" -> "a2"), mutate slot 1 for the
+        // first time ("b0" -> "b2"), and allocate slot 3 ("d2").
+        arena.push_epoch();
+        *arena.get_mut_journaled(id0) = "a2".to_string();
+        *arena.get_mut_journaled(id1) = "b2".to_string();
+        let id3 = arena.push("d2".to_string());
+
+        // Epoch 3: mutate slot 1 again ("b2" -> "b3") and mutate slot 2 ("c1" -> "c3").
+        arena.push_epoch();
+        *arena.get_mut_journaled(id1) = "b3".to_string();
+        *arena.get_mut_journaled(id2) = "c3".to_string();
+        assert_eq!(arena.open_depth(), 3);
+
+        // Coalesce epochs 1..=3 into target_depth = 1. Current live values must
+        // remain unchanged while the open depth collapses to 1.
+        arena.coalesce_epochs_to(1);
+        assert_eq!(arena.open_depth(), 1);
+        assert_eq!(arena.len(), 4);
+        assert_eq!(arena.get(id0), "a2");
+        assert_eq!(arena.get(id1), "b3");
+        assert_eq!(arena.get(id2), "c3");
+        assert_eq!(arena.get(id3), "d2");
+
+        // Popping the single coalesced epoch 1 must restore the exact pre-epoch-1
+        // state: length 2 with ["a0", "b0"] (not the intermediate "a1" or "b2").
+        arena.pop_epoch();
+        assert_eq!(arena.open_depth(), 0);
+        assert_eq!(arena.len(), 2);
+        assert_eq!(arena.get(id0), "a0");
+        assert_eq!(arena.get(id1), "b0");
     }
 }

@@ -2035,8 +2035,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // processingDataBox->addRemainingConceptDescriptor(conDes);
         calc_alg_context
             .process_context_mut()
-            .con_desc_mut(con_des)
-            .set_next(ConDescId::NONE); // clearNext()
+            .release_con_desc_to_pool(con_des);
         calc_alg_context
             .processing_data_box_mut()
             .add_remaining_concept_descriptor(con_des);

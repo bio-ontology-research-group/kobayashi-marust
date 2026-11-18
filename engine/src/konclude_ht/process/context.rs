@@ -351,6 +351,7 @@ struct EpochReleaseFrame {
 pub struct ProcessContext {
     singleton_descriptor_limit: Option<usize>,
     singleton_descriptor_epoch: u64,
+    next_label_singleton_stamp: u64,
     singleton_changed_descriptors: Vec<usize>,
     singleton_descriptor_changes: HashMap<usize, (ConceptId, bool, TrackPointId)>,
     /// Open branch-epoch count (in-process COW; see `push_branch_epoch`).
@@ -669,6 +670,13 @@ pub struct ProcessContext {
     /// snapshot so later equal maps share all buckets and entries.
     sat_successor_concept_map_interner:
         HashMap<(usize, u64, u64), Vec<std::sync::Arc<SaturationSuccessorConceptMap>>>,
+    /// Hash-cons interner for immutable `copying_initializing_role_process_linker`
+    /// and `functional_succ_queuing_role_process_linker` chains.
+    sat_copy_init_role_linker_interner:
+        HashMap<(RoleId, RoleSaturationProcessLinkerId), RoleSaturationProcessLinkerId>,
+    /// Lazily materialized role membership sets keyed by interned role-linker head.
+    sat_copy_init_role_linker_sets:
+        HashMap<RoleSaturationProcessLinkerId, HashSet<RoleId>>,
     /// `CSaturationIndividualNodeFUNCTIONALConceptsExtensionData` pool.
     sat_indi_node_functional_concept_ext_datas:
         Arena<SaturationIndividualNodeFunctionalConceptsExtensionData>,
@@ -756,26 +764,27 @@ impl ProcessContext {
         ProcessContext {
             singleton_descriptor_limit: None,
             singleton_descriptor_epoch: 0,
+            next_label_singleton_stamp: 1,
             singleton_changed_descriptors: Vec::new(),
             singleton_descriptor_changes: HashMap::default(),            branch_epoch_depth: 0,
             branch_epoch_release_frames: Vec::new(),
             released_dependency_individuals: Default::default(),
-            nodes: Arena::new(),
+            nodes: Arena::new_tight(),
             sat_nodes: Arena::new_tight(),
-            edges: Arena::new(),
-            distinct_edges: Arena::new(),
-            disjoint_edges: Arena::new(),
-            con_descs: Arena::new(),
-            con_proc_descs: Arena::new(),
-            clash_descs: Arena::new(),
-            dep_nodes: Arena::new(),
-            track_points: Arena::new(),
-            dep_links: Arena::new(),
-            branch_nodes: Arena::new(),
-            branch_instrs: Arena::new(),
-            label_sets: Arena::new(),
-            core_con_descs: Arena::new(),
-            role_succ_hashes: Arena::new(),
+            edges: Arena::new_tight(),
+            distinct_edges: Arena::new_tight(),
+            disjoint_edges: Arena::new_tight(),
+            con_descs: Arena::new_tight(),
+            con_proc_descs: Arena::new_tight(),
+            clash_descs: Arena::new_tight(),
+            dep_nodes: Arena::new_tight(),
+            track_points: Arena::new_tight(),
+            dep_links: Arena::new_tight(),
+            branch_nodes: Arena::new_tight(),
+            branch_instrs: Arena::new_tight(),
+            label_sets: Arena::new_tight(),
+            core_con_descs: Arena::new_tight(),
+            role_succ_hashes: Arena::new_tight(),
             restriction_specs: Arena::new(),
             branching_merging_candidate_linkers: Arena::new(),
             indi_sat_block_datas: Arena::new(),
@@ -862,59 +871,61 @@ impl ProcessContext {
             marker_indi_node_datas: Arena::new(),
             unsat_cache_ret_datas: Arena::new(),
             referred_individual_tracking_vectors: Arena::new(),
-            concept_process_linkers: Arena::new(),
-            individual_process_node_linkers: Arena::new(),
-            backward_prop_links: Arena::new(),
-            backward_prop_reapply_descs: Arena::new(),
-            role_backward_prop_hashes: Arena::new(),
+            concept_process_linkers: Arena::new_tight(),
+            individual_process_node_linkers: Arena::new_tight(),
+            backward_prop_links: Arena::new_tight(),
+            backward_prop_reapply_descs: Arena::new_tight(),
+            role_backward_prop_hashes: Arena::new_tight(),
             con_sat_descs: Arena::new_tight(),
-            con_sat_proc_linkers: Arena::new(),
-            role_sat_proc_linkers: Arena::new(),
+            con_sat_proc_linkers: Arena::new_tight(),
+            role_sat_proc_linkers: Arena::new_tight(),
             backward_sat_prop_links: Arena::new_tight(),
             backward_sat_prop_reapply_descs: Arena::new_tight(),
-            role_backward_sat_prop_hashes: Arena::new(),
+            role_backward_sat_prop_hashes: Arena::new_tight(),
             sat_succ_datas: Arena::new_tight(),
-            sat_succ_ext_datas: Arena::new(),
-            indi_sat_succ_link_data_linkers: Arena::new(),
-            linked_role_sat_succ_datas: Arena::new(),
-            linked_role_sat_succ_hashes: Arena::new(),
-            indi_sat_node_ext_datas: Arena::new(),
-            sat_indi_node_succ_ext_datas: Arena::new(),
-            sat_indi_node_all_concept_ext_datas: Arena::new(),
+            sat_succ_ext_datas: Arena::new_tight(),
+            indi_sat_succ_link_data_linkers: Arena::new_tight(),
+            linked_role_sat_succ_datas: Arena::new_tight(),
+            linked_role_sat_succ_hashes: Arena::new_tight(),
+            indi_sat_node_ext_datas: Arena::new_tight(),
+            sat_indi_node_succ_ext_datas: Arena::new_tight(),
+            sat_indi_node_all_concept_ext_datas: Arena::new_tight(),
             sat_linked_succ_indi_all_concept_ext_datas: Arena::new_tight(),
             sat_successor_all_concept_ext_datas: Arena::new_tight(),
-            sat_indi_node_ext_resolve_datas: Arena::new(),
+            sat_indi_node_ext_resolve_datas: Arena::new_tight(),
             sat_indi_node_ext_resolve_hashes: Arena::new_tight(),
-            sat_concept_extension_maps: Arena::new(),
+            sat_concept_extension_maps: Arena::new_tight(),
             sat_successor_concept_extension_maps: Arena::new_tight(),
             sat_successor_concept_map_interner: HashMap::default(),
-            sat_indi_node_functional_concept_ext_datas: Arena::new(),
-            sat_successor_functional_concept_ext_datas: Arena::new(),
-            sat_disjunct_common_concept_extraction_datas: Arena::new(),
-            sat_disjunct_extraction_linkers: Arena::new(),
-            sat_atmost_successor_merging_datas: Arena::new(),
-            sat_atmost_successor_merging_hashes: Arena::new(),
-            linked_data_value_assertion_datas: Arena::new(),
-            data_value_role_assertion_linkers: Arena::new(),
-            sat_indi_node_datatype_datas: Arena::new(),
-            sat_succ_role_assertion_linkers: Arena::new(),
-            critical_pred_role_card_datas: Arena::new(),
-            critical_pred_role_card_hashes: Arena::new(),
-            reapply_con_sat_label_sets: Arena::new(),
+            sat_copy_init_role_linker_interner: HashMap::default(),
+            sat_copy_init_role_linker_sets: HashMap::default(),
+            sat_indi_node_functional_concept_ext_datas: Arena::new_tight(),
+            sat_successor_functional_concept_ext_datas: Arena::new_tight(),
+            sat_disjunct_common_concept_extraction_datas: Arena::new_tight(),
+            sat_disjunct_extraction_linkers: Arena::new_tight(),
+            sat_atmost_successor_merging_datas: Arena::new_tight(),
+            sat_atmost_successor_merging_hashes: Arena::new_tight(),
+            linked_data_value_assertion_datas: Arena::new_tight(),
+            data_value_role_assertion_linkers: Arena::new_tight(),
+            sat_indi_node_datatype_datas: Arena::new_tight(),
+            sat_succ_role_assertion_linkers: Arena::new_tight(),
+            critical_pred_role_card_datas: Arena::new_tight(),
+            critical_pred_role_card_hashes: Arena::new_tight(),
+            reapply_con_sat_label_sets: Arena::new_tight(),
             imp_reapply_con_sat_descs: Arena::new_tight(),
-            sat_modified_process_update_linkers: Arena::new(),
-            indi_sat_process_node_linkers: Arena::new(),
+            sat_modified_process_update_linkers: Arena::new_tight(),
+            indi_sat_process_node_linkers: Arena::new_tight(),
             individual_merging_hashes: Arena::new(),
-            succ_role_hashes: Arena::new(),
+            succ_role_hashes: Arena::new_tight(),
             indi_unsorted_proc_queues: Arena::new(),
             indi_rotation_proc_queues: Arena::new(),
             indi_depth_proc_queues: Arena::new(),
-            indi_proc_node_descs: Arena::new(),
+            indi_proc_node_descs: Arena::new_tight(),
             indi_proc_queues: Arena::new(),
             indi_custom_priority_proc_queues: Arena::new(),
             indi_concept_batch_proc_queues: Arena::new(),
             indi_reactivation_proc_queues: Arena::new(),
-            concept_proc_queues: Arena::new(),
+            concept_proc_queues: Arena::new_tight(),
             used_mem_man: INVALID,
             used_process_tagger: ProcessTagger::new(),
             used_process_stat_gath: INVALID,
@@ -988,7 +999,10 @@ impl ProcessContext {
         self.sat_concept_extension_maps.clear_releasing_capacity();
         self.linked_role_sat_succ_datas.clear_releasing_capacity();
         self.linked_role_sat_succ_hashes.clear_releasing_capacity();
+        self.role_sat_proc_linkers.clear_releasing_capacity();
         self.sat_successor_concept_map_interner = HashMap::default();
+        self.sat_copy_init_role_linker_interner = HashMap::default();
+        self.sat_copy_init_role_linker_sets = HashMap::default();
     }
 
     /// Invalidate and release an interrupted saturation task after its labels
@@ -1217,6 +1231,8 @@ impl ProcessContext {
         // them here after a non-preserving reset would retain every interned
         // map even though no arena record can reference it any longer.
         self.sat_successor_concept_map_interner.clear();
+        self.sat_copy_init_role_linker_interner.clear();
+        self.sat_copy_init_role_linker_sets.clear();
         self.sat_successor_functional_concept_ext_datas
             .clear_preserving_capacity();
         self.sat_succ_ext_datas.clear_preserving_capacity();
@@ -1893,6 +1909,63 @@ impl ProcessContext {
         self.branch_nodes.pop_epoch();
     }
 
+    #[inline]
+    pub fn spine_epoch_depth(&self) -> usize {
+        self.con_descs.open_depth()
+    }
+
+    #[inline]
+    pub fn retained_singleton_base_unmodified(
+        &self,
+        node_count: usize,
+        label_set_count: usize,
+        con_desc_count: usize,
+        base_epoch_depth: usize,
+        base_spine_depth: usize,
+    ) -> bool {
+        self.nodes.len() >= node_count
+            && self.label_sets.len() >= label_set_count
+            && self.con_descs.len() >= con_desc_count
+            && self.branch_epoch_depth >= base_epoch_depth
+            && self.con_descs.open_depth() >= base_spine_depth
+            && !self.nodes.has_matching_save_below_since_depth(
+                node_count,
+                base_epoch_depth,
+                |_, orig, cur| {
+                    cur.reapply_con_label_set != orig.reapply_con_label_set
+                        || cur.has_merged_into_individual_node_id()
+                            != orig.has_merged_into_individual_node_id()
+                        || cur.has_purged_blocked_processing_restriction_flags()
+                            != orig.has_purged_blocked_processing_restriction_flags()
+                },
+            )
+            && !self.label_sets.has_saves_below_since_depth(label_set_count, base_epoch_depth)
+            && !self.con_descs.has_saves_below_since_depth(con_desc_count, base_spine_depth)
+    }
+
+    #[inline]
+    pub fn retained_blocking_base_unmodified(
+        &self,
+        node_count: usize,
+        label_set_count: usize,
+        base_epoch_depth: usize,
+    ) -> bool {
+        self.nodes.len() >= node_count
+            && self.label_sets.len() >= label_set_count
+            && self.branch_epoch_depth >= base_epoch_depth
+            && !self.label_sets.has_saves_below_since_depth(label_set_count, base_epoch_depth)
+            && !self.nodes.has_matching_save_below_since_depth(
+                node_count,
+                base_epoch_depth,
+                |_, orig, cur| {
+                    cur.use_reapply_con_label_set != orig.use_reapply_con_label_set
+                        || cur.has_merged_into_individual_node_id()
+                            != orig.has_merged_into_individual_node_id()
+                        || cur.is_blockable_individual() != orig.is_blockable_individual()
+                },
+            )
+    }
+
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
@@ -1958,12 +2031,25 @@ impl ProcessContext {
         // Record the first semantic state before an old descriptor is
         // borrowed. Intrusive `next` edits do not change label membership;
         // recycling, polarity changes and dependency changes still invalidate.
+        // Descriptors on the free list have `concept == NONE` and are not
+        // referenced by any label set until initialized.
         if self.singleton_descriptor_limit.is_some_and(|limit| id.index() < limit) {
             let d = self.con_descs.get(id);
-            self.singleton_descriptor_changes.entry(id.index()).or_insert((
-                d.get_concept(), d.is_negated(), d.get_dependency_track_point()));
+            if d.get_concept().is_some() {
+                self.singleton_descriptor_changes.entry(id.index()).or_insert((
+                    d.get_concept(), d.is_negated(), d.get_dependency_track_point()));
+            }
         }
         self.con_descs.get_mut_journaled(id)
+    }
+    #[inline]
+    pub fn release_con_desc_to_pool(&mut self, id: ConDescId) {
+        self.singleton_descriptor_changes.remove(&id.index());
+        let d = self.con_descs.get_mut_journaled(id);
+        d.concept = ConceptId::NONE;
+        d.negated = false;
+        d.next = ConDescId::NONE;
+        d.dep_track_point = TrackPointId::NONE;
     }
     #[inline]
     pub fn alloc_con_desc(&mut self, value: ConceptDescriptor) -> ConDescId { self.con_descs.push(value) }
@@ -1986,6 +2072,17 @@ impl ProcessContext {
     pub(crate) fn take_singleton_changed_descriptors(&mut self) -> Vec<usize> {
         std::mem::take(&mut self.singleton_changed_descriptors)
     }
+    pub(crate) fn singleton_cache_has_semantic_descriptor_changes(&mut self) -> bool {
+        let any_changed = self.singleton_descriptor_changes.iter().any(|(&index, &previous)| {
+            let d = self.con_descs.get(Id::new(index as Cint64));
+            previous != (d.get_concept(), d.is_negated(), d.get_dependency_track_point())
+        });
+        if !any_changed {
+            self.singleton_descriptor_changes.clear();
+            self.singleton_descriptor_limit = Some(self.con_descs.len());
+        }
+        any_changed
+    }
     pub(crate) fn end_singleton_cache_scope(&mut self) {
         self.singleton_descriptor_limit = None;
         self.singleton_descriptor_changes.clear();
@@ -1995,24 +2092,26 @@ impl ProcessContext {
     /// Retain every COW label object that owns a map visible through this label.
     /// Shared aliases are resolved afresh, including aliases of additional maps.
     /// Whether `snapshot` equals `singleton_label_snapshot(id)` (pointer
-    /// identity of every label object in the alias chain), without building
-    /// the vector or touching reference counts.
+    /// identity and mutation stamp of every label object in the alias chain),
+    /// without building the vector or touching reference counts.
     pub(crate) fn singleton_label_snapshot_matches(
         &self,
         id: LabelSetId,
-        snapshot: &[std::sync::Arc<ReapplyConceptLabelSet>],
+        snapshot: &[(*const ReapplyConceptLabelSet, u64)],
     ) -> bool {
         let mut parts = snapshot.iter();
-        let Some(first) = parts.next() else { return false };
-        if !std::sync::Arc::ptr_eq(first, self.label_sets.get(Id::new(id.raw))) {
+        let Some(&(first_ptr, first_stamp)) = parts.next() else { return false };
+        let first_arc = self.label_sets.get(Id::new(id.raw));
+        if std::sync::Arc::as_ptr(first_arc) != first_ptr || first_arc.singleton_stamp != first_stamp {
             return false;
         }
         let mut next = match &self.label_set(id).additional_concept_des_dep_map {
             AdditionalDesDepMapRef::Shared(alias) => Some(*alias), _ => None,
         };
         while let Some(alias) = next {
-            let Some(part) = parts.next() else { return false };
-            if !std::sync::Arc::ptr_eq(part, self.label_sets.get(Id::new(alias.label_set.raw))) {
+            let Some(&(part_ptr, part_stamp)) = parts.next() else { return false };
+            let part_arc = self.label_sets.get(Id::new(alias.label_set.raw));
+            if std::sync::Arc::as_ptr(part_arc) != part_ptr || part_arc.singleton_stamp != part_stamp {
                 return false;
             }
             next = match alias.which {
@@ -2026,13 +2125,15 @@ impl ProcessContext {
     }
 
     pub(crate) fn singleton_label_snapshot(&self, id: LabelSetId)
-        -> Vec<std::sync::Arc<ReapplyConceptLabelSet>> {
-        let mut result = vec![self.label_sets.get(Id::new(id.raw)).clone()];
+        -> Vec<(*const ReapplyConceptLabelSet, u64)> {
+        let first_arc = self.label_sets.get(Id::new(id.raw));
+        let mut result = vec![(std::sync::Arc::as_ptr(first_arc), first_arc.singleton_stamp)];
         let mut next = match &self.label_set(id).additional_concept_des_dep_map {
             AdditionalDesDepMapRef::Shared(alias) => Some(*alias), _ => None,
         };
         while let Some(alias) = next {
-            result.push(self.label_sets.get(Id::new(alias.label_set.raw)).clone());
+            let part_arc = self.label_sets.get(Id::new(alias.label_set.raw));
+            result.push((std::sync::Arc::as_ptr(part_arc), part_arc.singleton_stamp));
             next = match alias.which {
                 AdditionalMapSlot::Main => None,
                 AdditionalMapSlot::Additional => match &self.label_set(alias.label_set).additional_concept_des_dep_map {
@@ -2362,11 +2463,17 @@ impl ProcessContext {
     /// Resolve an id to a mutable borrow — copy-on-write when shared.
     #[inline]
     pub fn label_set_mut(&mut self, id: LabelSetId) -> &mut ReapplyConceptLabelSet {
-        std::sync::Arc::make_mut(self.label_sets.get_mut_journaled(Id::new(id.raw)))
+        let stamp = self.next_label_singleton_stamp;
+        self.next_label_singleton_stamp += 1;
+        let ls = std::sync::Arc::make_mut(self.label_sets.get_mut_journaled(Id::new(id.raw)));
+        ls.singleton_stamp = stamp;
+        ls
     }
     /// Pool-allocate a new label set, returning its stable id.
     #[inline]
-    pub fn alloc_label_set(&mut self, v: ReapplyConceptLabelSet) -> LabelSetId {
+    pub fn alloc_label_set(&mut self, mut v: ReapplyConceptLabelSet) -> LabelSetId {
+        v.singleton_stamp = self.next_label_singleton_stamp;
+        self.next_label_singleton_stamp += 1;
         Id::new(self.label_sets.push(std::sync::Arc::new(v)).raw)
     }
     arena_accessors!(
@@ -3607,6 +3714,173 @@ impl ProcessContext {
         self.var_binding_trigger_linkers.pop_epoch();
         // dependency spine arenas: epoch-exempt (see push_branch_epoch).
         self.branch_epoch_depth -= 1;
+    }
+
+    /// Merge all open branch epochs above `target_depth` into `target_depth`
+    /// without rolling back their state.
+    pub fn coalesce_branch_epochs_to(&mut self, target_depth: usize) {
+        if self.branch_epoch_depth <= target_depth {
+            return;
+        }
+        self.assign_new_dependency_individuals_to_epochs();
+        while self.branch_epoch_release_frames.len() > target_depth {
+            let popped = self.branch_epoch_release_frames.pop().unwrap();
+            if let Some(target_frame) = self.branch_epoch_release_frames.last_mut() {
+                target_frame.pending.extend(popped.pending);
+                target_frame.cursor = popped.cursor;
+            }
+        }
+        self.additional_data_assertion_linkers.coalesce_epochs_to(target_depth);
+        self.additional_role_assertion_linkers.coalesce_epochs_to(target_depth);
+        self.analized_con_exp_datas.coalesce_epochs_to(target_depth);
+        self.analized_con_exp_linkers.coalesce_epochs_to(target_depth);
+        self.backend_neighbour_expansion_controlling_datas
+            .coalesce_epochs_to(target_depth);
+        self.backend_sync_datas.coalesce_epochs_to(target_depth);
+        self.backward_prop_links.coalesce_epochs_to(target_depth);
+        self.backward_prop_reapply_descs.coalesce_epochs_to(target_depth);
+        self.backward_sat_prop_links.coalesce_epochs_to(target_depth);
+        self.backward_sat_prop_reapply_descs.coalesce_epochs_to(target_depth);
+        self.blocking_alt_datas.coalesce_epochs_to(target_depth);
+        self.blocking_follow_sets.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_cand_datas.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_cand_hashes.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_linked_cand_datas.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_linked_cand_hashes.coalesce_epochs_to(target_depth);
+        self.blocking_indi_node_linkers.coalesce_epochs_to(target_depth);
+        self.blocking_test_datas.coalesce_epochs_to(target_depth);
+        self.branching_merging_candidate_linkers.coalesce_epochs_to(target_depth);
+        self.branching_trees.coalesce_epochs_to(target_depth);
+        self.branch_instrs.coalesce_epochs_to(target_depth);
+        self.concept_nominal_schema_grounding_datas.coalesce_epochs_to(target_depth);
+        self.concept_nominal_schema_grounding_hashes.coalesce_epochs_to(target_depth);
+        self.concept_process_linkers.coalesce_epochs_to(target_depth);
+        self.concept_proc_queues.coalesce_epochs_to(target_depth);
+        self.cond_reapply_con_descs.coalesce_epochs_to(target_depth);
+        self.conn_succ_corr_hashes.coalesce_epochs_to(target_depth);
+        self.conn_succ_sets.coalesce_epochs_to(target_depth);
+        self.con_proc_descs.coalesce_epochs_to(target_depth);
+        self.con_prop_binding_set_hashes.coalesce_epochs_to(target_depth);
+        self.con_rep_prop_set_hashes.coalesce_epochs_to(target_depth);
+        self.con_sat_descs.coalesce_epochs_to(target_depth);
+        self.con_sat_proc_linkers.coalesce_epochs_to(target_depth);
+        self.con_var_bind_path_set_hashes.coalesce_epochs_to(target_depth);
+        self.core_con_descs.coalesce_epochs_to(target_depth);
+        self.critical_pred_role_card_datas.coalesce_epochs_to(target_depth);
+        self.critical_pred_role_card_hashes.coalesce_epochs_to(target_depth);
+        self.critical_sat_concept_queues.coalesce_epochs_to(target_depth);
+        self.critical_sat_concept_type_queues.coalesce_epochs_to(target_depth);
+        self.datatypes_value_space_datas.coalesce_epochs_to(target_depth);
+        self.data_value_role_assertion_linkers.coalesce_epochs_to(target_depth);
+        self.disjoint_edges.coalesce_epochs_to(target_depth);
+        self.disjoint_succ_role_hashes.coalesce_epochs_to(target_depth);
+        self.distinct_edges.coalesce_epochs_to(target_depth);
+        self.distinct_hashes.coalesce_epochs_to(target_depth);
+        self.edges.coalesce_epochs_to(target_depth);
+        self.extended_con_ref_linking_datas.coalesce_epochs_to(target_depth);
+        self.imp_reapply_con_sat_descs.coalesce_epochs_to(target_depth);
+        self.inc_exp_datas.coalesce_epochs_to(target_depth);
+        self.indi_concept_batch_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_custom_priority_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_depth_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_proc_node_descs.coalesce_epochs_to(target_depth);
+        self.indi_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_reactivation_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_rotation_proc_queues.coalesce_epochs_to(target_depth);
+        self.indi_sat_block_datas.coalesce_epochs_to(target_depth);
+        self.indi_sat_node_ext_datas.coalesce_epochs_to(target_depth);
+        self.indi_sat_process_node_linkers.coalesce_epochs_to(target_depth);
+        self.indi_sat_succ_link_data_linkers.coalesce_epochs_to(target_depth);
+        self.indi_unsorted_proc_queues.coalesce_epochs_to(target_depth);
+        self.individual_merging_hashes.coalesce_epochs_to(target_depth);
+        self.individual_process_node_linkers.coalesce_epochs_to(target_depth);
+        self.label_sets.coalesce_epochs_to(target_depth);
+        self.linked_data_value_assertion_datas.coalesce_epochs_to(target_depth);
+        self.linked_role_sat_succ_datas.coalesce_epochs_to(target_depth);
+        self.linked_role_sat_succ_hashes.coalesce_epochs_to(target_depth);
+        self.marker_indi_node_datas.coalesce_epochs_to(target_depth);
+        self.marker_indi_node_hashes.coalesce_epochs_to(target_depth);
+        self.nodes.coalesce_epochs_to(target_depth);
+        self.node_switch_histories.coalesce_epochs_to(target_depth);
+        self.nominal_caching_loss_reactivation_datas.coalesce_epochs_to(target_depth);
+        self.nominal_caching_loss_reactivation_hashes.coalesce_epochs_to(target_depth);
+        self.nominal_conn_sets.coalesce_epochs_to(target_depth);
+        self.process_asserted_data_literal_linkers.coalesce_epochs_to(target_depth);
+        self.prop_binding_descs.coalesce_epochs_to(target_depth);
+        self.prop_binding_reapply_con_descs.coalesce_epochs_to(target_depth);
+        self.prop_binding_reapply_con_hashes.coalesce_epochs_to(target_depth);
+        self.prop_bindings.coalesce_epochs_to(target_depth);
+        self.prop_binding_sets.coalesce_epochs_to(target_depth);
+        self.prop_rep_trans_exts.coalesce_epochs_to(target_depth);
+        self.prop_var_bind_trans_exts.coalesce_epochs_to(target_depth);
+        self.reapply_con_descs.coalesce_epochs_to(target_depth);
+        self.reapply_con_sat_label_sets.coalesce_epochs_to(target_depth);
+        self.referred_individual_tracking_vectors.coalesce_epochs_to(target_depth);
+        self.rep_joining_datas.coalesce_epochs_to(target_depth);
+        self.rep_joining_hashes.coalesce_epochs_to(target_depth);
+        self.rep_prop_descs.coalesce_epochs_to(target_depth);
+        self.rep_prop_sets.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_hashes.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_joining_key_datas.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_joining_key_hashes.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_datas.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_hashes.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_joining_datas.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_joining_hashes.coalesce_epochs_to(target_depth);
+        self.rep_var_bind_path_set_migrate_datas.coalesce_epochs_to(target_depth);
+        self.restriction_specs.coalesce_epochs_to(target_depth);
+        self.reusing_con_exp_datas.coalesce_epochs_to(target_depth);
+        self.reusing_review_datas.coalesce_epochs_to(target_depth);
+        self.role_backward_prop_hashes.coalesce_epochs_to(target_depth);
+        self.role_backward_sat_prop_hashes.coalesce_epochs_to(target_depth);
+        self.role_sat_proc_linkers.coalesce_epochs_to(target_depth);
+        self.role_succ_hashes.coalesce_epochs_to(target_depth);
+        self.sat_atmost_successor_merging_datas.coalesce_epochs_to(target_depth);
+        self.sat_atmost_successor_merging_hashes.coalesce_epochs_to(target_depth);
+        self.sat_concept_extension_maps.coalesce_epochs_to(target_depth);
+        self.sat_critical_ind_node_con_test_sets.coalesce_epochs_to(target_depth);
+        self.sat_critical_ind_node_proc_queues.coalesce_epochs_to(target_depth);
+        self.sat_disjunct_common_concept_extraction_datas
+            .coalesce_epochs_to(target_depth);
+        self.sat_disjunct_extraction_linkers.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_all_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_datatype_datas.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_ext_resolve_datas.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_ext_resolve_hashes.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_functional_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_indi_node_succ_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_influenced_nominal_sets.coalesce_epochs_to(target_depth);
+        self.sat_linked_succ_indi_all_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_modified_process_update_linkers.coalesce_epochs_to(target_depth);
+        self.sat_nodes.coalesce_epochs_to(target_depth);
+        self.sat_nominal_dependent_node_datas.coalesce_epochs_to(target_depth);
+        self.sat_nominal_dependent_node_hashes.coalesce_epochs_to(target_depth);
+        self.sat_nominal_handling_datas.coalesce_epochs_to(target_depth);
+        self.sat_succ_datas.coalesce_epochs_to(target_depth);
+        self.sat_successor_all_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_successor_concept_extension_maps.coalesce_epochs_to(target_depth);
+        self.sat_successor_functional_concept_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_succ_ext_datas.coalesce_epochs_to(target_depth);
+        self.sat_succ_ext_ind_node_proc_queues.coalesce_epochs_to(target_depth);
+        self.sat_succ_role_assertion_linkers.coalesce_epochs_to(target_depth);
+        self.sig_block_cand_hashes.coalesce_epochs_to(target_depth);
+        self.sig_block_con_exp_datas.coalesce_epochs_to(target_depth);
+        self.signature_blocking_review_sets.coalesce_epochs_to(target_depth);
+        self.successor_individual_atmost_reactivation_datas
+            .coalesce_epochs_to(target_depth);
+        self.succ_role_hashes.coalesce_epochs_to(target_depth);
+        self.unsat_cache_ret_datas.coalesce_epochs_to(target_depth);
+        self.var_binding_descs.coalesce_epochs_to(target_depth);
+        self.var_binding_path_descs.coalesce_epochs_to(target_depth);
+        self.var_binding_path_join_datas.coalesce_epochs_to(target_depth);
+        self.var_binding_path_join_hashes.coalesce_epochs_to(target_depth);
+        self.var_binding_path_merging_hashes.coalesce_epochs_to(target_depth);
+        self.var_binding_paths.coalesce_epochs_to(target_depth);
+        self.var_binding_path_sets.coalesce_epochs_to(target_depth);
+        self.var_bindings.coalesce_epochs_to(target_depth);
+        self.var_binding_trigger_hashes.coalesce_epochs_to(target_depth);
+        self.var_binding_trigger_linkers.coalesce_epochs_to(target_depth);
+        self.branch_epoch_depth = target_depth;
     }
 
     /// The dependency spine is epoch-exempt, the node arena is not: a
@@ -4926,6 +5200,14 @@ impl ProcessContext {
             &mut other.sat_successor_concept_map_interner,
         );
         swap(
+            &mut self.sat_copy_init_role_linker_interner,
+            &mut other.sat_copy_init_role_linker_interner,
+        );
+        swap(
+            &mut self.sat_copy_init_role_linker_sets,
+            &mut other.sat_copy_init_role_linker_sets,
+        );
+        swap(
             &mut self.sat_indi_node_functional_concept_ext_datas,
             &mut other.sat_indi_node_functional_concept_ext_datas,
         );
@@ -5613,6 +5895,7 @@ impl ProcessContext {
                 source
                     .role_back_prop_data_hash
                     .iter()
+                    .filter(|(_, data)| data.reapply_linker.is_some() || data.self_connected)
                     .map(|(role, data)| {
                         (
                             *role,
@@ -6099,6 +6382,53 @@ impl ProcessContext {
                 .map(Vec::len)
                 .sum(),
         )
+    }
+
+    /// Intern an immutable `(role, old_head)` step in the
+    /// `copying_initializing_role_process_linker` /
+    /// `functional_succ_queuing_role_process_linker` singly-linked list.
+    pub fn intern_copying_initializing_role_process_linker(
+        &mut self,
+        role: RoleId,
+        old_head: RoleSaturationProcessLinkerId,
+    ) -> RoleSaturationProcessLinkerId {
+        if let Some(&existing) = self
+            .sat_copy_init_role_linker_interner
+            .get(&(role, old_head))
+        {
+            return existing;
+        }
+        let mut linker = RoleSaturationProcessLinker::new();
+        linker.init_role_process_linker(role).set_next(old_head);
+        let id = self.alloc_role_sat_proc_linker(linker);
+        self.sat_copy_init_role_linker_interner
+            .insert((role, old_head), id);
+        id
+    }
+
+    /// Test whether an interned role-linker chain `head` contains `role`,
+    /// materializing and caching a `HashSet<RoleId>` for `head` on first lookup.
+    pub fn copying_initializing_role_linker_contains(
+        &mut self,
+        head: RoleSaturationProcessLinkerId,
+        role: RoleId,
+    ) -> bool {
+        if head.is_none() {
+            return false;
+        }
+        if let Some(set) = self.sat_copy_init_role_linker_sets.get(&head) {
+            return set.contains(&role);
+        }
+        let mut set = HashSet::default();
+        let mut cursor = head;
+        while cursor.is_some() {
+            let linker = self.role_sat_proc_linker(cursor);
+            set.insert(linker.get_role());
+            cursor = linker.get_next();
+        }
+        let found = set.contains(&role);
+        self.sat_copy_init_role_linker_sets.insert(head, set);
+        found
     }
     arena_accessors!(
         sat_indi_node_functional_concept_ext_datas,

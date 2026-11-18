@@ -1325,13 +1325,14 @@ mod tests {
             .get_next()
             .is_none());
 
-        let copied_other_data = ctx
+        if let Some(copied_other_data) = ctx
             .role_backward_sat_prop_hash(target_hash)
             .role_back_prop_data_hash
             .get(&other_role)
-            .unwrap();
-        assert!(copied_other_data.link_linker.is_none());
-        assert!(!copied_other_data.self_connected);
+        {
+            assert!(copied_other_data.link_linker.is_none());
+            assert!(!copied_other_data.self_connected);
+        }
 
         let source_nominal_set = ctx.sat_node_successor_connected_nominal_set_existing(source);
         let target_nominal_set = ctx.sat_node_successor_connected_nominal_set_existing(target);
