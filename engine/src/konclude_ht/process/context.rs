@@ -670,6 +670,13 @@ pub struct ProcessContext {
     /// snapshot so later equal maps share all buckets and entries.
     sat_successor_concept_map_interner:
         HashMap<(usize, u64, u64), Vec<std::sync::Arc<SaturationSuccessorConceptMap>>>,
+    /// Hash-cons interner for immutable `copying_initializing_role_process_linker`
+    /// and `functional_succ_queuing_role_process_linker` chains.
+    sat_copy_init_role_linker_interner:
+        HashMap<(RoleId, RoleSaturationProcessLinkerId), RoleSaturationProcessLinkerId>,
+    /// Lazily materialized role membership sets keyed by interned role-linker head.
+    sat_copy_init_role_linker_sets:
+        HashMap<RoleSaturationProcessLinkerId, HashSet<RoleId>>,
     /// `CSaturationIndividualNodeFUNCTIONALConceptsExtensionData` pool.
     sat_indi_node_functional_concept_ext_datas:
         Arena<SaturationIndividualNodeFunctionalConceptsExtensionData>,
@@ -870,42 +877,44 @@ impl ProcessContext {
             backward_prop_reapply_descs: Arena::new(),
             role_backward_prop_hashes: Arena::new(),
             con_sat_descs: Arena::new_tight(),
-            con_sat_proc_linkers: Arena::new(),
-            role_sat_proc_linkers: Arena::new(),
+            con_sat_proc_linkers: Arena::new_tight(),
+            role_sat_proc_linkers: Arena::new_tight(),
             backward_sat_prop_links: Arena::new_tight(),
             backward_sat_prop_reapply_descs: Arena::new_tight(),
-            role_backward_sat_prop_hashes: Arena::new(),
+            role_backward_sat_prop_hashes: Arena::new_tight(),
             sat_succ_datas: Arena::new_tight(),
-            sat_succ_ext_datas: Arena::new(),
-            indi_sat_succ_link_data_linkers: Arena::new(),
-            linked_role_sat_succ_datas: Arena::new(),
-            linked_role_sat_succ_hashes: Arena::new(),
-            indi_sat_node_ext_datas: Arena::new(),
-            sat_indi_node_succ_ext_datas: Arena::new(),
-            sat_indi_node_all_concept_ext_datas: Arena::new(),
+            sat_succ_ext_datas: Arena::new_tight(),
+            indi_sat_succ_link_data_linkers: Arena::new_tight(),
+            linked_role_sat_succ_datas: Arena::new_tight(),
+            linked_role_sat_succ_hashes: Arena::new_tight(),
+            indi_sat_node_ext_datas: Arena::new_tight(),
+            sat_indi_node_succ_ext_datas: Arena::new_tight(),
+            sat_indi_node_all_concept_ext_datas: Arena::new_tight(),
             sat_linked_succ_indi_all_concept_ext_datas: Arena::new_tight(),
             sat_successor_all_concept_ext_datas: Arena::new_tight(),
-            sat_indi_node_ext_resolve_datas: Arena::new(),
+            sat_indi_node_ext_resolve_datas: Arena::new_tight(),
             sat_indi_node_ext_resolve_hashes: Arena::new_tight(),
-            sat_concept_extension_maps: Arena::new(),
+            sat_concept_extension_maps: Arena::new_tight(),
             sat_successor_concept_extension_maps: Arena::new_tight(),
             sat_successor_concept_map_interner: HashMap::default(),
-            sat_indi_node_functional_concept_ext_datas: Arena::new(),
-            sat_successor_functional_concept_ext_datas: Arena::new(),
-            sat_disjunct_common_concept_extraction_datas: Arena::new(),
-            sat_disjunct_extraction_linkers: Arena::new(),
-            sat_atmost_successor_merging_datas: Arena::new(),
-            sat_atmost_successor_merging_hashes: Arena::new(),
-            linked_data_value_assertion_datas: Arena::new(),
-            data_value_role_assertion_linkers: Arena::new(),
-            sat_indi_node_datatype_datas: Arena::new(),
-            sat_succ_role_assertion_linkers: Arena::new(),
-            critical_pred_role_card_datas: Arena::new(),
-            critical_pred_role_card_hashes: Arena::new(),
-            reapply_con_sat_label_sets: Arena::new(),
+            sat_copy_init_role_linker_interner: HashMap::default(),
+            sat_copy_init_role_linker_sets: HashMap::default(),
+            sat_indi_node_functional_concept_ext_datas: Arena::new_tight(),
+            sat_successor_functional_concept_ext_datas: Arena::new_tight(),
+            sat_disjunct_common_concept_extraction_datas: Arena::new_tight(),
+            sat_disjunct_extraction_linkers: Arena::new_tight(),
+            sat_atmost_successor_merging_datas: Arena::new_tight(),
+            sat_atmost_successor_merging_hashes: Arena::new_tight(),
+            linked_data_value_assertion_datas: Arena::new_tight(),
+            data_value_role_assertion_linkers: Arena::new_tight(),
+            sat_indi_node_datatype_datas: Arena::new_tight(),
+            sat_succ_role_assertion_linkers: Arena::new_tight(),
+            critical_pred_role_card_datas: Arena::new_tight(),
+            critical_pred_role_card_hashes: Arena::new_tight(),
+            reapply_con_sat_label_sets: Arena::new_tight(),
             imp_reapply_con_sat_descs: Arena::new_tight(),
-            sat_modified_process_update_linkers: Arena::new(),
-            indi_sat_process_node_linkers: Arena::new(),
+            sat_modified_process_update_linkers: Arena::new_tight(),
+            indi_sat_process_node_linkers: Arena::new_tight(),
             individual_merging_hashes: Arena::new(),
             succ_role_hashes: Arena::new(),
             indi_unsorted_proc_queues: Arena::new(),
@@ -990,7 +999,10 @@ impl ProcessContext {
         self.sat_concept_extension_maps.clear_releasing_capacity();
         self.linked_role_sat_succ_datas.clear_releasing_capacity();
         self.linked_role_sat_succ_hashes.clear_releasing_capacity();
+        self.role_sat_proc_linkers.clear_releasing_capacity();
         self.sat_successor_concept_map_interner = HashMap::default();
+        self.sat_copy_init_role_linker_interner = HashMap::default();
+        self.sat_copy_init_role_linker_sets = HashMap::default();
     }
 
     /// Invalidate and release an interrupted saturation task after its labels
@@ -1219,6 +1231,8 @@ impl ProcessContext {
         // them here after a non-preserving reset would retain every interned
         // map even though no arena record can reference it any longer.
         self.sat_successor_concept_map_interner.clear();
+        self.sat_copy_init_role_linker_interner.clear();
+        self.sat_copy_init_role_linker_sets.clear();
         self.sat_successor_functional_concept_ext_datas
             .clear_preserving_capacity();
         self.sat_succ_ext_datas.clear_preserving_capacity();
@@ -1893,6 +1907,30 @@ impl ProcessContext {
         self.clash_descs.pop_epoch();
         self.con_descs.pop_epoch();
         self.branch_nodes.pop_epoch();
+    }
+
+    #[inline]
+    pub fn spine_epoch_depth(&self) -> usize {
+        self.con_descs.open_depth()
+    }
+
+    #[inline]
+    pub fn retained_singleton_base_unmodified(
+        &self,
+        node_count: usize,
+        label_set_count: usize,
+        con_desc_count: usize,
+        base_epoch_depth: usize,
+        base_spine_depth: usize,
+    ) -> bool {
+        self.nodes.len() >= node_count
+            && self.label_sets.len() >= label_set_count
+            && self.con_descs.len() >= con_desc_count
+            && self.branch_epoch_depth >= base_epoch_depth
+            && self.con_descs.open_depth() >= base_spine_depth
+            && !self.nodes.has_saves_below_since_depth(node_count, base_epoch_depth)
+            && !self.label_sets.has_saves_below_since_depth(label_set_count, base_epoch_depth)
+            && !self.con_descs.has_saves_below_since_depth(con_desc_count, base_spine_depth)
     }
 
     pub fn node_count(&self) -> usize {
@@ -4949,6 +4987,14 @@ impl ProcessContext {
             &mut other.sat_successor_concept_map_interner,
         );
         swap(
+            &mut self.sat_copy_init_role_linker_interner,
+            &mut other.sat_copy_init_role_linker_interner,
+        );
+        swap(
+            &mut self.sat_copy_init_role_linker_sets,
+            &mut other.sat_copy_init_role_linker_sets,
+        );
+        swap(
             &mut self.sat_indi_node_functional_concept_ext_datas,
             &mut other.sat_indi_node_functional_concept_ext_datas,
         );
@@ -5636,6 +5682,7 @@ impl ProcessContext {
                 source
                     .role_back_prop_data_hash
                     .iter()
+                    .filter(|(_, data)| data.reapply_linker.is_some() || data.self_connected)
                     .map(|(role, data)| {
                         (
                             *role,
@@ -6122,6 +6169,53 @@ impl ProcessContext {
                 .map(Vec::len)
                 .sum(),
         )
+    }
+
+    /// Intern an immutable `(role, old_head)` step in the
+    /// `copying_initializing_role_process_linker` /
+    /// `functional_succ_queuing_role_process_linker` singly-linked list.
+    pub fn intern_copying_initializing_role_process_linker(
+        &mut self,
+        role: RoleId,
+        old_head: RoleSaturationProcessLinkerId,
+    ) -> RoleSaturationProcessLinkerId {
+        if let Some(&existing) = self
+            .sat_copy_init_role_linker_interner
+            .get(&(role, old_head))
+        {
+            return existing;
+        }
+        let mut linker = RoleSaturationProcessLinker::new();
+        linker.init_role_process_linker(role).set_next(old_head);
+        let id = self.alloc_role_sat_proc_linker(linker);
+        self.sat_copy_init_role_linker_interner
+            .insert((role, old_head), id);
+        id
+    }
+
+    /// Test whether an interned role-linker chain `head` contains `role`,
+    /// materializing and caching a `HashSet<RoleId>` for `head` on first lookup.
+    pub fn copying_initializing_role_linker_contains(
+        &mut self,
+        head: RoleSaturationProcessLinkerId,
+        role: RoleId,
+    ) -> bool {
+        if head.is_none() {
+            return false;
+        }
+        if let Some(set) = self.sat_copy_init_role_linker_sets.get(&head) {
+            return set.contains(&role);
+        }
+        let mut set = HashSet::default();
+        let mut cursor = head;
+        while cursor.is_some() {
+            let linker = self.role_sat_proc_linker(cursor);
+            set.insert(linker.get_role());
+            cursor = linker.get_next();
+        }
+        let found = set.contains(&role);
+        self.sat_copy_init_role_linker_sets.insert(head, set);
+        found
     }
     arena_accessors!(
         sat_indi_node_functional_concept_ext_datas,

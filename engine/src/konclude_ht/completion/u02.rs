@@ -40,6 +40,23 @@ pub(super) struct SingletonLabelCache {
     )>,
 }
 
+/// Snapshot of the single-carrier singleton state at a retained consistency
+/// leaf. Every singleton concept has at most one live carrier in
+/// `0..node_count`. As long as the arenas below `node_count`,
+/// `label_set_count`, and `con_desc_count` have no journaled mutations above
+/// `base_epoch_depth` / `base_spine_depth`, only nodes allocated at or above
+/// `node_count` need to be scanned for new singleton carriers.
+pub struct RetainedSingletonBase {
+    pub node_count: usize,
+    pub label_set_count: usize,
+    pub con_desc_count: usize,
+    pub base_epoch_depth: usize,
+    pub base_spine_depth: usize,
+    pub first_carrier_by_tag: crate::fxhash::FxHashMap<Cint64, (NodeId, TrackPointId)>,
+    pub all_singleton_tags: crate::fxhash::FxHashSet<Cint64>,
+    pub membership: Option<(Cint64, Vec<u64>)>,
+}
+
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     fn take_next_backend_reuse_expansion_individual(
         &mut self,
@@ -2179,6 +2196,140 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         carriers
     }
 
+    pub fn build_retained_singleton_base(
+        &self,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Option<std::sync::Arc<RetainedSingletonBase>> {
+        if self.singleton_concepts.is_empty() {
+            return None;
+        }
+        let carriers = self.singleton_carriers_with_limit(calc_alg_context, 2);
+        if carriers.values().any(|list| list.len() > 1) {
+            return None;
+        }
+        let membership = Self::singleton_tag_bitmap(&carriers);
+        let all_singleton_tags: crate::fxhash::FxHashSet<Cint64> =
+            carriers.keys().copied().collect();
+        let first_carrier_by_tag: crate::fxhash::FxHashMap<Cint64, (NodeId, TrackPointId)> =
+            carriers
+                .into_iter()
+                .filter_map(|(tag, mut list)| list.pop().map(|pair| (tag, pair)))
+                .collect();
+        let pc = calc_alg_context.process_context();
+        Some(std::sync::Arc::new(RetainedSingletonBase {
+            node_count: pc.node_count(),
+            label_set_count: pc.label_set_count(),
+            con_desc_count: pc.con_desc_count(),
+            base_epoch_depth: pc.branch_epoch_depth(),
+            base_spine_depth: pc.spine_epoch_depth(),
+            first_carrier_by_tag,
+            all_singleton_tags,
+            membership,
+        }))
+    }
+
+    fn singleton_carriers_from_retained_base(
+        &self,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+        base: &RetainedSingletonBase,
+    ) -> Option<Option<crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>>>> {
+        let ctx = calc_alg_context.process_context();
+        if !ctx.retained_singleton_base_unmodified(
+            base.node_count,
+            base.label_set_count,
+            base.con_desc_count,
+            base.base_epoch_depth,
+            base.base_spine_depth,
+        ) || !self
+            .phantom_node_intervals
+            .iter()
+            .all(|&(a, _)| a >= base.node_count)
+        {
+            return None;
+        }
+        let mut fresh_by_tag: crate::fxhash::FxHashMap<Cint64, Vec<(NodeId, TrackPointId)>> =
+            Default::default();
+        let mut any_pair = false;
+        for i in base.node_count..ctx.node_count() {
+            if self
+                .phantom_node_intervals
+                .iter()
+                .any(|&(a, b)| i >= a && i < b)
+            {
+                continue;
+            }
+            let node_id = NodeId::new(i as Cint64);
+            let node = ctx.node(node_id);
+            if node.has_merged_into_individual_node_id()
+                || node.has_purged_blocked_processing_restriction_flags()
+            {
+                continue;
+            }
+            let label = node.reapply_con_label_set;
+            if label.is_none() {
+                continue;
+            }
+            ctx.label_set_visit_stored_descriptors(label, |tag, descriptor, additional| {
+                if let Some((first, bits)) = &base.membership {
+                    let Some(offset) = tag
+                        .checked_sub(*first)
+                        .and_then(|n| usize::try_from(n).ok())
+                    else {
+                        return;
+                    };
+                    if bits
+                        .get(offset / 64)
+                        .is_none_or(|word| word & (1 << (offset % 64)) == 0)
+                    {
+                        return;
+                    }
+                }
+                if descriptor.is_none() || ctx.con_desc(descriptor).is_negated() {
+                    return;
+                }
+                if additional
+                    && ctx
+                        .label_set(label)
+                        .concept_des_dep_map
+                        .contains_key(&tag)
+                {
+                    return;
+                }
+                if !base.all_singleton_tags.contains(&tag) {
+                    return;
+                }
+                let list = fresh_by_tag.entry(tag).or_default();
+                if list.last().is_none_or(|&(last, _)| last != node_id) {
+                    let has_base = base.first_carrier_by_tag.contains_key(&tag);
+                    if has_base || !list.is_empty() {
+                        any_pair = true;
+                    }
+                    list.push((node_id, ctx.con_desc(descriptor).get_dependency_track_point()));
+                }
+            });
+        }
+        if !any_pair {
+            return Some(None);
+        }
+        let onto = calc_alg_context.ontology_arenas();
+        let carriers: crate::fxhash::FxHashMap<_, Vec<_>> = self
+            .singleton_concepts
+            .iter()
+            .map(|&concept| {
+                let tag = onto.concept(concept).get_concept_tag();
+                let mut pair = Vec::new();
+                if let Some(&first) = base.first_carrier_by_tag.get(&tag) {
+                    pair.push(first);
+                }
+                if let Some(fresh) = fresh_by_tag.remove(&tag) {
+                    pair.extend(fresh);
+                }
+                (tag, pair)
+            })
+            .collect();
+        Some(Some(carriers))
+    }
+
     pub(super) fn singleton_first_carriers_cached(
         &self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
@@ -2332,11 +2483,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // live positive carriers in node order with their current dependencies.
         let scan_after_merge = super::ht_singleton_scan_after_merge_enabled();
         let singleton_concepts = self.singleton_concepts.clone(); // tiny (distinct literal values)
+        if let Some(base) = self.retained_singleton_base.as_deref() {
+            match self.singleton_carriers_from_retained_base(calc_alg_context, base) {
+                Some(None) => return false,
+                Some(Some(_)) | None => {}
+            }
+        }
         // A dry first scan needs no label snapshots or descriptor journals.
         // Use the differential-tested reference index initially; allocate the
         // cache only after a real merge requires repeated scans of this state.
-        let mut indexed = (singleton_concepts.len() >= 32)
-            .then(|| self.singleton_carriers_with_limit(calc_alg_context, usize::MAX));
+        let mut indexed = (singleton_concepts.len() >= 32).then(|| {
+            if let Some(base) = self.retained_singleton_base.as_deref() {
+                if let Some(Some(carriers)) =
+                    self.singleton_carriers_from_retained_base(calc_alg_context, base)
+                {
+                    return carriers;
+                }
+            }
+            self.singleton_carriers_with_limit(calc_alg_context, usize::MAX)
+        });
         let membership = indexed.as_ref().and_then(Self::singleton_tag_bitmap);
         let mut label_ref_counts = if indexed.is_some() {
             let _ = calc_alg_context.process_context_mut().singleton_cache_scan_epoch();
@@ -2793,6 +2958,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // Query-created identities still run at the final fixpoint below.
         if indi_proc_node.is_none() && self.or_branch_stack.is_empty()
             && self.retained_base_node_count == 0
+            && self.retained_singleton_base.is_none()
             && !self.singleton_base_prepared && !self.singleton_concepts.is_empty() {
             // This is a scheduling optimization only. Later identities still
             // run at candidate fixpoint, including after branch rollback.

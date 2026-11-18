@@ -9575,10 +9575,6 @@ fn analyse_kpset_completion_model(
         state.concept_reference_linking_data_hash.clone(),
         EFEXTRACTALL,
     );
-    let individual_vector = ctx
-        .processing_data_box()
-        .individual_process_node_vector()
-        .clone();
     let max_branch_tag = ctx.processing_data_box().maximum_deterministic_branch_tag();
     let snapshot_finished = timing_start.map(|_| std::time::Instant::now());
     let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -9586,17 +9582,19 @@ fn analyse_kpset_completion_model(
         .ontology_item
         .get_concept_satisfiable_test_item_container();
     // `mEquivConNonCandidateSet` belongs to the live TBox in Konclude. Split
-    // the two disjoint context fields so the analyser can update completion
-    // bookkeeping while reading that ontology-owned set.
+    // the disjoint context fields so the analyser can update completion
+    // bookkeeping while reading that ontology-owned set and the individual
+    // node vector without cloning the vector on every job.
     let base = &mut ctx.base;
     let process_context = &mut base.used_process_context;
     let ontology = &base.ontology_arenas;
+    let individual_vector = base.used_processing_data_box.individual_process_node_vector();
     let analysed = analyser.analyse_satisfiable_task_classification_messages_with_live_other_nodes_and_live_equivalent_non_candidates(
         &adapter,
         process_context,
         ontology,
         root,
-        &individual_vector,
+        individual_vector,
         max_branch_tag,
         ontology.concepts(),
         ontology.concept_process_datas(),
@@ -10450,6 +10448,10 @@ struct RetainedConsistencyLeaf {
     /// The job algorithm's backend replay map at the build: immutable input
     /// data, shared by every leaf job instead of being rebuilt per job.
     replay: NativeReplaySnapshot,
+    /// Blocking candidate index of the retained leaf (`u20::BlockingBaseIndex`).
+    blocking_index: Option<std::sync::Arc<super::completion::u20::BlockingBaseIndex>>,
+    /// Singleton carrier snapshot of the retained leaf (`u02::RetainedSingletonBase`).
+    singleton_base: Option<std::sync::Arc<super::completion::u02::RetainedSingletonBase>>,
 }
 
 /// Counters of the reuse branch point (reported under `KM_BRIDGE_PROGRESS`
@@ -10529,12 +10531,26 @@ fn build_retained_consistency_leaf(
     let databox = ctx.processing_data_box().clone();
     let next_id = ctx.processing_data_box_mut().next_individual_node_id(false);
     let branch_node = ctx.base.used_branch_tree_node;
+    let blocking_index = std::env::var_os("KM_HT_NO_BLOCKING_BASE_INDEX")
+        .is_none()
+        .then(|| std::sync::Arc::new(algo.build_blocking_base_index(ctx)));
+    let singleton_base = algo.build_retained_singleton_base(ctx);
     // Spine journal 2: one class job's spine changes, undone per job.
     ctx.process_context_mut().push_spine_journal_epoch();
     // The first leaf job's epoch (popped by `restore_retained_consistency_leaf`).
     ctx.push_branch_epoch();
     let replay = std::sync::Arc::clone(&algo.native_nominal_backend_replay);
-    Some(RetainedConsistencyLeaf { depth, base_depth, databox, branch_node, next_id, decisions, replay })
+    Some(RetainedConsistencyLeaf {
+        depth,
+        base_depth,
+        databox,
+        branch_node,
+        next_id,
+        decisions,
+        replay,
+        blocking_index,
+        singleton_base,
+    })
 }
 
 /// Start the next class job on the leaf: roll the previous job back (its
@@ -10576,6 +10592,11 @@ fn restore_retained_consistency_leaf(
         bridged,
         Some(replay_snapshot.unwrap_or(&leaf.replay)),
     );
+    if let Some(blocking_index) = &leaf.blocking_index {
+        algo.blocking_base_index = Some(std::sync::Arc::clone(blocking_index));
+    }
+    algo.retained_singleton_base = leaf.singleton_base.clone();
+    algo.singleton_base_prepared = true;
     // A continuation of the consistency completion: no retained-node special
     // casing, as on the resuming base.
     algo.retained_base_node_count = 0;
@@ -16049,6 +16070,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // branch-epoch journals do NOT restore (see the snapshot site below).
     let mut retained_consistency_branch_node = super::process::BranchNodeId::NONE;
     let mut retained_consistency_databox: Option<super::process::databox::ProcessingDataBox> = None;
+    let mut prebuilt_leaf: Option<RetainedConsistencyLeaf> = None;
     if bridged.has_native_nominals() {
         if independent_abox_elided && !export_active {
             // Role-free duplicate assertion signatures need one root each.
@@ -16610,6 +16632,16 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 } else {
                     // Preserve the exact nominal-only schedule from efbcbbc. Its
                     // 10621 classification is a validated full-IRI reference.
+                    let prebuild_leaf_candidate = !export_active
+                        && std::env::var_os("KM_BRIDGE_FRESH_ENV").is_none()
+                        && std::env::var_os("KM_BRIDGE_NO_LEAF_REUSE").is_none()
+                        && bridged.has_native_nominals()
+                        && !independent_abox_elided
+                        && algo.conf_direct_rule_preprocessing
+                        && algo.conf_cache_oriented_or_ordering;
+                    if prebuild_leaf_candidate {
+                        install_native_nominal_backend_replay(&mut algo, &bridged);
+                    }
                     if !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
                         ctx.raise_stop(false);
                     }
@@ -16619,6 +16651,15 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             base_budget.saturating_mul(4u64.saturating_pow(round)),
                         ));
                         configure_production_search(&mut algo);
+                        let leaf_epoch_pushed = round == 0
+                            && prebuild_leaf_candidate
+                            && !ctx.has_pending_signal()
+                            && ctx.process_context().branch_epoch_depth() == 0
+                            && algo.or_branch_stack.is_empty();
+                        if leaf_epoch_pushed {
+                            ctx.push_branch_epoch();
+                            ctx.process_context_mut().push_spine_journal_epoch();
+                        }
                         match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
                             Some(false) => {
                                 if export_active {
@@ -16639,6 +16680,59 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 });
                             }
                             Some(true) => {
+                                if leaf_epoch_pushed {
+                                    let owned = algo
+                                        .or_branch_stack
+                                        .iter()
+                                        .filter(|branch| branch.own_epoch)
+                                        .count();
+                                    let trusted = !ctx.has_pending_signal()
+                                        && !algo.completeness_poisoned
+                                        && algo.unrestored_advance_count == 0
+                                        && ctx.process_context().branch_epoch_depth() == 1 + owned;
+                                    if trusted {
+                                        let decisions = algo.or_branch_stack.len();
+                                        algo.or_branch_stack.clear();
+                                        ctx.clear_pending_signal();
+                                        ctx.base.set_current_individual_node(NodeId::NONE);
+                                        let depth = ctx.process_context().branch_epoch_depth();
+                                        let databox = ctx.processing_data_box().clone();
+                                        let next_id = ctx
+                                            .processing_data_box_mut()
+                                            .next_individual_node_id(false);
+                                        let branch_node = ctx.base.used_branch_tree_node;
+                                        let blocking_index = std::env::var_os("KM_HT_NO_BLOCKING_BASE_INDEX")
+                                            .is_none()
+                                            .then(|| std::sync::Arc::new(algo.build_blocking_base_index(&ctx)));
+                                        let singleton_base = algo.build_retained_singleton_base(&ctx);
+                                        ctx.process_context_mut().push_spine_journal_epoch();
+                                        ctx.push_branch_epoch();
+                                        let replay = std::sync::Arc::clone(
+                                            &algo.native_nominal_backend_replay,
+                                        );
+                                        if progress {
+                                            eprintln!(
+                                                "BRIDGE-LEAF built: decisions={} depth={} nodes={}",
+                                                decisions,
+                                                depth,
+                                                ctx.process_context().node_count()
+                                            );
+                                        }
+                                        prebuilt_leaf = Some(RetainedConsistencyLeaf {
+                                            depth,
+                                            base_depth: 0,
+                                            databox,
+                                            branch_node,
+                                            next_id,
+                                            decisions,
+                                            replay,
+                                            blocking_index,
+                                            singleton_base,
+                                        });
+                                    } else {
+                                        ctx.process_context_mut().pop_spine_journal_epoch();
+                                    }
+                                }
                                 if export_active {
                                     harvested_base_comp = extract_bridge_component(
                                         &mut ctx,
@@ -16664,7 +16758,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 }
             }
         }
-        if !retained_consistency_base {
+        if !retained_consistency_base && prebuilt_leaf.is_none() {
             reset_classification_probe_env(
                 &mut algo,
                 &mut ctx,
@@ -17240,11 +17334,16 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 && algo.conf_direct_rule_preprocessing
                 && algo.conf_cache_oriented_or_ordering
         };
-    let leaf_state: std::cell::RefCell<Option<RetainedConsistencyLeaf>> = Default::default();
+    let mut initial_leaf_counts = RetainedLeafCounts::default();
+    if prebuilt_leaf.is_some() {
+        initial_leaf_counts.builds = 1;
+    }
+    let leaf_state: std::cell::RefCell<Option<RetainedConsistencyLeaf>> =
+        std::cell::RefCell::new(prebuilt_leaf);
     let leaf_job = std::cell::Cell::new(false);
     let leaf_job_ran = std::cell::Cell::new(false);
     let leaf_disabled = std::cell::Cell::new(false);
-    let leaf_counts = std::cell::Cell::new(RetainedLeafCounts::default());
+    let leaf_counts = std::cell::Cell::new(initial_leaf_counts);
     let leaf_update = |f: &dyn Fn(&mut RetainedLeafCounts)| {
         let mut counts = leaf_counts.get();
         f(&mut counts);
@@ -18573,6 +18672,15 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             );
         }
         return None;
+    }
+    drop(kpset_state);
+    drop(classifier);
+    drop(saturation_known_pairs);
+    if !export_active {
+        let _ = leaf_state.borrow_mut().take();
+        let _ = retained_consistency_databox.take();
+        ctx = CalculationAlgorithmContextBase::new();
+        algo = CompletionTaskHandleAlgorithm::new();
     }
     if source_definition_closure {
         let before = out.subsumptions.len();

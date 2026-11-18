@@ -289,6 +289,21 @@ impl<T> Arena<T> {
     pub fn epoch_open(&self) -> bool {
         self.open_depth > 0 || !self.wm_stack.is_empty()
     }
+    /// Number of open journaled epochs.
+    #[inline]
+    pub fn open_depth(&self) -> usize {
+        self.open_depth
+    }
+    /// True if any item below `watermark` has been saved (mutated in place)
+    /// in any journal frame opened after `base_open_depth`.
+    #[inline]
+    pub fn has_saves_below_since_depth(&self, watermark: usize, base_open_depth: usize) -> bool {
+        self.journal_stack
+            .iter()
+            .rev()
+            .take_while(|frame| frame.hi > base_open_depth)
+            .any(|frame| frame.saves.iter().any(|&(ix, _)| ix < watermark))
+    }
     /// Materialize the frame of the innermost open journaled epoch before the
     /// first change of this arena inside it. Every open depth above the last
     /// materialized frame was opened while the arena was untouched, so the
