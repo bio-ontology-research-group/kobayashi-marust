@@ -882,7 +882,7 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
                     && !aux(*range) && dt::bridge_tbox_atomic_name(name(*range)) =>
                 profile_includes.push((*helper, *range)),
             ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: sup, t: ht }])
-                if !crate::routing::ground_rule_zero_rules_mode() && t == ht && aux(*helper) && !aux(*sup) =>
+                if std::env::var_os("KM_GROUND_RULE_HAS_RULES").is_some() && t == ht && aux(*helper) && !aux(*sup) =>
                 helper_supers.push((*helper, *sup)),
             ([HAtom::Concept { neg: false, c: left, t: lt }, HAtom::Concept { neg: false, c: right, t: rt }], [])
                 if lt == rt =>

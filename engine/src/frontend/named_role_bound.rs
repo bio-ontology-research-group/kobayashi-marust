@@ -37,6 +37,8 @@ pub struct NamedRoleBound {
     pub short_of_full: BTreeMap<String, String>,
     /// Off-diagonal or explicit pairs `(a, b)` per short role name `r`.
     pub edges: BTreeMap<String, BTreeSet<(String, String)>>,
+    /// Reverse pairs `(b, a)` per short role name `r`.
+    pub rev_edges: BTreeMap<String, BTreeSet<(String, String)>>,
     /// Short role names `r` that hold on the diagonal `(a, a)` for all `a in N`.
     pub self_roles: BTreeSet<String>,
     /// Whether `ObjectHasSelf` already occurs in the source ontology.
@@ -841,11 +843,20 @@ impl NamedRoleBound {
                 }
             }
             // Evaluate recursive rules with Role atoms in head.
+            let rev_edges: BTreeMap<String, BTreeSet<(String, String)>> = if recursive_rules.is_empty() {
+                BTreeMap::new()
+            } else {
+                edges
+                    .iter()
+                    .map(|(r, es)| (r.clone(), es.iter().map(|(a, b)| (b.clone(), a.clone())).collect()))
+                    .collect()
+            };
             for (body, role_heads) in &recursive_rules {
                 let Some(bindings) = Self::eval_rule_bindings_raw(
                     body,
                     &named,
                     &edges,
+                    &rev_edges,
                     &self_roles,
                     &vp_classes,
                     exact_data_values.as_ref(),
@@ -871,12 +882,17 @@ impl NamedRoleBound {
                 break;
             }
         }
+        let rev_edges_for_sinks: BTreeMap<String, BTreeSet<(String, String)>> = edges
+            .iter()
+            .map(|(r, es)| (r.clone(), es.iter().map(|(a, b)| (b.clone(), a.clone())).collect()))
+            .collect();
         // Evaluate pure sink-head rules once after the recursive fixpoint converges.
         for (body, role_heads) in &sink_rules {
             let Some(bindings) = Self::eval_rule_bindings_raw(
                 body,
                 &named,
                 &edges,
+                &rev_edges_for_sinks,
                 &self_roles,
                 &vp_classes,
                 exact_data_values.as_ref(),
@@ -898,6 +914,10 @@ impl NamedRoleBound {
                 }
             }
         }
+        let rev_edges: BTreeMap<String, BTreeSet<(String, String)>> = edges
+            .iter()
+            .map(|(r, es)| (r.clone(), es.iter().map(|(a, b)| (b.clone(), a.clone())).collect()))
+            .collect();
 
         // Verify that no functional or inverse-functional role merges two distinct named individuals.
         for f in &functional {
@@ -964,6 +984,7 @@ impl NamedRoleBound {
             full_iris,
             short_of_full,
             edges,
+            rev_edges,
             self_roles,
             has_self_in_source,
             vp_classes,
@@ -999,6 +1020,7 @@ impl NamedRoleBound {
         body: &[RuleAtom],
         named: &BTreeSet<String>,
         edges: &BTreeMap<String, BTreeSet<(String, String)>>,
+        rev_edges: &BTreeMap<String, BTreeSet<(String, String)>>,
         self_roles: &BTreeSet<String>,
         vp_classes: &BTreeMap<String, BTreeSet<String>>,
         exact_data_values: Option<&BTreeMap<(String, String), BTreeSet<String>>>,
@@ -1119,10 +1141,30 @@ impl NamedRoleBound {
 
         let mut bindings: Vec<BTreeMap<String, String>> = vec![BTreeMap::new()];
         let mut bound_vars: BTreeSet<String> = BTreeSet::new();
+        let mut unary_order: Vec<(&String, &BTreeSet<String>)> = unary_restricted.iter().collect();
+        unary_order.sort_by_key(|(_, set)| set.len());
+        for (v, set) in unary_order {
+            if set.len() <= 8 && bindings.len().saturating_mul(set.len()) <= 64 {
+                let mut next = Vec::with_capacity(bindings.len() * set.len());
+                for b in &bindings {
+                    for val in set {
+                        let mut nb = b.clone();
+                        nb.insert(v.clone(), val.clone());
+                        next.push(nb);
+                    }
+                }
+                bindings = next;
+                bound_vars.insert(v.clone());
+            }
+        }
         let mut remaining = role_atoms;
 
         while !remaining.is_empty() {
-            // Pick an atom that touches an already-bound variable, then a unary-restricted variable,
+            let check_unary = |var: &str, val: &str| -> bool {
+                unary_restricted.get(var).is_none_or(|s| s.contains(val))
+            };
+            // Pick an atom that touches an already-bound variable, ordered by actual
+            // candidate fan-out over `bindings`, then a unary-restricted variable,
             // or has the fewest edges and does not use a `self_roles` role with both ends unbound.
             let best_idx = remaining
                 .iter()
@@ -1154,8 +1196,58 @@ impl NamedRoleBound {
                             + if self_roles.contains(r) { named.len() } else { 0 };
                         match (ba_bound, bb_bound, ba_unary, bb_unary) {
                             (true, true, _, _) => 0,
-                            (true, false, _, true) | (false, true, true, _) => 1,
-                            (true, false, _, false) | (false, true, false, _) => 2 + edge_cnt,
+                            (true, false, _, _) => {
+                                let is_self = self_roles.contains(r);
+                                let es = edges.get(r);
+                                let RuleTerm::Var(var_b) = b else { unreachable!() };
+                                let mut fanout = 0usize;
+                                for bm in bindings.iter().take(64) {
+                                    let xa = match a {
+                                        RuleTerm::Ind(i) => i.as_str(),
+                                        RuleTerm::Var(v) => bm[v].as_str(),
+                                    };
+                                    if is_self && check_unary(var_b, xa) {
+                                        fanout += 1;
+                                    }
+                                    if let Some(s) = es {
+                                        for (u, v) in s.range((xa.to_owned(), String::new())..) {
+                                            if u != xa {
+                                                break;
+                                            }
+                                            if check_unary(var_b, v) {
+                                                fanout += 1;
+                                            }
+                                        }
+                                    }
+                                }
+                                1 + fanout
+                            }
+                            (false, true, _, _) => {
+                                let is_self = self_roles.contains(r);
+                                let rev_es = rev_edges.get(r);
+                                let RuleTerm::Var(var_a) = a else { unreachable!() };
+                                let mut fanout = 0usize;
+                                for bm in bindings.iter().take(64) {
+                                    let xb = match b {
+                                        RuleTerm::Ind(i) => i.as_str(),
+                                        RuleTerm::Var(v) => bm[v].as_str(),
+                                    };
+                                    if is_self && check_unary(var_a, xb) {
+                                        fanout += 1;
+                                    }
+                                    if let Some(s) = rev_es {
+                                        for (v, u) in s.range((xb.to_owned(), String::new())..) {
+                                            if v != xb {
+                                                break;
+                                            }
+                                            if check_unary(var_a, u) {
+                                                fanout += 1;
+                                            }
+                                        }
+                                    }
+                                }
+                                1 + fanout
+                            }
                             (false, false, true, true) => 50_000 + edge_cnt,
                             (false, false, true, false) | (false, false, false, true) => 100_000 + edge_cnt,
                             (false, false, false, false) => 1_000_000 + edge_cnt,
@@ -1199,9 +1291,6 @@ impl NamedRoleBound {
                     }
                 }
             }
-            let check_unary = |var: &str, val: &str| -> bool {
-                unary_restricted.get(var).is_none_or(|s| s.contains(val))
-            };
             let mut next = Vec::new();
             match atom {
                 RuleAtom::Same(a, b) => {
@@ -1283,8 +1372,11 @@ impl NamedRoleBound {
                                     targets.insert(xa);
                                 }
                                 if let Some(s) = es {
-                                    for (u, v) in s {
-                                        if u == xa && check_unary(var_b, v) {
+                                    for (u, v) in s.range((xa.to_owned(), String::new())..) {
+                                        if u != xa {
+                                            break;
+                                        }
+                                        if check_unary(var_b, v) {
                                             targets.insert(v.as_str());
                                         }
                                     }
@@ -1303,9 +1395,12 @@ impl NamedRoleBound {
                                 if is_self && check_unary(var_a, xb) {
                                     sources.insert(xb);
                                 }
-                                if let Some(s) = es {
-                                    for (u, v) in s {
-                                        if v == xb && check_unary(var_a, u) {
+                                if let Some(s) = rev_edges.get(r) {
+                                    for (v, u) in s.range((xb.to_owned(), String::new())..) {
+                                        if v != xb {
+                                            break;
+                                        }
+                                        if check_unary(var_a, u) {
                                             sources.insert(u.as_str());
                                         }
                                     }
@@ -1414,6 +1509,7 @@ impl NamedRoleBound {
             body,
             &self.named,
             &self.edges,
+            &self.rev_edges,
             &self.self_roles,
             &self.vp_classes,
             self.exact_data_values.as_ref(),
@@ -1442,6 +1538,7 @@ impl NamedRoleBound {
                 body,
                 &self.named,
                 &self.edges,
+                &self.rev_edges,
                 &self.self_roles,
                 &self.vp_classes,
                 self.exact_data_values.as_ref(),

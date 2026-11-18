@@ -1766,13 +1766,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
             }
-            if !self.conf_expand_created_successors_from_saturation
-                && calc_alg_context.base.used_sat_exp_cache_handler_state.is_none()
-                && calc_alg_context.process_context().node_count() > 8_192
-            {
-                calc_alg_context.raise_stop(false);
-                return false;
-            }
             if drive_iters > max_drive_iterations {
                 calc_alg_context.raise_stop(false);
                 return false;
