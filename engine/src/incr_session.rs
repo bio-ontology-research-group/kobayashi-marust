@@ -2770,10 +2770,20 @@ fn replace_rows(tax: &mut Taxonomy, fresh: &Taxonomy, subjects: &[&str]) {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
-    Init { functional_syntax: String },
+    Init {
+        functional_syntax: String,
+        #[serde(default)]
+        unknown_datatypes: Option<String>,
+    },
     /// `base_revision`: the revision whose answer the client already holds. When it
     /// equals the last published revision the answer is sent as a row delta.
-    Replace { functional_syntax: String, #[serde(default)] base_revision: Option<u64> },
+    Replace {
+        functional_syntax: String,
+        #[serde(default)]
+        base_revision: Option<u64>,
+        #[serde(default)]
+        unknown_datatypes: Option<String>,
+    },
     Classify,
     Stats,
 }
@@ -2795,19 +2805,39 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
         let request_started = Instant::now();
         match serde_json::from_str::<Command>(&line) {
             Ok(command @ (Command::Init { .. } | Command::Replace { .. })) => {
-                let (functional_syntax, base_revision) = match command {
-                    Command::Init { functional_syntax } => (functional_syntax, None),
-                    Command::Replace { functional_syntax, base_revision } => (functional_syntax, base_revision),
+                let (functional_syntax, base_revision, unknown_datatypes) = match command {
+                    Command::Init { functional_syntax, unknown_datatypes } => {
+                        (functional_syntax, None, unknown_datatypes)
+                    }
+                    Command::Replace { functional_syntax, base_revision, unknown_datatypes } => {
+                        (functional_syntax, base_revision, unknown_datatypes)
+                    }
                     _ => unreachable!(),
                 };
                 drop(line);
+                let op = if session.current.is_none() { "init" } else { "replace" };
+                if let Some(mode) = unknown_datatypes.as_deref() {
+                    match mode {
+                        "strict" => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
+                        "free" => std::env::set_var("KM_UNKNOWN_DATATYPES", "free"),
+                        other => {
+                            write_error(
+                                &mut writer,
+                                op,
+                                &format!("unknown_datatypes takes strict or free, got {other:?}"),
+                            )?;
+                            writer.write_all(b"\n")?;
+                            writer.flush()?;
+                            continue;
+                        }
+                    }
+                }
                 let delta_base = match (&published, base_revision) {
                     (Some((revision, tax)), Some(base)) if *revision == base && session.revision == base
                         && session.current.is_some() => Some(tax.clone()),
                     _ => None,
                 };
                 stage("request parsed", request_started);
-                let op = if session.current.is_none() { "init" } else { "replace" };
                 match session.update(functional_syntax) {
                     Ok((tax, receipt)) => {
                         stage("update returned", request_started);
@@ -4237,6 +4267,7 @@ mod tests {
         }
         session_delta_mismatch_failure_and_recovery_equal_full_answers();
         session_delta_after_refused_update_uses_last_published_revision();
+        session_unknown_datatypes_free_admits_opaque_rdfs_literal();
     }
 
     fn session_delta_mismatch_failure_and_recovery_equal_full_answers() {
@@ -4296,5 +4327,33 @@ mod tests {
         assert_eq!(lines[2]["result"]["delta"], true);
         assert_eq!(lines[2]["result"]["base_revision"], 1);
         assert_eq!(lines[2]["revision"], 2);
+    }
+
+    fn session_unknown_datatypes_free_admits_opaque_rdfs_literal() {
+        use serde_json::json;
+        let src = "Prefix(:=<http://example.org/>)\n\
+            Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)\n\
+            Prefix(owl:=<http://www.w3.org/2002/07/owl#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(DataProperty(:dp))\n\
+              Declaration(NamedIndividual(:a))\n\
+              ClassAssertion(:A :a)\n\
+              DataPropertyAssertion(:dp :a \"NULL\"^^rdfs:Literal)\n\
+              SubClassOf(ObjectIntersectionOf(:A DataHasValue(:dp \"NULL\"^^rdfs:Literal)) owl:Nothing)\n\
+            )\n";
+        let strict_lines = session_lines(&[json!({"op":"init","functional_syntax":src})]);
+        assert_eq!(strict_lines[0]["status"], "error");
+        assert!(strict_lines[0]["error"].as_str().unwrap().contains("invalid OWL 2 DL input"));
+
+        let free_lines = session_lines(&[json!({
+            "op":"init",
+            "functional_syntax":src,
+            "unknown_datatypes":"free"
+        })]);
+        std::env::remove_var("KM_UNKNOWN_DATATYPES");
+        assert_eq!(free_lines[0]["status"], "ok");
+        assert_eq!(free_lines[0]["result"]["consistent"], false);
+        assert_eq!(free_lines[0]["result"]["dropped"], 0);
     }
 }

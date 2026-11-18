@@ -1915,6 +1915,68 @@ fn write_model<W: Write>(
             !is_cell(*f) && !is_cell(*t) && is_source_role(r) && !data.contains(r.as_str())
         })
         .collect();
+    // Check if any non-exact class witness in `raw.labels` was polluted on a
+    // nominal element while `raw.base_labels` (the consistency model before
+    // adjoining unrelated class witnesses) separates the extra source classes.
+    let mut unseparated_rows: Vec<[String; 2]> = Vec::new();
+    let mut aux_witness_elems: Vec<(String, usize)> = Vec::new();
+    if !raw.base_labels.is_empty() && !raw.witness_exact {
+        for (class, &e) in &raw.witnesses {
+            if !source.contains(class.as_str()) || is_cell(e) {
+                continue;
+            }
+            let exact = raw
+                .witness_exact_by_class
+                .get(class)
+                .copied()
+                .unwrap_or(raw.witness_exact);
+            if exact {
+                continue;
+            }
+            let mut common_src: HashSet<&str> = raw.labels[e]
+                .iter()
+                .map(String::as_str)
+                .filter(|c| source.contains(c))
+                .collect();
+            for (ec, ee) in &raw.extra_witnesses {
+                if ec == class && !is_cell(*ee) {
+                    let s2: HashSet<&str> = raw.labels[*ee]
+                        .iter()
+                        .map(String::as_str)
+                        .filter(|c| source.contains(c))
+                        .collect();
+                    common_src.retain(|c| s2.contains(c));
+                }
+            }
+            let base_cand = (e < raw.base_labels.len()
+                && raw.base_labels[e].iter().any(|c| c == class))
+            .then_some(e)
+            .or_else(|| {
+                (0..raw.base_labels.len())
+                    .find(|&bi| !is_cell(bi) && raw.base_labels[bi].iter().any(|c| c == class))
+            });
+            if let Some(bi) = base_cand {
+                let base_src: HashSet<&str> = raw.base_labels[bi]
+                    .iter()
+                    .map(String::as_str)
+                    .filter(|c| source.contains(c))
+                    .collect();
+                let mut separated_any = false;
+                for &d in &common_src {
+                    if d != class.as_str() && !base_src.contains(d) {
+                        unseparated_rows.push([iri(class), iri(d)]);
+                        separated_any = true;
+                    }
+                }
+                if separated_any {
+                    aux_witness_elems.push((class.clone(), bi));
+                }
+            }
+        }
+        unseparated_rows.sort();
+        unseparated_rows.dedup();
+    }
+
     let mut header = serde_json::json!({
         "kind": "model",
         "format": "km-model-v1",
@@ -1928,6 +1990,9 @@ fn write_model<W: Write>(
     });
     if let Some(ref reason) = raw.partial_reason {
         header["reason"] = serde_json::json!(reason);
+    }
+    if !unseparated_rows.is_empty() {
+        header["unseparated_rows"] = serde_json::json!(unseparated_rows);
     }
     line(w, header)?;
     for (i, label) in raw.labels.iter().enumerate() {
@@ -2097,6 +2162,80 @@ fn write_model<W: Write>(
                 },
             )?;
             w.write_all(b"\n")?;
+        }
+    }
+    if !aux_witness_elems.is_empty() {
+        let n_base = raw.base_labels.len().min(raw.contexts.len());
+        for i in 0..n_base {
+            if is_cell(i) {
+                continue;
+            }
+            let mut classes: Vec<String> = raw.base_labels[i]
+                .iter()
+                .filter(|c| source.contains(c.as_str()))
+                .map(|c| iri(c))
+                .collect();
+            classes.sort();
+            classes.dedup();
+            let context = &raw.contexts[i];
+            let context_str = if source.contains(context.as_str()) {
+                iri_ref!(context)
+            } else {
+                context.as_str()
+            };
+            serde_json::to_writer(
+                &mut *w,
+                &ElementLine {
+                    classes: &classes,
+                    context: context_str,
+                    id: &ids[i],
+                    individuals: &individuals[i],
+                    kind: "aux_element",
+                },
+            )?;
+            w.write_all(b"\n")?;
+        }
+        for (f, r, t) in &raw.base_edges {
+            if *f < n_base
+                && *t < n_base
+                && !is_cell(*f)
+                && !is_cell(*t)
+                && is_source_role(r)
+                && !data.contains(r.as_str())
+            {
+                serde_json::to_writer(
+                    &mut *w,
+                    &EdgeLine {
+                        from: &ids[*f],
+                        kind: "aux_edge",
+                        role: iri_ref!(r),
+                        to: &ids[*t],
+                    },
+                )?;
+                w.write_all(b"\n")?;
+            }
+        }
+        for i in 0..n_base {
+            if individuals[i].len() > 1 && !is_cell(i) {
+                line(
+                    w,
+                    serde_json::json!({"kind": "aux_same", "individuals": individuals[i], "element": ids[i]}),
+                )?;
+            }
+        }
+        for (class, bi) in &aux_witness_elems {
+            if *bi < n_base && !is_cell(*bi) {
+                serde_json::to_writer(
+                    &mut *w,
+                    &WitnessLine {
+                        class: iri_ref!(class),
+                        element: &ids[*bi],
+                        exact: true,
+                        kind: "aux_witness",
+                    },
+                )?;
+                w.write_all(b"\n")?;
+            }
         }
     }
     Ok(())

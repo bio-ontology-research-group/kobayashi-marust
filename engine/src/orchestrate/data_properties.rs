@@ -201,7 +201,7 @@ impl DataPropertyProbes {
 
 /// The datatype IRI of the fresh literal of an extension built for `text`.
 /// The probe run reads it under `--unknown-datatypes=free`.
-pub(super) fn extension(text: &str, properties: &[String]) -> (String, DataPropertyProbes) {
+pub(crate) fn extension(text: &str, properties: &[String]) -> (String, DataPropertyProbes) {
     let ns = fresh_namespace_for(text, "dataproperties");
     let literal = format!("\"v\"^^<{ns}free>");
     let mut out = String::with_capacity(properties.len() * 320 + 128);

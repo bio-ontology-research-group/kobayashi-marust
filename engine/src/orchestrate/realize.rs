@@ -505,11 +505,14 @@ pub fn classify_extended(
     } else {
         Vec::new()
     };
-    let shape = if roles.is_empty() {
+    let mut shape = if roles.is_empty() {
         super::properties::SourceShape::default()
     } else {
         super::properties::source_shape(&text)?
     };
+    if shape.universal_possible && super::properties::isolated_blank_element_admissible(&text) {
+        shape.universal_possible = false;
+    }
     let empty_properties = properties.then(super::properties::PropertyHierarchy::default);
     let data_roles = if data_properties {
         super::data_properties::canonical_data_properties(&text)?
@@ -545,7 +548,9 @@ pub fn classify_extended(
     } else {
         None
     };
-    let separate_prop_run = need_ind_probes && properties && roles.len() >= 100;
+    let separate_prop_run = need_ind_probes
+        && properties
+        && std::env::var_os("KM_COMBINED_PROP_PROBES").is_none();
     let property_probes = if roles.is_empty() || !properties {
         None
     } else if separate_prop_run {
@@ -563,8 +568,9 @@ pub fn classify_extended(
     } else {
         None
     };
-    let separate_data_run =
-        !data_roles.is_empty() && (need_ind_probes || property_probes.is_some() || want_model_abox);
+    let separate_data_run = !data_roles.is_empty()
+        && (need_ind_probes || property_probes.is_some() || want_model_abox)
+        && std::env::var_os("KM_COMBINED_DATA_PROBES").is_none();
     let data_probes = if data_roles.is_empty() {
         None
     } else if separate_data_run {
@@ -682,7 +688,13 @@ pub fn classify_extended(
     };
     let mut realization = split(classification, &probes, mode.unwrap_or(TypeMode::All))?;
     if want_model_abox && realization.classification.consistent {
-        let model_rows = exported_model
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!(
+                "KM_TIMING realize: entering from_exported_model (has_model={})",
+                exported_model.as_ref().is_some_and(|r| r.as_ref().is_ok_and(|o| o.is_some()))
+            );
+        }
+        let model_plan = exported_model
             .and_then(|res| res.ok().flatten())
             .and_then(|(raw, meta)| {
                 super::abox_rows::from_exported_model(
@@ -697,8 +709,48 @@ pub fn classify_extended(
                     &meta,
                 )
             });
-        if let Some(rows) = model_rows {
-            abox = rows;
+        if let Some(plan) = model_plan {
+            if std::env::var_os("KM_TIMING").is_some() {
+                eprintln!(
+                    "KM_TIMING realize: model_plan ok (proved_val={}, proved_diff={}, res_val={}, res_diff={})",
+                    plan.proved_values.len(),
+                    plan.proved_different.len(),
+                    plan.residual_value_targets.len(),
+                    plan.residual_different_pairs.len()
+                );
+            }
+            let mut val_set = plan.proved_values.clone();
+            let mut diff_set = plan.proved_different.clone();
+            if (values && !plan.residual_value_targets.is_empty())
+                || (different && !plan.residual_different_pairs.is_empty())
+            {
+                let (res_ext, ind_probes, abox_p) = super::abox_rows::residual_extension(
+                    &text,
+                    &roles,
+                    &individuals,
+                    values,
+                    different,
+                    &plan,
+                );
+                if !res_ext.is_empty() {
+                    let mut abox_cls =
+                        classify_probe_source(cfg, &text, &res_ext, "-abox-probes.ofn")?;
+                    let individual_of: BTreeMap<String, String> = ind_probes.into_iter().collect();
+                    let rows = super::abox_rows::split(&mut abox_cls, &abox_p, &individual_of)?;
+                    if abox_cls.consistent {
+                        if let Some(vs) = rows.values {
+                            val_set.extend(vs);
+                        }
+                        if let Some(ds) = rows.different {
+                            diff_set.extend(ds);
+                        }
+                    }
+                }
+            }
+            abox = super::abox_rows::AboxRows {
+                values: values.then(|| val_set.into_iter().collect()),
+                different: different.then(|| diff_set.into_iter().collect()),
+            };
         } else {
             let (mut abox_ext, ind_probes) = individual_extension(&text, &individuals);
             let (ext2, abox_p) =
@@ -1019,5 +1071,67 @@ mod tests {
         assert!(!result.classification.consistent);
         assert!(result.classification.unsatisfiable.is_empty());
         assert!(result.types.is_empty() && result.same.is_empty());
+    }
+
+    #[test]
+    fn separate_and_combined_property_and_abox_probe_paths_match_identically() {
+        let _test_env = crate::test_env::write();
+        let _env = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "auto");
+        std::env::set_var("KM_THREADS", "1");
+        let text = "Prefix(:=<http://ex.org/>)\nPrefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(<http://ex.org/p3>\n\
+            Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
+            Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))\n\
+            Declaration(DataProperty(:dp1)) Declaration(DataProperty(:dp2))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))\n\
+            SubObjectPropertyOf(:r :s)\n\
+            SubDataPropertyOf(:dp1 :dp2)\n\
+            DataPropertyDomain(:dp2 :A)\n\
+            ObjectPropertyDomain(:s :A)\n\
+            ObjectPropertyRange(:s :B)\n\
+            SubClassOf(ObjectIntersectionOf(:A :B) :C)\n\
+            DisjointClasses(:B :C)\n\
+            ObjectPropertyAssertion(:r :a :b)\n\
+            ClassAssertion(:B :c)\n\
+        )";
+        let path = super::tmpfile::TempPath::new("-p3-split-equiv.ofn");
+        std::fs::write(path.path(), text).unwrap();
+        let cfg = Config::from_env();
+
+        let sep = classify_extended(
+            &cfg,
+            path.path(),
+            Some(TypeMode::All),
+            true,
+            true,
+            true,
+            true,
+            true,
+        )
+        .unwrap();
+
+        let comb = {
+            let _g = crate::routing::EnvironmentGuard::capture();
+            std::env::set_var("KM_COMBINED_PROP_PROBES", "1");
+            std::env::set_var("KM_COMBINED_DATA_PROBES", "1");
+            std::env::set_var("KM_ABOX_PROBES_ONLY", "1");
+            classify_extended(
+                &cfg,
+                path.path(),
+                Some(TypeMode::All),
+                true,
+                true,
+                true,
+                true,
+                true,
+            )
+            .unwrap()
+        };
+
+        assert_eq!(sep.realization, comb.realization);
+        assert_eq!(sep.properties, comb.properties);
+        assert_eq!(sep.data_properties, comb.data_properties);
+        assert_eq!(sep.abox, comb.abox);
+        assert_eq!(sep.top, comb.top);
     }
 }

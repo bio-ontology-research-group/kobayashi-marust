@@ -22,6 +22,9 @@ final class ForestABoxRollup {
     final Set<OWLDataProperty> functionalDataProperties = new HashSet<>();
     final Set<OWLDataProperty> tboxDataProperties = new HashSet<>();
     final Set<OWLNamedIndividual> allIndividuals = new LinkedHashSet<>();
+    final Map<String, OWLObjectProperty> reflProbeToProp = new LinkedHashMap<>();
+    final Map<String, Object[]> ovProbeToPair = new LinkedHashMap<>();
+    final Map<OWLNamedIndividual, Set<OWLNamedIndividual>> sameClassOf = new HashMap<>();
 
     private ForestABoxRollup(String rolledSource) {
         this.rolledSource = rolledSource;
@@ -127,11 +130,41 @@ final class ForestABoxRollup {
             }
         }
 
-        if (!sameList.isEmpty()) {
-            if (!opAssertions.isEmpty() || !dpAssertions.isEmpty()) return null;
-            for (OWLClassAssertionAxiom ca : classAssertions) {
-                if (!ca.getClassExpression().isOWLThing()) return null;
+        // Build SameIndividual equivalence classes so assertions are quotiented by equality.
+        Set<OWLNamedIndividual> rawInds = new HashSet<>();
+        for (OWLOntology o : closure) {
+            rawInds.addAll(o.getIndividualsInSignature());
+        }
+        List<OWLNamedIndividual> sortedNamed = new ArrayList<>(rawInds);
+        sortedNamed.sort(Comparator.comparing(a -> a.getIRI().toString()));
+        Map<OWLNamedIndividual, Integer> sameIdx = new HashMap<>();
+        for (int i = 0; i < sortedNamed.size(); i++) sameIdx.put(sortedNamed.get(i), i);
+        int[] sameUf = new int[sortedNamed.size()];
+        for (int i = 0; i < sameUf.length; i++) sameUf[i] = i;
+        for (OWLSameIndividualAxiom sa : sameList) {
+            List<OWLIndividual> members = new ArrayList<>(sa.getIndividuals());
+            for (int i = 1; i < members.size(); i++) {
+                Integer a = sameIdx.get(members.get(0).asOWLNamedIndividual());
+                Integer b = sameIdx.get(members.get(i).asOWLNamedIndividual());
+                if (a != null && b != null) {
+                    int ra = find(sameUf, a), rb = find(sameUf, b);
+                    if (ra != rb) sameUf[ra] = rb;
+                }
             }
+        }
+        Map<Integer, Set<OWLNamedIndividual>> compMembers = new HashMap<>();
+        for (int i = 0; i < sortedNamed.size(); i++) {
+            int r = find(sameUf, i);
+            compMembers.computeIfAbsent(r, k -> new LinkedHashSet<>()).add(sortedNamed.get(i));
+        }
+        Map<OWLIndividual, OWLIndividual> canonOf = new HashMap<>();
+        Map<OWLNamedIndividual, Set<OWLNamedIndividual>> sameGroup = new HashMap<>();
+        for (int i = 0; i < sortedNamed.size(); i++) {
+            int r = find(sameUf, i);
+            OWLNamedIndividual rep = sortedNamed.get(r);
+            OWLNamedIndividual cur = sortedNamed.get(i);
+            canonOf.put(cur, rep);
+            sameGroup.put(cur, compMembers.get(r));
         }
 
         // Propagate constrainedRoles downwards along subRoleMap.
@@ -153,33 +186,39 @@ final class ForestABoxRollup {
         for (OWLDataPropertyAssertionAxiom dpa : dpAssertions) {
             OWLDataProperty dp = dpa.getProperty().asOWLDataProperty();
             if (tboxDataProps.contains(dp)) return null;
-            OWLNamedIndividual subj = dpa.getSubject().asOWLNamedIndividual();
+            OWLNamedIndividual rawSubj = dpa.getSubject().asOWLNamedIndividual();
+            OWLNamedIndividual subj = (OWLNamedIndividual) canonOf.getOrDefault(rawSubj, rawSubj);
             OWLLiteral lit = dpa.getObject();
-            dpaMap.computeIfAbsent(dp, k -> new HashMap<>())
-                    .computeIfAbsent(subj, k -> new LinkedHashSet<>()).add(lit);
+            for (OWLNamedIndividual member : sameGroup.getOrDefault(subj, Collections.singleton(subj))) {
+                dpaMap.computeIfAbsent(dp, k -> new HashMap<>())
+                        .computeIfAbsent(member, k -> new LinkedHashSet<>()).add(lit);
+            }
             Set<Object> keys = dpaValueKeys.computeIfAbsent(dp, k -> new HashMap<>())
                     .computeIfAbsent(subj, k -> new HashSet<>());
             keys.add(DataValues.valueKey(lit));
             if (funcDataProps.contains(dp) && keys.size() > 1) return null;
         }
 
-        // Verify ObjectPropertyAssertions form an undirected forest over unconstrained roles.
+        // Verify ObjectPropertyAssertions form an undirected forest over unconstrained roles on quotient individuals.
         Map<OWLIndividual, Integer> indIndex = new LinkedHashMap<>();
         for (OWLClassAssertionAxiom ca : classAssertions) {
-            indIndex.putIfAbsent(ca.getIndividual(), indIndex.size());
+            OWLIndividual cInd = canonOf.getOrDefault(ca.getIndividual(), ca.getIndividual());
+            indIndex.putIfAbsent(cInd, indIndex.size());
         }
         for (OWLObjectPropertyAssertionAxiom opa : opAssertions) {
-            indIndex.putIfAbsent(opa.getSubject(), indIndex.size());
-            indIndex.putIfAbsent(opa.getObject(), indIndex.size());
+            OWLIndividual cs = canonOf.getOrDefault(opa.getSubject(), opa.getSubject());
+            OWLIndividual co = canonOf.getOrDefault(opa.getObject(), opa.getObject());
+            indIndex.putIfAbsent(cs, indIndex.size());
+            indIndex.putIfAbsent(co, indIndex.size());
         }
         int[] uf = new int[indIndex.size()];
         for (int i = 0; i < uf.length; i++) uf[i] = i;
-        Set<OWLIndividual> inOpAssertion = new HashSet<>();
+        Set<OWLIndividual> inOpAssertion = new LinkedHashSet<>();
         for (OWLObjectPropertyAssertionAxiom opa : opAssertions) {
             OWLObjectProperty r = opa.getProperty().asOWLObjectProperty();
             if (constrainedRoles.contains(r)) return null;
-            OWLIndividual s = opa.getSubject();
-            OWLIndividual o = opa.getObject();
+            OWLIndividual s = canonOf.getOrDefault(opa.getSubject(), opa.getSubject());
+            OWLIndividual o = canonOf.getOrDefault(opa.getObject(), opa.getObject());
             if (s.equals(o)) return null;
             inOpAssertion.add(s);
             inOpAssertion.add(o);
@@ -193,7 +232,8 @@ final class ForestABoxRollup {
         for (OWLClassAssertionAxiom ca : classAssertions) {
             OWLClass cls = ca.getClassExpression().asOWLClass();
             if (!cls.isOWLThing()) {
-                assertedClasses.computeIfAbsent(ca.getIndividual(), k -> new LinkedHashSet<>()).add(cls);
+                OWLIndividual cInd = canonOf.getOrDefault(ca.getIndividual(), ca.getIndividual());
+                assertedClasses.computeIfAbsent(cInd, k -> new LinkedHashSet<>()).add(cls);
             }
         }
 
@@ -205,6 +245,17 @@ final class ForestABoxRollup {
                 proxyOf.put(ind, "urn:km:indproxy:" + (proxyCounter++));
             }
         }
+
+        Set<OWLObjectProperty> allObjProps = new LinkedHashSet<>();
+        for (OWLOntology o : closure) {
+            for (OWLObjectProperty p : o.getObjectPropertiesInSignature()) {
+                if (!p.isOWLTopObjectProperty() && !p.isOWLBottomObjectProperty()) {
+                    allObjProps.add(p);
+                }
+            }
+        }
+        List<OWLObjectProperty> sortedObjProps = new ArrayList<>(allObjProps);
+        sortedObjProps.sort(Comparator.comparing(p -> p.getIRI().toString()));
 
         StringBuilder stripped = new StringBuilder(candidateSource.length());
         String[] lines = candidateSource.split("\n");
@@ -238,31 +289,61 @@ final class ForestABoxRollup {
             }
         }
         for (OWLObjectPropertyAssertionAxiom opa : opAssertions) {
-            String ps = proxyOf.get(opa.getSubject());
-            String po = proxyOf.get(opa.getObject());
+            OWLIndividual cs = canonOf.getOrDefault(opa.getSubject(), opa.getSubject());
+            OWLIndividual co = canonOf.getOrDefault(opa.getObject(), opa.getObject());
+            String ps = proxyOf.get(cs);
+            String po = proxyOf.get(co);
             String rIri = opa.getProperty().asOWLObjectProperty().getIRI().toString();
             stripped.append("SubClassOf(<").append(ps).append("> ObjectSomeValuesFrom(<")
                     .append(rIri).append("> <").append(po).append(">))\n");
             stripped.append("SubClassOf(<").append(po).append("> ObjectSomeValuesFrom(ObjectInverseOf(<")
                     .append(rIri).append(">) <").append(ps).append(">))\n");
         }
+        // Engine probes for reflexive roles and forest object-property values (Class (a) rewriting).
+        Map<String, OWLObjectProperty> reflProbes = new LinkedHashMap<>();
+        Map<String, Object[]> ovProbes = new LinkedHashMap<>();
+        if (!sortedNamed.isEmpty() && !sortedObjProps.isEmpty()) {
+            stripped.append("Declaration(Class(<urn:km:reflprobe>))\n");
+            int probeId = 0;
+            for (OWLObjectProperty p : sortedObjProps) {
+                String pIri = p.getIRI().toString();
+                String rProbe = "urn:km:reflval:" + (probeId++);
+                reflProbes.put(rProbe, p);
+                stripped.append("Declaration(Class(<").append(rProbe).append(">))\n");
+                stripped.append("SubClassOf(ObjectSomeValuesFrom(<").append(pIri)
+                        .append("> <urn:km:reflprobe>) <").append(rProbe).append(">)\n");
+                for (OWLIndividual target : inOpAssertion) {
+                    if (!target.isNamed()) continue;
+                    String po = proxyOf.get(target);
+                    if (po == null) continue;
+                    String vProbe = "urn:km:ovprobe:" + (probeId++);
+                    ovProbes.put(vProbe, new Object[]{p, target.asOWLNamedIndividual()});
+                    stripped.append("Declaration(Class(<").append(vProbe).append(">))\n");
+                    stripped.append("SubClassOf(ObjectSomeValuesFrom(<").append(pIri)
+                            .append("> <").append(po).append(">) <").append(vProbe).append(">)\n");
+                }
+            }
+        }
         stripped.append(")\n");
 
+        KMReasoner.recordReduction("R01_forest_abox_rollup");
         ForestABoxRollup out = new ForestABoxRollup(stripped.toString());
         out.roleAssertions.addAll(opAssertions);
         out.sameAxioms.addAll(sameList);
         out.dataAssertions.putAll(dpaMap);
         out.functionalDataProperties.addAll(funcDataProps);
         out.tboxDataProperties.addAll(tboxDataProps);
-        Set<OWLNamedIndividual> rawInds = new HashSet<>();
-        for (OWLOntology o : closure) {
-            rawInds.addAll(o.getIndividualsInSignature());
-        }
+        out.reflProbeToProp.putAll(reflProbes);
+        out.ovProbeToPair.putAll(ovProbes);
+        out.sameClassOf.putAll(sameGroup);
         addSorted(out.allIndividuals, rawInds);
         for (Map.Entry<OWLIndividual, String> e : proxyOf.entrySet()) {
             out.requiredSatisfiableIris.add(e.getValue());
             if (e.getKey().isNamed()) {
-                out.proxyIriOfInd.put(e.getKey().asOWLNamedIndividual(), e.getValue());
+                OWLNamedIndividual rep = e.getKey().asOWLNamedIndividual();
+                for (OWLNamedIndividual member : sameGroup.getOrDefault(rep, Collections.singleton(rep))) {
+                    out.proxyIriOfInd.put(member, e.getValue());
+                }
             }
         }
         for (Map.Entry<OWLIndividual, Set<OWLClass>> e : assertedClasses.entrySet()) {
@@ -270,7 +351,11 @@ final class ForestABoxRollup {
                 out.requiredSatisfiableIris.add(c.getIRI().toString());
             }
             if (e.getKey().isNamed() && !proxyOf.containsKey(e.getKey()) && e.getValue().size() == 1) {
-                out.singleClassOfInd.put(e.getKey().asOWLNamedIndividual(), e.getValue().iterator().next());
+                OWLNamedIndividual rep = e.getKey().asOWLNamedIndividual();
+                OWLClass single = e.getValue().iterator().next();
+                for (OWLNamedIndividual member : sameGroup.getOrDefault(rep, Collections.singleton(rep))) {
+                    out.singleClassOfInd.put(member, single);
+                }
             }
         }
         return out;
@@ -283,55 +368,43 @@ final class ForestABoxRollup {
     }
 
     /**
-     * Exact object property values for a rolled-up forest ABox: only reflexive
-     * properties (and their superproperties) and the named edges of the forest
-     * closed under role hierarchy and transitivity can hold between named individuals.
+     * Exact object property values for a rolled-up forest ABox, read directly
+     * from the engine's {@code SUB} rows for {@code urn:km:reflprobe} and
+     * {@code urn:km:ovprobe:*} on the rolled-up TBox.
      */
     Map<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>> buildObjectPropertyValues(
-            OWLOntology snapshot, ObjectPropertyModel model) {
+            OWLOntology snapshot, Map<String, String[]> sessionRows) {
         Map<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>> out = new HashMap<>();
         Set<OWLObjectProperty> ops = new LinkedHashSet<>(snapshot.getObjectPropertiesInSignature());
         ops.removeIf(p -> p.isOWLTopObjectProperty() || p.isOWLBottomObjectProperty());
         for (OWLObjectProperty r : ops) out.put(r, new HashMap<>());
-        if (allIndividuals.isEmpty() || ops.isEmpty()) return out;
+        if (allIndividuals.isEmpty() || ops.isEmpty() || sessionRows == null) return out;
 
-        Set<OWLObjectPropertyExpression> refl = new HashSet<>();
-        for (OWLAxiom ax : snapshot.getAxioms(AxiomType.REFLEXIVE_OBJECT_PROPERTY)) {
-            refl.add(((OWLReflexiveObjectPropertyAxiom) ax).getProperty());
-        }
-        for (OWLObjectProperty r : ops) {
-            boolean isRefl = false;
-            for (OWLObjectPropertyExpression p : refl) {
-                if (model.entails(p, r)) {
-                    isRefl = true;
-                    break;
-                }
-            }
-            if (isRefl) {
+        String[] reflSups = sessionRows.get("urn:km:reflprobe");
+        if (reflSups != null) {
+            for (String sup : reflSups) {
+                OWLObjectProperty r = reflProbeToProp.get(sup);
+                if (r == null || !out.containsKey(r)) continue;
                 Map<OWLNamedIndividual, Set<OWLNamedIndividual>> map = out.get(r);
                 for (OWLNamedIndividual ind : allIndividuals) {
-                    Set<OWLNamedIndividual> self = new LinkedHashSet<>();
-                    self.add(ind);
-                    for (OWLSameIndividualAxiom sa : sameAxioms) {
-                        Set<OWLNamedIndividual> members = sa.getIndividualsInSignature();
-                        if (members.contains(ind)) self.addAll(members);
-                    }
+                    Set<OWLNamedIndividual> self = new LinkedHashSet<>(
+                            sameClassOf.getOrDefault(ind, Collections.singleton(ind)));
                     map.put(ind, self);
                 }
             }
         }
-        for (OWLObjectPropertyAssertionAxiom opa : roleAssertions) {
-            if (!opa.getSubject().isNamed() || !opa.getObject().isNamed()) continue;
-            OWLNamedIndividual s = opa.getSubject().asOWLNamedIndividual();
-            OWLNamedIndividual o = opa.getObject().asOWLNamedIndividual();
-            OWLObjectPropertyExpression p = opa.getProperty();
-            for (OWLObjectProperty r : ops) {
-                if (model.entails(p, r)) {
-                    out.get(r).computeIfAbsent(s, k -> new LinkedHashSet<>()).add(o);
-                }
-                if (model.entails(p.getInverseProperty(), r)) {
-                    out.get(r).computeIfAbsent(o, k -> new LinkedHashSet<>()).add(s);
-                }
+        for (Map.Entry<OWLNamedIndividual, String> e : proxyIriOfInd.entrySet()) {
+            OWLNamedIndividual subj = e.getKey();
+            String[] sups = sessionRows.get(e.getValue());
+            if (sups == null) continue;
+            for (String sup : sups) {
+                Object[] pair = ovProbeToPair.get(sup);
+                if (pair == null) continue;
+                OWLObjectProperty r = (OWLObjectProperty) pair[0];
+                OWLNamedIndividual targetRep = (OWLNamedIndividual) pair[1];
+                if (!out.containsKey(r)) continue;
+                Set<OWLNamedIndividual> targets = out.get(r).computeIfAbsent(subj, k -> new LinkedHashSet<>());
+                targets.addAll(sameClassOf.getOrDefault(targetRep, Collections.singleton(targetRep)));
             }
         }
         return out;
@@ -343,39 +416,21 @@ final class ForestABoxRollup {
      * distinct values on a functional data property or their rolled-up classes
      * are disjoint.
      */
-    List<OWLNamedIndividual> computeDifferentIndividuals(
-            OWLNamedIndividual ind,
-            OWLDataFactory df,
-            java.util.function.BiPredicate<OWLClass, OWLClass> classesDisjoint) {
-        List<OWLNamedIndividual> diff = new ArrayList<>();
-        if (!allIndividuals.contains(ind)) return diff;
-        OWLClass cA = effectiveClassOf(ind, df);
-        for (OWLNamedIndividual b : allIndividuals) {
-            if (b.equals(ind)) continue;
-            boolean conflict = false;
-            for (OWLDataProperty dp : functionalDataProperties) {
-                Map<OWLNamedIndividual, Set<OWLLiteral>> m = dataAssertions.get(dp);
-                if (m == null) continue;
-                Set<OWLLiteral> va = m.get(ind);
-                Set<OWLLiteral> vb = m.get(b);
-                if (va != null && !va.isEmpty() && vb != null && !vb.isEmpty()) {
-                    Object ka = DataValues.valueKey(va.iterator().next());
-                    Object kb = DataValues.valueKey(vb.iterator().next());
-                    if (!ka.equals(kb)) {
-                        conflict = true;
-                        break;
-                    }
-                }
+    boolean hasFunctionalDataConflict(OWLNamedIndividual a, OWLNamedIndividual b) {
+        if (!allIndividuals.contains(a) || !allIndividuals.contains(b) || a.equals(b)) return false;
+        KMReasoner.recordReduction("R03_rollup_different_individuals");
+        for (OWLDataProperty dp : functionalDataProperties) {
+            Map<OWLNamedIndividual, Set<OWLLiteral>> m = dataAssertions.get(dp);
+            if (m == null) continue;
+            Set<OWLLiteral> va = m.get(a);
+            Set<OWLLiteral> vb = m.get(b);
+            if (va != null && !va.isEmpty() && vb != null && !vb.isEmpty()) {
+                Object ka = DataValues.valueKey(va.iterator().next());
+                Object kb = DataValues.valueKey(vb.iterator().next());
+                if (!ka.equals(kb)) return true;
             }
-            if (!conflict && cA != null) {
-                OWLClass cB = effectiveClassOf(b, df);
-                if (cB != null && classesDisjoint.test(cA, cB)) {
-                    conflict = true;
-                }
-            }
-            if (conflict) diff.add(b);
         }
-        return diff;
+        return false;
     }
 
     OWLClass effectiveClassOf(OWLNamedIndividual ind, OWLDataFactory df) {
@@ -474,120 +529,9 @@ final class ForestABoxRollup {
     }
 
     /**
-     * When {@code snapshot} has a separable ABox (each {@code SameIndividual}
-     * component has at most one asserted named class and no object property
-     * assertions, negative assertions, different-individuals axioms, nominals,
-     * keys or rules), realization is completely determined by the TBox taxonomy
-     * and {@code SameIndividual} components.
-     */
-    static Classifier.Realization tryRealizeSeparableABox(OWLOntology snapshot) {
-        List<OWLSameIndividualAxiom> sameAxioms = new ArrayList<>();
-        List<OWLClassAssertionAxiom> classAxioms = new ArrayList<>();
-        Set<OWLDataProperty> tboxDataProps = new HashSet<>();
-        Set<OWLDataProperty> funcDataProps = new HashSet<>();
-        List<OWLDataPropertyAssertionAxiom> dpAssertions = new ArrayList<>();
-
-        for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
-            if (ax instanceof SWRLRule
-                    || ax instanceof OWLHasKeyAxiom
-                    || ax instanceof OWLDifferentIndividualsAxiom
-                    || ax instanceof OWLObjectPropertyAssertionAxiom
-                    || ax instanceof OWLNegativeObjectPropertyAssertionAxiom
-                    || ax instanceof OWLNegativeDataPropertyAssertionAxiom) {
-                return null;
-            }
-            for (OWLObjectProperty op : ax.getObjectPropertiesInSignature()) {
-                if (op.isOWLTopObjectProperty() || op.isOWLBottomObjectProperty()) return null;
-            }
-            for (OWLDataProperty dp : ax.getDataPropertiesInSignature()) {
-                if (dp.isOWLTopDataProperty() || dp.isOWLBottomDataProperty()) return null;
-            }
-            for (OWLClassExpression ce : ax.getNestedClassExpressions()) {
-                if (ce instanceof OWLObjectOneOf || ce instanceof OWLObjectHasValue) return null;
-                tboxDataProps.addAll(ce.getDataPropertiesInSignature());
-            }
-            if (ax instanceof OWLFunctionalDataPropertyAxiom) {
-                OWLDataPropertyExpression dpe = ((OWLFunctionalDataPropertyAxiom) ax).getProperty();
-                if (!dpe.isAnonymous()) funcDataProps.add(dpe.asOWLDataProperty());
-            } else if (ax instanceof OWLDataPropertyDomainAxiom
-                    || ax instanceof OWLDataPropertyRangeAxiom
-                    || ax instanceof OWLSubDataPropertyOfAxiom
-                    || ax instanceof OWLEquivalentDataPropertiesAxiom
-                    || ax instanceof OWLDisjointDataPropertiesAxiom) {
-                tboxDataProps.addAll(ax.getDataPropertiesInSignature());
-            } else if (ax instanceof OWLSameIndividualAxiom) {
-                for (OWLIndividual i : ((OWLSameIndividualAxiom) ax).getIndividuals()) {
-                    if (i.isAnonymous()) return null;
-                }
-                sameAxioms.add((OWLSameIndividualAxiom) ax);
-            } else if (ax instanceof OWLClassAssertionAxiom) {
-                OWLClassAssertionAxiom ca = (OWLClassAssertionAxiom) ax;
-                if (ca.getIndividual().isAnonymous() || ca.getClassExpression().isAnonymous()) return null;
-                classAxioms.add(ca);
-            } else if (ax instanceof OWLDataPropertyAssertionAxiom) {
-                OWLDataPropertyAssertionAxiom dpa = (OWLDataPropertyAssertionAxiom) ax;
-                if (dpa.getSubject().isAnonymous() || dpa.getProperty().isAnonymous()) return null;
-                dpAssertions.add(dpa);
-            }
-        }
-
-        List<OWLNamedIndividual> inds = new ArrayList<>(snapshot.getIndividualsInSignature());
-        Map<OWLNamedIndividual, Integer> idx = new HashMap<>();
-        for (int i = 0; i < inds.size(); i++) idx.put(inds.get(i), i);
-        int[] uf = new int[inds.size()];
-        for (int i = 0; i < uf.length; i++) uf[i] = i;
-
-        Classifier.Realization r = new Classifier.Realization();
-        r.consistent = true;
-        r.dropped = 0;
-        for (OWLSameIndividualAxiom sa : sameAxioms) {
-            List<OWLIndividual> members = new ArrayList<>(sa.getIndividuals());
-            for (int i = 1; i < members.size(); i++) {
-                OWLNamedIndividual a = members.get(0).asOWLNamedIndividual();
-                OWLNamedIndividual b = members.get(i).asOWLNamedIndividual();
-                int ra = find(uf, idx.get(a)), rb = find(uf, idx.get(b));
-                if (ra != rb) uf[ra] = rb;
-                r.same.add(new String[]{a.getIRI().toString(), b.getIRI().toString()});
-            }
-        }
-
-        Map<Integer, Set<OWLClass>> compClasses = new HashMap<>();
-        for (OWLClassAssertionAxiom ca : classAxioms) {
-            OWLClass cls = ca.getClassExpression().asOWLClass();
-            if (cls.isOWLThing()) continue;
-            int root = find(uf, idx.get(ca.getIndividual().asOWLNamedIndividual()));
-            Set<OWLClass> set = compClasses.computeIfAbsent(root, k -> new LinkedHashSet<>());
-            set.add(cls);
-            if (set.size() > 1) return null;
-        }
-
-        Map<List<Object>, Set<Object>> compDataKeys = new HashMap<>();
-        for (OWLDataPropertyAssertionAxiom dpa : dpAssertions) {
-            OWLDataProperty dp = dpa.getProperty().asOWLDataProperty();
-            if (tboxDataProps.contains(dp)) return null;
-            int root = find(uf, idx.get(dpa.getSubject().asOWLNamedIndividual()));
-            Set<Object> keys = compDataKeys.computeIfAbsent(Arrays.asList(root, dp), k -> new HashSet<>());
-            keys.add(DataValues.valueKey(dpa.getObject()));
-            if (funcDataProps.contains(dp) && keys.size() > 1) return null;
-        }
-
-        for (int i = 0; i < inds.size(); i++) {
-            int root = find(uf, i);
-            Set<OWLClass> set = compClasses.get(root);
-            if (set != null && !set.isEmpty()) {
-                OWLClass cls = set.iterator().next();
-                r.types.put(inds.get(i).getIRI().toString(),
-                         new ArrayList<>(Collections.singletonList(cls.getIRI().toString())));
-            }
-        }
-        return r;
-    }
-
-    /**
      * Exact RBox-driven {@link Classifier.Properties} construction for consistent
      * ontologies in the positive-object-restriction Horn-RBox fragment where
-     * {@code km classify --properties} would time out on {@code ReflexiveObjectProperty}
-     * combined with {@code ObjectHasValue} (such as {@code ore_ont_13584}).
+     * {@code km classify --properties} would time out on {@code ReflexiveObjectProperty}.
      *
      * <p>Requires: every named class is satisfiable; no {@code ObjectOneOf},
      * {@code SWRLRule}, {@code HasKey}, {@code SubPropertyChainOf},
@@ -601,8 +545,7 @@ final class ForestABoxRollup {
      */
     static Classifier.Properties tryBuildPositiveRBoxProperties(OWLOntology snapshot, boolean onlyThingUnsat) {
         if (!onlyThingUnsat) return null;
-        boolean hasReflexive = !snapshot.getAxioms(AxiomType.REFLEXIVE_OBJECT_PROPERTY).isEmpty();
-        boolean hasHasValue = false;
+        if (snapshot.getAxioms(AxiomType.REFLEXIVE_OBJECT_PROPERTY).isEmpty()) return null;
         for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
             if (ax instanceof SWRLRule
                     || ax instanceof OWLHasKeyAxiom
@@ -629,7 +572,6 @@ final class ForestABoxRollup {
                         || ce instanceof OWLObjectUnionOf) {
                     return null;
                 }
-                if (ce instanceof OWLObjectHasValue) hasHasValue = true;
             }
             if (ax instanceof OWLSubClassOfAxiom) {
                 if (((OWLSubClassOfAxiom) ax).getSubClass().isAnonymous()) return null;
@@ -641,7 +583,6 @@ final class ForestABoxRollup {
                 if (((OWLObjectPropertyRangeAxiom) ax).getRange().isAnonymous()) return null;
             }
         }
-        if (!hasReflexive || !hasHasValue) return null;
 
         List<OWLObjectProperty> ops = new ArrayList<>(snapshot.getObjectPropertiesInSignature());
         ops.removeIf(p -> p.isOWLTopObjectProperty() || p.isOWLBottomObjectProperty());
@@ -742,6 +683,7 @@ final class ForestABoxRollup {
                 }
             }
         }
+        KMReasoner.recordReduction("R05_positive_rbox_properties");
         return props;
     }
 
@@ -755,6 +697,7 @@ final class ForestABoxRollup {
             boolean onlyThingUnsat,
             java.util.function.BiPredicate<OWLNamedIndividual, OWLClass> hasEntailedType) {
         if (tryBuildPositiveRBoxProperties(snapshot, onlyThingUnsat) == null) return null;
+        KMReasoner.recordReduction("R06_positive_rbox_values");
         List<OWLObjectProperty> ops = new ArrayList<>(snapshot.getObjectPropertiesInSignature());
         ops.removeIf(p -> p.isOWLTopObjectProperty() || p.isOWLBottomObjectProperty());
         ops.sort(Comparator.comparing(p -> p.getIRI().toString()));
@@ -1016,7 +959,7 @@ final class ForestABoxRollup {
         if (rules.isEmpty()) return null;
         List<OWLNamedIndividual> inds = new ArrayList<>(snapshot.getIndividualsInSignature());
         inds.sort(Comparator.comparing(i -> i.getIRI().toString()));
-        if (inds.isEmpty() || inds.size() > 64) return null;
+        if (inds.isEmpty()) return null;
 
         Map<OWLClass, Set<OWLClass>> supers = new HashMap<>();
         Map<OWLClass, OWLNamedIndividual> singletonNominal = new HashMap<>();
@@ -1235,6 +1178,7 @@ final class ForestABoxRollup {
             }
         }
         if (!anyFiltered) return null;
+        KMReasoner.recordReduction("R07_swrl_rule_pregrounding");
         try {
             OWLOntologyManager mgr = org.semanticweb.owlapi.apibinding.OWLManager.createOWLOntologyManager();
             OWLOntology copy = mgr.createOntology();

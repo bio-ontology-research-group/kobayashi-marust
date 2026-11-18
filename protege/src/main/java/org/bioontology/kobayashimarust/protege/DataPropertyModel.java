@@ -742,6 +742,38 @@ final class DataPropertyModel {
             OWL2Datatype.XSD_UNSIGNED_SHORT.getIRI(),
             OWL2Datatype.XSD_UNSIGNED_BYTE.getIRI()));
 
+    private static final Set<IRI> ZERO_INT_SHARED = new HashSet<>(Arrays.asList(
+            OWL2Datatype.OWL_REAL.getIRI(),
+            OWL2Datatype.OWL_RATIONAL.getIRI(),
+            OWL2Datatype.XSD_DECIMAL.getIRI(),
+            OWL2Datatype.XSD_INTEGER.getIRI(),
+            OWL2Datatype.XSD_NON_NEGATIVE_INTEGER.getIRI(),
+            OWL2Datatype.XSD_NON_POSITIVE_INTEGER.getIRI(),
+            OWL2Datatype.XSD_LONG.getIRI(),
+            OWL2Datatype.XSD_INT.getIRI(),
+            OWL2Datatype.XSD_SHORT.getIRI(),
+            OWL2Datatype.XSD_BYTE.getIRI(),
+            OWL2Datatype.XSD_UNSIGNED_LONG.getIRI(),
+            OWL2Datatype.XSD_UNSIGNED_INT.getIRI(),
+            OWL2Datatype.XSD_UNSIGNED_SHORT.getIRI(),
+            OWL2Datatype.XSD_UNSIGNED_BYTE.getIRI()));
+
+    private static final Set<IRI> NEGATIVE_INT_SHARED = new HashSet<>(Arrays.asList(
+            OWL2Datatype.OWL_REAL.getIRI(),
+            OWL2Datatype.OWL_RATIONAL.getIRI(),
+            OWL2Datatype.XSD_DECIMAL.getIRI(),
+            OWL2Datatype.XSD_INTEGER.getIRI(),
+            OWL2Datatype.XSD_NON_POSITIVE_INTEGER.getIRI(),
+            OWL2Datatype.XSD_NEGATIVE_INTEGER.getIRI(),
+            OWL2Datatype.XSD_LONG.getIRI(),
+            OWL2Datatype.XSD_INT.getIRI(),
+            OWL2Datatype.XSD_SHORT.getIRI(),
+            OWL2Datatype.XSD_BYTE.getIRI()));
+
+    private static final Set<IRI> DATE_TIME_SHARED = new HashSet<>(Arrays.asList(
+            OWL2Datatype.XSD_DATE_TIME.getIRI(),
+            OWL2Datatype.XSD_DATE_TIME_STAMP.getIRI()));
+
     private static final Set<IRI> ASCII_STRING_SHARED = new HashSet<>(Arrays.asList(
             OWL2Datatype.XSD_STRING.getIRI(),
             OWL2Datatype.RDF_PLAIN_LITERAL.getIRI(),
@@ -756,6 +788,9 @@ final class DataPropertyModel {
     static boolean rangesCompatible(Set<IRI> dts) {
         if (dts.size() <= 1) return true;
         if (POSITIVE_INT_SHARED.containsAll(dts)) return true;
+        if (ZERO_INT_SHARED.containsAll(dts)) return true;
+        if (NEGATIVE_INT_SHARED.containsAll(dts)) return true;
+        if (DATE_TIME_SHARED.containsAll(dts)) return true;
         if (ASCII_STRING_SHARED.containsAll(dts)) return true;
         return false;
     }

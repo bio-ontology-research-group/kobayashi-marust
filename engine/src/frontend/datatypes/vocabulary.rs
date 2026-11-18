@@ -116,6 +116,11 @@ fn literal_status(literal: &str) -> Result<(), &'static str> {
     };
     if let Val::Opaque(_) = value {
         let key = datatype.as_deref().and_then(builtin_datatype_key);
+        if matches!(key, Some("rdfs:Literal" | "Literal"))
+            && crate::frontend::conformance::unknown_datatypes_free()
+        {
+            return Ok(());
+        }
         if key.is_some_and(|key| !outside_map(key)) {
             return Err("a literal of the datatype map outside the decided value fragment");
         }
