@@ -154,26 +154,34 @@ fn literals(s: &str) -> Vec<(String, String)> {
 fn literals_l(s: &str) -> Vec<(String, String, Option<String>)> {
     let mut out: Vec<(String, String, Option<String>)> = Vec::new();
     let mut rest = s;
-    while let Some(i) = rest.find("lexical := \"") {
-        let r = &rest[i + 12..];
+    while let Some(i) = rest.find("lexical :=") {
+        let r0 = rest[i + 10..].trim_start();
+        let Some(r) = r0.strip_prefix('"') else {
+            rest = &rest[i + 10..];
+            continue;
+        };
         let j = match r.find('"') {
             Some(j) => j,
             None => break,
         };
         let lex = r[..j].to_string();
         let r2 = &r[j..];
-        let dt = match r2.find("datatype := \"") {
+        let dt = match r2.find("datatype :=") {
             Some(k) => {
-                let r3 = &r2[k + 13..];
-                r3[..r3.find('"').unwrap_or(0)].to_string()
+                let r3 = r2[k + 11..].trim_start();
+                if let Some(r4) = r3.strip_prefix('"') {
+                    r4[..r4.find('"').unwrap_or(0)].to_string()
+                } else {
+                    String::new()
+                }
             }
             None => String::new(),
         };
-        let lang = r2.find("lang := ").and_then(|k| {
-            let r3 = &r2[k + 8..];
-            if r3.starts_with("some \"") {
-                let r4 = &r3[6..];
-                r4.find('"').map(|e| r4[..e].to_string())
+        let lang = r2.find("lang :=").and_then(|k| {
+            let r3 = r2[k + 7..].trim_start();
+            if let Some(r4) = r3.strip_prefix("some") {
+                let r5 = r4.trim_start().strip_prefix('"')?;
+                r5.find('"').map(|e| r5[..e].to_string())
             } else {
                 None
             }
@@ -192,16 +200,18 @@ fn first_quoted(s: &str) -> Option<String> {
 
 fn all_quoted_dts(s: &str) -> Vec<String> {
     let mut out = Vec::new();
-    for pat in ["DataRange.datatype \"", "DataRange.restriction \""] {
+    for pat in ["DataRange.datatype", "DataRange.restriction"] {
         let mut rest = s;
         while let Some(i) = rest.find(pat) {
-            let r = &rest[i + pat.len()..];
-            if let Some(j) = r.find('"') {
-                out.push(r[..j].to_string());
-                rest = &r[j + 1..];
-            } else {
-                break;
+            let r = rest[i + pat.len()..].trim_start();
+            if let Some(r2) = r.strip_prefix('"') {
+                if let Some(j) = r2.find('"') {
+                    out.push(r2[..j].to_string());
+                    rest = &r2[j + 1..];
+                    continue;
+                }
             }
+            rest = &rest[i + pat.len()..];
         }
     }
     out
@@ -508,12 +518,16 @@ pub struct Values {
     types: Vec<Option<Vec<u32>>>,
     distinct_types: Vec<Vec<u32>>,
     pub by_atom: HashMap<u32, Vec<usize>>,
+    #[allow(dead_code)]
     fcard: HashMap<Vec<u32>, Option<usize>>,
+    pub fcard_by_idx: Vec<Option<usize>>,
+    pub is_oneof_by_idx: Vec<bool>,
 }
 
 impl Values {
     /// The number of values of type `ty` when every candidate of that type is
     /// a boolean or a oneOf literal (a finite space), else None.
+    #[allow(dead_code)]
     pub fn finite_card(&self, ty: &[u32]) -> Option<usize> {
         self.fcard.get(ty).copied().flatten()
     }
@@ -547,13 +561,16 @@ impl Values {
             let has_oneof = is_top_oneof || a.contains("DataRange.oneOf");
             let atom_lits = literals(a);
             let dts = if is_top_oneof { Vec::new() } else { all_quoted_dts(a) };
-            let kind = dts.iter().find_map(|dt| num_kind(dt));
+            let mut kinds: Vec<Kind> = dts.iter().filter_map(|dt| num_kind(dt)).collect();
             let mut bounds: Vec<f64> = Vec::new();
             for (lex, ldt) in &atom_lits {
                 if let Some(v) = lit_val(lex, ldt) {
                     if let Val::Num(vk, x) = v {
                         bounds.push(x);
                         all_bounds.push((vk, x));
+                        if !kinds.contains(&vk) {
+                            kinds.push(vk);
+                        }
                     }
                     if has_oneof {
                         let vk = val_key(&v);
@@ -570,7 +587,7 @@ impl Values {
             if !is_top_oneof {
                 other_atoms.entry(a.as_str()).or_default().push(**k);
             }
-            if let Some(k) = kind {
+            for &k in &kinds {
                 for &b in &bounds {
                     all_bounds.push((k, b));
                     for x in [b - 1.0, b + 1.0, b - 0.5, b + 0.5, b / 2.0] {
@@ -615,8 +632,16 @@ impl Values {
             Val::Num(Kind::Dec, -1.0),
             Val::Num(Kind::Dec, 0.5),
             Val::Num(Kind::Dec, 1000.0),
+            Val::Num(Kind::Float, 0.0),
+            Val::Num(Kind::Float, 1.0),
+            Val::Num(Kind::Float, -1.0),
             Val::Num(Kind::Float, 0.5),
+            Val::Num(Kind::Float, 1000.0),
+            Val::Num(Kind::Double, 0.0),
+            Val::Num(Kind::Double, 1.0),
+            Val::Num(Kind::Double, -1.0),
             Val::Num(Kind::Double, 0.5),
+            Val::Num(Kind::Double, 1000.0),
             Val::Bool(true),
             Val::Bool(false),
         ] {
@@ -644,34 +669,49 @@ impl Values {
         let mut distinct_types: Vec<Vec<u32>> = Vec::new();
         let mut by_atom: HashMap<u32, Vec<usize>> = HashMap::new();
         let mut fcard: HashMap<Vec<u32>, Option<usize>> = HashMap::new();
+        let mut fcard_by_idx: Vec<Option<usize>> = Vec::new();
+        let mut is_oneof_by_idx: Vec<bool> = Vec::new();
+        let mut idx_of_ty: HashMap<Vec<u32>, usize> = HashMap::new();
         for (v, t_opt) in cands.iter().zip(&types) {
             if let Some(t) = t_opt {
-                if !fcard.contains_key(t) {
-                    let idx = distinct_types.len();
+                let idx = if let Some(&ix) = idx_of_ty.get(t) {
+                    ix
+                } else {
+                    let ix = distinct_types.len();
                     for &atom_id in t {
-                        by_atom.entry(atom_id).or_default().push(idx);
+                        by_atom.entry(atom_id).or_default().push(ix);
                     }
+                    let has_oo = t.iter().any(|k| d.is_oneof_atom.get(k).copied().unwrap_or(false));
                     distinct_types.push(t.clone());
                     fcard.insert(t.clone(), Some(0));
-                }
+                    fcard_by_idx.push(Some(0));
+                    is_oneof_by_idx.push(has_oo);
+                    idx_of_ty.insert(t.clone(), ix);
+                    ix
+                };
                 let is_fin = matches!(v, Val::Bool(_)) || lits_set.contains(&val_key(v));
                 let entry = fcard.get_mut(t).unwrap();
                 if is_fin {
                     if let Some(cnt) = entry {
                         *cnt += 1;
                     }
+                    if let Some(cnt) = &mut fcard_by_idx[idx] {
+                        *cnt += 1;
+                    }
                 } else {
                     *entry = None;
+                    fcard_by_idx[idx] = None;
                 }
             }
         }
-        Values { cands, lits, types, distinct_types, by_atom, fcard }
+        Values { cands, lits, types, distinct_types, by_atom, fcard, fcard_by_idx, is_oneof_by_idx }
     }
 }
 
 pub struct Entry {
     pub label: Vec<u32>,
     pub ty: Vec<u32>,
+    ty_idx: usize,
     pos: Vec<u32>,
     neg: Vec<u32>,
 }
@@ -721,21 +761,25 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
         out.sort_unstable();
         out
     };
-    let mut forbid_by_u: HashMap<u32, std::collections::HashSet<u32>> = HashMap::new();
-    let mut alls: Vec<&(u32, u32, Vec<Lit>)> = Vec::new();
+    let mut forbid_by_u: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut alls_by_u: HashMap<u32, Vec<&Vec<Lit>>> = HashMap::new();
     for a in t {
         if let Some(ixs) = d.dall_by.get(a) {
             for &i in ixs {
                 let c = &d.dall[i];
                 if c.2.len() == 1 {
                     if let Lit::Neg(j) = c.2[0] {
-                        forbid_by_u.entry(c.1).or_default().insert(j);
+                        forbid_by_u.entry(c.1).or_default().push(j);
                         continue;
                     }
                 }
-                alls.push(c);
+                alls_by_u.entry(c.1).or_default().push(&c.2);
             }
         }
+    }
+    for fb in forbid_by_u.values_mut() {
+        fb.sort_unstable();
+        fb.dedup();
     }
     // an entry fits: range of the requirement and every universal over its label
     let fits = |label: &[u32], ty: &[u32], pos: &[u32], neg: &[u32]| -> bool {
@@ -744,48 +788,70 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
             && label.iter().all(|u| {
                 forbid_by_u
                     .get(u)
-                    .map_or(true, |fb| !ty.iter().any(|j| fb.contains(j)))
-            })
-            && alls.iter().all(|(_, u, lits)| {
-                !has(label, *u)
-                    || lits.iter().any(|l| match l {
-                        Lit::Pos(j) => has(ty, *j),
-                        Lit::Neg(j) => !has(ty, *j),
+                    .map_or(true, |fb| !fb.iter().any(|&j| has(ty, j)))
+                    && alls_by_u.get(u).map_or(true, |all_list| {
+                        all_list.iter().all(|lits| {
+                            lits.iter().any(|l| match l {
+                                Lit::Pos(j) => has(ty, *j),
+                                Lit::Neg(j) => !has(ty, *j),
+                            })
+                        })
                     })
             })
     };
+    let n_dt = vals.distinct_types.len();
+    let mut used_cnt: Vec<u32> = vec![0; n_dt];
+    let mut avoid_cnt: Vec<u32> = vec![0; n_dt];
     // a value type already taken by an entry is used again only when no other
     // fits (a type can have few values: the checker bounds the entries per type)
-    let pick = |label: &[u32], pos: &[u32], neg: &[u32], avoid: &[Vec<u32>], used: &[Vec<u32>]| -> Option<Vec<u32>> {
-        let mut again: Option<Vec<u32>> = None;
+    let pick = |label: &[u32],
+                pos: &[u32],
+                neg: &[u32],
+                avoid_cnt: &[u32],
+                used_cnt: &[u32],
+                skip_ty: Option<usize>|
+     -> Option<usize> {
+        let mut again: Option<usize> = None;
         if let Some(&p0) = pos.iter().min_by_key(|&&p| vals.by_atom.get(&p).map_or(0, |v| v.len())) {
             let Some(ixs) = vals.by_atom.get(&p0) else { return None };
             for &idx in ixs {
-                let ty = &vals.distinct_types[idx];
-                if avoid.contains(ty) {
+                let avoid_hit = if Some(idx) == skip_ty && vals.is_oneof_by_idx[idx] {
+                    avoid_cnt[idx] > 1
+                } else {
+                    avoid_cnt[idx] > 0
+                };
+                if avoid_hit {
                     continue;
                 }
+                let ty = &vals.distinct_types[idx];
                 if fits(label, ty, pos, neg) {
-                    if !used.contains(ty) {
-                        return Some(ty.clone());
+                    let used_hit = if Some(idx) == skip_ty { used_cnt[idx] > 1 } else { used_cnt[idx] > 0 };
+                    if !used_hit {
+                        return Some(idx);
                     }
                     if again.is_none() {
-                        again = Some(ty.clone());
+                        again = Some(idx);
                     }
                 }
             }
             return again;
         }
-        for ty in &vals.distinct_types {
-            if avoid.contains(ty) {
+        for (idx, ty) in vals.distinct_types.iter().enumerate() {
+            let avoid_hit = if Some(idx) == skip_ty && vals.is_oneof_by_idx[idx] {
+                avoid_cnt[idx] > 1
+            } else {
+                avoid_cnt[idx] > 0
+            };
+            if avoid_hit {
                 continue;
             }
             if fits(label, ty, pos, neg) {
-                if !used.contains(ty) {
-                    return Some(ty.clone());
+                let used_hit = if Some(idx) == skip_ty { used_cnt[idx] > 1 } else { used_cnt[idx] > 0 };
+                if !used_hit {
+                    return Some(idx);
                 }
                 if again.is_none() {
-                    again = Some(ty.clone());
+                    again = Some(idx);
                 }
             }
         }
@@ -793,15 +859,12 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
     };
     let mut ents: Vec<Entry> = Vec::new();
     if reqs.len() > 1 {
-        reqs.sort_by_key(|(n, u, pos, neg)| {
-            let lu = up(*u);
-            let m = if let Some(&p0) = pos.iter().min_by_key(|&&p| vals.by_atom.get(&p).map_or(0, |v| v.len())) {
-                vals.by_atom
-                    .get(&p0)
-                    .map_or(0, |ixs| ixs.iter().filter(|&&idx| fits(&lu, &vals.distinct_types[idx], pos, neg)).count())
-            } else {
-                vals.distinct_types.iter().filter(|ty| fits(&lu, ty, pos, neg)).count()
-            };
+        reqs.sort_by_key(|(n, _u, pos, _neg)| {
+            let m = pos
+                .iter()
+                .map(|p| vals.by_atom.get(p).map_or(usize::MAX, |v| v.len()))
+                .min()
+                .unwrap_or(usize::MAX);
             (m, *n)
         });
     }
@@ -817,7 +880,8 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
             let mut done = false;
             if *n == 1 {
                 for idx in 0..ents.len() {
-                    if (share || vals.finite_card(&ents[idx].ty).is_some())
+                    let old_ti = ents[idx].ty_idx;
+                    if (share || vals.fcard_by_idx[old_ti].is_some())
                         && pos.iter().all(|p| has(&ents[idx].ty, *p))
                         && !neg.iter().any(|n| has(&ents[idx].ty, *n))
                     {
@@ -844,19 +908,18 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
                         p2.extend_from_slice(pos);
                         let mut n2 = ents[idx].neg.clone();
                         n2.extend_from_slice(neg);
-                        let avoid: Vec<Vec<u32>> = ents
-                            .iter()
-                            .enumerate()
-                            .filter(|&(j, e)| {
-                                j != idx && e.ty.iter().any(|k| d.is_oneof_atom.get(k).copied().unwrap_or(false))
-                            })
-                            .map(|(_, e)| e.ty.clone())
-                            .collect();
-                        let used: Vec<Vec<u32>> =
-                            ents.iter().enumerate().filter(|&(j, _)| j != idx).map(|(_, e)| e.ty.clone()).collect();
-                        if let Some(ty2) = pick(&l2, &p2, &n2, &avoid, &used) {
+                        if let Some(new_ti) = pick(&l2, &p2, &n2, &avoid_cnt, &used_cnt, Some(old_ti)) {
+                            used_cnt[old_ti] -= 1;
+                            if vals.is_oneof_by_idx[old_ti] {
+                                avoid_cnt[old_ti] -= 1;
+                            }
+                            used_cnt[new_ti] += 1;
+                            if vals.is_oneof_by_idx[new_ti] {
+                                avoid_cnt[new_ti] += 1;
+                            }
                             ents[idx].label = l2;
-                            ents[idx].ty = ty2;
+                            ents[idx].ty = vals.distinct_types[new_ti].clone();
+                            ents[idx].ty_idx = new_ti;
                             ents[idx].pos = p2;
                             ents[idx].neg = n2;
                             done = true;
@@ -868,39 +931,37 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
             if done {
                 continue;
             }
-            // a finite value type (a oneOf atom in it) is taken at most once
-            let avoid: Vec<Vec<u32>> = ents
-                .iter()
-                .filter(|e| e.ty.iter().any(|j| d.is_oneof_atom.get(j).copied().unwrap_or(false)))
-                .map(|e| e.ty.clone())
-                .collect();
-            let used: Vec<Vec<u32>> = ents.iter().map(|e| e.ty.clone()).collect();
-            let ty = match pick(&lu, pos, neg, &avoid, &used) {
-                Some(t) => t,
-                None => {
-                    if std::env::var("KM_HINTS_DEBUG").is_ok() {
-                        eprintln!("dstar: no value for u {} pos {:?} neg {:?}; {} candidates, {} understood",
-                            u, pos, neg, vals.types.len(), vals.types.iter().flatten().count());
-                    }
-                    return None;
+            let Some(ti) = pick(&lu, pos, neg, &avoid_cnt, &used_cnt, None) else {
+                if std::env::var("KM_HINTS_DEBUG").is_ok() {
+                    eprintln!("dstar: no value for u {} pos {:?} neg {:?}; {} candidates, {} understood",
+                        u, pos, neg, vals.types.len(), vals.types.iter().flatten().count());
                 }
+                return None;
             };
-            ents.push(Entry { label: lu, ty, pos: pos.clone(), neg: neg.clone() });
+            used_cnt[ti] += 1;
+            if vals.is_oneof_by_idx[ti] {
+                avoid_cnt[ti] += 1;
+            }
+            ents.push(Entry {
+                label: lu,
+                ty: vals.distinct_types[ti].clone(),
+                ty_idx: ti,
+                pos: pos.clone(),
+                neg: neg.clone(),
+            });
         }
     }
     // finite value types (only booleans or oneOf literals have them among the
     // candidates): at most as many entries as values
-    let mut per: HashMap<Vec<u32>, usize> = HashMap::new();
-    for e in &ents {
-        *per.entry(e.ty.clone()).or_default() += 1;
-    }
-    for (ty, n) in &per {
-        if let Some(k) = vals.finite_card(ty) {
-            if *n > k {
-                if std::env::var("KM_HINTS_DEBUG").is_ok() {
-                    eprintln!("dstar: {} entries of a value type with {} values", n, k);
+    for (ti, &n) in used_cnt.iter().enumerate() {
+        if n > 0 {
+            if let Some(k) = vals.fcard_by_idx[ti] {
+                if n as usize > k {
+                    if std::env::var("KM_HINTS_DEBUG").is_ok() {
+                        eprintln!("dstar: {} entries of a value type with {} values", n, k);
+                    }
+                    return None;
                 }
-                return None;
             }
         }
     }

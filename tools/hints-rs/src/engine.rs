@@ -579,6 +579,8 @@ pub struct Engine<'a> {
     pub data: Option<(crate::data::DataNf, crate::data::Values)>,
     pub dreq: Vec<u32>,
     pub has_data: Vec<bool>,
+    pub dprop_pos: Vec<Vec<u32>>,
+    pub dprop_neg: Vec<Vec<u32>>,
     data_ok: FxMap<u32, bool>,
     /// one-step lookahead on successors: closed type -> its successor seeds close
     succ_ok: FxMap<u32, bool>,
@@ -589,6 +591,9 @@ pub struct Engine<'a> {
     pub mem_hit: bool,
     pub empty_auto_inert: Vec<(u32, u32)>,
     pub empty_other: Vec<u32>,
+    pub empty_auto_by_cand: FxMap<u32, Vec<u32>>,
+    pub empty_auto_by_dprop: FxMap<u32, Vec<u32>>,
+    forbid_empty_gs: Vec<u32>,
 }
 
 impl<'a> Engine<'a> {
@@ -707,6 +712,21 @@ impl<'a> Engine<'a> {
                             if c != a && !self_push[a as usize].contains(&c) {
                                 self_push[a as usize].push(c);
                             }
+                        }
+                    }
+                }
+            }
+            for b in 0..nf.n as u32 {
+                let reqs_b = by_filler.get(b);
+                let alls_b = nf.all_by.get(b);
+                if reqs_b.is_empty() || alls_b.is_empty() || reqs_b.len() * alls_b.len() > 50_000 {
+                    continue;
+                }
+                for &(a, _k, r) in reqs_b {
+                    let up_r = &nf.up[r as usize];
+                    for &(s, c) in alls_b {
+                        if up_r.binary_search(&(s ^ 1)).is_ok() && c != a && !self_push[a as usize].contains(&c) {
+                            self_push[a as usize].push(c);
                         }
                     }
                 }
@@ -1201,6 +1221,8 @@ impl<'a> Engine<'a> {
             data: None,
             dreq: vec![0; nf.n],
             has_data: vec![false; nf.n],
+            dprop_pos: vec![Vec::new(); nf.n],
+            dprop_neg: vec![Vec::new(); nf.n],
             data_ok: FxMap::default(),
             succ_ok: FxMap::default(),
             nest: 0,
@@ -1210,6 +1232,9 @@ impl<'a> Engine<'a> {
             mem_hit: false,
             empty_auto_inert: Vec::new(),
             empty_other: Vec::new(),
+            empty_auto_by_cand: FxMap::default(),
+            empty_auto_by_dprop: FxMap::default(),
+            forbid_empty_gs: Vec::new(),
         };
         en.rebuild_empty_inert();
         en
@@ -1218,6 +1243,8 @@ impl<'a> Engine<'a> {
     pub fn rebuild_empty_inert(&mut self) {
         self.empty_auto_inert.clear();
         self.empty_other.clear();
+        self.empty_auto_by_cand.clear();
+        self.empty_auto_by_dprop.clear();
         let nf = self.nf;
         let check_static = |x: u32| -> bool {
             let xu = x as usize;
@@ -1228,8 +1255,7 @@ impl<'a> Engine<'a> {
                 && nf.all_by.get(x).is_empty()
                 && !nf.has_le[xu]
                 && self.dreq[xu] == 0
-                && (!self.has_data[xu]
-                    || self.data.as_ref().map_or(false, |(d, _)| !d.datmost_by.contains_key(&x)))
+                && !self.conflict_peers[xu].contains(&x)
                 && self.bounce[xu].is_empty()
                 && nf.gci_by_body.get(x).is_empty()
                 && self.self_push[xu].is_empty()
@@ -1251,6 +1277,24 @@ impl<'a> Engine<'a> {
             }
             if let Some((_, cand)) = best {
                 self.empty_auto_inert.push((g, cand));
+                self.empty_auto_by_cand.entry(cand).or_default().push(g);
+                if self.has_data[cand as usize] {
+                    let is_pure_oneof_dall = self.data.as_ref().map_or(false, |(d, _)| {
+                        !d.datmost_by.contains_key(&cand)
+                            && d.dall_by.get(&cand).map_or(false, |ixs| {
+                                ixs.len() == 1 && {
+                                    let lits = &d.dall[ixs[0]].2;
+                                    lits.len() == 1
+                                        && matches!(lits[0], crate::data::Lit::Neg(j) if d.is_oneof_atom.get(&j).copied().unwrap_or(false))
+                                }
+                            })
+                    });
+                    if !is_pure_oneof_dall {
+                        for &u in &self.dprop_neg[cand as usize] {
+                            self.empty_auto_by_dprop.entry(u).or_default().push(g);
+                        }
+                    }
+                }
             } else {
                 self.empty_other.push(g);
             }
@@ -1269,8 +1313,38 @@ impl<'a> Engine<'a> {
         false
     }
 
+    pub fn filter_active_data(&self, ds: &[u32]) -> Vec<u32> {
+        if ds.is_empty() || self.data.is_none() {
+            return Vec::new();
+        }
+        let mut active_u: Vec<u32> = Vec::new();
+        for &a in ds {
+            if self.dreq[a as usize] > 0 {
+                for &u in &self.dprop_pos[a as usize] {
+                    if !active_u.contains(&u) {
+                        active_u.push(u);
+                    }
+                }
+            }
+        }
+        if active_u.is_empty() {
+            return Vec::new();
+        }
+        ds.iter()
+            .copied()
+            .filter(|&a| {
+                self.dreq[a as usize] > 0
+                    || self.dprop_neg[a as usize].iter().any(|u| active_u.contains(u))
+            })
+            .collect()
+    }
+
     pub fn has_data_star(&mut self, ds: Vec<u32>) -> bool {
         if ds.is_empty() || self.data.is_none() {
+            return true;
+        }
+        let ds = self.filter_active_data(&ds);
+        if ds.is_empty() {
             return true;
         }
         let did = self.sets.intern(ds);
@@ -1318,15 +1392,29 @@ impl<'a> Engine<'a> {
     pub fn set_data(&mut self, d: crate::data::DataNf, v: crate::data::Values) {
         self.dreq = vec![0; self.nf.n];
         self.has_data = vec![false; self.nf.n];
+        self.dprop_pos = vec![Vec::new(); self.nf.n];
+        self.dprop_neg = vec![Vec::new(); self.nf.n];
         let mut in_pos = vec![false; self.nf.n];
         let mut in_neg = vec![false; self.nf.n];
         let mut by_u: FxMap<u32, Vec<u32>> = FxMap::default();
-        let add_u = |by_u: &mut FxMap<u32, Vec<u32>>, d: &crate::data::DataNf, a: u32, u: u32| {
-            by_u.entry(u).or_default().push(a);
-            for &(u_sub, u_sup) in &d.dsub {
-                if u_sub == u {
-                    by_u.entry(u_sup).or_default().push(a);
+        let up_u = |u0: u32| -> Vec<u32> {
+            let mut out = vec![u0];
+            let mut i = 0;
+            while i < out.len() {
+                let x = out[i];
+                for &(a_sub, b_sup) in &d.dsub {
+                    if a_sub == x && !out.contains(&b_sup) {
+                        out.push(b_sup);
+                    }
                 }
+                i += 1;
+            }
+            out.sort_unstable();
+            out
+        };
+        let add_u = |by_u: &mut FxMap<u32, Vec<u32>>, a: u32, u: u32| {
+            for u_sup in up_u(u) {
+                by_u.entry(u_sup).or_default().push(a);
             }
         };
         for c in &d.dsome {
@@ -1334,7 +1422,12 @@ impl<'a> Engine<'a> {
                 self.dreq[c.0 as usize] += 1;
                 self.has_data[c.0 as usize] = true;
                 in_pos[c.0 as usize] = true;
-                add_u(&mut by_u, &d, c.0, c.1);
+                for u_sup in up_u(c.1) {
+                    if !self.dprop_pos[c.0 as usize].contains(&u_sup) {
+                        self.dprop_pos[c.0 as usize].push(u_sup);
+                    }
+                }
+                add_u(&mut by_u, c.0, c.1);
             }
         }
         for c in &d.datleast {
@@ -1343,22 +1436,33 @@ impl<'a> Engine<'a> {
                 self.has_data[c.0 as usize] = true;
                 if c.1 >= 1 {
                     in_pos[c.0 as usize] = true;
+                    for u_sup in up_u(c.2) {
+                        if !self.dprop_pos[c.0 as usize].contains(&u_sup) {
+                            self.dprop_pos[c.0 as usize].push(u_sup);
+                        }
+                    }
                 }
-                add_u(&mut by_u, &d, c.0, c.2);
+                add_u(&mut by_u, c.0, c.2);
             }
         }
         for c in &d.dall {
             if (c.0 as usize) < self.nf.n {
                 self.has_data[c.0 as usize] = true;
                 in_neg[c.0 as usize] = true;
-                add_u(&mut by_u, &d, c.0, c.1);
+                if !self.dprop_neg[c.0 as usize].contains(&c.1) {
+                    self.dprop_neg[c.0 as usize].push(c.1);
+                }
+                by_u.entry(c.1).or_default().push(c.0);
             }
         }
         for c in &d.datmost {
             if (c.0 as usize) < self.nf.n {
                 self.has_data[c.0 as usize] = true;
                 in_neg[c.0 as usize] = true;
-                add_u(&mut by_u, &d, c.0, c.2);
+                if !self.dprop_neg[c.0 as usize].contains(&c.2) {
+                    self.dprop_neg[c.0 as usize].push(c.2);
+                }
+                by_u.entry(c.2).or_default().push(c.0);
             }
         }
         // Precompute singleton and pairwise data conflicts per data property
@@ -1375,6 +1479,14 @@ impl<'a> Engine<'a> {
                 }
             }
         }
+        let add_peer = |en: &mut Self, x: u32, y: u32| {
+            if !en.conflict_peers[x as usize].contains(&y) {
+                en.conflict_peers[x as usize].push(y);
+            }
+            if !en.conflict_peers[y as usize].contains(&x) {
+                en.conflict_peers[y as usize].push(x);
+            }
+        };
         let check_pair = |en: &mut Self, a1: u32, a2: u32| {
             let (x, y) = if a1 <= a2 { (a1, a2) } else { (a2, a1) };
             let id = en.sets.intern(vec![x, y]);
@@ -1382,12 +1494,7 @@ impl<'a> Engine<'a> {
                 let ok = crate::data::star(&d, &v, &[x, y]).is_some();
                 e.insert(ok);
                 if !ok {
-                    if !en.conflict_peers[x as usize].contains(&y) {
-                        en.conflict_peers[x as usize].push(y);
-                    }
-                    if !en.conflict_peers[y as usize].contains(&x) {
-                        en.conflict_peers[y as usize].push(x);
-                    }
+                    add_peer(en, x, y);
                 }
             }
         };
@@ -1409,103 +1516,94 @@ impl<'a> Engine<'a> {
         }
         let mut pair_checks = 0usize;
         for cs in by_u.values_mut() {
-            if t_data.elapsed().as_secs() >= 2 {
-                break;
-            }
             cs.sort_unstable();
             cs.dedup();
-            if cs.len() <= 256 {
-                for i in 0..cs.len() {
-                    let a1 = cs[i];
-                    if self.conflict_peers[a1 as usize].contains(&a1) {
-                        continue;
-                    }
-                    for &a2 in &cs[i + 1..] {
-                        if self.conflict_peers[a2 as usize].contains(&a2) {
-                            continue;
-                        }
-                        if !((in_pos[a1 as usize] && (in_neg[a2 as usize] || in_pos[a2 as usize]))
-                            || (in_pos[a2 as usize] && in_neg[a1 as usize]))
-                        {
-                            continue;
-                        }
-                        if pair_checks >= 50_000 {
-                            break;
-                        }
-                        pair_checks += 1;
-                        check_pair(self, a1, a2);
-                    }
+            let mut pos_cs: Vec<u32> = Vec::new();
+            let mut neg_general: Vec<u32> = Vec::new();
+            let mut by_ty_idx: FxMap<usize, Vec<u32>> = FxMap::default();
+            for &a in cs.iter() {
+                if self.conflict_peers[a as usize].contains(&a) {
+                    continue;
                 }
-            } else {
-                // Large data property (many oneOf assertions): check general negs against all pos,
-                // and bucket single-oneOf concepts by their candidate value-type index.
-                let mut pos_cs: Vec<u32> = Vec::new();
-                let mut neg_general: Vec<u32> = Vec::new();
-                let mut by_ty_idx: FxMap<usize, Vec<u32>> = FxMap::default();
-                for &a in cs.iter() {
-                    if self.conflict_peers[a as usize].contains(&a) {
-                        continue;
-                    }
-                    if in_pos[a as usize] {
-                        pos_cs.push(a);
-                        if let Some(ixs) = d.dsome_by.get(&a) {
-                            for &i in ixs {
-                                for &p in &d.dsome[i].2 {
-                                    if d.is_oneof_atom.get(&p).copied().unwrap_or(false) {
-                                        if let Some(t_ixs) = v.by_atom.get(&p) {
-                                            for &ti in t_ixs {
-                                                by_ty_idx.entry(ti).or_default().push(a);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if in_neg[a as usize] {
-                        let is_pure_oneof_dall = !d.datmost_by.contains_key(&a)
-                            && d.dall_by.get(&a).map_or(false, |ixs| {
-                                ixs.len() == 1 && {
-                                    let lits = &d.dall[ixs[0]].2;
-                                    lits.len() == 1
-                                        && matches!(lits[0], crate::data::Lit::Neg(j) if d.is_oneof_atom.get(&j).copied().unwrap_or(false))
-                                }
-                            });
-                        if is_pure_oneof_dall {
-                            if let Some(ixs) = d.dall_by.get(&a) {
-                                if let crate::data::Lit::Neg(j) = d.dall[ixs[0]].2[0] {
-                                    if let Some(t_ixs) = v.by_atom.get(&j) {
+                if in_pos[a as usize] {
+                    pos_cs.push(a);
+                    if let Some(ixs) = d.dsome_by.get(&a) {
+                        for &i in ixs {
+                            for &p in &d.dsome[i].2 {
+                                if d.is_oneof_atom.get(&p).copied().unwrap_or(false) {
+                                    if let Some(t_ixs) = v.by_atom.get(&p) {
                                         for &ti in t_ixs {
                                             by_ty_idx.entry(ti).or_default().push(a);
                                         }
                                     }
                                 }
                             }
-                        } else {
-                            neg_general.push(a);
                         }
                     }
                 }
-                for &a1 in &pos_cs {
-                    for &a2 in &neg_general {
-                        if a1 != a2 && pair_checks < 100_000 {
-                            pair_checks += 1;
-                            check_pair(self, a1, a2);
-                        }
-                    }
-                }
-                for bucket in by_ty_idx.values_mut() {
-                    bucket.sort_unstable();
-                    bucket.dedup();
-                    if bucket.len() > 1 && bucket.len() <= 64 {
-                        for i in 0..bucket.len() {
-                            for &a2 in &bucket[i + 1..] {
-                                if (in_pos[bucket[i] as usize] || in_pos[a2 as usize]) && pair_checks < 100_000 {
-                                    pair_checks += 1;
-                                    check_pair(self, bucket[i], a2);
+                if in_neg[a as usize] {
+                    let is_pure_oneof_dall = !d.datmost_by.contains_key(&a)
+                        && d.dall_by.get(&a).map_or(false, |ixs| {
+                            ixs.len() == 1 && {
+                                let lits = &d.dall[ixs[0]].2;
+                                lits.len() == 1
+                                    && matches!(lits[0], crate::data::Lit::Neg(j) if d.is_oneof_atom.get(&j).copied().unwrap_or(false))
+                            }
+                        });
+                    if is_pure_oneof_dall {
+                        if let Some(ixs) = d.dall_by.get(&a) {
+                            if let crate::data::Lit::Neg(j) = d.dall[ixs[0]].2[0] {
+                                if let Some(t_ixs) = v.by_atom.get(&j) {
+                                    for &ti in t_ixs {
+                                        by_ty_idx.entry(ti).or_default().push(a);
+                                    }
                                 }
                             }
                         }
+                    } else {
+                        neg_general.push(a);
+                    }
+                }
+            }
+            for bucket in by_ty_idx.values_mut() {
+                bucket.sort_unstable();
+                bucket.dedup();
+                if bucket.len() > 1 && bucket.len() <= 64 {
+                    for i in 0..bucket.len() {
+                        for &a2 in &bucket[i + 1..] {
+                            let a1 = bucket[i];
+                            if (in_pos[a1 as usize] && in_neg[a2 as usize])
+                                || (in_pos[a2 as usize] && in_neg[a1 as usize])
+                            {
+                                check_pair(self, a1, a2);
+                            }
+                        }
+                    }
+                }
+            }
+            if t_data.elapsed().as_secs() >= 2 {
+                continue;
+            }
+            for &a_neg in &neg_general {
+                let min_datmost_k = if !d.dall_by.contains_key(&a_neg) {
+                    d.datmost_by
+                        .get(&a_neg)
+                        .and_then(|ixs| ixs.iter().map(|&i| d.datmost[i].1).min())
+                } else {
+                    None
+                };
+                for &a_pos in &pos_cs {
+                    if a_pos == a_neg {
+                        continue;
+                    }
+                    if let Some(k_max) = min_datmost_k {
+                        if self.dreq[a_pos as usize] <= k_max {
+                            continue;
+                        }
+                    }
+                    if pair_checks < 100_000 {
+                        pair_checks += 1;
+                        check_pair(self, a_pos, a_neg);
                     }
                 }
             }
@@ -1628,6 +1726,11 @@ impl<'a> Engine<'a> {
             return f;
         }
         let fls = self.labs.get(fl);
+        let n_role: usize = fls.iter().map(|&s| self.nf.all_by_role.get(s).len()).sum();
+        if n_role > 2048 {
+            self.bwd_cache.insert((tx, fl), 0);
+            return 0;
+        }
         let mut out = Vec::new();
         for &s in fls.iter() {
             for &(a, c) in self.nf.all_by_role.get(s) {
@@ -1714,9 +1817,13 @@ impl<'a> Engine<'a> {
         self.stats.closures += 1;
         let clean = (forbid & CLEAN_FB) != 0 && self.rowclasses != 0;
         self.fstamp += 1;
+        self.forbid_empty_gs.clear();
         let fs = self.sets.get(forbid & !CLEAN_FB);
         for &a in fs.iter() {
             self.fmark[a as usize] = self.fstamp;
+            if let Some(gs) = self.empty_auto_by_cand.get(&a) {
+                self.forbid_empty_gs.extend_from_slice(gs);
+            }
         }
         self.cur_target = self.sets.get(target);
         self.cur_target_id = target;
@@ -2002,32 +2109,7 @@ impl<'a> Engine<'a> {
                     }
                     continue;
                 }
-                // Try memo-friendly `close(seed, fb0, 0, false)` first; only compute
-                // parent-specific `bwd_forbid(t, fl)` if `ts0` pushes outside `t`.
-                let cr0 = self.close(seed, fb0, 0, false);
-                let cr = match cr0 {
-                    CloseRes::Ok(ts0) if {
-                        let bk0 = self.fwd(ts0, fl);
-                        self.sets.subset(bk0, t)
-                    } =>
-                    {
-                        CloseRes::Ok(ts0)
-                    }
-                    CloseRes::Clash => CloseRes::Clash,
-                    _ => {
-                        let bfb = self.bwd_forbid(t, fl);
-                        let fb = self.sets.union(fb0, bfb);
-                        let cr_fb = if fb != fb0 { self.close(seed, fb, 0, false) } else { CloseRes::Clash };
-                        match cr_fb {
-                            CloseRes::Ok(ts_fb) => CloseRes::Ok(ts_fb),
-                            CloseRes::Budget => {
-                                hit_budget = true;
-                                cr0
-                            }
-                            CloseRes::Clash => cr0,
-                        }
-                    }
-                };
+                let cr = self.close(seed, fb0, 0, false);
                 match cr {
                     CloseRes::Clash => {
                         ok = false;
@@ -2190,9 +2272,13 @@ impl<'a> Engine<'a> {
         self.nest -= 1;
         // restore: forbid marks, target
         self.fstamp = fst.max(self.fstamp) + 1;
+        self.forbid_empty_gs.clear();
         let fs = self.sets.get(ft & !CLEAN_FB);
         for &a in fs.iter() {
             self.fmark[a as usize] = self.fstamp;
+            if let Some(gs) = self.empty_auto_by_cand.get(&a) {
+                self.forbid_empty_gs.extend_from_slice(gs);
+            }
         }
         if cln {
             self.tstamp = tst.max(self.tstamp) + 1;
@@ -2275,6 +2361,7 @@ impl<'a> Engine<'a> {
         let mut t: Vec<u32> = Vec::with_capacity(seed.len() + 16);
         let mut q: Vec<u32> = Vec::new();
         let mut pend: Vec<u32> = Vec::new();
+        let mut active_dprops: Vec<u32> = Vec::new();
         macro_rules! add {
             ($a:expr) => {{
                 let a = $a;
@@ -2288,7 +2375,23 @@ impl<'a> Engine<'a> {
                         if self.mark[p as usize] == st {
                             return CloseRes::Clash;
                         }
-                        self.cmark[p as usize] = st;
+                        if self.cmark[p as usize] != st {
+                            self.cmark[p as usize] = st;
+                            if let Some(gs) = self.empty_auto_by_cand.get(&p) {
+                                pend.extend_from_slice(gs);
+                            }
+                        }
+                    }
+                    if self.dreq[a as usize] > 0 {
+                        for i in 0..self.dprop_pos[a as usize].len() {
+                            let u = self.dprop_pos[a as usize][i];
+                            if !active_dprops.contains(&u) {
+                                active_dprops.push(u);
+                                if let Some(gs) = self.empty_auto_by_dprop.get(&u) {
+                                    pend.extend_from_slice(gs);
+                                }
+                            }
+                        }
                     }
                     t.push(a);
                     q.push(a);
@@ -2304,10 +2407,12 @@ impl<'a> Engine<'a> {
                 _ => pend.push(g),
             }
         }
+        if !self.forbid_empty_gs.is_empty() {
+            pend.extend_from_slice(&self.forbid_empty_gs);
+        }
         for &a in seed {
             add!(a);
         }
-        let mut auto_checked = false;
         loop {
             while let Some(a) = q.pop() {
                 for i in 0..self.self_push[a as usize].len() {
@@ -2383,37 +2488,10 @@ impl<'a> Engine<'a> {
                     }
                 }
             }
-            if !auto_checked && !self.empty_auto_inert.is_empty() {
-                auto_checked = true;
-                let mut auto_unit = false;
-                for i_a in 0..self.empty_auto_inert.len() {
-                    let (g, cand) = self.empty_auto_inert[i_a];
-                    let h = &nf.gci[g as usize].1;
-                    if h.iter().any(|&x| self.mark[x as usize] == st) {
-                        continue;
-                    }
-                    if !self.is_forbid(cand, fst, st) && self.cmark[cand as usize] != st {
-                        self.mark[cand as usize] = st;
-                        for j in 0..self.conflict_peers[cand as usize].len() {
-                            let p = self.conflict_peers[cand as usize][j];
-                            if self.mark[p as usize] == st {
-                                return CloseRes::Clash;
-                            }
-                            self.cmark[p as usize] = st;
-                        }
-                        t.push(cand);
-                    } else {
-                        pend.push(g);
-                        auto_unit = true;
-                    }
-                }
-                if auto_unit {
-                    // let the unit propagation loop below inspect any fallback `g` pushed to `pend`
-                }
-            }
             // unit propagation on disjunctive GCIs with <= 1 unforbidden head
             let mut unit_added = false;
-            for &g in &pend {
+            for i_p in 0..pend.len() {
+                let g = pend[i_p];
                 let h = &nf.gci[g as usize].1;
                 if h.iter().any(|&x| self.mark[x as usize] == st) {
                     continue;
@@ -2445,7 +2523,7 @@ impl<'a> Engine<'a> {
                     !body.is_empty() && !h.iter().any(|&x| self.mark[x as usize] == st)
                 });
                 if !has_open_non_empty {
-                    let has_active_dreq = t.iter().any(|&a| self.dreq[a as usize] > 0);
+                    let has_active_dreq = !active_dprops.is_empty();
                     let mut inert_added = false;
                     for i_p in 0..pend.len() {
                         let g = pend[i_p];
@@ -2458,7 +2536,7 @@ impl<'a> Engine<'a> {
                             if self.is_forbid(cand, fst, st) || self.cmark[cand as usize] == st {
                                 continue;
                             }
-                            let check_atom = |x: u32| -> bool {
+                            let check_atom = |x: u32, mark: &[u32], cstamp: &[u32], cnt: &[u32]| -> bool {
                                 let xu = x as usize;
                                 !nf.named[xu]
                                     && !nf.is_nom[xu]
@@ -2467,22 +2545,43 @@ impl<'a> Engine<'a> {
                                     && nf.all_by.get(x).is_empty()
                                     && !nf.has_le[xu]
                                     && self.dreq[xu] == 0
-                                    && (!self.has_data[xu]
-                                        || (!has_active_dreq
-                                            || self.data.as_ref().map_or(false, |(d, _)| !d.datmost_by.contains_key(&x))))
                                     && self.bounce[xu].is_empty()
                                     && nf.gci_by_body.get(x).iter().all(|&gi| {
                                         let giu = gi as usize;
-                                        let c_cur = if self.cstamp[giu] == st { self.cnt[giu] } else { 0 };
+                                        let c_cur = if cstamp[giu] == st { cnt[giu] } else { 0 };
                                         c_cur + 1 < nf.body_len[giu]
+                                            || nf.gci[giu].1.iter().any(|&hx| mark[hx as usize] == st)
                                     })
                             };
                             let cu = cand as usize;
-                            let is_inert = check_atom(cand)
-                                && self.self_push[cu]
-                                    .iter()
-                                    .all(|&c| !self.is_forbid(c, fst, st) && self.cmark[c as usize] != st && check_atom(c));
+                            let is_inert = check_atom(cand, &self.mark, &self.cstamp, &self.cnt)
+                                && self.self_push[cu].iter().all(|&c| {
+                                    !self.is_forbid(c, fst, st)
+                                        && self.cmark[c as usize] != st
+                                        && check_atom(c, &self.mark, &self.cstamp, &self.cnt)
+                                });
                             if is_inert {
+                                if has_active_dreq
+                                    && (self.has_data[cu] || self.self_push[cu].iter().any(|&c| self.has_data[c as usize]))
+                                {
+                                    let mut ds_try: Vec<u32> =
+                                        t.iter().copied().filter(|&a| self.has_data[a as usize]).collect();
+                                    if self.has_data[cu] {
+                                        ds_try.push(cand);
+                                    }
+                                    for &c in &self.self_push[cu] {
+                                        if self.has_data[c as usize] {
+                                            ds_try.push(c);
+                                        }
+                                    }
+                                    ds_try.sort_unstable();
+                                    ds_try.dedup();
+                                    if !self.has_data_star(ds_try) {
+                                        self.cmark[cu] = st;
+                                        inert_added = true;
+                                        continue;
+                                    }
+                                }
                                 let k = (self.has_data[cu], cand);
                                 if best_inert.map_or(true, |b| k < b) {
                                     best_inert = Some(k);
@@ -2505,7 +2604,7 @@ impl<'a> Engine<'a> {
             return CloseRes::Clash;
         }
         // data requirements only grow with the type: prune a partial type without a data star
-        if self.data.is_some() && !pend.is_empty() && t.iter().any(|&a| self.dreq[a as usize] > 0) {
+        if self.data.is_some() && !pend.is_empty() && !active_dprops.is_empty() {
             let mut ds: Vec<u32> = t.iter().copied().filter(|&a| self.has_data[a as usize]).collect();
             if !ds.is_empty() {
                 ds.sort_unstable();
@@ -2558,7 +2657,28 @@ impl<'a> Engine<'a> {
             }
             return CloseRes::Clash;
         }
+        if !self.empty_auto_inert.is_empty() {
+            for i_a in 0..self.empty_auto_inert.len() {
+                let (g, cand) = self.empty_auto_inert[i_a];
+                if self.mark[cand as usize] == st {
+                    continue;
+                }
+                let h = &nf.gci[g as usize].1;
+                if h.iter().any(|&x| self.mark[x as usize] == st) {
+                    continue;
+                }
+                if !self.is_forbid(cand, fst, st) {
+                    self.mark[cand as usize] = st;
+                    t.push(cand);
+                } else if let Some(&alt) = h.iter().find(|&&x| !self.is_forbid(x, fst, st)) {
+                    add!(alt);
+                } else {
+                    return CloseRes::Clash;
+                }
+            }
+        }
         t.sort_unstable();
+        t.dedup();
         let id = self.sets.intern(t);
         if !self.bad.is_empty() && self.bad.contains(&id) {
             return CloseRes::Clash;
@@ -2566,7 +2686,7 @@ impl<'a> Engine<'a> {
         if !self.succ_check(id) {
             return CloseRes::Clash;
         }
-        if self.data.is_some() && self.sets.v[id as usize].iter().any(|&a| self.dreq[a as usize] > 0) {
+        if self.data.is_some() && !active_dprops.is_empty() {
             let ds: Vec<u32> = self.sets.v[id as usize]
                 .iter()
                 .copied()
@@ -2616,7 +2736,12 @@ impl<'a> Engine<'a> {
                         if self.mark[p as usize] == st {
                             return None;
                         }
-                        self.cmark[p as usize] = st;
+                        if self.cmark[p as usize] != st {
+                            self.cmark[p as usize] = st;
+                            if let Some(gs) = self.empty_auto_by_cand.get(&p) {
+                                pend.extend_from_slice(gs);
+                            }
+                        }
                     }
                     if nf.is_nom[a as usize] {
                         noms += 1;
@@ -2636,13 +2761,17 @@ impl<'a> Engine<'a> {
                 }
             }};
         }
-        for &g in &nf.gci_empty {
+        for i_e in 0..self.empty_other.len() {
+            let g = self.empty_other[i_e];
             let h = &nf.gci[g as usize].1;
             match h.len() {
                 0 => return None,
                 1 => add!(h[0]),
                 _ => pend.push(g),
             }
+        }
+        if !self.forbid_empty_gs.is_empty() {
+            pend.extend_from_slice(&self.forbid_empty_gs);
         }
         for &a in seed {
             add!(a);
@@ -2671,7 +2800,8 @@ impl<'a> Engine<'a> {
                 }
             }
             let mut unit_added = false;
-            for &g in &pend {
+            for i_p in 0..pend.len() {
+                let g = pend[i_p];
                 let h = &nf.gci[g as usize].1;
                 if h.iter().any(|&x| self.mark[x as usize] == st) {
                     continue;
@@ -3193,35 +3323,6 @@ impl<'a> Engine<'a> {
                     return Ok(t0);
                 }
             }
-            if !matches!(cr0, CloseRes::Clash) {
-                let fb = en.bwd_forbid(tx, fl);
-                let fb_all = en.sets.union(fb, hard_fb);
-                if fb_all != hard_fb {
-                    if let CloseRes::Ok(t) = en.close(s, fb_all, 0, false) {
-                        return Ok(t);
-                    }
-                    let fbs = en.sets.get(fb);
-                    if fbs.len() > 1 && fbs.len() <= 32 && !fbs.iter().any(|&a| en.nf.is_nom[a as usize]) {
-                        let h = fbs.len() / 2;
-                        let fb1 = en.sets.union_vec(hard_fb, &fbs[..h]);
-                        if let CloseRes::Ok(t) = en.close(s, fb1, 0, false) {
-                            let bk1 = en.fwd(t, fl);
-                            let u1 = en.sets.union(tx, bk1);
-                            if en.sets.subset(bk1, tx) || matches!(en.close(u1, x_fb, x_tg, x_nm), CloseRes::Ok(_)) {
-                                return Ok(t);
-                            }
-                        }
-                        let fb2 = en.sets.union_vec(hard_fb, &fbs[h..]);
-                        if let CloseRes::Ok(t) = en.close(s, fb2, 0, false) {
-                            let bk2 = en.fwd(t, fl);
-                            let u2 = en.sets.union(tx, bk2);
-                            if en.sets.subset(bk2, tx) || matches!(en.close(u2, x_fb, x_tg, x_nm), CloseRes::Ok(_)) {
-                                return Ok(t);
-                            }
-                        }
-                    }
-                }
-            }
             match cr0 {
                 CloseRes::Ok(mut t) => {
                     let mut cur_fb = hard_fb;
@@ -3682,18 +3783,34 @@ impl<'a> Engine<'a> {
                 } else {
                     close_fold(self, u_full)
                 };
-                if t_new.is_none() && !p1 && !n1 && deg1 <= 1 {
-                    let u_f1 = self.sets.union(t2, f1);
+                if t_new.is_none() && !(p1 && _p2 && m.elems[y1 as usize].target != tg) {
+                    let mut req1 = f1;
+                    let edges1 = m.elems[y1 as usize].edges.clone();
+                    for &(z, lz) in &edges1 {
+                        let tz = m.elems[z as usize].ty;
+                        let flz = self.flip(lz);
+                        let fz = self.fwd(tz, flz);
+                        req1 = self.sets.union(req1, fz);
+                    }
+                    let u_f1 = self.sets.union(t2, req1);
                     t_new = close_fold(self, u_f1);
                     if t_new.is_none() {
-                        let u_both = self.sets.union(f2, f1);
+                        let mut req2 = f2;
+                        let edges2 = m.elems[y2 as usize].edges.clone();
+                        for &(z, lz) in &edges2 {
+                            let tz = m.elems[z as usize].ty;
+                            let flz = self.flip(lz);
+                            let fz = self.fwd(tz, flz);
+                            req2 = self.sets.union(req2, fz);
+                        }
+                        let u_both = self.sets.union(req2, req1);
                         t_new = close_fold(self, u_both);
                     }
                 }
                 let Some(t_merged) = t_new else { continue };
                 let f_merged = self.sets.union(f2, f1);
                 self.stats.folds += 1;
-                if n1 {
+                if n1 || p1 || deg1 > 1 {
                     self.merge(m, y1, y2);
                     let y2_cur = m.find(y2);
                     {
@@ -3703,6 +3820,10 @@ impl<'a> Engine<'a> {
                         e.pending.clear();
                     }
                     m.tm_push(t_merged, y2_cur);
+                    let nb: Vec<Id> = m.elems[y2_cur as usize].edges.iter().map(|e| e.0).collect();
+                    for z in nb {
+                        m.enqueue(z);
+                    }
                     m.enqueue(y2_cur);
                     m.enqueue(x);
                     return Ok(());
@@ -4071,6 +4192,9 @@ impl<'a> Engine<'a> {
             owner: NONE,
             alive: true,
         });
+        if seed != 0 && !has_nom && forbid == 0 {
+            m.tm_push(seed | SEED_KEY, y);
+        }
         for &o in ts.iter() {
             if self.nf.is_nom[o as usize] {
                 m.set_nom(o, y);
