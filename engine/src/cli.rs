@@ -547,6 +547,20 @@ pub fn run_incremental() {
 
 /// Source-level incremental OWL Functional Syntax session used by OWLAPI.
 pub fn run_source_incremental() {
+    for arg in std::env::args().skip(2) {
+        match arg.as_str() {
+            "--unknown-datatypes=strict" => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
+            "--unknown-datatypes=free" => std::env::set_var("KM_UNKNOWN_DATATYPES", "free"),
+            value if value.starts_with("--unknown-datatypes") => {
+                eprintln!("--unknown-datatypes takes strict or free, got {value:?}");
+                exit(2);
+            }
+            other => {
+                eprintln!("unknown incremental-source option: {other}");
+                exit(2);
+            }
+        }
+    }
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let reader = std::io::BufReader::with_capacity(1 << 20, stdin.lock());

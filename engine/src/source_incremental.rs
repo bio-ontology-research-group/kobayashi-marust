@@ -1993,12 +1993,37 @@ fn is_bottom(name: &str) -> bool {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum SourceCommand {
-    Init { functional_syntax: String },
+    Init {
+        functional_syntax: String,
+        #[serde(default)]
+        unknown_datatypes: Option<String>,
+    },
     // `base_revision` (row-delta request) is accepted and ignored: this session always
     // publishes the complete answer.
-    Replace { functional_syntax: String, #[serde(default)] base_revision: Option<u64> },
+    Replace {
+        functional_syntax: String,
+        #[serde(default)]
+        base_revision: Option<u64>,
+        #[serde(default)]
+        unknown_datatypes: Option<String>,
+    },
     Classify,
     Stats,
+}
+
+fn apply_session_unknown_datatypes(mode: Option<&str>) -> Result<(), String> {
+    match mode {
+        None => Ok(()),
+        Some("strict") => {
+            std::env::remove_var("KM_UNKNOWN_DATATYPES");
+            Ok(())
+        }
+        Some("free") => {
+            std::env::set_var("KM_UNKNOWN_DATATYPES", "free");
+            Ok(())
+        }
+        Some(other) => Err(format!("unknown_datatypes takes strict or free, got {other:?}")),
+    }
 }
 
 pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std::io::Result<()> {
@@ -2009,8 +2034,10 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
             continue;
         }
         let response = match serde_json::from_str::<SourceCommand>(&line) {
-            Ok(SourceCommand::Init { functional_syntax }) => {
-                match SourceIncrementalClassifier::new(&functional_syntax) {
+            Ok(SourceCommand::Init { functional_syntax, unknown_datatypes }) => {
+                match apply_session_unknown_datatypes(unknown_datatypes.as_deref())
+                    .and_then(|()| SourceIncrementalClassifier::new(&functional_syntax))
+                {
                     Ok(classifier) => {
                         let response = session_response("init", &classifier, None);
                         session = Some(classifier);
@@ -2019,8 +2046,10 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
                     Err(error) => error_response("init", error),
                 }
             }
-            Ok(SourceCommand::Replace { functional_syntax, .. }) => match session.as_mut() {
-                Some(classifier) => match classifier.replace_source(&functional_syntax) {
+            Ok(SourceCommand::Replace { functional_syntax, unknown_datatypes, .. }) => match session.as_mut() {
+                Some(classifier) => match apply_session_unknown_datatypes(unknown_datatypes.as_deref())
+                    .and_then(|()| classifier.replace_source(&functional_syntax))
+                {
                     Ok(receipt) => session_response("replace", classifier, Some(receipt)),
                     Err(error) => error_response("replace", error),
                 },

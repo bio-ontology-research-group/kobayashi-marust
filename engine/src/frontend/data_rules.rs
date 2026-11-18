@@ -142,6 +142,19 @@ pub(super) fn exact_rule_literal(literal: &str) -> bool {
         ) == Some(true)
 }
 
+fn free_opaque_top_literal(literal: &str) -> bool {
+    if !super::conformance::unknown_datatypes_free() {
+        return false;
+    }
+    let Some(close) = literal.rfind('"') else { return false };
+    let rest = literal[close + 1..].trim_start();
+    let Some(dt) = rest.strip_prefix("^^") else { return false };
+    matches!(
+        dt.trim(),
+        "rdfs:Literal" | "<http://www.w3.org/2000/01/rdf-schema#Literal>"
+    )
+}
+
 #[derive(Default)]
 pub(super) struct IntegerRuleScan<'a> {
     ranges: Vec<(&'a str, &'a str)>,
@@ -232,7 +245,7 @@ impl<'a> IntegerRuleScan<'a> {
             replacements.push(Axiom::Rule(body, head));
         }
         for (property, individual, literal) in &self.assertions {
-            if !exact_rule_literal(literal) { return 0; }
+            if !exact_rule_literal(literal) && !free_opaque_top_literal(literal) { return 0; }
             definitions.push(Axiom::ConceptAssertion(
                 Concept::Exists(super::syntax::Role::Name(registry.short(property)),
                     Box::new(Concept::Name(format!("__dt__val__{literal}")))),
@@ -290,7 +303,7 @@ impl<'a> IntegerRuleScan<'a> {
         }
         for (property, individual, literal) in &self.assertions {
             let property = registry.short(property);
-            if !exact_rule_literal(literal) {
+            if !exact_rule_literal(literal) && !free_opaque_top_literal(literal) {
                 return 0;
             }
             // A positive data assertion is an existential with a singleton
@@ -461,7 +474,7 @@ pub fn constant_data_rule_plan(axiom: &Axiom) -> Option<Axiom> {
     let translate = |atom: &RuleAtom| -> Option<RuleAtom> {
         match atom {
             RuleAtom::Data(property, subject, RuleDataTerm::Literal(literal))
-                if exact_rule_literal(literal) => Some(RuleAtom::Class(
+                if exact_rule_literal(literal) || free_opaque_top_literal(literal) => Some(RuleAtom::Class(
                     Concept::Exists(super::syntax::Role::Name(property.clone()),
                         Box::new(Concept::Name(format!("__dt__val__{literal}")))),
                     subject.clone(),
@@ -595,7 +608,7 @@ impl UnaryDataRule {
         let mut conditions = vec![guard];
         conditions.extend(self.class_conditions.iter().cloned());
         for (property, literal) in &self.constant_values {
-            if !exact_rule_literal(literal) {
+            if !exact_rule_literal(literal) && !free_opaque_top_literal(literal) {
                 return None;
             }
             conditions.push(Concept::Exists(Role::Name(property.clone()),
