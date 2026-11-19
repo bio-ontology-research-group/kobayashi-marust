@@ -1,5 +1,6 @@
 name = "ContextCalculus"
 defaultTargets = ["ContextCalculus", "Validation"]
+weakLeanArgs = ["-j2", "-s65536"]
 
 [[require]]
 name = "mathlib"

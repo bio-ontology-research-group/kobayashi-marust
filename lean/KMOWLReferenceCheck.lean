@@ -1846,6 +1846,62 @@ def dclauseText {n m p q : Nat} : SRIQD.Clause (Fin n) (Fin m) (Fin p) (Fin q) �
   | .dAtMost a k u pos neg => some s!"datmost {a.val} {k} {u.val} {" ".intercalate (pos.map (toString ·.val))} / {" ".intercalate (neg.map (toString ·.val))}"
   | .dSub u v => some s!"dsub {u.val} {v.val}"
 
+partial def litsInRange : OWL.DataRange → List OWL.Literal
+  | .datatype _ => []
+  | .not r => litsInRange r
+  | .and rs | .or rs => rs.flatMap litsInRange
+  | .oneOf ls => ls
+  | .restriction _ fs => fs.map (·.2)
+
+def evalLitRange (R : OWL.DataRange) (l : OWL.Literal) : Bool :=
+  match OWL.Datatypes.litVal l with
+  | some w => OWL.Datatypes.drEval (fun a => OWL.Datatypes.evalPt a w) (fun _ => false) R
+  | none => false
+
+def evalCellRange (R : OWL.DataRange) (c : OWL.Datatypes.Cell) : Bool :=
+  OWL.Datatypes.drEval (fun a => OWL.Datatypes.evalCell a c) (fun _ => false) R
+
+def isTimeDT (dt : OWL.IRI) : Bool :=
+  match OWL.Datatypes.kindOf dt with
+  | some k => OWL.Datatypes.timeKind k
+  | none => false
+
+partial def hintRangeText (allLits : List OWL.Literal) (cs : List OWL.Datatypes.Cell) :
+    OWL.DataRange → String
+  | .restriction dt fs =>
+    if isTimeDT dt then
+      let R := OWL.DataRange.restriction dt fs
+      let hasPos := cs.any (evalCellRange R)
+      if !hasPos then
+        s!"ContextCalculus.OWL.DataRange.and [ContextCalculus.OWL.DataRange.datatype {reprStr dt}, ContextCalculus.OWL.DataRange.complement (ContextCalculus.OWL.DataRange.datatype {reprStr dt})]"
+      else
+        let dtLits := (allLits.filter (evalLitRange (.datatype dt))).eraseDups
+        let negLits := dtLits.filter fun l => !evalLitRange R l
+        let hasNeg := cs.any fun c => evalCellRange (.datatype dt) c && !evalCellRange R c
+        let negLits' :=
+          if hasNeg && negLits.isEmpty then
+            [{ lexical := "~", datatype := dt, lang := none : OWL.Literal }]
+          else negLits
+        if negLits'.isEmpty then
+          (reprStr (OWL.DataRange.datatype dt)).replace "\n" " "
+        else
+          let oo := (reprStr (OWL.DataRange.oneOf negLits')).replace "\n" " "
+          s!"ContextCalculus.OWL.DataRange.and [ContextCalculus.OWL.DataRange.datatype {reprStr dt}, ContextCalculus.OWL.DataRange.complement ({oo})]"
+    else (reprStr (OWL.DataRange.restriction dt fs)).replace "\n" " "
+  | .not r =>
+    s!"ContextCalculus.OWL.DataRange.complement ({hintRangeText allLits cs r})"
+  | .and rs =>
+    s!"ContextCalculus.OWL.DataRange.and [{", ".intercalate (rs.map (hintRangeText allLits cs))}]"
+  | .or rs =>
+    s!"ContextCalculus.OWL.DataRange.or [{", ".intercalate (rs.map (hintRangeText allLits cs))}]"
+  | r => (reprStr r).replace "\n" " "
+
+partial def atomHasTimeRestr : OWL.DataRange → Bool
+  | .datatype _ | .oneOf _ => false
+  | .not r => atomHasTimeRestr r
+  | .and rs | .or rs => rs.any atomHasTimeRestr
+  | .restriction dt _ => isTimeDT dt
+
 /-- The data clauses, the data atoms, the free datatypes, the groups and
 the split cells of the data part a hint names (`part I G N`: count `N` of
 group `G` in split cell `I`). -/
@@ -1859,7 +1915,13 @@ def emitData {n : Nat} (T : SRIQDKBTranslation)
     | none => pure ()
   let spS := OWLFrontend.specS T.tab
   let sp := spS.f
-  for j in List.finRange T.tab.length do out.putStrLn s!"atom {j.val} {(reprStr (sp j)).replace "\n" " "}"
+  let as := OWL.Datatypes.allBases sp
+  let cs := OWL.Datatypes.cellsOf as
+  let allLits := (List.finRange T.tab.length).flatMap fun j => litsInRange (sp j)
+  for j in List.finRange T.tab.length do
+    let r := sp j
+    let txt := if atomHasTimeRestr r then hintRangeText allLits cs r else (reprStr r).replace "\n" " "
+    out.putStrLn s!"atom {j.val} {txt}"
   let fr := OWL.Datatypes.allFrees sp
   for (f, i) in fr.zipIdx do out.putStrLn s!"free {i} {f}"
   let gs := ContextCalculus.SRIQD.allG fr.length
@@ -1867,8 +1929,6 @@ def emitData {n : Nat} (T : SRIQDKBTranslation)
   if gs.length ≤ 4096 then
     for (g, i) in gs.zipIdx do
       out.putStrLn s!"group {i} {String.join ((List.finRange fr.length).map fun j => if g j then "1" else "0")}"
-  let as := OWL.Datatypes.allBases sp
-  let cs := OWL.Datatypes.cellsOf as
   let szS := OWLFrontend.cellSizeS as
   let sz := szS.f
   let vS := OWLFrontend.vtcOwlS sp
@@ -2624,7 +2684,7 @@ def rulesDeclineR (R0 : OWL.OntologyR) : String :=
   | none => "keys: a HasKey with data properties"
   | some R =>
   let N := R.named.eraseDups
-  let k := (R.rules.map (OWLFrontend.ruleInstCount (OWLFrontend.ruleU R) (OWLFrontend.ruleH R) N)).sum
+  let k := (R.rules.map (OWLFrontend.ruleInstCount true (OWLFrontend.ruleU R) (OWLFrontend.ruleH R) N)).sum
   if k > ruleCap then s!"rules: {k} ground instances over {N.length} named individuals (more than {ruleCap})"
   else "rules: an instance with a data variable, a data range atom, a built-in atom or an " ++
     "anonymous individual"

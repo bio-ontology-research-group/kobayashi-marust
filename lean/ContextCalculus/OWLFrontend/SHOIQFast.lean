@@ -231,8 +231,8 @@ instance instHashableCell : Hashable Datatypes.Cell where
     | .hexR => 10
     | .b64R => 11
     | .xmlR => 12
-    | .timeTz => 13
-    | .timeLoc => 14
+    | .tA tz p => mixHash 13 (mixHash (hash tz) (hash p))
+    | .tI tz lo hi => mixHash 14 (mixHash (hash tz) (mixHash (hash lo) (hash hi)))
     | .other => 15
 
 def numPtsF (as : List Datatypes.BAtom) : List ℚ :=
@@ -245,6 +245,12 @@ def otherPtsF (as : List Datatypes.BAtom) : List (Datatypes.ValOf ℚ) :=
   dedupHS (as.flatMap Datatypes.BAtom.others ++ [Datatypes.ValOf.bool true, Datatypes.ValOf.bool false])
 
 @[csimp] theorem otherPts_eq_F : @Datatypes.otherPts = @otherPtsF := by
+  funext as; exact (dedupHS_eq _).symm
+
+def timePtsF (as : List Datatypes.BAtom) : List ℚ :=
+  dedupHS (as.flatMap Datatypes.BAtom.times)
+
+@[csimp] theorem timePts_eq_F : @Datatypes.timePts = @timePtsF := by
   funext as; exact (dedupHS_eq _).symm
 
 def allPtsF (as : List Datatypes.BAtom) : List (Datatypes.ValOf ℚ) :=
@@ -270,24 +276,38 @@ def fCellsF (d : Bool) (as : List Datatypes.BAtom) : List Datatypes.Cell :=
   funext d as
   simp only [Datatypes.fCells, fCellsF, ← fOrds_eq_F]
 
+def tCellsF (tz : Bool) (as : List Datatypes.BAtom) : List Datatypes.Cell :=
+  let tp := timePtsF as
+  tp.map (Datatypes.Cell.tA tz) ++
+    (Datatypes.gapPairs tp).map fun x => Datatypes.Cell.tI tz x.1 x.2
+
+@[csimp] theorem tCells_eq_F : @Datatypes.tCells = @tCellsF := by
+  funext tz as
+  simp only [Datatypes.tCells, tCellsF, ← timePts_eq_F]
+
 def cellsOfF (as : List Datatypes.BAtom) : List Datatypes.Cell :=
   let npts := numPtsF as
   let opts := otherPtsF as
+  let tpts := timePtsF as
   let foT := dedupHS (opts.filterMap (Datatypes.fpOrd true))
   let foF := dedupHS (opts.filterMap (Datatypes.fpOrd false))
   let fcT := Datatypes.Cell.fN true :: (foT.map (Datatypes.Cell.fA true) ++
     (Datatypes.fPairs foT (Datatypes.fTop true)).map fun x => Datatypes.Cell.fI true x.1 x.2)
   let fcF := Datatypes.Cell.fN false :: (foF.map (Datatypes.Cell.fA false) ++
     (Datatypes.fPairs foF (Datatypes.fTop false)).map fun x => Datatypes.Cell.fI false x.1 x.2)
+  let tcT := tpts.map (Datatypes.Cell.tA true) ++
+    (Datatypes.gapPairs tpts).map fun x => Datatypes.Cell.tI true x.1 x.2
+  let tcF := tpts.map (Datatypes.Cell.tA false) ++
+    (Datatypes.gapPairs tpts).map fun x => Datatypes.Cell.tI false x.1 x.2
   dedupHS ((npts.map Datatypes.ValOf.num ++ opts).map Datatypes.Cell.pt ++
     (Datatypes.gapPairs npts).flatMap
       (fun x : Option ℚ × Option ℚ => [0, 1, 2, 3].map (Datatypes.Cell.gap x.1 x.2)) ++
-    (Datatypes.restCells ++ fcT ++ fcF))
+    (Datatypes.restCells ++ fcT ++ fcF ++ tcT ++ tcF))
 
 @[csimp] theorem cellsOf_eq_F : @Datatypes.cellsOf = @cellsOfF := by
   funext as
   simp only [Datatypes.cellsOf, cellsOfF, Datatypes.allPts, Datatypes.fCells, Datatypes.fOrds,
-    ← numPts_eq_F, ← otherPts_eq_F, dedupHS_eq]
+    Datatypes.tCells, ← numPts_eq_F, ← otherPts_eq_F, ← timePts_eq_F, dedupHS_eq]
 
 def allFreesF {q : Nat} (spec : Fin q → DataRange) : List IRI :=
   dedupHS ((List.finRange q).flatMap fun p => Datatypes.drFrees (spec p))

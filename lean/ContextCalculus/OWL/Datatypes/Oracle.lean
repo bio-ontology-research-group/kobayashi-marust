@@ -54,6 +54,12 @@ def floatBound (k : Kind) (f : IRI × Literal) : Option ((Bool × Bool) × ValOf
   | some b, some (.flt y) => if k = .float then some (b, .flt y) else none
   | _, _ => none
 
+/-- A bound facet with a `dateTime` value. -/
+def timeBound (f : IRI × Literal) : Option ((Bool × Bool) × (ℚ × Option Int)) :=
+  match boundFacet f.1, litVal f.2 with
+  | some b, some (.time t z) => some (b, (t, z))
+  | _, _ => none
+
 /-- Evaluate a data range from the base atoms `bv` and the free datatypes
 `fv` that hold at a value. -/
 def drEval (bv : BAtom → Bool) (fv : IRI → Bool) : DataRange → Bool
@@ -79,6 +85,10 @@ def drEval (bv : BAtom → Bool) (fv : IRI → Bool) : DataRange → Bool
         if fltKind k then
           match fs.mapM (floatBound k) with
           | some bs => bv (.fltB k bs)
+          | none => false
+        else if timeKind k then
+          match fs.mapM timeBound with
+          | some bs => bv (.timeB k bs)
           | none => false
         else
           match fs.mapM facetBound with
@@ -112,6 +122,10 @@ def drBases : DataRange → List BAtom
         if fltKind k then
           match fs.mapM (floatBound k) with
           | some bs => [.fltB k bs]
+          | none => []
+        else if timeKind k then
+          match fs.mapM timeBound with
+          | some bs => [.timeB k bs]
           | none => []
         else
           match fs.mapM facetBound with
@@ -163,7 +177,7 @@ def drSupported : DataRange → Bool
       | none => true
     else
       match kindOf t with
-      | some k => numKind k || fltKind k
+      | some k => numKind k || fltKind k || timeKind k
       | none => true
 termination_by r => sizeOf r
 decreasing_by
@@ -232,6 +246,20 @@ theorem facet_float {t : IRI} {k : Kind} (h : kindOf t = some k) (hk : fltKind k
     | none => none) = _
   rw [h]
   cases k <;> simp [fltKind] at hk <;> unfold facetSem floatBound <;>
+    rcases hbf : boundFacet f.1 with _ | b <;> rcases hl : litVal f.2 with _ | w <;>
+    rcases hlf : lengthFacet f.1 with _ | L <;>
+    (try rcases w with q | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n) <;>
+    simp_all [numeric, stringish] <;> rfl
+
+theorem facet_time {t : IRI} {k : Kind} (h : kindOf t = some k) (hk : timeKind k = true)
+    (f : IRI × Literal) :
+    (owl2MapP pat).facet t f.1 f.2 =
+      (timeBound f).map fun bq => fun v => ∃ t' z', v = .time t' z' ∧ timeRel bq.1 (t', z') bq.2 := by
+  show (match kindOf t with
+    | some k => facetSem pat k f.1 (litVal f.2)
+    | none => none) = _
+  rw [h]
+  cases k <;> simp [timeKind] at hk <;> unfold facetSem timeBound <;>
     rcases hbf : boundFacet f.1 with _ | b <;> rcases hl : litVal f.2 with _ | w <;>
     rcases hlf : lengthFacet f.1 with _ | L <;>
     (try rcases w with q | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n) <;>
@@ -440,7 +468,38 @@ theorem ext_iff_drEval : ∀ (dr : DataRange), drSupported dr = true →
             · rintro ⟨bq, hbq, hpv⟩
               exact ⟨_, by rw [hbq]; rfl, hpv⟩
         rw [if_neg hfk]
-        replace hs : numKind k = true := by simpa [hfk] using hs
+        by_cases htk : timeKind k = true
+        · rw [if_pos htk]
+          have hfacet := facet_time pat hk htk
+          rcases hm : fs.mapM timeBound with _ | bs
+          · simp only [Bool.false_eq_true, iff_false]
+            rintro ⟨-, h⟩
+            obtain ⟨f, hf, hnone⟩ := mapM_none' hm
+            obtain ⟨p, hp, -⟩ := h f hf
+            rw [hfacet f, hnone] at hp
+            cases hp
+          · have hbm := hb (.timeB k bs) (by
+              rw [drBases, if_neg hfs, hk]; simp only [hfk, if_false, Bool.false_eq_true, htk, if_true, hm]
+              exact List.mem_singleton_self _)
+            simp only at hbm ⊢
+            rw [← hbm, BAtom.sem]
+            refine and_congr_right fun _ => ?_
+            rw [← mapM_all hm (fun bq => ∃ t' z', v = .time t' z' ∧ timeRel bq.1 (t', z') bq.2)]
+            refine forall₂_congr fun f _ => ?_
+            rw [hfacet f]
+            constructor
+            · rintro ⟨p, hp, hpv⟩
+              rcases hfb : timeBound f with _ | bq
+              · rw [hfb] at hp; cases hp
+              · rw [hfb] at hp
+                simp only [Option.map_some] at hp
+                have hp' := Option.some.inj hp
+                subst hp'
+                exact ⟨bq, rfl, hpv⟩
+            · rintro ⟨bq, hbq, hpv⟩
+              exact ⟨_, by rw [hbq]; rfl, hpv⟩
+        rw [if_neg htk]
+        replace hs : numKind k = true := by simpa [hfk, htk] using hs
         have hfacet := facet_numeric pat hk hs
         rcases hm : fs.mapM facetBound with _ | bs
         · simp only [Bool.false_eq_true, iff_false]
@@ -450,7 +509,7 @@ theorem ext_iff_drEval : ∀ (dr : DataRange), drSupported dr = true →
           rw [hfacet f, hnone] at hp
           cases hp
         · have hbm := hb (.numR k bs) (by
-            rw [drBases, if_neg hfs, hk]; simp only [hfk, if_false, Bool.false_eq_true, hm]
+            rw [drBases, if_neg hfs, hk]; simp only [hfk, htk, if_false, Bool.false_eq_true, hm]
             exact List.mem_singleton_self _)
           simp only at hbm ⊢
           rw [← hbm, BAtom.sem]
@@ -531,11 +590,19 @@ theorem supported_of_drBases : ∀ (dr : DataRange), drSupported dr = true →
             subst ha
             exact hfk
         · rw [if_neg hfk] at ha
-          rcases hm : fs.mapM facetBound with _ | bs <;> rw [hm] at ha
-          · simp at ha
-          · rw [List.mem_singleton] at ha
-            subst ha
-            simpa [hfk] using hs
+          by_cases htk : timeKind k = true
+          · rw [if_pos htk] at ha
+            rcases hm : fs.mapM timeBound with _ | bs <;> rw [hm] at ha
+            · simp at ha
+            · rw [List.mem_singleton] at ha
+              subst ha
+              exact htk
+          · rw [if_neg htk] at ha
+            rcases hm : fs.mapM facetBound with _ | bs <;> rw [hm] at ha
+            · simp at ha
+            · rw [List.mem_singleton] at ha
+              subst ha
+              simpa [hfk, htk] using hs
 termination_by dr => sizeOf dr
 decreasing_by
   all_goals simp_wf
@@ -600,6 +667,10 @@ def compileDR : DataRange → CExpr
         if fltKind k then
           match fs.mapM (floatBound k) with
           | some bs => .atom (.fltB k bs)
+          | none => .const false
+        else if timeKind k then
+          match fs.mapM timeBound with
+          | some bs => .atom (.timeB k bs)
           | none => .const false
         else
           match fs.mapM facetBound with
@@ -691,8 +762,9 @@ theorem evalCE_compileDR (bv : BAtom → Bool) (fv : IRI → Bool) :
       | none => rfl
       | some k =>
         dsimp only
-        split_ifs with hfk
+        split_ifs with hfk htk
         · cases fs.mapM (floatBound k) <;> rfl
+        · cases fs.mapM timeBound <;> rfl
         · cases fs.mapM facetBound <;> rfl
 termination_by dr => sizeOf dr
 decreasing_by

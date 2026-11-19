@@ -492,17 +492,22 @@ def oneRuleInstCount (u h0 : IRI) (N : List IRI) (ρ' : DLRule) : Nat :=
   | some _ => 1
   | none => N.length ^ ρ'.ivars.eraseDups.length
 
-def ruleInstCount (u h0 : IRI) (N : List IRI) (ρ : DLRule) : Nat :=
-  ((splitRule u h0 N ρ).map (oneRuleInstCount u h0 N)).sum
+def ruleInstCount (roll? : Bool) (u h0 : IRI) (N : List IRI) (ρ : DLRule) : Nat :=
+  if roll? then ((splitRule u h0 N ρ).map (oneRuleInstCount u h0 N)).sum
+  else N.length ^ ρ.ivars.eraseDups.length
+
+def rawRuleAxs (u h0 : IRI) (N : List IRI) (ρ' : DLRule) : Option (List Axiom) :=
+  (assigns N ρ'.ivars.eraseDups).mapM (instAx u h0 ρ')
 
 def oneRuleAxs (u h0 : IRI) (N : List IRI) (ρ' : DLRule) : Option (List Axiom) :=
   match instOneVar u h0 ρ' with
   | some ax => some [ax]
-  | none => (assigns N ρ'.ivars.eraseDups).mapM (instAx u h0 ρ')
+  | none => rawRuleAxs u h0 N ρ'
 
 /-- The axioms of all instances of a rule over the names `N`. -/
-def ruleAxs (u h0 : IRI) (N : List IRI) (ρ : DLRule) : Option (List Axiom) :=
-  ((splitRule u h0 N ρ).mapM (oneRuleAxs u h0 N)).map List.flatten
+def ruleAxs (roll? : Bool) (u h0 : IRI) (N : List IRI) (ρ : DLRule) : Option (List Axiom) :=
+  if roll? then ((splitRule u h0 N ρ).mapM (oneRuleAxs u h0 N)).map List.flatten
+  else rawRuleAxs u h0 N ρ
 
 /-! ## The encoding -/
 
@@ -541,8 +546,9 @@ def encRules (O : OntologyR) : Option Ontology :=
   let N := O.named.eraseDups
   let u := ruleU O
   let h0 := ruleH O
-  if O.onto.noKey && (O.rules.map (ruleInstCount u h0 N)).sum ≤ ruleCap then
-    (O.rules.mapM (ruleAxs u h0 N)).map fun ras =>
+  let roll? := decide ((O.rules.map fun ρ => N.length ^ ρ.ivars.eraseDups.length).sum > ruleCap)
+  if O.onto.noKey && (O.rules.map (ruleInstCount roll? u h0 N)).sum ≤ ruleCap then
+    (O.rules.mapM (ruleAxs roll? u h0 N)).map fun ras =>
       ⟨O.onto.axioms ++ N.map (fun b => .objectPropertyAssertion (.named u) (.named h0) (.named b)) ++
         ras.flatten⟩
   else none
@@ -1615,6 +1621,55 @@ theorem instOneVar_bwd (bi : BuiltIns DM) {J : Interp DM Dom}
           rw [ext_oneVarHeadCE] at hce
           exact hce (σ v) (hσv ▸ hux b_v (List.mem_eraseDups.2 hbv)) hvbs
 
+theorem rawRuleAxs_fwd [hv : Nonempty DM.Val] (bi : BuiltIns DM) {J : Interp DM Dom}
+    {O_named NN : List IRI} {u h0 : IRI} {ρ : DLRule} {L : List Axiom}
+    (h : rawRuleAxs u h0 O_named.eraseDups ρ = some L)
+    (hni : NamedIn O_named.eraseDups ρ)
+    (hu : ∀ x y, J.prop (.named u) x y ↔ J.IsNamed O_named y)
+    (hρ : ρ.sat bi J O_named) :
+    ∀ ax ∈ L, J.sat NN ax := by
+  unfold rawRuleAxs at h
+  intro ax hax
+  obtain ⟨g, hg, hia⟩ := mapM_some_bwd h ax hax
+  unfold instAx at hia
+  obtain ⟨bs, hbs, hia⟩ := Option.bind_eq_some_iff.1 hia
+  obtain ⟨hs, hhs, rfl⟩ := Option.map_eq_some_iff.1 hia
+  intro x hx
+  rw [ext_andL] at hx ⊢
+  let σ : IRI → Dom := fun v => J.ind (.named ((g.lookup v).getD v))
+  let δ : IRI → DM.Val := fun _ => Classical.choice hv
+  have hag : Agrees J g σ := fun v a hl => by simp [σ, hl]
+  have hua : ∀ a0 ∈ ρ.body ++ ρ.head, ∀ t ∈ a0.iargs, ∀ b, gI g t = some b →
+      J.prop (.named u) x (J.ind (.named b)) := by
+    intro a0 ha0 t ht b hb
+    refine (hu x _).2 ⟨b, List.mem_eraseDups.1 ?_, rfl⟩
+    cases t with
+    | var v =>
+      have hvV : v ∈ ρ.ivars.eraseDups := List.mem_eraseDups.2
+        (List.mem_flatMap.2 ⟨a0, ha0, mem_iargs_vars ht rfl⟩)
+      obtain ⟨c, hc, hl⟩ := lookup_assigns hg v hvV
+      simp only [gI] at hb
+      rw [hl] at hb; cases hb; exact hc
+    | ind i =>
+      cases i with
+      | named b' =>
+        simp only [gI, Option.some.injEq] at hb; subst hb
+        exact hni a0 ha0 _ ht b' rfl
+      | anon _ => cases hb
+  have hb : ∀ a ∈ ρ.body, a.sat bi J σ δ := by
+    intro a ha
+    obtain ⟨c, hc, hca⟩ := mapM_some_fwd hbs a ha
+    exact (bodyCE_iff bi u δ hag (hua a (List.mem_append_left _ ha)) hca).1
+      (hx c (List.mem_cons_of_mem _ hc))
+  have hnm : ∀ v ∈ ρ.ivars, J.IsNamed O_named (σ v) := by
+    intro v hv'
+    obtain ⟨a, ha, hl⟩ := lookup_assigns hg v (List.mem_eraseDups.2 hv')
+    exact ⟨a, List.mem_eraseDups.1 ha, by simp [σ, hl]⟩
+  have hhd := hρ σ δ hnm hb
+  intro c hc
+  obtain ⟨a, ha, hca⟩ := mapM_some_bwd hhs c hc
+  exact (headCE_iff bi u δ hag (hua a (List.mem_append_right _ ha)) hca).2 (hhd a ha)
+
 theorem oneRuleAxs_fwd [hv : Nonempty DM.Val] (bi : BuiltIns DM) {J : Interp DM Dom}
     {O_named NN : List IRI} {u h0 : IRI} {ρ : DLRule} {L : List Axiom}
     (h : oneRuleAxs u h0 O_named.eraseDups ρ = some L)
@@ -1631,46 +1686,64 @@ theorem oneRuleAxs_fwd [hv : Nonempty DM.Val] (bi : BuiltIns DM) {J : Interp DM 
     exact instOneVar_fwd bi ho hni hu hρ
   | none =>
     rw [ho] at h
-    intro ax hax
-    obtain ⟨g, hg, hia⟩ := mapM_some_bwd h ax hax
-    unfold instAx at hia
-    obtain ⟨bs, hbs, hia⟩ := Option.bind_eq_some_iff.1 hia
-    obtain ⟨hs, hhs, rfl⟩ := Option.map_eq_some_iff.1 hia
-    intro x hx
-    rw [ext_andL] at hx ⊢
-    let σ : IRI → Dom := fun v => J.ind (.named ((g.lookup v).getD v))
-    let δ : IRI → DM.Val := fun _ => Classical.choice hv
-    have hag : Agrees J g σ := fun v a hl => by simp [σ, hl]
-    have hua : ∀ a0 ∈ ρ.body ++ ρ.head, ∀ t ∈ a0.iargs, ∀ b, gI g t = some b →
-        J.prop (.named u) x (J.ind (.named b)) := by
-      intro a0 ha0 t ht b hb
-      refine (hu x _).2 ⟨b, List.mem_eraseDups.1 ?_, rfl⟩
-      cases t with
-      | var v =>
-        have hvV : v ∈ ρ.ivars.eraseDups := List.mem_eraseDups.2
-          (List.mem_flatMap.2 ⟨a0, ha0, mem_iargs_vars ht rfl⟩)
-        obtain ⟨c, hc, hl⟩ := lookup_assigns hg v hvV
-        simp only [gI] at hb
-        rw [hl] at hb; cases hb; exact hc
-      | ind i =>
-        cases i with
-        | named b' =>
-          simp only [gI, Option.some.injEq] at hb; subst hb
-          exact hni a0 ha0 _ ht b' rfl
-        | anon _ => cases hb
-    have hb : ∀ a ∈ ρ.body, a.sat bi J σ δ := by
-      intro a ha
-      obtain ⟨c, hc, hca⟩ := mapM_some_fwd hbs a ha
-      exact (bodyCE_iff bi u δ hag (hua a (List.mem_append_left _ ha)) hca).1
-        (hx c (List.mem_cons_of_mem _ hc))
-    have hnm : ∀ v ∈ ρ.ivars, J.IsNamed O_named (σ v) := by
-      intro v hv'
-      obtain ⟨a, ha, hl⟩ := lookup_assigns hg v (List.mem_eraseDups.2 hv')
-      exact ⟨a, List.mem_eraseDups.1 ha, by simp [σ, hl]⟩
-    have hhd := hρ σ δ hnm hb
+    exact rawRuleAxs_fwd bi h hni hu hρ
+
+theorem rawRuleAxs_bwd (bi : BuiltIns DM) {J : Interp DM Dom}
+    {O_named NN : List IRI} {u h0 : IRI} {ρ : DLRule} {L : List Axiom}
+    (h : rawRuleAxs u h0 O_named.eraseDups ρ = some L)
+    (hni : NamedIn O_named.eraseDups ρ)
+    (hux : ∀ b ∈ O_named.eraseDups, J.prop (.named u) (J.ind (.named h0)) (J.ind (.named b)))
+    (hJL : ∀ ax ∈ L, J.sat NN ax) :
+    ρ.sat bi J O_named := by
+  classical
+  unfold rawRuleAxs at h
+  intro σ δ hnm hbody a ha
+  set N := O_named.eraseDups
+  let f : IRI → IRI := fun v => if hv' : v ∈ ρ.ivars then (hnm v hv').choose else v
+  have hf : ∀ v ∈ ρ.ivars, f v ∈ O_named ∧ σ v = J.ind (.named (f v)) := fun v hv' => by
+    simp only [f, dif_pos hv']
+    exact (hnm v hv').choose_spec
+  obtain ⟨g, hg, hgl⟩ := mem_assigns f (N := N) (V := ρ.ivars.eraseDups) fun v hv' =>
+    List.mem_eraseDups.2 (hf v (List.mem_eraseDups.1 hv')).1
+  have hag : Agrees J g σ := fun v b hl => by
+    have hvV := key_of_assigns hg v b hl
+    rw [hgl v hvV] at hl
+    cases hl
+    exact (hf v (List.mem_eraseDups.1 hvV)).2
+  obtain ⟨ax, hax, hia⟩ := mapM_some_fwd h g hg
+  have hJax := hJL ax hax
+  unfold instAx at hia
+  obtain ⟨bs, hbs, hia⟩ := Option.bind_eq_some_iff.1 hia
+  obtain ⟨hs, hhs, rfl⟩ := Option.map_eq_some_iff.1 hia
+  let x0 := J.ind (.named h0)
+  have hua : ∀ a0 ∈ ρ.body ++ ρ.head, ∀ t ∈ a0.iargs, ∀ b, gI g t = some b →
+      J.prop (.named u) x0 (J.ind (.named b)) := by
+    intro a0 ha0 t ht b hb
+    refine hux b ?_
+    cases t with
+    | var v =>
+      have hvV : v ∈ ρ.ivars.eraseDups := List.mem_eraseDups.2
+        (List.mem_flatMap.2 ⟨a0, ha0, mem_iargs_vars ht rfl⟩)
+      obtain ⟨c, hc, hl⟩ := lookup_assigns hg v hvV
+      simp only [gI] at hb
+      rw [hl] at hb; cases hb; exact hc
+    | ind i =>
+      cases i with
+      | named b' =>
+        simp only [gI, Option.some.injEq] at hb; subst hb
+        exact hni a0 ha0 _ ht b' rfl
+      | anon _ => cases hb
+  have hx0 : J.ext (.and (.oneOf [.named h0] :: bs)) x0 := by
+    rw [ext_andL]
     intro c hc
-    obtain ⟨a, ha, hca⟩ := mapM_some_bwd hhs c hc
-    exact (headCE_iff bi u δ hag (hua a (List.mem_append_right _ ha)) hca).2 (hhd a ha)
+    rcases List.mem_cons.1 hc with rfl | hc
+    · exact (ext_oneOf1 J _ _).2 rfl
+    · obtain ⟨a', ha', hca⟩ := mapM_some_bwd hbs c hc
+      exact (bodyCE_iff bi u δ hag (hua a' (List.mem_append_left _ ha')) hca).2 (hbody a' ha')
+  have hh := hJax x0 hx0
+  rw [ext_andL] at hh
+  obtain ⟨c, hc, hca⟩ := mapM_some_fwd hhs a ha
+  exact (headCE_iff bi u δ hag (hua a (List.mem_append_right _ ha)) hca).1 (hh c hc)
 
 theorem oneRuleAxs_bwd (bi : BuiltIns DM) {J : Interp DM Dom}
     {O_named NN : List IRI} {u h0 : IRI} {ρ : DLRule} {L : List Axiom}
@@ -1679,7 +1752,6 @@ theorem oneRuleAxs_bwd (bi : BuiltIns DM) {J : Interp DM Dom}
     (hux : ∀ b ∈ O_named.eraseDups, J.prop (.named u) (J.ind (.named h0)) (J.ind (.named b)))
     (hJL : ∀ ax ∈ L, J.sat NN ax) :
     ρ.sat bi J O_named := by
-  classical
   unfold oneRuleAxs at h
   cases ho : instOneVar u h0 ρ with
   | some ax0 =>
@@ -1687,85 +1759,43 @@ theorem oneRuleAxs_bwd (bi : BuiltIns DM) {J : Interp DM Dom}
     exact instOneVar_bwd bi ho hni hux (hJL ax0 (List.mem_singleton_self _))
   | none =>
     rw [ho] at h
-    intro σ δ hnm hbody a ha
-    set N := O_named.eraseDups
-    let f : IRI → IRI := fun v => if hv' : v ∈ ρ.ivars then (hnm v hv').choose else v
-    have hf : ∀ v ∈ ρ.ivars, f v ∈ O_named ∧ σ v = J.ind (.named (f v)) := fun v hv' => by
-      simp only [f, dif_pos hv']
-      exact (hnm v hv').choose_spec
-    obtain ⟨g, hg, hgl⟩ := mem_assigns f (N := N) (V := ρ.ivars.eraseDups) fun v hv' =>
-      List.mem_eraseDups.2 (hf v (List.mem_eraseDups.1 hv')).1
-    have hag : Agrees J g σ := fun v b hl => by
-      have hvV := key_of_assigns hg v b hl
-      rw [hgl v hvV] at hl
-      cases hl
-      exact (hf v (List.mem_eraseDups.1 hvV)).2
-    obtain ⟨ax, hax, hia⟩ := mapM_some_fwd h g hg
-    have hJax := hJL ax hax
-    unfold instAx at hia
-    obtain ⟨bs, hbs, hia⟩ := Option.bind_eq_some_iff.1 hia
-    obtain ⟨hs, hhs, rfl⟩ := Option.map_eq_some_iff.1 hia
-    let x0 := J.ind (.named h0)
-    have hua : ∀ a0 ∈ ρ.body ++ ρ.head, ∀ t ∈ a0.iargs, ∀ b, gI g t = some b →
-        J.prop (.named u) x0 (J.ind (.named b)) := by
-      intro a0 ha0 t ht b hb
-      refine hux b ?_
-      cases t with
-      | var v =>
-        have hvV : v ∈ ρ.ivars.eraseDups := List.mem_eraseDups.2
-          (List.mem_flatMap.2 ⟨a0, ha0, mem_iargs_vars ht rfl⟩)
-        obtain ⟨c, hc, hl⟩ := lookup_assigns hg v hvV
-        simp only [gI] at hb
-        rw [hl] at hb; cases hb; exact hc
-      | ind i =>
-        cases i with
-        | named b' =>
-          simp only [gI, Option.some.injEq] at hb; subst hb
-          exact hni a0 ha0 _ ht b' rfl
-        | anon _ => cases hb
-    have hx0 : J.ext (.and (.oneOf [.named h0] :: bs)) x0 := by
-      rw [ext_andL]
-      intro c hc
-      rcases List.mem_cons.1 hc with rfl | hc
-      · exact (ext_oneOf1 J _ _).2 rfl
-      · obtain ⟨a', ha', hca⟩ := mapM_some_bwd hbs c hc
-        exact (bodyCE_iff bi u δ hag (hua a' (List.mem_append_left _ ha')) hca).2 (hbody a' ha')
-    have hh := hJax x0 hx0
-    rw [ext_andL] at hh
-    obtain ⟨c, hc, hca⟩ := mapM_some_fwd hhs a ha
-    exact (headCE_iff bi u δ hag (hua a (List.mem_append_right _ ha)) hca).1 (hh c hc)
+    exact rawRuleAxs_bwd bi h hni hux hJL
 
 theorem ruleAxs_fwd [hv : Nonempty DM.Val] (bi : BuiltIns DM) {I : Interp DM Dom}
-    {O_named NN : List IRI} {u h0 : IRI} {ρ : DLRule} {L : List Axiom}
-    (h : ruleAxs u h0 O_named.eraseDups ρ = some L)
+    {O_named NN : List IRI} {roll? : Bool} {u h0 : IRI} {ρ : DLRule} {L : List Axiom}
+    (h : ruleAxs roll? u h0 O_named.eraseDups ρ = some L)
     (hnu : NoU u ρ) (hni : NamedIn O_named.eraseDups ρ) (hρ : ρ.sat bi I O_named) :
     ∀ ax ∈ L, (withRole I u fun _ y => I.IsNamed O_named y).sat NN ax := by
   unfold ruleAxs at h
-  obtain ⟨Ls, hLs, rfl⟩ := Option.map_eq_some_iff.1 h
   let J := withRole I u fun _ y => I.IsNamed O_named y
   have hu : ∀ x y, J.prop (.named u) x y ↔ J.IsNamed O_named y := fun _ _ => by
     simp [J, withRole, Interp.prop, Interp.IsNamed]
   have hρJ : ρ.sat bi J O_named := (sat_rule_withRole bi I O_named _ hnu).2 hρ
-  obtain ⟨-, hs_fwd, hs_ni⟩ := splitRule_spec bi J O_named u h0 ρ
-  intro ax hax
-  obtain ⟨L', hL', hax'⟩ := List.mem_flatten.1 hax
-  obtain ⟨ρ', hρ', h1⟩ := mapM_some_bwd hLs L' hL'
-  exact oneRuleAxs_fwd bi h1 (hs_ni hni ρ' hρ') hu (hs_fwd hu hρJ ρ' hρ') ax hax'
+  split_ifs at h with hroll
+  · obtain ⟨Ls, hLs, rfl⟩ := Option.map_eq_some_iff.1 h
+    obtain ⟨-, hs_fwd, hs_ni⟩ := splitRule_spec bi J O_named u h0 ρ
+    intro ax hax
+    obtain ⟨L', hL', hax'⟩ := List.mem_flatten.1 hax
+    obtain ⟨ρ', hρ', h1⟩ := mapM_some_bwd hLs L' hL'
+    exact oneRuleAxs_fwd bi h1 (hs_ni hni ρ' hρ') hu (hs_fwd hu hρJ ρ' hρ') ax hax'
+  · exact rawRuleAxs_fwd bi h hni hu hρJ
 
 theorem ruleAxs_bwd (bi : BuiltIns DM) {J : Interp DM Dom}
-    {O_named NN : List IRI} {u h0 : IRI} {ρ : DLRule} {L : List Axiom}
-    (h : ruleAxs u h0 O_named.eraseDups ρ = some L)
+    {O_named NN : List IRI} {roll? : Bool} {u h0 : IRI} {ρ : DLRule} {L : List Axiom}
+    (h : ruleAxs roll? u h0 O_named.eraseDups ρ = some L)
     (hni : NamedIn O_named.eraseDups ρ)
     (hux : ∀ b ∈ O_named.eraseDups, J.prop (.named u) (J.ind (.named h0)) (J.ind (.named b)))
     (hJL : ∀ ax ∈ L, J.sat NN ax) :
     ρ.sat bi J O_named := by
   unfold ruleAxs at h
-  obtain ⟨Ls, hLs, rfl⟩ := Option.map_eq_some_iff.1 h
-  obtain ⟨hs_bwd, -, hs_ni⟩ := splitRule_spec bi J O_named u h0 ρ
-  refine hs_bwd hux fun ρ' hρ' => ?_
-  obtain ⟨L', hL', h1⟩ := mapM_some_fwd hLs ρ' hρ'
-  exact oneRuleAxs_bwd bi h1 (hs_ni hni ρ' hρ') hux fun ax hax =>
-    hJL ax (List.mem_flatten.2 ⟨L', hL', hax⟩)
+  split_ifs at h with hroll
+  · obtain ⟨Ls, hLs, rfl⟩ := Option.map_eq_some_iff.1 h
+    obtain ⟨hs_bwd, -, hs_ni⟩ := splitRule_spec bi J O_named u h0 ρ
+    refine hs_bwd hux fun ρ' hρ' => ?_
+    obtain ⟨L', hL', h1⟩ := mapM_some_fwd hLs ρ' hρ'
+    exact oneRuleAxs_bwd bi h1 (hs_ni hni ρ' hρ') hux fun ax hax =>
+      hJL ax (List.mem_flatten.2 ⟨L', hL', hax⟩)
+  · exact rawRuleAxs_bwd bi h hni hux hJL
 
 /-- **A model of the encoding is a model of the ontology with its rules.** -/
 theorem modelR_of_encRules (bi : BuiltIns DM) {O : OntologyR}

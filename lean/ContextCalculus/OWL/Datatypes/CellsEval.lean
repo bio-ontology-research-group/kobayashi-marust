@@ -128,6 +128,28 @@ theorem fltSem_flt (b : Bool × Bool) (y : ValOf ℚ) (x : FloatV 8 23) :
 theorem kindF_num {k : Kind} (hk : fltKind k = true) (x : ℝ) : ¬ kindSem k (.num x) := by
   cases k <;> simp [fltKind] at hk <;> simp [kindSem]
 
+theorem timeRelB_iff (b : Bool × Bool) (t' : ℚ) (z' : Option Int) (y : ℚ × Option Int) :
+    timeRelB b z'.isSome t' y = true ↔ timeRel b (t', z') y := by
+  rcases y with ⟨t, _ | z⟩ <;> rcases z' with _ | z' <;> rcases b with ⟨_ | _, _ | _⟩ <;>
+    simp [timeRelB, timeRel, timeLt, timeEq, boundB, le_iff_lt_or_eq, @eq_comm ℚ t' t]
+
+theorem kindSem_time (k : Kind) {t : ℚ} {z : Option Int} (h : (decQ t && offOK z) = true) :
+    kindSem k (.time t z) ↔ kindT k z.isSome = true := by
+  simp only [Bool.and_eq_true] at h
+  have hd : IsDecimalQ t := (isDecimalQ_iff t).2 h.1
+  rcases z with _ | z <;> cases k <;> simp_all [kindSem, kindT, strSem, offOK]
+
+theorem timeSem_time (b : Bool × Bool) (y : ℚ × Option Int) (t' : ℚ) (z' : Option Int) :
+    (∃ t'' z'', (ValOf.time t' z' : Val) = .time t'' z'' ∧ timeRel b (t'', z'') y) ↔
+      timeRelB b z'.isSome t' y = true := by
+  simp [← timeRelB_iff]
+
+theorem kindT_not_time {k : Kind} (hk : timeKind k = true) {v : Val} (hv : ∀ t z, v ≠ .time t z) :
+    ¬ kindSem k v := by
+  cases k <;> simp [timeKind] at hk
+  · rintro ⟨t, z, h, -⟩; exact hv t z h
+  · rintro ⟨t, z, h, -⟩; exact hv t (some z) h
+
 /-- **Points.** A supported atom at a point. -/
 theorem evalPt_correct {a : BAtom} (hs : a.supported = true) (w : ValOf ℚ) :
     a.sem (toVal w) ↔ evalPt a w = true := by
@@ -168,6 +190,18 @@ theorem evalPt_correct {a : BAtom} (hs : a.supported = true) (w : ValOf ℚ) :
     all_goals
       exfalso
       cases k <;> simp [fltKind] at hs <;> simp [kindPt] at hk
+  | timeB k bs =>
+    simp only [BAtom.supported] at hs
+    simp only [BAtom.sem, evalPt, Bool.and_eq_true]
+    rw [kindPt_correct]
+    refine and_congr_right fun hk => ?_
+    cases w with
+    | time t z =>
+      simp only [List.all_eq_true, toVal, ValOf.map]
+      exact forall₂_congr fun b _ => timeSem_time b.1 b.2 t z
+    | _ =>
+      exfalso
+      exact kindT_not_time hs (by intro t' z' h; cases h) ((kindPt_correct k _).2 hk)
 
 /-! ## Gaps -/
 
@@ -281,21 +315,45 @@ theorem boundGap_correct {b : Bool × Bool} {y : ℚ} (hy : y ∈ P) (hx : ∀ q
   · rw [← lt_iff_ptBelow hy, le_iff_lt_or_eq, or_iff_left (hx y hy)]
   · rw [← lt_iff_ptBelow hy]
 
+theorem boundGapT_correct {b : Bool × Bool} {tz' : Bool} {t' : ℚ} {y : ℚ × Option Int}
+    (hy : timeThresh tz' b.1 y ∈ P) (hx : ∀ q ∈ P, (q : ℝ) ≠ (t' : ℝ)) :
+    timeRelB b tz' t' y = true ↔
+      boundGapT b tz' y (maxBelow P (t' : ℝ)) (minAbove P (t' : ℝ)) = true := by
+  unfold boundGapT
+  rw [← boundGap_correct hy hx, boundRel_cast]
+  have hne : timeThresh tz' b.1 y ≠ t' := fun h => hx _ hy (by exact_mod_cast h)
+  unfold timeRelB timeThresh at hne ⊢
+  by_cases h1 : (tz' == y.2.isSome) = true
+  · simp [h1]
+  · rcases b with ⟨_ | _, _ | _⟩ <;> simp only [h1, ↓reduceIte, Bool.false_eq_true, boundB, decide_eq_true_eq] at hne ⊢
+    · exact ⟨fun h => by linarith, fun h => by have := lt_of_le_of_ne h hne.symm; linarith⟩
+    · exact ⟨fun h => by linarith, fun h => by linarith⟩
+    · exact ⟨fun h => le_of_lt h, fun h => lt_of_le_of_ne h hne⟩
+
 end GapEval
 
 /-! ## The rest cells -/
 
 theorem kindRest_correct {k : Kind} (hk : supportedKind k = true) {v : Val}
-    (hn : ∀ x, v ≠ .num x) (hb : ∀ b, v ≠ .bool b) (hf : ∀ x, v ≠ .dbl x) (hg : ∀ x, v ≠ .flt x) :
+    (hn : ∀ x, v ≠ .num x) (hb : ∀ b, v ≠ .bool b) (hf : ∀ x, v ≠ .dbl x) (hg : ∀ x, v ≠ .flt x)
+    (ht : ∀ t z, v ≠ .time t z) :
     kindSem k v ↔ kindRest k (restCell v) = true := by
-  rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, _ | z⟩ | s | n
+  rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n
   · exact absurd rfl (hn x)
   · exact absurd rfl (hf x)
   · exact absurd rfl (hg x)
   all_goals try exact absurd rfl (hb _)
+  all_goals try exact absurd rfl (ht _ _)
   all_goals cases k <;> simp [supportedKind] at hk <;>
     simp only [kindSem, restCell, strSem] <;> (try split_ifs) <;>
     simp_all [kindRest, isDecimalQ_iff, offOK]
+
+theorem kindSem_invalid_time {k : Kind} (hk : supportedKind k = true) {t : ℚ} {z : Option Int}
+    (hok : ¬ (decQ t && offOK z) = true) :
+    kindSem k (.time t z) ↔ kindRest k .other = true := by
+  simp only [Bool.and_eq_true, ← isDecimalQ_iff, not_and] at hok
+  rcases z with _ | z <;> cases k <;> simp [supportedKind] at hk <;>
+    simp_all [kindSem, kindRest, strSem, offOK]
 
 theorem evalCell_restCell (a : BAtom) {v : Val} (hf : ∀ x, v ≠ .dbl x) (hg : ∀ x, v ≠ .flt x) :
     evalCell a (restCell v) = match a with
@@ -311,6 +369,8 @@ theorem evalCell_restCell (a : BAtom) {v : Val} (hf : ∀ x, v ≠ .dbl x) (hg :
   | fN d => simp [restCells] at h3
   | fA d p => simp [restCells] at h3
   | fI d lo hi => simp [restCells] at h3
+  | tA tz p => simp [restCells] at h3
+  | tI tz lo hi => simp [restCells] at h3
   | _ => cases a <;> rfl
 
 /-- A bound facet at an index off the points is a bound on its interval. -/
@@ -342,6 +402,14 @@ variable {as : List BAtom}
 
 theorem nums_sub {a : BAtom} (ha : a ∈ as) {p : ℚ} (hp : p ∈ a.nums) : p ∈ numPts as :=
   List.mem_dedup.2 (List.mem_flatMap.2 ⟨a, ha, hp⟩)
+
+theorem timeThresh_mem_times {k : Kind} {bs : List ((Bool × Bool) × (ℚ × Option Int))}
+    {b : (Bool × Bool) × (ℚ × Option Int)} (hb : b ∈ bs) (tz' : Bool) :
+    timeThresh tz' b.1.1 b.2 ∈ (BAtom.timeB k bs).times := by
+  simp only [BAtom.times, List.mem_flatMap]
+  refine ⟨b, hb, ?_⟩
+  unfold timeThresh
+  split_ifs <;> simp
 
 theorem lit_pt {w : ValOf ℚ} (ha : BAtom.lit w ∈ as) : w ∈ allPts as := by
   cases w with
@@ -393,6 +461,11 @@ theorem evalCell_correct {a : BAtom} (ha : a ∈ as) (hs : a.supported = true) (
         simp only [BAtom.sem, evalCell, Bool.false_eq_true, iff_false]
         rintro ⟨h1, -⟩
         exact kindF_num hs x h1
+      | timeB k bs =>
+        simp only [BAtom.supported] at hs
+        simp only [BAtom.sem, evalCell, Bool.false_eq_true, iff_false]
+        rintro ⟨h1, -⟩
+        exact kindT_not_time hs (by intro t z h; cases h) h1
     | dbl x =>
       rw [cellOf_dbl hv]
       cases a with
@@ -441,6 +514,11 @@ theorem evalCell_correct {a : BAtom} (ha : a ∈ as) (hs : a.supported = true) (
               List.mem_dedup.2 (List.mem_append_left _ (List.mem_flatMap.2 ⟨_, ha, hmem⟩))
             have hyP : y ∈ fOrds true as := List.mem_dedup.2 (List.mem_filterMap.2 ⟨b.2, hop, hy⟩)
             rw [boundI_gap hyP h2 (fIdx_mem (d := true) (v := .dbl x) (by simp [fIdx, hx]))]
+      | timeB k bs =>
+        simp only [BAtom.supported] at hs
+        simp only [BAtom.sem]
+        unfold fCell; split_ifs <;> simp only [evalCell, Bool.false_eq_true, iff_false] <;>
+          exact fun h => kindT_not_time hs (by intro t z h; cases h) h.1
     | flt x =>
       rw [cellOf_flt hv]
       cases a with
@@ -489,12 +567,82 @@ theorem evalCell_correct {a : BAtom} (ha : a ∈ as) (hs : a.supported = true) (
               List.mem_dedup.2 (List.mem_append_left _ (List.mem_flatMap.2 ⟨_, ha, hmem⟩))
             have hyP : y ∈ fOrds false as := List.mem_dedup.2 (List.mem_filterMap.2 ⟨b.2, hop, hy⟩)
             rw [boundI_gap hyP h2 (fIdx_mem (d := false) (v := .flt x) (by simp [fIdx, hx]))]
+      | timeB k bs =>
+        simp only [BAtom.supported] at hs
+        simp only [BAtom.sem]
+        unfold fCell; split_ifs <;> simp only [evalCell, Bool.false_eq_true, iff_false] <;>
+          exact fun h => kindT_not_time hs (by intro t z h; cases h) h.1
+    | time t z =>
+      by_cases hok : (decQ t && offOK z) = true
+      · rw [cellOf_time hv hok]
+        cases a with
+        | kind k =>
+          simp only [BAtom.sem]
+          rw [kindSem_time k hok]
+          unfold tCell; split_ifs <;> rfl
+        | numR k bs =>
+          simp only [BAtom.supported] at hs
+          simp only [BAtom.sem]
+          unfold tCell; split_ifs <;> simp only [evalCell, Bool.false_eq_true, iff_false] <;>
+            exact fun h => by obtain ⟨y, hy⟩ := kindSem_num_of hs h.1; cases hy
+        | empty => unfold tCell; split_ifs <;> simp [BAtom.sem, evalCell]
+        | lit w =>
+          have hno : ¬ (ValOf.time t z = toVal w) := fun he => hv ⟨w, lit_pt ha, he.symm⟩
+          simp only [BAtom.sem]
+          unfold tCell; split_ifs <;> simp only [evalCell, Bool.false_eq_true, iff_false] <;> exact hno
+        | fltB k bs =>
+          simp only [BAtom.supported] at hs
+          simp only [BAtom.sem]
+          unfold tCell; split_ifs <;> simp only [evalCell, Bool.false_eq_true, iff_false] <;>
+            (rintro ⟨h1, -⟩; cases k <;> simp [fltKind] at hs <;> simp [kindSem] at h1)
+        | timeB k bs =>
+          simp only [BAtom.sem, kindSem_time k hok, timeSem_time]
+          unfold tCell
+          split_ifs with h1
+          · simp [evalCell]
+          · simp only [evalCell, Bool.and_eq_true, List.all_eq_true]
+            refine and_congr_right fun _ => forall₂_congr fun b hb => ?_
+            have hx : ∀ q ∈ timePts as, (q : ℝ) ≠ (t : ℝ) := fun q hq h => h1 (by
+              have : q = t := by exact_mod_cast h
+              exact this ▸ hq)
+            have hy : timeThresh z.isSome b.1.1 b.2 ∈ timePts as :=
+              List.mem_dedup.2 (List.mem_flatMap.2 ⟨_, ha, timeThresh_mem_times hb z.isSome⟩)
+            exact boundGapT_correct hy hx
+      · have hht : isValidTime (.time t z) = false := Bool.eq_false_iff.2 hok
+        rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h) hht]
+        simp only [restCell]
+        cases a with
+        | kind k => exact kindSem_invalid_time hs hok
+        | numR k bs =>
+          simp only [BAtom.supported] at hs
+          simp only [BAtom.sem, evalCell, Bool.false_eq_true, iff_false]
+          rintro ⟨h1, -⟩
+          obtain ⟨x, hx⟩ := kindSem_num_of hs h1
+          cases hx
+        | empty => simp [BAtom.sem, evalCell]
+        | lit w =>
+          simp only [BAtom.sem, evalCell, Bool.false_eq_true, iff_false]
+          intro he
+          exact hv ⟨w, lit_pt ha, he.symm⟩
+        | fltB k bs =>
+          simp only [BAtom.sem, evalCell, Bool.false_eq_true, iff_false]
+          rintro ⟨h1, -⟩
+          simp only [BAtom.supported] at hs
+          cases k <;> simp [fltKind] at hs <;> simp [kindSem] at h1
+        | timeB k bs =>
+          simp only [BAtom.sem, evalCell, Bool.false_eq_true, iff_false]
+          rintro ⟨h1, -⟩
+          simp only [BAtom.supported] at hs
+          have hk : supportedKind k = true := by cases k <;> simp_all [timeKind, supportedKind]
+          have hf := (kindSem_invalid_time hk hok).1 h1
+          cases k <;> simp [timeKind] at hs <;> simp [kindRest] at hf
     | _ =>
-      rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h),
+      rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h) rfl,
         evalCell_restCell _ (by intro x h; cases h) (by intro x h; cases h)]
       cases a with
       | kind k =>
-        refine kindRest_correct hs (by intro x h; cases h) ?_ (by intro x h; cases h) (by intro x h; cases h)
+        refine kindRest_correct hs (by intro x h; cases h) ?_
+          (by intro x h; cases h) (by intro x h; cases h) (by intro t z h; cases h)
         intro b hb
         exact hv ⟨.bool b, bool_pt b, by rw [hb]; rfl⟩
       | numR k bs =>
@@ -513,6 +661,11 @@ theorem evalCell_correct {a : BAtom} (ha : a ∈ as) (hs : a.supported = true) (
         rintro ⟨h1, -⟩
         simp only [BAtom.supported] at hs
         cases k <;> simp [fltKind] at hs <;> simp [kindSem] at h1
+      | timeB k bs =>
+        simp only [BAtom.supported] at hs
+        simp only [BAtom.sem, Bool.false_eq_true, iff_false]
+        rintro ⟨h1, -⟩
+        exact kindT_not_time hs (by intro t z h; cases h) h1
 
 end Main
 
