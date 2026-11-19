@@ -20,9 +20,11 @@
 //! pairs come from the one classification of the extended ontology that the
 //! realization already needs, instead of one consistency test per pair.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use super::realize::{fresh_namespace_for, public_name};
+use crate::frontend::sexpr::Node;
+
+use super::realize::{fresh_namespace_for, prefix_bindings, public_name, Realization};
 use super::{Classification, OrchestrateError};
 
 /// The rows of `--values` and `--different`.
@@ -163,9 +165,4119 @@ pub(super) fn split(
     })
 }
 
+/// Result of analyzing the exported consistency model for `--values` and
+/// `--different`: deductively proved rows plus any undecided residual queries
+/// that could not be refuted by a verified model or merged-pair saturation and
+/// therefore go to the exact probe reduction.
+#[derive(Clone, Debug, Default)]
+pub(super) struct ModelAboxPlan {
+    pub proved_values: BTreeSet<[String; 3]>,
+    pub proved_different: BTreeSet<[String; 2]>,
+    pub residual_value_targets: BTreeSet<(usize, usize)>,
+    pub residual_value_sources: BTreeSet<usize>,
+    pub residual_different_pairs: BTreeSet<(usize, usize)>,
+}
+
+/// Build the conservative probe extension for only the residual `(r, b)` value
+/// targets and `(a, b)` different-individual pairs that were neither
+/// constructively proved nor refuted by the model shortcut.
+pub(super) fn residual_extension(
+    text: &str,
+    roles: &[String],
+    individuals: &[String],
+    values: bool,
+    different: bool,
+    plan: &ModelAboxPlan,
+) -> (String, Vec<(String, String)>, AboxProbes) {
+    let ind_ns = fresh_namespace_for(text, "realize");
+    let ns = fresh_namespace_for(text, "aboxrows");
+    let mut need_ind_probes: BTreeSet<usize> = BTreeSet::new();
+    let mut need_not_probes: BTreeSet<usize> = BTreeSet::new();
+    let mut kept_value_targets: Vec<(usize, usize)> = Vec::new();
+    if values && !plan.residual_value_targets.is_empty() {
+        let role_bound = (roles.len().saturating_mul(individuals.len()) >= 256)
+            .then(|| crate::frontend::named_role_bound::NamedRoleBound::compute(text))
+            .flatten();
+        for &(r, b) in &plan.residual_value_targets {
+            if let (Some(role), Some(ind)) = (roles.get(r), individuals.get(b)) {
+                if let Some(bound) = &role_bound {
+                    let pub_role = public_name(role);
+                    if !bound.role_has_self_by_full_iri(&pub_role) {
+                        let targets = bound.reachable_targets_by_full_iri(&pub_role);
+                        if !targets.contains(&public_name(ind)) {
+                            continue;
+                        }
+                    }
+                }
+                kept_value_targets.push((r, b));
+            }
+        }
+    }
+    if !kept_value_targets.is_empty() {
+        need_ind_probes.extend(plan.residual_value_sources.iter().copied());
+    }
+    if different {
+        for &(a, b) in &plan.residual_different_pairs {
+            need_ind_probes.insert(a);
+            need_not_probes.insert(b);
+        }
+    }
+    let mut out = String::new();
+    let mut ind_probes = Vec::with_capacity(need_ind_probes.len());
+    for i in need_ind_probes {
+        if let Some(ind) = individuals.get(i) {
+            let probe = format!("{ind_ns}individual{i}");
+            out.push_str(&format!(
+                "Declaration(Class(<{probe}>))\nEquivalentClasses(<{probe}> ObjectOneOf({ind}))\n"
+            ));
+            ind_probes.push((probe, public_name(ind)));
+        }
+    }
+    let mut probes = BTreeMap::new();
+    for (r, b) in kept_value_targets {
+        if let (Some(role), Some(ind)) = (roles.get(r), individuals.get(b)) {
+            let probe = format!("{ns}value{r}_{b}");
+            out.push_str(&format!(
+                "Declaration(Class(<{probe}>))\nEquivalentClasses(<{probe}> ObjectSomeValuesFrom({role} ObjectOneOf({ind})))\n"
+            ));
+            probes.insert(probe, Probe::Value(r, b));
+        }
+    }
+    if different {
+        for b in need_not_probes {
+            if let Some(ind) = individuals.get(b) {
+                let probe = format!("{ns}not{b}");
+                out.push_str(&format!(
+                    "Declaration(Class(<{probe}>))\nEquivalentClasses(<{probe}> ObjectComplementOf(ObjectOneOf({ind})))\n"
+                ));
+                probes.insert(probe, Probe::Not(b));
+            }
+        }
+    }
+    let abox_probes = AboxProbes {
+        probes,
+        roles: roles.iter().map(|r| public_name(r)).collect(),
+        individuals: individuals.iter().map(|a| public_name(a)).collect(),
+        values,
+        different,
+    };
+    (out, ind_probes, abox_probes)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn from_exported_model(
+    text: &str,
+    roles: &[String],
+    individuals: &[String],
+    values_requested: bool,
+    different_requested: bool,
+    classification: &Classification,
+    realization: &Realization,
+    raw: &super::model_export::RawModel,
+    meta: &super::frontend_run::Meta,
+) -> Option<ModelAboxPlan> {
+    if !classification.consistent {
+        return Some(ModelAboxPlan::default());
+    }
+    let bound_disabled = crate::frontend::named_role_bound::NamedRoleBound::bound_disabled();
+    if bound_disabled && !different_requested {
+        return None;
+    }
+    if !matches!(raw.route, "el-canonical" | "cb-horn" | "ht-bridge") {
+        return None;
+    }
+    if raw.partial_reason.is_some() && raw.route != "ht-bridge" {
+        return None;
+    }
+    if text.contains("DLSafeRule(") || text.contains("HasKey(") {
+        return None;
+    }
+
+    let prefixes = prefix_bindings(text).ok()?;
+    let expand_tok = |token: &str| -> String {
+        let trimmed = token.trim();
+        if let Some(iri) = trimmed.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
+            return iri.to_string();
+        }
+        trimmed
+            .split_once(':')
+            .and_then(|(prefix, local)| prefixes.get(prefix).map(|ns| format!("{ns}{local}")))
+            .unwrap_or_else(|| trimmed.to_string())
+    };
+
+    let mut ind_lookup: HashMap<String, String> = HashMap::new();
+    let mut pub_ind_to_idx: HashMap<String, usize> = HashMap::new();
+    let mut pub_individuals: Vec<String> = Vec::with_capacity(individuals.len());
+    for (idx, tok) in individuals.iter().enumerate() {
+        let pub_ind = public_name(tok);
+        let exp_ind = expand_tok(tok);
+        ind_lookup.insert(pub_ind.clone(), pub_ind.clone());
+        ind_lookup.insert(exp_ind, pub_ind.clone());
+        pub_ind_to_idx.insert(pub_ind.clone(), idx);
+        pub_individuals.push(pub_ind);
+    }
+    for (short, full) in &meta.iri_map {
+        if let Some(pub_ind) = ind_lookup.get(full).cloned() {
+            ind_lookup.entry(short.clone()).or_insert(pub_ind);
+        }
+    }
+
+    let mut role_lookup: HashMap<String, String> = HashMap::new();
+    let mut pub_role_to_idx: HashMap<String, usize> = HashMap::new();
+    for (idx, tok) in roles.iter().enumerate() {
+        let pub_r = public_name(tok);
+        let exp_r = expand_tok(tok);
+        role_lookup.insert(pub_r.clone(), pub_r.clone());
+        role_lookup.insert(exp_r, pub_r.clone());
+        pub_role_to_idx.insert(pub_r, idx);
+    }
+    let mut full_to_short: HashMap<&str, &str> = HashMap::with_capacity(meta.iri_map.len());
+    for (short, full) in &meta.iri_map {
+        full_to_short.entry(full.as_str()).or_insert(short.as_str());
+        if let Some(pub_r) = role_lookup.get(full).cloned() {
+            role_lookup.entry(short.clone()).or_insert(pub_r);
+        }
+    }
+    let resolve_role_short = |tok: &str| -> String {
+        let pub_r = public_name(tok);
+        let exp_r = expand_tok(tok);
+        if let Some(&short) = full_to_short
+            .get(exp_r.as_str())
+            .or_else(|| full_to_short.get(pub_r.as_str()))
+        {
+            return short.to_string();
+        }
+        pub_r
+    };
+    let resolve_class_iri = |tok: &str| -> String {
+        let exp = expand_tok(tok);
+        meta.iri_map.get(&exp).cloned().unwrap_or(exp)
+    };
+
+    let mut one_refl: HashSet<(usize, String, usize)> = HashSet::new();
+    let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, 1, &mut one_refl);
+    let refl_roles: Vec<String> = one_refl.into_iter().map(|(_, r, _)| r).collect();
+
+    let use_base = raw.route == "ht-bridge" && !raw.base_labels.is_empty();
+    let mut labels: Vec<Vec<String>>;
+    let mut edge_set: HashSet<(usize, String, usize)>;
+    let mut elem_inds: Vec<Vec<String>>;
+    let mut ind_to_elem: HashMap<String, usize> = HashMap::new();
+
+    if raw.abox_elided || raw.route == "el-canonical" {
+        let mut init_same: Vec<(String, String)> = Vec::new();
+        for [a, b] in &realization.same {
+            init_same.push((a.clone(), b.clone()));
+        }
+        if text.contains("SameIndividual(") {
+            let _ = crate::frontend::parse::for_each_ontology_child(text, |node| {
+                let Node::List(head, args) = node else {
+                    return Ok(());
+                };
+                if *head == "SameIndividual" {
+                    let inds: Vec<String> = args
+                        .iter()
+                        .filter(|a| a.head() != Some("Annotation"))
+                        .filter_map(|n| n.as_atom())
+                        .filter_map(|t| {
+                            ind_lookup
+                                .get(&expand_tok(t))
+                                .or_else(|| ind_lookup.get(&public_name(t)))
+                                .cloned()
+                        })
+                        .collect();
+                    for w in inds.windows(2) {
+                        init_same.push((w[0].clone(), w[1].clone()));
+                    }
+                }
+                Ok(())
+            });
+        }
+        let mut s_adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for (a, b) in &init_same {
+            s_adj.entry(a.as_str()).or_default().push(b.as_str());
+            s_adj.entry(b.as_str()).or_default().push(a.as_str());
+        }
+        labels = Vec::new();
+        edge_set = HashSet::new();
+        elem_inds = Vec::new();
+        for pub_ind in &pub_individuals {
+            if ind_to_elem.contains_key(pub_ind) {
+                continue;
+            }
+            let mut comp: Vec<String> = Vec::new();
+            let mut stack = vec![pub_ind.as_str()];
+            let u_new = labels.len();
+            while let Some(cur) = stack.pop() {
+                if !ind_to_elem.contains_key(cur) {
+                    ind_to_elem.insert(cur.to_string(), u_new);
+                    comp.push(cur.to_string());
+                    if let Some(nbrs) = s_adj.get(cur) {
+                        stack.extend(nbrs.iter().copied());
+                    }
+                }
+            }
+            comp.sort();
+            comp.dedup();
+            let lbl: Vec<String> = comp.iter().map(|i| format!("__nom__{i}")).collect();
+            labels.push(lbl);
+            elem_inds.push(comp);
+            for r in &refl_roles {
+                edge_set.insert((u_new, r.clone(), u_new));
+            }
+        }
+    } else {
+        labels = if use_base {
+            raw.base_labels.clone()
+        } else {
+            raw.labels.clone()
+        };
+        edge_set = if use_base {
+            raw.base_edges.iter().cloned().collect()
+        } else {
+            raw.edges.iter().cloned().collect()
+        };
+        elem_inds = vec![Vec::new(); labels.len()];
+        for (u, lbl) in labels.iter().enumerate() {
+            for item in lbl.iter().chain(raw.contexts.get(u)) {
+                if let Some(rest) = item.strip_prefix("__nom__") {
+                    let full = meta.iri_map.get(rest).map(String::as_str).unwrap_or(rest);
+                    if let Some(pub_ind) = ind_lookup
+                        .get(full)
+                        .or_else(|| ind_lookup.get(rest))
+                        .cloned()
+                    {
+                        if !elem_inds[u].contains(&pub_ind) {
+                            elem_inds[u].push(pub_ind.clone());
+                        }
+                        ind_to_elem.entry(pub_ind).or_insert(u);
+                    }
+                }
+            }
+            elem_inds[u].sort();
+            elem_inds[u].dedup();
+        }
+        for pub_ind in &pub_individuals {
+            if !ind_to_elem.contains_key(pub_ind) {
+                let u_new = labels.len();
+                labels.push(vec![format!("__nom__{pub_ind}")]);
+                elem_inds.push(vec![pub_ind.clone()]);
+                ind_to_elem.insert(pub_ind.clone(), u_new);
+                for r in &refl_roles {
+                    edge_set.insert((u_new, r.clone(), u_new));
+                }
+            }
+        }
+    }
+
+    let n_elems = labels.len();
+    let mut elem_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
+    let mut entailed_elem_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
+    let mut elem_dvp: Vec<HashMap<(String, String), String>> = vec![HashMap::new(); n_elems];
+    for u in 0..n_elems {
+        for ind in &elem_inds[u] {
+            let nom = format!("__nom__{ind}");
+            elem_classes[u].insert(nom.clone());
+            entailed_elem_classes[u].insert(nom);
+        }
+    }
+    for (u, lbl) in labels.iter().enumerate() {
+        for item in lbl {
+            if let Some(rest) = item.strip_prefix("__dvp__") {
+                if let Some((prefix, val_bit)) = rest.rsplit_once('_') {
+                    if let Some((grp, bit_idx)) = prefix.rsplit_once('_') {
+                        elem_dvp[u].insert((grp.to_string(), bit_idx.to_string()), val_bit.to_string());
+                    }
+                }
+                continue;
+            }
+            if item.starts_with("__") || item.starts_with("Q_") {
+                continue;
+            }
+            let full = meta.iri_map.get(item).cloned().unwrap_or_else(|| item.clone());
+            if !full.starts_with("http://km.invalid/") && !full.starts_with("_:") {
+                elem_classes[u].insert(full);
+            }
+        }
+    }
+    for [ind_pub, class_pub] in &realization.types {
+        if let Some(&u) = ind_to_elem.get(ind_pub) {
+            let exp = expand_tok(class_pub);
+            elem_classes[u].insert(exp.clone());
+            elem_classes[u].insert(class_pub.clone());
+            entailed_elem_classes[u].insert(exp);
+            entailed_elem_classes[u].insert(class_pub.clone());
+        }
+    }
+
+    let mut subs_map: HashMap<String, Vec<String>> = HashMap::new();
+    for [sub, sup] in &classification.subsumptions {
+        if !sub.starts_with("http://km.invalid/") && !sup.starts_with("http://km.invalid/") {
+            subs_map
+                .entry(expand_tok(sub))
+                .or_default()
+                .push(expand_tok(sup));
+            subs_map.entry(sub.clone()).or_default().push(sup.clone());
+        }
+    }
+    let close_elem_classes = |classes: &mut [HashSet<String>]| {
+        for set in classes.iter_mut() {
+            let mut stack: Vec<String> = set.iter().cloned().collect();
+            while let Some(c) = stack.pop() {
+                if let Some(sups) = subs_map.get(&c) {
+                    for sup in sups {
+                        if set.insert(sup.clone()) {
+                            stack.push(sup.clone());
+                        }
+                    }
+                }
+            }
+        }
+    };
+    close_elem_classes(&mut elem_classes);
+
+    let mut same_pairs: Vec<(String, String)> = Vec::new();
+    for [a, b] in &realization.same {
+        same_pairs.push((a.clone(), b.clone()));
+    }
+    let mut diff_ind_groups: Vec<Vec<String>> = Vec::new();
+    let mut disjoint_class_groups: Vec<Vec<String>> = Vec::new();
+    let mut class_disjoint_inds: Vec<(String, String)> = Vec::new();
+    let mut class_has_value: Vec<(String, String, bool, String)> = Vec::new();
+    let mut class_has_self: Vec<(String, String)> = Vec::new();
+    let mut source_role_assertions: Vec<(usize, String, usize)> = Vec::new();
+    let mut neg_role_assertions: Vec<(String, usize, usize)> = Vec::new();
+    let mut irrefl_roles: HashSet<String> = HashSet::new();
+    let mut asym_roles: HashSet<String> = HashSet::new();
+    let mut disjoint_role_groups: Vec<Vec<String>> = Vec::new();
+    let mut func_obj_roles: HashSet<String> = HashSet::new();
+    let mut inv_func_obj_roles: HashSet<String> = HashSet::new();
+    let mut func_data_props: HashSet<String> = HashSet::new();
+    let mut sub_data_props: HashMap<String, Vec<String>> = HashMap::new();
+    let mut data_domains: Vec<(String, String)> = Vec::new();
+    let mut obj_domains: Vec<(String, String)> = Vec::new();
+    let mut obj_ranges: Vec<(String, String)> = Vec::new();
+    let mut source_data_assertions: Vec<(usize, String, String)> = Vec::new();
+    let mut elem_neg_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
+
+    fn collect_has_value_rhs<'a>(
+        node: &'a Node<'a>,
+        out: &mut Vec<(&'a str, bool, &'a str)>,
+        self_out: &mut Vec<&'a str>,
+    ) {
+        let Node::List(head, args) = node else { return };
+        let plain: Vec<&Node<'a>> = args
+            .iter()
+            .filter(|a| a.head() != Some("Annotation"))
+            .collect();
+        match *head {
+            "ObjectIntersectionOf" => {
+                for op in plain {
+                    collect_has_value_rhs(op, out, self_out);
+                }
+            }
+            "ObjectHasSelf" if !plain.is_empty() => match plain[0] {
+                Node::Atom(r) => self_out.push(r),
+                Node::List("ObjectInverseOf", r_args) => {
+                    if let Some(r) = r_args.first().and_then(Node::as_atom) {
+                        self_out.push(r);
+                    }
+                }
+                _ => {}
+            },
+            "ObjectHasValue" if plain.len() >= 2 => {
+                if let Some(ind) = plain[1].as_atom() {
+                    match plain[0] {
+                        Node::Atom(r) => out.push((r, false, ind)),
+                        Node::List("ObjectInverseOf", r_args) => {
+                            if let Some(r) = r_args.first().and_then(Node::as_atom) {
+                                out.push((r, true, ind));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "ObjectSomeValuesFrom" if plain.len() >= 2 => {
+                if let Node::List("ObjectOneOf", inds) = plain[1] {
+                    if inds.len() == 1 {
+                        if let Some(ind) = inds[0].as_atom() {
+                            match plain[0] {
+                                Node::Atom(r) => out.push((r, false, ind)),
+                                Node::List("ObjectInverseOf", r_args) => {
+                                    if let Some(r) = r_args.first().and_then(Node::as_atom) {
+                                        out.push((r, true, ind));
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let _ = crate::frontend::parse::for_each_ontology_child(text, |node| {
+        let Node::List(head, args) = node else {
+            return Ok(());
+        };
+        let plain: Vec<&Node<'_>> = args
+            .iter()
+            .filter(|a| a.head() != Some("Annotation"))
+            .collect();
+        match *head {
+            "SameIndividual" => {
+                let inds: Vec<String> = plain
+                    .iter()
+                    .filter_map(|n| n.as_atom())
+                    .filter_map(|t| {
+                        ind_lookup
+                            .get(&expand_tok(t))
+                            .or_else(|| ind_lookup.get(&public_name(t)))
+                            .cloned()
+                    })
+                    .collect();
+                for w in inds.windows(2) {
+                    same_pairs.push((w[0].clone(), w[1].clone()));
+                }
+            }
+            "DifferentIndividuals" => {
+                let inds: Vec<String> = plain
+                    .iter()
+                    .filter_map(|n| n.as_atom())
+                    .filter_map(|t| {
+                        ind_lookup
+                            .get(&expand_tok(t))
+                            .or_else(|| ind_lookup.get(&public_name(t)))
+                            .cloned()
+                    })
+                    .collect();
+                if inds.len() >= 2 {
+                    diff_ind_groups.push(inds);
+                }
+            }
+            "DisjointClasses" | "DisjointUnion" => {
+                let slice = if *head == "DisjointUnion" && !plain.is_empty() {
+                    &plain[1..]
+                } else {
+                    &plain[..]
+                };
+                let mut named_group: Vec<String> = Vec::new();
+                let mut one_ofs: Vec<Vec<String>> = Vec::new();
+                for item in slice {
+                    if let Some(c) = item.as_atom() {
+                        named_group.push(resolve_class_iri(c));
+                    } else if let Node::List("ObjectOneOf", inds) = item {
+                        let group: Vec<String> = inds
+                            .iter()
+                            .filter_map(|n| n.as_atom())
+                            .filter_map(|t| {
+                                ind_lookup
+                                    .get(&expand_tok(t))
+                                    .or_else(|| ind_lookup.get(&public_name(t)))
+                                    .cloned()
+                            })
+                            .collect();
+                        if !group.is_empty() {
+                            one_ofs.push(group);
+                        }
+                    }
+                }
+                if named_group.len() >= 2 {
+                    disjoint_class_groups.push(named_group.clone());
+                }
+                for c in &named_group {
+                    for grp in &one_ofs {
+                        for ind in grp {
+                            class_disjoint_inds.push((c.clone(), ind.clone()));
+                        }
+                    }
+                }
+            }
+            "SubClassOf" if plain.len() == 2 => {
+                if let Some(lhs) = plain[0].as_atom() {
+                    let lhs_iri = resolve_class_iri(lhs);
+                    let mut hvs = Vec::new();
+                    let mut selfs = Vec::new();
+                    collect_has_value_rhs(plain[1], &mut hvs, &mut selfs);
+                    for r_tok in selfs {
+                        class_has_self.push((lhs_iri.clone(), resolve_role_short(r_tok)));
+                    }
+                    for (r_tok, inv, ind_tok) in hvs {
+                        if let Some(pub_ind) = ind_lookup
+                            .get(&expand_tok(ind_tok))
+                            .or_else(|| ind_lookup.get(&public_name(ind_tok)))
+                            .cloned()
+                        {
+                            class_has_value.push((
+                                lhs_iri.clone(),
+                                resolve_role_short(r_tok),
+                                inv,
+                                pub_ind,
+                            ));
+                        }
+                    }
+                    if let Node::List("ObjectComplementOf", inner) = plain[1] {
+                        if let Some(rhs) = inner.first().and_then(Node::as_atom) {
+                            disjoint_class_groups.push(vec![lhs_iri, resolve_class_iri(rhs)]);
+                        } else if let Some(Node::List("ObjectOneOf", inds)) = inner.first() {
+                            for n in inds {
+                                if let Some(t) = n.as_atom() {
+                                    if let Some(pub_ind) = ind_lookup
+                                        .get(&expand_tok(t))
+                                        .or_else(|| ind_lookup.get(&public_name(t)))
+                                        .cloned()
+                                    {
+                                        class_disjoint_inds.push((lhs_iri.clone(), pub_ind));
+                                    }
+                                }
+                            }
+                        }
+                    } else if let Node::List("DataMaxCardinality" | "DataExactCardinality", c_args) =
+                        plain[1]
+                    {
+                        if c_args.len() >= 2 && c_args[0].as_atom() == Some("1") {
+                            if let Some(p) = c_args[1].as_atom() {
+                                if matches!(
+                                    lhs,
+                                    "owl:Thing" | "<http://www.w3.org/2002/07/owl#Thing>"
+                                ) {
+                                    func_data_props.insert(expand_tok(p));
+                                }
+                            }
+                        }
+                    } else if let Node::List(
+                        "ObjectMaxCardinality" | "ObjectExactCardinality",
+                        c_args,
+                    ) = plain[1]
+                    {
+                        if c_args.len() >= 2 && c_args[0].as_atom() == Some("1") {
+                            if c_args.len() == 2
+                                || c_args.get(2).and_then(Node::as_atom).is_some_and(|f| {
+                                    matches!(
+                                        f,
+                                        "owl:Thing" | "<http://www.w3.org/2002/07/owl#Thing>"
+                                    )
+                                })
+                            {
+                                if matches!(
+                                    lhs,
+                                    "owl:Thing" | "<http://www.w3.org/2002/07/owl#Thing>"
+                                ) {
+                                    if let Some(r) = c_args[1].as_atom() {
+                                        func_obj_roles.insert(resolve_role_short(r));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if let (Node::List("ObjectIntersectionOf", inter), Some(rhs)) =
+                    (plain[0], plain[1].as_atom())
+                {
+                    if matches!(rhs, "owl:Nothing" | "<http://www.w3.org/2002/07/owl#Nothing>")
+                        && inter.len() == 2
+                    {
+                        if let (Some(c1), Some(c2)) = (inter[0].as_atom(), inter[1].as_atom()) {
+                            disjoint_class_groups
+                                .push(vec![resolve_class_iri(c1), resolve_class_iri(c2)]);
+                        }
+                    }
+                }
+            }
+            "EquivalentClasses" if plain.len() >= 2 => {
+                for i in 0..plain.len() {
+                    for j in 0..plain.len() {
+                        if i == j {
+                            continue;
+                        }
+                        if let Some(lhs) = plain[i].as_atom() {
+                            let lhs_iri = resolve_class_iri(lhs);
+                            let mut hvs = Vec::new();
+                            let mut selfs = Vec::new();
+                            collect_has_value_rhs(plain[j], &mut hvs, &mut selfs);
+                            for r_tok in selfs {
+                                class_has_self.push((lhs_iri.clone(), resolve_role_short(r_tok)));
+                            }
+                            for (r_tok, inv, ind_tok) in hvs {
+                                if let Some(pub_ind) = ind_lookup
+                                    .get(&expand_tok(ind_tok))
+                                    .or_else(|| ind_lookup.get(&public_name(ind_tok)))
+                                    .cloned()
+                                {
+                                    class_has_value.push((
+                                        lhs_iri.clone(),
+                                        resolve_role_short(r_tok),
+                                        inv,
+                                        pub_ind,
+                                    ));
+                                }
+                            }
+                            if let Node::List("ObjectComplementOf", inner) = plain[j] {
+                                if let Some(rhs) = inner.first().and_then(Node::as_atom) {
+                                    disjoint_class_groups
+                                        .push(vec![lhs_iri, resolve_class_iri(rhs)]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "ClassAssertion" if plain.len() == 2 => {
+                if let Some(ind_tok) = plain[1].as_atom() {
+                    if let Some(&u) = ind_lookup
+                        .get(&expand_tok(ind_tok))
+                        .or_else(|| ind_lookup.get(&public_name(ind_tok)))
+                        .and_then(|pub_i| ind_to_elem.get(pub_i))
+                    {
+                        if let Some(c_tok) = plain[0].as_atom() {
+                            let c_iri = resolve_class_iri(c_tok);
+                            elem_classes[u].insert(c_iri.clone());
+                            entailed_elem_classes[u].insert(c_iri);
+                        } else if let Node::List("ObjectComplementOf", inner) = plain[0] {
+                            if let Some(c) = inner.first().and_then(Node::as_atom) {
+                                elem_neg_classes[u].insert(resolve_class_iri(c));
+                            }
+                        }
+                    }
+                }
+            }
+            "ObjectPropertyAssertion" if plain.len() == 3 => {
+                if let (Some(a_tok), Some(b_tok)) = (plain[1].as_atom(), plain[2].as_atom()) {
+                    let ua = ind_lookup
+                        .get(&expand_tok(a_tok))
+                        .or_else(|| ind_lookup.get(&public_name(a_tok)))
+                        .and_then(|p| ind_to_elem.get(p))
+                        .copied();
+                    let ub = ind_lookup
+                        .get(&expand_tok(b_tok))
+                        .or_else(|| ind_lookup.get(&public_name(b_tok)))
+                        .and_then(|p| ind_to_elem.get(p))
+                        .copied();
+                    if let (Some(ua), Some(ub)) = (ua, ub) {
+                        match plain[0] {
+                            Node::Atom(r) => {
+                                let rs = resolve_role_short(r);
+                                edge_set.insert((ua, rs.clone(), ub));
+                                source_role_assertions.push((ua, rs, ub));
+                            }
+                            Node::List("ObjectInverseOf", r_args) => {
+                                if let Some(r) = r_args.first().and_then(Node::as_atom) {
+                                    let rs = resolve_role_short(r);
+                                    edge_set.insert((ub, rs.clone(), ua));
+                                    source_role_assertions.push((ub, rs, ua));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            "NegativeObjectPropertyAssertion" if plain.len() == 3 => {
+                if let (Some(a_tok), Some(b_tok)) = (plain[1].as_atom(), plain[2].as_atom()) {
+                    let ua = ind_lookup
+                        .get(&expand_tok(a_tok))
+                        .or_else(|| ind_lookup.get(&public_name(a_tok)))
+                        .and_then(|p| ind_to_elem.get(p))
+                        .copied();
+                    let ub = ind_lookup
+                        .get(&expand_tok(b_tok))
+                        .or_else(|| ind_lookup.get(&public_name(b_tok)))
+                        .and_then(|p| ind_to_elem.get(p))
+                        .copied();
+                    if let (Some(ua), Some(ub)) = (ua, ub) {
+                        match plain[0] {
+                            Node::Atom(r) => {
+                                neg_role_assertions.push((resolve_role_short(r), ua, ub));
+                            }
+                            Node::List("ObjectInverseOf", r_args) => {
+                                if let Some(r) = r_args.first().and_then(Node::as_atom) {
+                                    neg_role_assertions.push((resolve_role_short(r), ub, ua));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            "IrreflexiveObjectProperty" if !plain.is_empty() => {
+                if let Some(r) = plain[0].as_atom() {
+                    irrefl_roles.insert(resolve_role_short(r));
+                }
+            }
+            "AsymmetricObjectProperty" if !plain.is_empty() => {
+                if let Some(r) = plain[0].as_atom() {
+                    asym_roles.insert(resolve_role_short(r));
+                }
+            }
+            "DisjointObjectProperties" if plain.len() >= 2 => {
+                let grp: Vec<String> = plain
+                    .iter()
+                    .filter_map(|n| n.as_atom())
+                    .map(&resolve_role_short)
+                    .collect();
+                if grp.len() >= 2 {
+                    disjoint_role_groups.push(grp);
+                }
+            }
+            "FunctionalObjectProperty" if !plain.is_empty() => {
+                match plain[0] {
+                    Node::Atom(r) => {
+                        func_obj_roles.insert(resolve_role_short(r));
+                    }
+                    Node::List("ObjectInverseOf", r_args) => {
+                        if let Some(r) = r_args.first().and_then(Node::as_atom) {
+                            inv_func_obj_roles.insert(resolve_role_short(r));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            "InverseFunctionalObjectProperty" if !plain.is_empty() => {
+                match plain[0] {
+                    Node::Atom(r) => {
+                        inv_func_obj_roles.insert(resolve_role_short(r));
+                    }
+                    Node::List("ObjectInverseOf", r_args) => {
+                        if let Some(r) = r_args.first().and_then(Node::as_atom) {
+                            func_obj_roles.insert(resolve_role_short(r));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            "FunctionalDataProperty" if !plain.is_empty() => {
+                if let Some(p) = plain[0].as_atom() {
+                    func_data_props.insert(expand_tok(p));
+                }
+            }
+            "SubDataPropertyOf" if plain.len() == 2 => {
+                if let (Some(sub), Some(sup)) = (plain[0].as_atom(), plain[1].as_atom()) {
+                    sub_data_props
+                        .entry(expand_tok(sub))
+                        .or_default()
+                        .push(expand_tok(sup));
+                }
+            }
+            "EquivalentDataProperties" if plain.len() >= 2 => {
+                let props: Vec<String> = plain
+                    .iter()
+                    .filter_map(|n| n.as_atom())
+                    .map(&expand_tok)
+                    .collect();
+                for i in 0..props.len() {
+                    for j in 0..props.len() {
+                        if i != j {
+                            sub_data_props
+                                .entry(props[i].clone())
+                                .or_default()
+                                .push(props[j].clone());
+                        }
+                    }
+                }
+            }
+            "DataPropertyDomain" if plain.len() == 2 => {
+                if let (Some(p), Some(c)) = (plain[0].as_atom(), plain[1].as_atom()) {
+                    data_domains.push((expand_tok(p), resolve_class_iri(c)));
+                }
+            }
+            "ObjectPropertyDomain" if plain.len() == 2 => {
+                if let (Some(r), Some(c)) = (plain[0].as_atom(), plain[1].as_atom()) {
+                    obj_domains.push((resolve_role_short(r), resolve_class_iri(c)));
+                }
+            }
+            "ObjectPropertyRange" if plain.len() == 2 => {
+                if let (Some(r), Some(c)) = (plain[0].as_atom(), plain[1].as_atom()) {
+                    obj_ranges.push((resolve_role_short(r), resolve_class_iri(c)));
+                }
+            }
+            "DataPropertyAssertion" if plain.len() >= 3 => {
+                if let (Some(p_tok), Some(ind_tok)) = (plain[0].as_atom(), plain[1].as_atom()) {
+                    if let Some(&u) = ind_lookup
+                        .get(&expand_tok(ind_tok))
+                        .or_else(|| ind_lookup.get(&public_name(ind_tok)))
+                        .and_then(|p| ind_to_elem.get(p))
+                    {
+                        let lit_parts: Option<Vec<&str>> =
+                            plain[2..].iter().map(|n| n.as_atom()).collect();
+                        if let Some(parts) = lit_parts {
+                            let raw_lit = parts.concat();
+                            let lit = if let Some((lex, dt_tok)) = raw_lit.rsplit_once("^^") {
+                                if !dt_tok.starts_with('<') {
+                                    let exp_dt = expand_tok(dt_tok);
+                                    if exp_dt.contains("://") {
+                                        format!("{lex}^^<{exp_dt}>")
+                                    } else {
+                                        raw_lit
+                                    }
+                                } else {
+                                    raw_lit
+                                }
+                            } else {
+                                raw_lit
+                            };
+                            source_data_assertions.push((u, expand_tok(p_tok), lit));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    });
+
+    close_elem_classes(&mut entailed_elem_classes);
+
+    let mut proved_edge_set: HashSet<(usize, String, usize)> = source_role_assertions
+        .iter()
+        .cloned()
+        .collect();
+    for u in 0..n_elems {
+        for r in &refl_roles {
+            proved_edge_set.insert((u, r.clone(), u));
+        }
+    }
+    for (owner_iri, prop_iri, lit) in &raw.extra_values {
+        if let Some(&u) = ind_lookup
+            .get(owner_iri)
+            .and_then(|pub_i| ind_to_elem.get(pub_i))
+        {
+            source_data_assertions.push((u, expand_tok(prop_iri), lit.clone()));
+        }
+    }
+    let mut closed_data_assertions: Vec<(usize, String, String)> = Vec::new();
+    let mut init_data_dom_added = false;
+    let mut init_entailed_data_dom_added = false;
+    for (u, p, lit) in source_data_assertions {
+        let mut stack = vec![p];
+        let mut seen = HashSet::new();
+        while let Some(cur) = stack.pop() {
+            if seen.insert(cur.clone()) {
+                for (dp, dc) in &data_domains {
+                    if &cur == dp {
+                        if elem_classes[u].insert(dc.clone()) {
+                            init_data_dom_added = true;
+                        }
+                        if entailed_elem_classes[u].insert(dc.clone()) {
+                            init_entailed_data_dom_added = true;
+                        }
+                    }
+                }
+                closed_data_assertions.push((u, cur.clone(), lit.clone()));
+                if let Some(sups) = sub_data_props.get(&cur) {
+                    stack.extend(sups.iter().cloned());
+                }
+            }
+        }
+    }
+    if init_data_dom_added {
+        close_elem_classes(&mut elem_classes);
+    }
+    if init_entailed_data_dom_added {
+        close_elem_classes(&mut entailed_elem_classes);
+    }
+
+    for round in 0..8 {
+        let mut round_edge_added = false;
+        for u in 0..n_elems {
+            for (c_iri, r_short) in &class_has_self {
+                if entailed_elem_classes[u].contains(c_iri)
+                    && proved_edge_set.insert((u, r_short.clone(), u))
+                {
+                    round_edge_added = true;
+                }
+                if elem_classes[u].contains(c_iri) && edge_set.insert((u, r_short.clone(), u)) {
+                    round_edge_added = true;
+                }
+            }
+            for (c_iri, r_short, inv, target_ind) in &class_has_value {
+                if let Some(&v) = ind_to_elem.get(target_ind) {
+                    let edge = if *inv {
+                        (v, r_short.clone(), u)
+                    } else {
+                        (u, r_short.clone(), v)
+                    };
+                    if entailed_elem_classes[u].contains(c_iri)
+                        && proved_edge_set.insert(edge.clone())
+                    {
+                        round_edge_added = true;
+                    }
+                    if elem_classes[u].contains(c_iri) && edge_set.insert(edge) {
+                        round_edge_added = true;
+                    }
+                }
+            }
+        }
+        if round == 0 || round_edge_added {
+            crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut proved_edge_set)
+                .ok()?;
+            crate::engine::close_edges_under_rbox_rows(&meta.rbox, n_elems, &mut edge_set).ok()?;
+        }
+
+        let mut dom_ran_added = false;
+        let mut entailed_dom_ran_added = false;
+        if !obj_domains.is_empty() || !obj_ranges.is_empty() {
+            for (u, r, v) in &proved_edge_set {
+                for (dr, dc) in &obj_domains {
+                    if r == dr && entailed_elem_classes[*u].insert(dc.clone()) {
+                        entailed_dom_ran_added = true;
+                    }
+                }
+                for (rr, rc) in &obj_ranges {
+                    if r == rr && entailed_elem_classes[*v].insert(rc.clone()) {
+                        entailed_dom_ran_added = true;
+                    }
+                }
+            }
+            for (u, r, v) in &edge_set {
+                for (dr, dc) in &obj_domains {
+                    if r == dr && elem_classes[*u].insert(dc.clone()) {
+                        dom_ran_added = true;
+                    }
+                }
+                for (rr, rc) in &obj_ranges {
+                    if r == rr && elem_classes[*v].insert(rc.clone()) {
+                        dom_ran_added = true;
+                    }
+                }
+            }
+        }
+        if dom_ran_added {
+            close_elem_classes(&mut elem_classes);
+        }
+        if entailed_dom_ran_added {
+            close_elem_classes(&mut entailed_elem_classes);
+        }
+        if !dom_ran_added && !entailed_dom_ran_added {
+            break;
+        }
+    }
+
+    // Fast path for `--values` without `--different`: when the ontology has no
+    // `ObjectHasValue`, `ObjectOneOf`, or `ObjectHasSelf` constructs that could
+    // derive new role edges between named individuals during clause saturation,
+    // and every named-individual edge in `edge_set` is already in `proved_edge_set`,
+    // `proved_edge_set` and `edge_set` are already final on `0..n_elems`.
+    if !different_requested
+        && func_obj_roles.is_empty()
+        && inv_func_obj_roles.is_empty()
+        && !text.contains("ObjectHasValue(")
+        && !text.contains("ObjectOneOf(")
+        && !text.contains("ObjectHasSelf(")
+        && !text.contains("ObjectMaxCardinality(")
+        && !text.contains("ObjectExactCardinality(")
+        && !text.contains("ObjectMinCardinality(")
+        && edge_set
+            .iter()
+            .all(|e| e.0 >= n_elems || e.2 >= n_elems || proved_edge_set.contains(e))
+    {
+        let mut same_adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for (a, b) in &same_pairs {
+            same_adj.entry(a.as_str()).or_default().push(b.as_str());
+            same_adj.entry(b.as_str()).or_default().push(a.as_str());
+        }
+        let mut same_comp: HashMap<&str, usize> = HashMap::new();
+        let mut cid = 0usize;
+        for ind in &pub_individuals {
+            if same_comp.contains_key(ind.as_str()) {
+                continue;
+            }
+            cid += 1;
+            let mut stack = vec![ind.as_str()];
+            while let Some(cur) = stack.pop() {
+                if same_comp.insert(cur, cid).is_none() {
+                    if let Some(nbrs) = same_adj.get(cur) {
+                        stack.extend(nbrs.iter().copied());
+                    }
+                }
+            }
+        }
+        let mut plan = ModelAboxPlan::default();
+        if values_requested {
+            for (u, r, v) in &proved_edge_set {
+                if *u >= n_elems || *v >= n_elems {
+                    continue;
+                }
+                let full_r = meta.iri_map.get(r).map(String::as_str).unwrap_or(r.as_str());
+                let Some(pub_r) = role_lookup.get(full_r).or_else(|| role_lookup.get(r)) else {
+                    continue;
+                };
+                if u != v {
+                    for a in &elem_inds[*u] {
+                        for b in &elem_inds[*v] {
+                            plan.proved_values
+                                .insert([pub_r.clone(), a.clone(), b.clone()]);
+                        }
+                    }
+                } else {
+                    for a in &elem_inds[*u] {
+                        for b in &elem_inds[*u] {
+                            if a == b || same_comp.get(a.as_str()) == same_comp.get(b.as_str()) {
+                                plan.proved_values
+                                    .insert([pub_r.clone(), a.clone(), b.clone()]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return Some(plan);
+    }
+
+    // Parse normalized DL-clauses of `text` to run Horn saturation on merged
+    // individual pairs `M_0 / (u = v)`.
+    let f_res = {
+        let _guard = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_NO_SEPARABLE_ABOX_ELISION", "1");
+        std::env::set_var("KM_NO_FAST_SEPARABLE_ABOX_PARSE", "1");
+        std::env::set_var("KM_NOMINALS", "1");
+        std::env::set_var("KM_CARDS", "1");
+        std::env::set_var("KM_DATATYPES", "1");
+        std::env::set_var("KM_ROUTE", "auto");
+        crate::frontend::ofn_to_clauses_for_classifier(text).ok()?
+    };
+    if f_res.abox_inconsistent || !f_res.rules.is_empty() {
+        return None;
+    }
+
+    let canon_concept = |c: &str| -> String {
+        if matches!(
+            c,
+            "owl:Thing" | "Thing" | "⊤" | "http://www.w3.org/2002/07/owl#Thing"
+        ) {
+            return "owl:Thing".to_string();
+        }
+        if matches!(
+            c,
+            "owl:Nothing" | "Nothing" | "⊥" | "http://www.w3.org/2002/07/owl#Nothing"
+        ) {
+            return "owl:Nothing".to_string();
+        }
+        if let Some(rest) = c.strip_prefix("__nom__") {
+            let full = f_res
+                .iri_map
+                .get(rest)
+                .or_else(|| meta.iri_map.get(rest))
+                .map(String::as_str)
+                .unwrap_or(rest);
+            let pub_i = ind_lookup
+                .get(full)
+                .or_else(|| ind_lookup.get(rest))
+                .map(String::as_str)
+                .unwrap_or(full);
+            return format!("__nom__{pub_i}");
+        }
+        f_res
+            .iri_map
+            .get(c)
+            .or_else(|| meta.iri_map.get(c))
+            .cloned()
+            .unwrap_or_else(|| c.to_string())
+    };
+    let canon_role = |r: &str| -> (String, bool) {
+        if let Some(base) = r.strip_prefix("__inv__") {
+            let full = f_res
+                .iri_map
+                .get(base)
+                .or_else(|| meta.iri_map.get(base))
+                .map(String::as_str)
+                .unwrap_or(base);
+            (resolve_role_short(full), true)
+        } else {
+            let full = f_res
+                .iri_map
+                .get(r)
+                .or_else(|| meta.iri_map.get(r))
+                .map(String::as_str)
+                .unwrap_or(r);
+            (resolve_role_short(full), false)
+        }
+    };
+    let resolve_ind_elem = |ind_name: &str| -> Option<usize> {
+        let full = f_res
+            .iri_map
+            .get(ind_name)
+            .or_else(|| meta.iri_map.get(ind_name))
+            .map(String::as_str)
+            .unwrap_or(ind_name);
+        let pub_i = ind_lookup.get(full).or_else(|| ind_lookup.get(ind_name))?;
+        ind_to_elem.get(pub_i).copied()
+    };
+
+    #[derive(Clone, Debug)]
+    struct ConceptClauseRule {
+        body: Vec<String>,
+        heads: Vec<String>,
+        nom_merge: Option<usize>,
+    }
+    #[derive(Clone, Debug)]
+    enum RoleHeadAction {
+        Clash,
+        AddX(String),
+        AddY(String),
+        AddRole(String, bool),
+        MergeXY,
+        MergeXElem(usize),
+        MergeYElem(usize),
+        Disj(Vec<(bool, String)>),
+    }
+    #[derive(Clone, Debug)]
+    struct RoleClauseRule {
+        role: String,
+        self_only: bool,
+        body_x: Vec<String>,
+        body_y: Vec<String>,
+        action: RoleHeadAction,
+    }
+    #[derive(Clone, Debug)]
+    struct HasValueClauseRule {
+        body: Vec<String>,
+        role: String,
+        inv: bool,
+        target_elem: usize,
+    }
+    #[derive(Clone, Debug)]
+    struct ExistentialGroup {
+        body: Vec<String>,
+        role: Option<(String, bool)>,
+        fillers: Vec<String>,
+    }
+    #[derive(Clone, Debug)]
+    struct QualFuncRule {
+        role: String,
+        inv: bool,
+        max_n: usize,
+        body_x: Vec<String>,
+        body_y: Vec<String>,
+    }
+
+    let mut concept_rules: Vec<ConceptClauseRule> = Vec::new();
+    let mut role_rules: Vec<RoleClauseRule> = Vec::new();
+    let mut has_value_rules: Vec<HasValueClauseRule> = Vec::new();
+    let mut skolem_groups: HashMap<(String, String), ExistentialGroup> = HashMap::new();
+    let mut qual_func_rules: Vec<QualFuncRule> = Vec::new();
+    let mut singleton_concepts: HashSet<String> = HashSet::new();
+    let mut skolem_ineqs: Vec<(Vec<String>, String, String)> = Vec::new();
+    let mut has_unhandled_clause = false;
+
+    for u in 0..n_elems {
+        elem_classes[u].insert("owl:Thing".to_string());
+        elem_classes[u].insert(crate::frontend::sorts::OBJECT_SORT.to_string());
+        entailed_elem_classes[u].insert("owl:Thing".to_string());
+        entailed_elem_classes[u].insert(crate::frontend::sorts::OBJECT_SORT.to_string());
+        for ind in &elem_inds[u] {
+            let nom_c = format!("__nom__{ind}");
+            elem_classes[u].insert(nom_c.clone());
+            entailed_elem_classes[u].insert(nom_c);
+        }
+    }
+    for entry in &f_res.nominal_abox.individuals {
+        if let Some(u) = resolve_ind_elem(&entry.individual) {
+            for marker in &entry.assertion_markers {
+                let cc = canon_concept(marker);
+                elem_classes[u].insert(cc.clone());
+                entailed_elem_classes[u].insert(cc);
+            }
+        }
+    }
+    for ra in &f_res.nominal_abox.role_assertions {
+        if let (Some(us), Some(ut)) = (resolve_ind_elem(&ra.source), resolve_ind_elem(&ra.target)) {
+            let (rs, inv) = canon_role(&ra.role);
+            let edge = if inv { (ut, rs, us) } else { (us, rs, ut) };
+            edge_set.insert(edge.clone());
+            proved_edge_set.insert(edge);
+        }
+    }
+    for ra in &f_res.nominal_abox.negative_role_assertions {
+        if let (Some(us), Some(ut)) = (resolve_ind_elem(&ra.source), resolve_ind_elem(&ra.target)) {
+            let (rs, inv) = canon_role(&ra.role);
+            if inv {
+                neg_role_assertions.push((rs, ut, us));
+            } else {
+                neg_role_assertions.push((rs, us, ut));
+            }
+        }
+    }
+    for (a, b) in &f_res.nominal_abox.different {
+        if let (Some(pa), Some(pb)) = (
+             resolve_ind_elem(a).and_then(|u| elem_inds[u].first().cloned()),
+            resolve_ind_elem(b).and_then(|u| elem_inds[u].first().cloned()),
+        ) {
+            diff_ind_groups.push(vec![pa, pb]);
+        }
+    }
+
+    let data_role_set: HashSet<String> = f_res
+        .data_roles
+        .iter()
+        .map(|r| canon_role(r).0)
+        .collect();
+
+    use crate::json_io::{JAtom, JTerm};
+    for cl in &f_res.clauses {
+        if cl.head.len() == 1
+            && matches!(
+                cl.head[0],
+                JAtom::Concept { ref concept, .. }
+                    if concept == crate::frontend::sorts::OBJECT_SORT
+                        || concept == crate::frontend::sorts::DATA_SORT
+            )
+        {
+            continue;
+        }
+        let body: Vec<&JAtom> = cl
+            .body
+            .iter()
+            .filter(|a| !matches!(a, JAtom::Concept { concept, .. } if concept == crate::frontend::sorts::OBJECT_SORT))
+            .collect();
+        let body_has_data_sort = body.iter().any(|a| {
+            matches!(a, JAtom::Concept { concept, .. } if concept == crate::frontend::sorts::DATA_SORT)
+        });
+        let head: Vec<&JAtom> = cl
+            .head
+            .iter()
+            .filter(|a| {
+                body_has_data_sort
+                    || !matches!(a, JAtom::Concept { concept, .. } if concept == crate::frontend::sorts::DATA_SORT)
+            })
+            .collect();
+
+        // Ground ABox clauses
+        let all_ground = body.iter().chain(head.iter()).all(|a| match a {
+            JAtom::Concept { term, .. } => matches!(term, JTerm::Ind { .. }),
+            JAtom::Role { source, target, .. } => {
+                matches!(source, JTerm::Ind { .. }) && matches!(target, JTerm::Ind { .. })
+            }
+            JAtom::Eq { left, right } => {
+                matches!(left, JTerm::Ind { .. }) && matches!(right, JTerm::Ind { .. })
+            }
+        });
+        if all_ground && (!body.is_empty() || !head.is_empty()) {
+            match (body.as_slice(), head.as_slice()) {
+                ([], [JAtom::Concept { concept, term: JTerm::Ind { name } }]) => {
+                    if let Some(u) = resolve_ind_elem(name) {
+                        let cc = canon_concept(concept);
+                        elem_classes[u].insert(cc.clone());
+                        entailed_elem_classes[u].insert(cc);
+                    }
+                    continue;
+                }
+                ([JAtom::Concept { concept, term: JTerm::Ind { name } }], []) => {
+                    if let Some(u) = resolve_ind_elem(name) {
+                        elem_neg_classes[u].insert(canon_concept(concept));
+                    }
+                    continue;
+                }
+                (
+                    [],
+                    [JAtom::Role {
+                        role,
+                        source: JTerm::Ind { name: s },
+                        target: JTerm::Ind { name: t },
+                    }],
+                ) => {
+                    if let (Some(us), Some(ut)) = (resolve_ind_elem(s), resolve_ind_elem(t)) {
+                        let (rs, inv) = canon_role(role);
+                        let edge = if inv { (ut, rs, us) } else { (us, rs, ut) };
+                        edge_set.insert(edge.clone());
+                        proved_edge_set.insert(edge);
+                    }
+                    continue;
+                }
+                (
+                    [JAtom::Role {
+                        role,
+                        source: JTerm::Ind { name: s },
+                        target: JTerm::Ind { name: t },
+                    }],
+                    [],
+                ) => {
+                    if let (Some(us), Some(ut)) = (resolve_ind_elem(s), resolve_ind_elem(t)) {
+                        let (rs, inv) = canon_role(role);
+                        if inv {
+                            neg_role_assertions.push((rs, ut, us));
+                        } else {
+                            neg_role_assertions.push((rs, us, ut));
+                        }
+                    }
+                    continue;
+                }
+                (
+                    [JAtom::Eq {
+                        left: JTerm::Ind { name: l },
+                        right: JTerm::Ind { name: r },
+                    }],
+                    [],
+                ) => {
+                    if let (Some(pa), Some(pb)) = (
+                        resolve_ind_elem(l).and_then(|u| elem_inds[u].first().cloned()),
+                        resolve_ind_elem(r).and_then(|u| elem_inds[u].first().cloned()),
+                    ) {
+                        diff_ind_groups.push(vec![pa, pb]);
+                    }
+                    continue;
+                }
+                _ => continue,
+            }
+        }
+
+        // Skolem existential clauses: `[B_1(x), ...] -> [r(x, f(x))]` or `[C(f(x))]`
+        if head.len() == 1
+            && body.iter().all(|a| matches!(a, JAtom::Concept { term: JTerm::Var { .. }, .. }))
+        {
+            let mut fun_key: Option<(String, String, Option<(String, bool)>, Option<String>)> = None;
+            match head[0] {
+                JAtom::Role {
+                    role,
+                    source: JTerm::Var { name: vx },
+                    target: JTerm::Fun { function, arg },
+                } => {
+                    if let JTerm::Var { name: av } = arg.as_ref() {
+                        if av == vx {
+                            let (rs, inv) = canon_role(role);
+                            fun_key = Some((function.clone(), vx.clone(), Some((rs, inv)), None));
+                        }
+                    }
+                }
+                JAtom::Role {
+                    role,
+                    source: JTerm::Fun { function, arg },
+                    target: JTerm::Var { name: vx },
+                } => {
+                    if let JTerm::Var { name: av } = arg.as_ref() {
+                        if av == vx {
+                            let (rs, inv) = canon_role(role);
+                            fun_key = Some((function.clone(), vx.clone(), Some((rs, !inv)), None));
+                        }
+                    }
+                }
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Fun { function, arg },
+                } => {
+                    if let JTerm::Var { name: av } = arg.as_ref() {
+                        fun_key = Some((
+                            function.clone(),
+                            av.clone(),
+                            None,
+                            Some(canon_concept(concept)),
+                        ));
+                    }
+                }
+                _ => {}
+            }
+            if let Some((fn_name, vx, role_opt, filler_opt)) = fun_key {
+                if body.iter().all(|a| matches!(a, JAtom::Concept { term: JTerm::Var { name }, .. } if name == &vx)) {
+                    let b_concepts: Vec<String> = body
+                        .iter()
+                        .filter_map(|a| match a {
+                            JAtom::Concept { concept, .. } => Some(canon_concept(concept)),
+                            _ => None,
+                        })
+                        .collect();
+                    let entry = skolem_groups
+                        .entry((fn_name, vx))
+                        .or_insert_with(|| ExistentialGroup {
+                            body: b_concepts.clone(),
+                            role: None,
+                            fillers: Vec::new(),
+                        });
+                    for bc in b_concepts {
+                        if !entry.body.contains(&bc) {
+                            entry.body.push(bc);
+                        }
+                    }
+                    if let Some(ro) = role_opt {
+                        entry.role = Some(ro);
+                    }
+                    if let Some(fl) = filler_opt {
+                        if !entry.fillers.contains(&fl) {
+                            entry.fillers.push(fl);
+                        }
+                    }
+                    continue;
+                }
+            }
+        }
+
+        // Skolem distinctness for min-cardinality: `[Concept(M, x), ..., Eq(f1(x), f2(x))] -> []`
+        if head.is_empty() && body.iter().any(|a| matches!(a, JAtom::Eq { .. })) {
+            let mut eqs = Vec::new();
+            let mut b_concepts = Vec::new();
+            let mut var_x: Option<&str> = None;
+            let mut ok = true;
+            for a in &body {
+                match a {
+                    JAtom::Eq {
+                        left: JTerm::Fun { function: f1, arg: a1 },
+                        right: JTerm::Fun { function: f2, arg: a2 },
+                    } => {
+                        if let (JTerm::Var { name: v1 }, JTerm::Var { name: v2 }) =
+                            (a1.as_ref(), a2.as_ref())
+                        {
+                            if v1 == v2 && (var_x.is_none() || var_x == Some(v1.as_str())) {
+                                var_x = Some(v1.as_str());
+                                eqs.push((f1.clone(), f2.clone()));
+                            } else {
+                                ok = false;
+                            }
+                        } else {
+                            ok = false;
+                        }
+                    }
+                    JAtom::Concept {
+                        concept,
+                        term: JTerm::Var { name },
+                    } => {
+                        if var_x.is_none() || var_x == Some(name.as_str()) {
+                            var_x = Some(name.as_str());
+                            b_concepts.push(canon_concept(concept));
+                        } else {
+                            ok = false;
+                        }
+                    }
+                    _ => ok = false,
+                }
+            }
+            if ok && eqs.len() == 1 {
+                let (f1, f2) = eqs.pop().unwrap();
+                skolem_ineqs.push((b_concepts, f1, f2));
+                continue;
+            }
+        }
+
+        // Singleton uniqueness: `[Concept(N, y0), Concept(N, y1)] -> [Eq(y0, y1)]`
+        if body.len() == 2
+            && head.len() == 1
+            && matches!(
+                head[0],
+                JAtom::Eq {
+                    left: JTerm::Var { .. },
+                    right: JTerm::Var { .. }
+                }
+            )
+        {
+            if let (
+                JAtom::Concept {
+                    concept: c1,
+                    term: JTerm::Var { name: v1 },
+                },
+                JAtom::Concept {
+                    concept: c2,
+                    term: JTerm::Var { name: v2 },
+                },
+            ) = (body[0], body[1])
+            {
+                let cc1 = canon_concept(c1);
+                let cc2 = canon_concept(c2);
+                if cc1 == cc2 && v1 != v2 {
+                    singleton_concepts.insert(cc1);
+                    continue;
+                }
+            }
+        }
+
+        let body_roles: Vec<(&str, &JTerm, &JTerm)> = body
+            .iter()
+            .filter_map(|a| match a {
+                JAtom::Role {
+                    role,
+                    source,
+                    target,
+                } => Some((role.as_str(), source, target)),
+                _ => None,
+            })
+            .collect();
+
+        // Pure concept clauses on a single variable `x`
+        if body_roles.is_empty()
+            && body.iter().all(|a| matches!(a, JAtom::Concept { term: JTerm::Var { .. }, .. }))
+        {
+            let mut vars: HashSet<&str> = HashSet::new();
+            for a in &body {
+                if let JAtom::Concept { term: JTerm::Var { name }, .. } = a {
+                    vars.insert(name.as_str());
+                }
+            }
+            for a in &head {
+                match a {
+                    JAtom::Concept { term: JTerm::Var { name }, .. } => {
+                        vars.insert(name.as_str());
+                    }
+                    JAtom::Role {
+                        source: JTerm::Var { name },
+                        target: JTerm::Ind { .. },
+                        ..
+                    }
+                    | JAtom::Role {
+                        source: JTerm::Ind { .. },
+                        target: JTerm::Var { name },
+                        ..
+                    }
+                    | JAtom::Role {
+                        source: JTerm::Var { name },
+                        target: JTerm::Var { .. },
+                        ..
+                    } => {
+                        vars.insert(name.as_str());
+                    }
+                    JAtom::Eq {
+                        left: JTerm::Var { name },
+                        right: JTerm::Ind { .. },
+                    }
+                    | JAtom::Eq {
+                        left: JTerm::Ind { .. },
+                        right: JTerm::Var { name },
+                    } => {
+                        vars.insert(name.as_str());
+                    }
+                    _ => {}
+                }
+            }
+            if vars.len() <= 1 {
+                let b_concepts: Vec<String> = body
+                    .iter()
+                    .filter_map(|a| match a {
+                        JAtom::Concept { concept, .. } => Some(canon_concept(concept)),
+                        _ => None,
+                    })
+                    .collect();
+                if head.len() == 1 {
+                    match head[0] {
+                        JAtom::Role {
+                            role,
+                            source: JTerm::Var { .. },
+                            target: JTerm::Ind { name: ind },
+                        } => {
+                            if let Some(u_t) = resolve_ind_elem(ind) {
+                                let (rs, inv) = canon_role(role);
+                                has_value_rules.push(HasValueClauseRule {
+                                    body: b_concepts,
+                                    role: rs,
+                                    inv,
+                                    target_elem: u_t,
+                                });
+                                continue;
+                            }
+                        }
+                        JAtom::Role {
+                            role,
+                            source: JTerm::Ind { name: ind },
+                            target: JTerm::Var { .. },
+                        } => {
+                            if let Some(u_t) = resolve_ind_elem(ind) {
+                                let (rs, inv) = canon_role(role);
+                                has_value_rules.push(HasValueClauseRule {
+                                    body: b_concepts,
+                                    role: rs,
+                                    inv: !inv,
+                                    target_elem: u_t,
+                                });
+                                continue;
+                            }
+                        }
+                        JAtom::Role {
+                            role,
+                            source: JTerm::Var { name: s },
+                            target: JTerm::Var { name: t },
+                        } if s == t => {
+                            let (rs, _) = canon_role(role);
+                            if b_concepts.is_empty() || b_concepts == ["owl:Thing"] {
+                                for u in 0..n_elems {
+                                    edge_set.insert((u, rs.clone(), u));
+                                    proved_edge_set.insert((u, rs.clone(), u));
+                                }
+                            } else {
+                                for bc in &b_concepts {
+                                    class_has_self.push((bc.clone(), rs.clone()));
+                                }
+                            }
+                            continue;
+                        }
+                        JAtom::Eq {
+                            left: JTerm::Var { .. },
+                            right: JTerm::Ind { name: ind },
+                        }
+                        | JAtom::Eq {
+                            left: JTerm::Ind { name: ind },
+                            right: JTerm::Var { .. },
+                        } => {
+                            if let Some(u_o) = resolve_ind_elem(ind) {
+                                concept_rules.push(ConceptClauseRule {
+                                    body: b_concepts,
+                                    heads: Vec::new(),
+                                    nom_merge: Some(u_o),
+                                });
+                                continue;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if head.iter().all(|a| matches!(a, JAtom::Concept { term: JTerm::Var { .. }, .. })) {
+                    let mut h_concepts: Vec<String> = Vec::new();
+                    let mut nom_merge = None;
+                    for a in &head {
+                        if let JAtom::Concept { concept, .. } = a {
+                            let cc = canon_concept(concept);
+                            if cc != "owl:Nothing" {
+                                if head.len() == 1 {
+                                    if let Some(pub_i) = cc.strip_prefix("__nom__") {
+                                        nom_merge = ind_to_elem.get(pub_i).copied();
+                                    }
+                                }
+                                h_concepts.push(cc);
+                            }
+                        }
+                    }
+                    if b_concepts.iter().any(|b| h_concepts.contains(b)) {
+                        continue;
+                    }
+                    concept_rules.push(ConceptClauseRule {
+                        body: b_concepts,
+                        heads: h_concepts,
+                        nom_merge,
+                    });
+                    continue;
+                }
+            }
+        }
+
+        // Single-role body clauses `[r(x, y), A(x), C(y)] -> head`
+        if body_roles.len() == 1 {
+            let (raw_r, s_term, t_term) = body_roles[0];
+            let (r_short, r_inv) = canon_role(raw_r);
+            let (x_term, y_term) = if r_inv {
+                (t_term, s_term)
+            } else {
+                (s_term, t_term)
+            };
+            let self_only = x_term == y_term;
+            let mut body_x = Vec::new();
+            let mut body_y = Vec::new();
+            if let JTerm::Ind { name: ind_x } = x_term {
+                if let Some(u_x) = resolve_ind_elem(ind_x) {
+                    if let Some(p_x) = elem_inds[u_x].first() {
+                        body_x.push(format!("__nom__{p_x}"));
+                    }
+                }
+            }
+            if let JTerm::Ind { name: ind_y } = y_term {
+                if let Some(u_y) = resolve_ind_elem(ind_y) {
+                    if let Some(p_y) = elem_inds[u_y].first() {
+                        body_y.push(format!("__nom__{p_y}"));
+                    }
+                }
+            }
+            let mut body_ok = true;
+            for a in &body {
+                match a {
+                    JAtom::Role { .. } => {}
+                    JAtom::Concept { concept, term } => {
+                        let cc = canon_concept(concept);
+                        if cc == "owl:Thing" {
+                            continue;
+                        }
+                        if term == x_term {
+                            body_x.push(cc);
+                        } else if term == y_term {
+                            body_y.push(cc);
+                        } else {
+                            body_ok = false;
+                        }
+                    }
+                    _ => body_ok = false,
+                }
+            }
+            if body_ok {
+                let action_opt = match head.as_slice() {
+                    [] => Some(RoleHeadAction::Clash),
+                    [JAtom::Concept { concept, term }] => {
+                        let cc = canon_concept(concept);
+                        if cc == "owl:Nothing" {
+                            Some(RoleHeadAction::Clash)
+                        } else if term == x_term {
+                            if let Some(pub_i) = cc.strip_prefix("__nom__") {
+                                ind_to_elem
+                                    .get(pub_i)
+                                    .copied()
+                                    .map(RoleHeadAction::MergeXElem)
+                            } else {
+                                Some(RoleHeadAction::AddX(cc))
+                            }
+                        } else if term == y_term {
+                            if let Some(pub_i) = cc.strip_prefix("__nom__") {
+                                ind_to_elem
+                                    .get(pub_i)
+                                    .copied()
+                                    .map(RoleHeadAction::MergeYElem)
+                            } else {
+                                Some(RoleHeadAction::AddY(cc))
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    [JAtom::Role {
+                        role: h_role,
+                        source: hs,
+                        target: ht,
+                    }] => {
+                        let (hrs, hinv) = canon_role(h_role);
+                        let (hx, hy) = if hinv { (ht, hs) } else { (hs, ht) };
+                        if hx == x_term && hy == y_term {
+                            Some(RoleHeadAction::AddRole(hrs, false))
+                        } else if hx == y_term && hy == x_term {
+                            Some(RoleHeadAction::AddRole(hrs, true))
+                        } else {
+                            None
+                        }
+                    }
+                    [JAtom::Eq { left, right }] => {
+                        if (left == x_term && right == y_term) || (left == y_term && right == x_term)
+                        {
+                            Some(RoleHeadAction::MergeXY)
+                        } else if left == x_term {
+                            if let JTerm::Ind { name } = right {
+                                resolve_ind_elem(name).map(RoleHeadAction::MergeXElem)
+                            } else {
+                                None
+                            }
+                        } else if right == x_term {
+                            if let JTerm::Ind { name } = left {
+                                resolve_ind_elem(name).map(RoleHeadAction::MergeXElem)
+                            } else {
+                                None
+                            }
+                        } else if left == y_term {
+                            if let JTerm::Ind { name } = right {
+                                resolve_ind_elem(name).map(RoleHeadAction::MergeYElem)
+                            } else {
+                                None
+                            }
+                        } else if right == y_term {
+                            if let JTerm::Ind { name } = left {
+                                resolve_ind_elem(name).map(RoleHeadAction::MergeYElem)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    many if many.len() >= 2 => {
+                        let mut disj = Vec::new();
+                        let mut all_ok = true;
+                        for ha in many {
+                            if let JAtom::Concept { concept, term } = ha {
+                                let cc = canon_concept(concept);
+                                if term == x_term {
+                                    disj.push((false, cc));
+                                } else if term == y_term {
+                                    disj.push((true, cc));
+                                } else {
+                                    all_ok = false;
+                                }
+                            } else {
+                                all_ok = false;
+                            }
+                        }
+                        all_ok.then_some(RoleHeadAction::Disj(disj))
+                    }
+                    _ => None,
+                };
+                if let Some(action) = action_opt {
+                    role_rules.push(RoleClauseRule {
+                        role: r_short,
+                        self_only,
+                        body_x,
+                        body_y,
+                        action,
+                    });
+                    continue;
+                }
+            }
+        }
+
+        // Multi-role body clauses: functionality / at-most-N / disjoint / asymmetric / chain
+        if body_roles.len() >= 2 {
+            // Disjoint / asymmetric 2-role clash: `[r1(x, y), r2(x, y)] -> []` or `[r(x, y), r(y, x)] -> []`
+            if body_roles.len() == 2 && body.len() == 2 && head.is_empty() {
+                let (r1, s1, t1) = body_roles[0];
+                let (r2, s2, t2) = body_roles[1];
+                let (rs1, inv1) = canon_role(r1);
+                let (rs2, inv2) = canon_role(r2);
+                let (x1, y1) = if inv1 { (t1, s1) } else { (s1, t1) };
+                let (x2, y2) = if inv2 { (t2, s2) } else { (s2, t2) };
+                if x1 == x2 && y1 == y2 {
+                    disjoint_role_groups.push(vec![rs1, rs2]);
+                    continue;
+                } else if x1 == y2 && y1 == x2 && rs1 == rs2 {
+                    asym_roles.insert(rs1);
+                    continue;
+                }
+            }
+            // Role chain `[r1(x, y), r2(y, z), ...] -> [r3(x, z)]` (already handled by `meta.rbox`)
+            if body_roles.len() >= 2
+                && body.len() == body_roles.len()
+                && head.len() == 1
+                && matches!(head[0], JAtom::Role { .. })
+            {
+                continue;
+            }
+            // At-most-N / functionality: `k` role atoms on the same base role sharing `x`, with `Eq(y_i, y_j)` in head
+            let norm_roles: Vec<(String, &JTerm, &JTerm)> = body_roles
+                .iter()
+                .map(|&(r, s, t)| {
+                    let (rs, inv) = canon_role(r);
+                    if inv {
+                        (rs, t, s)
+                    } else {
+                        (rs, s, t)
+                    }
+                })
+                .collect();
+            let first_r = &norm_roles[0].0;
+            if norm_roles.iter().all(|(r, _, _)| r == first_r)
+                && !head.is_empty()
+                && head.iter().all(|a| matches!(a, JAtom::Eq { .. }))
+            {
+                let shared_src = norm_roles.iter().all(|(_, s, _)| *s == norm_roles[0].1);
+                let shared_tgt = norm_roles.iter().all(|(_, _, t)| *t == norm_roles[0].2);
+                if shared_src || shared_tgt {
+                    let center = if shared_src {
+                        norm_roles[0].1
+                    } else {
+                        norm_roles[0].2
+                    };
+                    let mut body_x = Vec::new();
+                    let mut body_y = Vec::new();
+                    for a in &body {
+                        if let JAtom::Concept { concept, term } = a {
+                            let cc = canon_concept(concept);
+                            if cc == "owl:Thing" {
+                                continue;
+                            }
+                            if term == center {
+                                body_x.push(cc);
+                            } else if !body_y.contains(&cc) {
+                                body_y.push(cc);
+                            }
+                        }
+                    }
+                    let max_n = body_roles.len() - 1;
+                    qual_func_rules.push(QualFuncRule {
+                        role: first_r.clone(),
+                        inv: !shared_src,
+                        max_n,
+                        body_x,
+                        body_y,
+                    });
+                    continue;
+                }
+            }
+        }
+        has_unhandled_clause = true;
+    }
+
+    let skolem_vec: Vec<(String, ExistentialGroup)> = skolem_groups
+        .into_iter()
+        .map(|((fn_name, _), grp)| (fn_name, grp))
+        .collect();
+    for (_, grp) in &skolem_vec {
+        if let Some((ref r_short, inv)) = grp.role {
+            for f in &grp.fillers {
+                if let Some(rest) = f.strip_prefix("__nom__") {
+                    if let Some(&target_elem) = ind_to_elem
+                        .get(rest)
+                        .or_else(|| ind_lookup.get(rest).and_then(|p| ind_to_elem.get(p)))
+                    {
+                        has_value_rules.push(HasValueClauseRule {
+                            body: grp.body.clone(),
+                            role: r_short.clone(),
+                            inv,
+                            target_elem,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Build trigger indexes for fast rule lookup
+    let mut empty_body_concept_rules: Vec<usize> = Vec::new();
+    let mut concept_rules_by_trigger: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, cr) in concept_rules.iter().enumerate() {
+        if cr.body.is_empty() {
+            empty_body_concept_rules.push(idx);
+        } else {
+            concept_rules_by_trigger
+                .entry(cr.body[0].clone())
+                .or_default()
+                .push(idx);
+        }
+    }
+    let mut empty_body_hv_rules: Vec<usize> = Vec::new();
+    let mut hv_rules_by_trigger: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, hv) in has_value_rules.iter().enumerate() {
+        if hv.body.is_empty() {
+            empty_body_hv_rules.push(idx);
+        } else {
+            hv_rules_by_trigger
+                .entry(hv.body[0].clone())
+                .or_default()
+                .push(idx);
+        }
+    }
+    let mut role_rules_by_role: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, rr) in role_rules.iter().enumerate() {
+        role_rules_by_role
+            .entry(rr.role.clone())
+            .or_default()
+            .push(idx);
+    }
+    let mut skolem_by_trigger: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut empty_body_skolem: Vec<usize> = Vec::new();
+    for (idx, (_, grp)) in skolem_vec.iter().enumerate() {
+        if grp.body.is_empty() {
+            empty_body_skolem.push(idx);
+        } else {
+            skolem_by_trigger
+                .entry(grp.body[0].clone())
+                .or_default()
+                .push(idx);
+        }
+    }
+    let mut cards_by_marker: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, card) in f_res.cardinalities.iter().enumerate() {
+        cards_by_marker
+            .entry(canon_concept(&card.marker))
+            .or_default()
+            .push(idx);
+    }
+
+    let has_horn_merges = !func_obj_roles.is_empty()
+        || !inv_func_obj_roles.is_empty()
+        || qual_func_rules.iter().any(|qf| qf.max_n == 1)
+        || concept_rules
+            .iter()
+            .any(|cr| cr.nom_merge.is_some() && cr.heads.len() <= 1)
+        || role_rules.iter().any(|rr| {
+            matches!(
+                rr.action,
+                RoleHeadAction::MergeXElem(_)
+                    | RoleHeadAction::MergeYElem(_)
+                    | RoleHeadAction::MergeXY
+            )
+        });
+
+    // Saturate a `(classes, edges)` state under deterministic 1-head Horn rules
+    let saturate_horn_in_place = |classes: &mut [HashSet<String>],
+                                  edges: &mut HashSet<(usize, String, usize)>|
+     -> Vec<(usize, usize)> {
+        let num = classes.len();
+        let mut uf: Vec<usize> = (0..num).collect();
+        fn find_uf(uf: &mut [usize], mut x: usize) -> usize {
+            while uf[x] != x {
+                uf[x] = uf[uf[x]];
+                x = uf[x];
+            }
+            x
+        }
+        fn union_uf(uf: &mut [usize], a: usize, b: usize) -> bool {
+            let ra = find_uf(uf, a);
+            let rb = find_uf(uf, b);
+            if ra == rb {
+                return false;
+            }
+            let (keep, drop_el) = (ra.min(rb), ra.max(rb));
+            uf[drop_el] = keep;
+            true
+        }
+        let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, num, edges);
+        close_elem_classes(classes);
+        for _round in 0..8 {
+            let mut changed = false;
+            let mut merged_any = false;
+            for u in 0..num {
+                let mut work: Vec<String> = classes[u].iter().cloned().collect();
+                for &idx in &empty_body_concept_rules {
+                    let cr = &concept_rules[idx];
+                    if cr.heads.len() == 1 && cr.nom_merge.is_none() {
+                        let h = &cr.heads[0];
+                        if classes[u].insert(h.clone()) {
+                            work.push(h.clone());
+                            changed = true;
+                        }
+                    } else if has_horn_merges && cr.heads.is_empty() {
+                        if let Some(u_o) = cr.nom_merge {
+                            if u_o < num && union_uf(&mut uf, u, u_o) {
+                                merged_any = true;
+                            }
+                        }
+                    }
+                }
+                while let Some(c) = work.pop() {
+                    if let Some(sups) = subs_map.get(&c) {
+                        for sup in sups {
+                            if classes[u].insert(sup.clone()) {
+                                work.push(sup.clone());
+                                changed = true;
+                            }
+                        }
+                    }
+                    if let Some(indices) = concept_rules_by_trigger.get(&c) {
+                        for &idx in indices {
+                            let cr = &concept_rules[idx];
+                            if cr.heads.len() == 1
+                                && cr.nom_merge.is_none()
+                                && cr.body.iter().all(|b| classes[u].contains(b))
+                            {
+                                let h = &cr.heads[0];
+                                if classes[u].insert(h.clone()) {
+                                    work.push(h.clone());
+                                    changed = true;
+                                }
+                            } else if has_horn_merges
+                                && cr.heads.is_empty()
+                                && cr.body.iter().all(|b| classes[u].contains(b))
+                            {
+                                if let Some(u_o) = cr.nom_merge {
+                                    if u_o < num && union_uf(&mut uf, u, u_o) {
+                                        merged_any = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                for (c_iri, r_short) in &class_has_self {
+                    if classes[u].contains(c_iri) && edges.insert((u, r_short.clone(), u)) {
+                        changed = true;
+                    }
+                }
+                for &idx in &empty_body_hv_rules {
+                    let hv = &has_value_rules[idx];
+                    if hv.target_elem < num {
+                        let edge = if hv.inv {
+                            (hv.target_elem, hv.role.clone(), u)
+                        } else {
+                            (u, hv.role.clone(), hv.target_elem)
+                        };
+                        if edges.insert(edge) {
+                            changed = true;
+                        }
+                    }
+                }
+                let snap_c: Vec<String> = classes[u].iter().cloned().collect();
+                for c in &snap_c {
+                    if let Some(indices) = hv_rules_by_trigger.get(c) {
+                        for &idx in indices {
+                            let hv = &has_value_rules[idx];
+                            if hv.target_elem < num
+                                && hv.body.iter().all(|b| classes[u].contains(b))
+                            {
+                                let edge = if hv.inv {
+                                    (hv.target_elem, hv.role.clone(), u)
+                                } else {
+                                    (u, hv.role.clone(), hv.target_elem)
+                                };
+                                if edges.insert(edge) {
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let edge_snap: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
+            for &(u, ref r, v) in &edge_snap {
+                let Some(indices) = role_rules_by_role.get(r) else {
+                    continue;
+                };
+                for &idx in indices {
+                    let rr = &role_rules[idx];
+                    if rr.self_only && u != v {
+                        continue;
+                    }
+                    if !rr.body_x.iter().all(|b| classes[u].contains(b))
+                        || !rr.body_y.iter().all(|b| classes[v].contains(b))
+                    {
+                        continue;
+                    }
+                    match &rr.action {
+                        RoleHeadAction::AddX(d) => {
+                            if classes[u].insert(d.clone()) {
+                                changed = true;
+                            }
+                        }
+                        RoleHeadAction::AddY(d) => {
+                            if classes[v].insert(d.clone()) {
+                                changed = true;
+                            }
+                        }
+                        RoleHeadAction::AddRole(s, inv) => {
+                            let edge = if *inv {
+                                (v, s.clone(), u)
+                            } else {
+                                (u, s.clone(), v)
+                            };
+                            if edges.insert(edge) {
+                                changed = true;
+                            }
+                        }
+                        RoleHeadAction::MergeXElem(u_o) if *u_o < num => {
+                            if union_uf(&mut uf, u, *u_o) {
+                                merged_any = true;
+                            }
+                        }
+                        RoleHeadAction::MergeYElem(u_o) if *u_o < num => {
+                            if union_uf(&mut uf, v, *u_o) {
+                                merged_any = true;
+                            }
+                        }
+                        RoleHeadAction::MergeXY => {
+                            if union_uf(&mut uf, u, v) {
+                                merged_any = true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            if has_horn_merges {
+                if !func_obj_roles.is_empty() || !inv_func_obj_roles.is_empty() {
+                    let mut func_seen: HashMap<(usize, &str), usize> = HashMap::new();
+                    let mut inv_func_seen: HashMap<(usize, &str), usize> = HashMap::new();
+                    for &(u, ref r, v) in &edge_snap {
+                        let ru = find_uf(&mut uf, u);
+                        let rv = find_uf(&mut uf, v);
+                        if func_obj_roles.contains(r.as_str()) {
+                            if let Some(&v0) = func_seen.get(&(ru, r.as_str())) {
+                                if union_uf(&mut uf, v0, rv) {
+                                    merged_any = true;
+                                }
+                            } else {
+                                func_seen.insert((ru, r.as_str()), rv);
+                            }
+                        }
+                        if inv_func_obj_roles.contains(r.as_str()) {
+                            if let Some(&u0) = inv_func_seen.get(&(rv, r.as_str())) {
+                                if union_uf(&mut uf, u0, ru) {
+                                    merged_any = true;
+                                }
+                            } else {
+                                inv_func_seen.insert((rv, r.as_str()), ru);
+                            }
+                        }
+                    }
+                }
+                for qf in &qual_func_rules {
+                    if qf.max_n != 1 {
+                        continue;
+                    }
+                    let mut seen_target: HashMap<usize, usize> = HashMap::new();
+                    for &(s, ref r, t) in &edge_snap {
+                        if r != &qf.role {
+                            continue;
+                        }
+                        let (center, target) = if qf.inv { (t, s) } else { (s, t) };
+                        let rc = find_uf(&mut uf, center);
+                        let rt = find_uf(&mut uf, target);
+                        if !qf
+                            .body_x
+                            .iter()
+                            .all(|b| classes[rc].contains(b) || classes[center].contains(b))
+                            || !qf
+                                .body_y
+                                .iter()
+                                .all(|b| classes[rt].contains(b) || classes[target].contains(b))
+                        {
+                            continue;
+                        }
+                        if let Some(&t0) = seen_target.get(&rc) {
+                            if union_uf(&mut uf, t0, rt) {
+                                merged_any = true;
+                            }
+                        } else {
+                            seen_target.insert(rc, rt);
+                        }
+                    }
+                }
+                let any_non_root = (0..num).any(|u| find_uf(&mut uf, u) != u);
+                if merged_any || (changed && any_non_root) {
+                    for u in 0..num {
+                        let r = find_uf(&mut uf, u);
+                        if r != u {
+                            let cu: Vec<String> = classes[u].iter().cloned().collect();
+                            for c in cu {
+                                if classes[r].insert(c) {
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                    for u in 0..num {
+                        let r = find_uf(&mut uf, u);
+                        if r != u {
+                            let cr: Vec<String> = classes[r].iter().cloned().collect();
+                            for c in cr {
+                                if classes[u].insert(c) {
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                    let cur_edges: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
+                    for (s, role, t) in cur_edges {
+                        let rs = find_uf(&mut uf, s);
+                        let rt = find_uf(&mut uf, t);
+                        if (rs != s || rt != t) && edges.insert((rs, role, rt)) {
+                            changed = true;
+                        }
+                    }
+                    if merged_any {
+                        changed = true;
+                    }
+                }
+            }
+            if changed {
+                let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, num, edges);
+                close_elem_classes(classes);
+            } else {
+                break;
+            }
+        }
+        let mut merged_named_pairs: Vec<(usize, usize)> = Vec::new();
+        let mut members_by_root: HashMap<usize, Vec<usize>> = HashMap::new();
+        for u in 0..num.min(n_elems) {
+            let r = find_uf(&mut uf, u);
+            if r != u && r < n_elems {
+                merged_named_pairs.push((r, u));
+            }
+            if r < n_elems {
+                members_by_root.entry(r).or_default().push(u);
+            }
+        }
+        if (0..num).any(|u| find_uf(&mut uf, u) != u) {
+            let cur_edges: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
+            for (s, role, t) in cur_edges {
+                let rs = find_uf(&mut uf, s);
+                let rt = find_uf(&mut uf, t);
+                edges.insert((rs, role.clone(), rt));
+                if rs < n_elems && rt < n_elems {
+                    if let (Some(ms), Some(mt)) =
+                        (members_by_root.get(&rs), members_by_root.get(&rt))
+                    {
+                        if ms.len() > 1 || mt.len() > 1 {
+                            for &us in ms {
+                                for &ut in mt {
+                                    edges.insert((us, role.clone(), ut));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        merged_named_pairs
+    };
+
+    // First saturate initial element classes/edges so normalizer definers (`Q_0`, ...) hold
+    let mut proved_merges = saturate_horn_in_place(&mut entailed_elem_classes, &mut proved_edge_set);
+    let _ = saturate_horn_in_place(&mut elem_classes, &mut edge_set);
+
+    // Materialize Skolem existential witnesses on `elem_classes`/`edge_set`
+    // and `entailed_elem_classes`/`proved_edge_set` so universal restrictions and
+    // existential checks see asserted existential successors (`d2.ofn`, `adv4`, `13700`).
+    let mut n_total_elems = n_elems;
+    let mut skolem_witness_of: HashMap<(usize, String), usize> = HashMap::new();
+    for _sk_round in 0..3 {
+        let cur_limit = n_total_elems;
+        let mut added_sk = false;
+        let mut proved_out: HashMap<(usize, String), Vec<usize>> = HashMap::new();
+        let mut proved_in: HashMap<(usize, String), Vec<usize>> = HashMap::new();
+        for &(s, ref r, t) in &proved_edge_set {
+            proved_out.entry((s, r.clone())).or_default().push(t);
+            proved_in.entry((t, r.clone())).or_default().push(s);
+        }
+        let mut model_out: HashMap<(usize, String), Vec<usize>> = HashMap::new();
+        let mut model_in: HashMap<(usize, String), Vec<usize>> = HashMap::new();
+        for &(s, ref r, t) in &edge_set {
+            model_out.entry((s, r.clone())).or_default().push(t);
+            model_in.entry((t, r.clone())).or_default().push(s);
+        }
+        for (fn_name, grp) in &skolem_vec {
+            let Some((ref r_short, inv)) = grp.role else {
+                continue;
+            };
+            let is_data_role = data_role_set.contains(r_short);
+            for u in 0..cur_limit {
+                let in_entailed = grp.body.iter().all(|b| entailed_elem_classes[u].contains(b));
+                let in_model = grp.body.iter().all(|b| elem_classes[u].contains(b));
+                if !in_entailed && !in_model {
+                    continue;
+                }
+                let key = (u, r_short.clone());
+                let existing_entailed = if in_entailed {
+                    let targets = if inv {
+                        proved_in.get(&key)
+                    } else {
+                        proved_out.get(&key)
+                    };
+                    targets.and_then(|list| {
+                        list.iter().copied().find(|&target| {
+                            target < entailed_elem_classes.len()
+                                && grp
+                                    .fillers
+                                    .iter()
+                                    .all(|f| entailed_elem_classes[target].contains(f))
+                        })
+                    })
+                } else {
+                    None
+                };
+                let existing_model = if in_model {
+                    let targets = if inv {
+                        model_in.get(&key)
+                    } else {
+                        model_out.get(&key)
+                    };
+                    targets.and_then(|list| {
+                        list.iter().copied().find(|&target| {
+                            target < elem_classes.len()
+                                && grp.fillers.iter().all(|f| elem_classes[target].contains(f))
+                        })
+                    })
+                } else {
+                    None
+                };
+                let already_in_entailed = !in_entailed || existing_entailed.is_some();
+                let already_in_model = !in_model || existing_model.is_some();
+                if !already_in_entailed || !already_in_model {
+                    let w_sk = n_total_elems;
+                    n_total_elems += 1;
+                    skolem_witness_of.insert((u, fn_name.clone()), w_sk);
+                    let sort_tag = if is_data_role {
+                        crate::frontend::sorts::DATA_SORT
+                    } else {
+                        crate::frontend::sorts::OBJECT_SORT
+                    };
+                    let mut f_set: HashSet<String> = grp.fillers.iter().cloned().collect();
+                    f_set.insert("owl:Thing".to_string());
+                    f_set.insert(sort_tag.to_string());
+                    elem_classes.push(f_set.clone());
+                    entailed_elem_classes.push(if in_entailed {
+                        f_set
+                    } else {
+                        let mut s = HashSet::new();
+                        s.insert("owl:Thing".to_string());
+                        s.insert(sort_tag.to_string());
+                        s
+                    });
+                    elem_neg_classes.push(HashSet::new());
+                    elem_inds.push(Vec::new());
+                    let edge = if inv {
+                        (w_sk, r_short.clone(), u)
+                    } else {
+                        (u, r_short.clone(), w_sk)
+                    };
+                    edge_set.insert(edge.clone());
+                    if in_entailed {
+                        proved_edge_set.insert(edge);
+                    }
+                    added_sk = true;
+                } else if let Some(w_existing) = existing_entailed.or(existing_model) {
+                    skolem_witness_of.insert((u, fn_name.clone()), w_existing);
+                }
+            }
+        }
+        if added_sk {
+            proved_merges.extend(saturate_horn_in_place(
+                &mut entailed_elem_classes,
+                &mut proved_edge_set,
+            ));
+            let _ = saturate_horn_in_place(&mut elem_classes, &mut edge_set);
+        } else {
+            break;
+        }
+    }
+    for (u_root, u_mem) in proved_merges {
+        for a in &elem_inds[u_root] {
+            for b in &elem_inds[u_mem] {
+                same_pairs.push((a.clone(), b.clone()));
+            }
+        }
+    }
+
+    let mut same_adj: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (a, b) in &same_pairs {
+        same_adj.entry(a.as_str()).or_default().push(b.as_str());
+        same_adj.entry(b.as_str()).or_default().push(a.as_str());
+    }
+    let mut same_comp: HashMap<&str, usize> = HashMap::new();
+    let mut cid = 0usize;
+    for ind in &pub_individuals {
+        if same_comp.contains_key(ind.as_str()) {
+            continue;
+        }
+        cid += 1;
+        let mut stack = vec![ind.as_str()];
+        while let Some(cur) = stack.pop() {
+            if same_comp.insert(cur, cid).is_none() {
+                if let Some(nbrs) = same_adj.get(cur) {
+                    stack.extend(nbrs.iter().copied());
+                }
+            }
+        }
+    }
+
+    let mut plan = ModelAboxPlan::default();
+
+    if values_requested && bound_disabled {
+        for r_idx in 0..roles.len() {
+            for b_idx in 0..individuals.len() {
+                plan.residual_value_targets.insert((r_idx, b_idx));
+            }
+        }
+        for a_idx in 0..individuals.len() {
+            plan.residual_value_sources.insert(a_idx);
+        }
+    } else if values_requested {
+        let has_non_horn_elem_merge = !raw.abox_elided
+            && raw.route != "el-canonical"
+            && (0..n_elems).any(|u| {
+                elem_inds[u].len() > 1 && {
+                    let c0 = same_comp.get(elem_inds[u][0].as_str());
+                    elem_inds[u][1..]
+                        .iter()
+                        .any(|ind| same_comp.get(ind.as_str()) != c0)
+                }
+            });
+        if has_non_horn_elem_merge {
+            let raw_elided = super::model_export::RawModel {
+                route: raw.route,
+                contexts: Vec::new(),
+                labels: Vec::new(),
+                edges: Vec::new(),
+                blocked: Vec::new(),
+                witness_exact: raw.witness_exact,
+                witness_exact_by_class: BTreeMap::new(),
+                witnesses: BTreeMap::new(),
+                extra_witnesses: Vec::new(),
+                closure: raw.closure,
+                partial_reason: None,
+                extra_values: raw.extra_values.clone(),
+                base_labels: Vec::new(),
+                base_edges: Vec::new(),
+                abox_elided: true,
+            };
+            if let Some(unmerged_plan) = from_exported_model(
+                text,
+                roles,
+                individuals,
+                true,
+                false,
+                classification,
+                realization,
+                &raw_elided,
+                meta,
+            ) {
+                plan.proved_values = unmerged_plan.proved_values;
+            }
+        } else {
+            for (u, r, v) in &proved_edge_set {
+                if *u >= n_elems || *v >= n_elems {
+                    continue;
+                }
+                let full_r = meta.iri_map.get(r).map(String::as_str).unwrap_or(r.as_str());
+                let Some(pub_r) = role_lookup.get(full_r).or_else(|| role_lookup.get(r)) else {
+                    continue;
+                };
+                if u != v {
+                    for a in &elem_inds[*u] {
+                        for b in &elem_inds[*v] {
+                            plan.proved_values
+                                .insert([pub_r.clone(), a.clone(), b.clone()]);
+                        }
+                    }
+                } else {
+                    for a in &elem_inds[*u] {
+                        for b in &elem_inds[*u] {
+                            if a == b || same_comp.get(a.as_str()) == same_comp.get(b.as_str()) {
+                                plan.proved_values
+                                    .insert([pub_r.clone(), a.clone(), b.clone()]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (u, r, v) in &edge_set {
+            if *u >= n_elems || *v >= n_elems {
+                continue;
+            }
+            let full_r = meta.iri_map.get(r).map(String::as_str).unwrap_or(r.as_str());
+            let Some(pub_r) = role_lookup.get(full_r).or_else(|| role_lookup.get(r)) else {
+                continue;
+            };
+            let Some(&r_idx) = pub_role_to_idx.get(pub_r) else {
+                continue;
+            };
+            for a in &elem_inds[*u] {
+                for b in &elem_inds[*v] {
+                    let row = [pub_r.clone(), a.clone(), b.clone()];
+                    if !plan.proved_values.contains(&row) {
+                        if let (Some(&a_idx), Some(&b_idx)) =
+                            (pub_ind_to_idx.get(a), pub_ind_to_idx.get(b))
+                        {
+                            plan.residual_value_targets.insert((r_idx, b_idx));
+                            plan.residual_value_sources.insert(a_idx);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if different_requested {
+        let pair_key = |u: usize, v: usize| -> (usize, usize) { (u.min(v), u.max(v)) };
+        let mut diff: HashSet<(usize, usize)> = HashSet::new();
+
+        // (D1) Explicit `DifferentIndividuals`
+        for grp in &diff_ind_groups {
+            for i in 0..grp.len() {
+                for j in (i + 1)..grp.len() {
+                    if let (Some(&u), Some(&v)) =
+                        (ind_to_elem.get(&grp[i]), ind_to_elem.get(&grp[j]))
+                    {
+                        if u != v {
+                            diff.insert(pair_key(u, v));
+                        }
+                    }
+                }
+            }
+        }
+
+        // (D2) Entailed disjoint / complement classes and `__dvp__` binary projection digits
+        let mut disjoint_pairs: HashSet<(String, String)> = HashSet::new();
+        for grp in &disjoint_class_groups {
+            for i in 0..grp.len() {
+                for j in (i + 1)..grp.len() {
+                    let (c1, c2) = (&grp[i], &grp[j]);
+                    disjoint_pairs.insert((c1.clone(), c2.clone()));
+                    disjoint_pairs.insert((c2.clone(), c1.clone()));
+                }
+            }
+        }
+        for rule in &concept_rules {
+            if rule.heads.is_empty() && rule.nom_merge.is_none() && rule.body.len() == 2 {
+                disjoint_pairs.insert((rule.body[0].clone(), rule.body[1].clone()));
+                disjoint_pairs.insert((rule.body[1].clone(), rule.body[0].clone()));
+            }
+        }
+        let ind_elems: Vec<usize> = (0..n_elems)
+            .filter(|&u| !elem_inds[u].is_empty())
+            .collect();
+        if !disjoint_pairs.is_empty() {
+            let mut class_to_elems: HashMap<&str, Vec<usize>> = HashMap::new();
+            for &u in &ind_elems {
+                for c in &entailed_elem_classes[u] {
+                    class_to_elems.entry(c.as_str()).or_default().push(u);
+                }
+            }
+            for (c1, c2) in &disjoint_pairs {
+                if let (Some(us), Some(vs)) =
+                    (class_to_elems.get(c1.as_str()), class_to_elems.get(c2.as_str()))
+                {
+                    for &u in us {
+                        for &v in vs {
+                            if u != v {
+                                diff.insert(pair_key(u, v));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (c_iri, ind_pub) in &class_disjoint_inds {
+            if let Some(&v) = ind_to_elem.get(ind_pub) {
+                for &u in &ind_elems {
+                    if u != v && entailed_elem_classes[u].contains(c_iri) {
+                        diff.insert(pair_key(u, v));
+                    }
+                }
+            }
+        }
+        for &u in &ind_elems {
+            if !elem_neg_classes[u].is_empty() {
+                for neg_c in &elem_neg_classes[u] {
+                    for &v in &ind_elems {
+                        if u != v && entailed_elem_classes[v].contains(neg_c) {
+                            diff.insert(pair_key(u, v));
+                        }
+                    }
+                }
+            }
+        }
+        for i in 0..ind_elems.len() {
+            let u = ind_elems[i];
+            if elem_dvp[u].is_empty() {
+                continue;
+            }
+            for &v in &ind_elems[(i + 1)..] {
+                if elem_dvp[u]
+                    .iter()
+                    .any(|(k, b1)| elem_dvp[v].get(k).is_some_and(|b2| b1 != b2))
+                {
+                    diff.insert(pair_key(u, v));
+                }
+            }
+        }
+
+        // (D3) Entailed role edges (`proved_edge_set`) + negative/irreflexive/asymmetric/disjoint roles
+        for &(ref r, ua, ub) in &neg_role_assertions {
+            for &(u, ref er, v) in &proved_edge_set {
+                if er == r && u < n_elems && v < n_elems {
+                    if v == ub && u != ua {
+                        diff.insert(pair_key(u, ua));
+                    }
+                    if u == ua && v != ub {
+                        diff.insert(pair_key(v, ub));
+                    }
+                }
+            }
+        }
+        if !irrefl_roles.is_empty() || !asym_roles.is_empty() {
+            for &(u, ref r, v) in &proved_edge_set {
+                if u < n_elems && v < n_elems && u != v && (irrefl_roles.contains(r) || asym_roles.contains(r)) {
+                    diff.insert(pair_key(u, v));
+                }
+            }
+        }
+        if !disjoint_role_groups.is_empty() {
+            let mut edges_by_role: HashMap<&str, Vec<(usize, usize)>> = HashMap::new();
+            for &(u, ref r, v) in &proved_edge_set {
+                if u < n_elems && v < n_elems {
+                    edges_by_role.entry(r.as_str()).or_default().push((u, v));
+                }
+            }
+            for grp in &disjoint_role_groups {
+                for i in 0..grp.len() {
+                    for j in (i + 1)..grp.len() {
+                        let e1 = edges_by_role
+                            .get(grp[i].as_str())
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]);
+                        let e2 = edges_by_role
+                            .get(grp[j].as_str())
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]);
+                        for &(u1, v1) in e1 {
+                            for &(u2, v2) in e2 {
+                                if u1 == u2 && v1 != v2 {
+                                    diff.insert(pair_key(v1, v2));
+                                }
+                                if v1 == v2 && u1 != u2 {
+                                    diff.insert(pair_key(u1, u2));
+                                }
+                                if u1 == v2 && v1 != u2 && (u1 == v1 || u2 == v2) {
+                                    diff.insert(pair_key(u1, v1));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // (D4) Functional data properties on closed source `DataPropertyAssertion`s
+        let mut func_data_conflict_pairs: HashSet<(usize, usize)> = HashSet::new();
+        if !func_data_props.is_empty() && !closed_data_assertions.is_empty() {
+            let mut by_prop: HashMap<&str, Vec<(usize, &str)>> = HashMap::new();
+            for (u, p, lit) in &closed_data_assertions {
+                if func_data_props.contains(p.as_str()) {
+                    by_prop.entry(p.as_str()).or_default().push((*u, lit.as_str()));
+                }
+            }
+            for list in by_prop.values() {
+                for i in 0..list.len() {
+                    for j in (i + 1)..list.len() {
+                        let (u1, l1) = list[i];
+                        let (u2, l2) = list[j];
+                        if u1 != u2 && l1 != l2 {
+                            let k1 = format!("__dt__val__{l1}");
+                            let k2 = format!("__dt__val__{l2}");
+                            match crate::frontend::datatypes::bridge_exact_value_equal(&k1, &k2) {
+                                Some(false) => {
+                                    diff.insert(pair_key(u1, u2));
+                                    func_data_conflict_pairs.insert(pair_key(u1, u2));
+                                }
+                                None => {
+                                    func_data_conflict_pairs.insert(pair_key(u1, u2));
+                                }
+                                Some(true) => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // (D5) Fixpoint propagation under functional and inverse-functional object properties
+        if (!func_obj_roles.is_empty() || !inv_func_obj_roles.is_empty()) && !diff.is_empty() {
+            let mut func_edges: HashMap<&str, Vec<(usize, usize)>> = HashMap::new();
+            let mut inv_func_edges: HashMap<&str, Vec<(usize, usize)>> = HashMap::new();
+            for &(u, ref r, v) in &proved_edge_set {
+                if u < n_elems && v < n_elems {
+                    if func_obj_roles.contains(r.as_str()) {
+                        func_edges.entry(r.as_str()).or_default().push((u, v));
+                    }
+                    if inv_func_obj_roles.contains(r.as_str()) {
+                        inv_func_edges.entry(r.as_str()).or_default().push((u, v));
+                    }
+                }
+            }
+            loop {
+                let before = diff.len();
+                for list in func_edges.values() {
+                    for i in 0..list.len() {
+                        for j in (i + 1)..list.len() {
+                            let (u1, x1) = list[i];
+                            let (u2, x2) = list[j];
+                            if u1 != u2 && x1 != x2 && diff.contains(&pair_key(x1, x2)) {
+                                diff.insert(pair_key(u1, u2));
+                            }
+                        }
+                    }
+                }
+                for list in inv_func_edges.values() {
+                    for i in 0..list.len() {
+                        for j in (i + 1)..list.len() {
+                            let (x1, u1) = list[i];
+                            let (x2, u2) = list[j];
+                            if u1 != u2 && x1 != x2 && diff.contains(&pair_key(x1, x2)) {
+                                diff.insert(pair_key(u1, u2));
+                            }
+                        }
+                    }
+                }
+                if diff.len() == before {
+                    break;
+                }
+            }
+        }
+
+        // Now test every remaining pair `(u, v)` (`u < v` in `ind_elems`):
+        // - If merging `u` and `v` in the full model `M_0` (`elem_classes`, `edge_set`)
+        //   saturates without a clash and satisfies all clauses/cardinalities of `O`,
+        //   `M_0 / (u = v)` is a verified model of `O ∪ {a = b}`, proving `O ⊭ a ≠ b`!
+        // - If merging `u` and `v` in the minimal entailed Horn graph `H_0`
+        //   (`entailed_elem_classes`, `proved_edge_set`) derives a deterministic Horn
+        //   clash (`⊥`), then `O ∪ {a = b} ⊨ ⊥` in all models, proving `O ⊨ a ≠ b`!
+        // - Every other pair goes into `plan.residual_different_pairs` for the exact
+        //   probe test (`P_a ⊑ ¬{b}`)!
+        let refl_set: HashSet<&str> = refl_roles.iter().map(String::as_str).collect();
+        let mut has_non_refl_edge = vec![false; n_total_elems];
+        for &(u, ref r, v) in &edge_set {
+            if u != v || !refl_set.contains(r.as_str()) {
+                has_non_refl_edge[u] = true;
+                has_non_refl_edge[v] = true;
+            }
+        }
+        for &(_, ua, ub) in &neg_role_assertions {
+            has_non_refl_edge[ua] = true;
+            has_non_refl_edge[ub] = true;
+        }
+        for hv in &has_value_rules {
+            if hv.target_elem < n_total_elems {
+                has_non_refl_edge[hv.target_elem] = true;
+            }
+        }
+        for cr in &concept_rules {
+            if let Some(u_o) = cr.nom_merge {
+                if u_o < n_total_elems {
+                    has_non_refl_edge[u_o] = true;
+                }
+            }
+        }
+
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum PairVerdict {
+            NotDifferent,
+            HornClash,
+            Undecided,
+        }
+
+        let check_dt_val_clash = |c_set: &HashSet<String>, horn_only: bool| -> Option<PairVerdict> {
+            let vals: Vec<&str> = c_set
+                .iter()
+                .map(String::as_str)
+                .filter(|c| c.starts_with("__dt__val__"))
+                .collect();
+            if vals.len() >= 2 {
+                for i in 0..vals.len() {
+                    for j in (i + 1)..vals.len() {
+                        match crate::frontend::datatypes::bridge_exact_value_equal(vals[i], vals[j])
+                        {
+                            Some(false) => return Some(PairVerdict::HornClash),
+                            None if !horn_only => return Some(PairVerdict::Undecided),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            None
+        };
+
+        // Fast concept-only saturation for pure-concept individual elements `(u, v)`
+        // that have no non-reflexive edges.
+        let test_pure_concept_merge = |u: usize, v: usize, horn_only: bool| -> PairVerdict {
+            let base = if horn_only {
+                &entailed_elem_classes
+            } else {
+                &elem_classes
+            };
+            let mut merged: HashSet<String> = base[u]
+                .iter()
+                .chain(base[v].iter())
+                .filter(|c| !c.starts_with("__nom__"))
+                .cloned()
+                .collect();
+            for ind in elem_inds[u].iter().chain(elem_inds[v].iter()) {
+                merged.insert(format!("__nom__{ind}"));
+            }
+            let neg_merged: HashSet<&str> = elem_neg_classes[u]
+                .iter()
+                .chain(elem_neg_classes[v].iter())
+                .map(String::as_str)
+                .collect();
+            let mut work: Vec<String> = merged.iter().cloned().collect();
+            for &idx in &empty_body_concept_rules {
+                let cr = &concept_rules[idx];
+                if cr.heads.is_empty() && cr.nom_merge.is_none() {
+                    return PairVerdict::HornClash;
+                }
+                if let Some(u_o) = cr.nom_merge {
+                    if u_o != u && u_o != v {
+                        return PairVerdict::Undecided;
+                    }
+                } else if cr.heads.len() == 1 {
+                    let h = &cr.heads[0];
+                    if merged.insert(h.clone()) {
+                        work.push(h.clone());
+                    }
+                } else if !horn_only && !cr.heads.iter().any(|h| merged.contains(h)) {
+                    return PairVerdict::Undecided;
+                }
+            }
+            while let Some(c) = work.pop() {
+                if let Some(sups) = subs_map.get(&c) {
+                    for sup in sups {
+                        if merged.insert(sup.clone()) {
+                            work.push(sup.clone());
+                        }
+                    }
+                }
+                if let Some(indices) = concept_rules_by_trigger.get(&c) {
+                    for &idx in indices {
+                        let cr = &concept_rules[idx];
+                        if cr.body.iter().all(|b| merged.contains(b)) {
+                            if cr.heads.is_empty() && cr.nom_merge.is_none() {
+                                return PairVerdict::HornClash;
+                            }
+                            if let Some(u_o) = cr.nom_merge {
+                                if u_o != u && u_o != v {
+                                    return PairVerdict::Undecided;
+                                }
+                            } else if cr.heads.len() == 1 {
+                                let h = &cr.heads[0];
+                                if let Some(pub_i) = h.strip_prefix("__nom__") {
+                                    if !elem_inds[u].iter().any(|x| x == pub_i)
+                                        && !elem_inds[v].iter().any(|x| x == pub_i)
+                                    {
+                                        return PairVerdict::Undecided;
+                                    }
+                                }
+                                if merged.insert(h.clone()) {
+                                    work.push(h.clone());
+                                }
+                            } else if !horn_only && !cr.heads.iter().any(|h| merged.contains(h)) {
+                                return PairVerdict::Undecided;
+                            }
+                        }
+                    }
+                }
+            }
+            for &nc in &neg_merged {
+                if merged.contains(nc) {
+                    return PairVerdict::HornClash;
+                }
+            }
+            if let Some(v_dt) = check_dt_val_clash(&merged, horn_only) {
+                return v_dt;
+            }
+            for c in &merged {
+                if let Some(indices) = hv_rules_by_trigger.get(c) {
+                    for &idx in indices {
+                        if has_value_rules[idx].body.iter().all(|b| merged.contains(b)) {
+                            return PairVerdict::Undecided;
+                        }
+                    }
+                }
+                if let Some(indices) = skolem_by_trigger.get(c) {
+                    for &idx in indices {
+                        if skolem_vec[idx].1.body.iter().all(|b| merged.contains(b)) {
+                            return PairVerdict::Undecided;
+                        }
+                    }
+                }
+            }
+            if !empty_body_hv_rules.is_empty() || !empty_body_skolem.is_empty() {
+                return PairVerdict::Undecided;
+            }
+            if !horn_only {
+                let touches_blocked = raw
+                    .blocked
+                    .iter()
+                    .any(|&(b, blk)| b == u || b == v || blk == u || blk == v);
+                if has_unhandled_clause || touches_blocked {
+                    return PairVerdict::Undecided;
+                }
+                for c in &merged {
+                    if let Some(indices) = cards_by_marker.get(c) {
+                        for &idx in indices {
+                            let card = &f_res.cardinalities[idx];
+                            if card.min && card.n >= 1 {
+                                return PairVerdict::Undecided;
+                            }
+                        }
+                    }
+                }
+            }
+            PairVerdict::NotDifferent
+        };
+
+        let mut adj_edges_m: Vec<Vec<(usize, String, usize)>> = vec![Vec::new(); n_total_elems];
+        for e in &edge_set {
+            adj_edges_m[e.0].push(e.clone());
+            if e.2 != e.0 {
+                adj_edges_m[e.2].push(e.clone());
+            }
+        }
+        let mut adj_edges_h: Vec<Vec<(usize, String, usize)>> = vec![Vec::new(); n_total_elems];
+        for e in &proved_edge_set {
+            adj_edges_h[e.0].push(e.clone());
+            if e.2 != e.0 {
+                adj_edges_h[e.2].push(e.clone());
+            }
+        }
+        let has_trans_or_chain_rbox = meta.rbox.iter().any(|row| row.len() >= 3);
+
+        // Full quotient-graph saturation for edge-bearing pairs `(u_init, v_init)`
+        let test_graph_merge = |u_init: usize,
+                                v_init: usize,
+                                horn_only: bool,
+                                cur_diff: &HashSet<(usize, usize)>|
+         -> PairVerdict {
+            let mut uf: Vec<usize> = (0..n_total_elems).collect();
+            fn find(uf: &mut [usize], mut x: usize) -> usize {
+                while uf[x] != x {
+                    uf[x] = uf[uf[x]];
+                    x = uf[x];
+                }
+                x
+            }
+            let base_c = if horn_only {
+                &entailed_elem_classes
+            } else {
+                &elem_classes
+            };
+            let base_e = if horn_only {
+                &proved_edge_set
+            } else {
+                &edge_set
+            };
+            let base_adj = if horn_only {
+                &adj_edges_h
+            } else {
+                &adj_edges_m
+            };
+
+            // Copy-on-write element concept sets: only modified elements are cloned
+            let mut c_overrides: HashMap<usize, HashSet<String>> = HashMap::new();
+            let mut dirty_elems: HashSet<usize> = HashSet::new();
+            let mut all_dirty_elems: HashSet<usize> = HashSet::new();
+            let mut extra_edges: HashSet<(usize, String, usize)> = HashSet::new();
+            let mut full_e_set: Option<HashSet<(usize, String, usize)>> = None;
+
+            let mut merge_queue: Vec<(usize, usize)> = vec![(u_init, v_init)];
+            let mut elem_has_non_refl: Vec<bool> = has_non_refl_edge.clone();
+            for _step in 0..32 {
+                let mut any_merged = false;
+                let mut need_rbox_reclose = false;
+                while let Some((a, b)) = merge_queue.pop() {
+                    let ra = find(&mut uf, a);
+                    let rb = find(&mut uf, b);
+                    if ra == rb {
+                        continue;
+                    }
+                    let (keep, drop_el) = (ra.min(rb), ra.max(rb));
+                    if keep < n_elems
+                        && drop_el < n_elems
+                        && (cur_diff.contains(&pair_key(keep, drop_el))
+                            || func_data_conflict_pairs.contains(&pair_key(keep, drop_el)))
+                    {
+                        return if horn_only {
+                            PairVerdict::HornClash
+                        } else {
+                            PairVerdict::Undecided
+                        };
+                    }
+                    let nr_k = elem_has_non_refl[keep];
+                    let nr_d = elem_has_non_refl[drop_el];
+                    if nr_k && nr_d {
+                        need_rbox_reclose = true;
+                    } else if nr_k && !nr_d {
+                        if base_adj[drop_el]
+                            .iter()
+                            .any(|(_, r, _)| !base_e.contains(&(keep, r.clone(), keep)))
+                        {
+                            need_rbox_reclose = true;
+                        }
+                    } else if !nr_k && nr_d {
+                        if base_adj[keep]
+                            .iter()
+                            .any(|(_, r, _)| !base_e.contains(&(drop_el, r.clone(), drop_el)))
+                        {
+                            need_rbox_reclose = true;
+                        }
+                        elem_has_non_refl[keep] = true;
+                    } else if base_adj[drop_el]
+                        .iter()
+                        .any(|(_, r, _)| !base_e.contains(&(keep, r.clone(), keep)))
+                        && base_adj[keep]
+                            .iter()
+                            .any(|(_, r, _)| !base_e.contains(&(drop_el, r.clone(), drop_el)))
+                    {
+                        need_rbox_reclose = true;
+                    }
+                    uf[drop_el] = keep;
+                    let drop_c: HashSet<String> = c_overrides
+                        .remove(&drop_el)
+                        .unwrap_or_else(|| base_c[drop_el].clone());
+                    let keep_set = c_overrides
+                        .entry(keep)
+                        .or_insert_with(|| base_c[keep].clone());
+                    keep_set.extend(drop_c);
+                    dirty_elems.insert(keep);
+                    all_dirty_elems.insert(keep);
+                    all_dirty_elems.insert(drop_el);
+                    for &(s, _, t) in &base_adj[drop_el] {
+                        all_dirty_elems.insert(s);
+                        all_dirty_elems.insert(t);
+                    }
+                    for &(s, _, t) in &base_adj[keep] {
+                        all_dirty_elems.insert(s);
+                        all_dirty_elems.insert(t);
+                    }
+                    any_merged = true;
+                }
+
+                // Collect active edges touching dirty elements (or full e_set if RBox chain/new edges require it)
+                if (need_rbox_reclose && has_trans_or_chain_rbox)
+                    || (any_merged && full_e_set.is_some())
+                {
+                    let mut remapped: HashSet<(usize, String, usize)> =
+                        HashSet::with_capacity(base_e.len() + extra_edges.len());
+                    let src_iter = full_e_set.as_ref().unwrap_or(base_e);
+                    for (s, r, t) in src_iter.iter().chain(extra_edges.iter()) {
+                        remapped.insert((find(&mut uf, *s), r.clone(), find(&mut uf, *t)));
+                    }
+                    if crate::engine::close_edges_under_rbox_rows(
+                        &meta.rbox,
+                        n_total_elems,
+                        &mut remapped,
+                    )
+                    .is_err()
+                    {
+                        return PairVerdict::Undecided;
+                    }
+                    full_e_set = Some(remapped);
+                }
+
+                let mut active_edges: Vec<(usize, String, usize)> = Vec::new();
+                if let Some(ref fe) = full_e_set {
+                    for &(s, ref r, t) in fe {
+                        if all_dirty_elems.contains(&s) || all_dirty_elems.contains(&t) {
+                            active_edges.push((s, r.clone(), t));
+                        }
+                    }
+                } else {
+                    let mut seen_e: HashSet<(usize, String, usize)> = HashSet::new();
+                    for &d in &all_dirty_elems {
+                        for &(s, ref r, t) in &base_adj[d] {
+                            let edge = (find(&mut uf, s), r.clone(), find(&mut uf, t));
+                            if seen_e.insert(edge.clone()) {
+                                active_edges.push(edge);
+                            }
+                        }
+                    }
+                    for (s, r, t) in &extra_edges {
+                        let edge = (find(&mut uf, *s), r.clone(), find(&mut uf, *t));
+                        if seen_e.insert(edge.clone()) {
+                            active_edges.push(edge);
+                        }
+                    }
+                }
+
+                let edge_exists = |s: usize, r: &str, t: usize,
+                                   fe: &Option<HashSet<(usize, String, usize)>>,
+                                   ae: &[(usize, String, usize)]|
+                 -> bool {
+                    if let Some(ref set) = fe {
+                        set.contains(&(s, r.to_string(), t))
+                    } else {
+                        ae.iter().any(|(es, er, et)| *es == s && er == r && *et == t)
+                            || base_e.contains(&(s, r.to_string(), t))
+                    }
+                };
+
+                // Check negative role assertions, irreflexive/asymmetric/disjoint roles
+                for &(ref r, ua, ub) in &neg_role_assertions {
+                    let rua = find(&mut uf, ua);
+                    let rub = find(&mut uf, ub);
+                    if edge_exists(rua, r, rub, &full_e_set, &active_edges) {
+                        return PairVerdict::HornClash;
+                    }
+                }
+                for &(s, ref r, t) in &active_edges {
+                    if s == t && (irrefl_roles.contains(r) || asym_roles.contains(r)) {
+                        return PairVerdict::HornClash;
+                    }
+                    if s != t
+                        && asym_roles.contains(r)
+                        && edge_exists(t, r, s, &full_e_set, &active_edges)
+                    {
+                        return PairVerdict::HornClash;
+                    }
+                }
+                for grp in &disjoint_role_groups {
+                    for i in 0..grp.len() {
+                        for j in (i + 1)..grp.len() {
+                            for &(s, ref r, t) in &active_edges {
+                                if r == &grp[i]
+                                    && edge_exists(s, &grp[j], t, &full_e_set, &active_edges)
+                                {
+                                    return PairVerdict::HornClash;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let mut changed = false;
+                let dirty_snap: Vec<usize> = dirty_elems
+                    .drain()
+                    .map(|z| find(&mut uf, z))
+                    .collect();
+                for z in dirty_snap {
+                    if uf[z] != z {
+                        continue;
+                    }
+                    let z_set = c_overrides
+                        .entry(z)
+                        .or_insert_with(|| base_c[z].clone());
+                    let mut st: Vec<String> = z_set.iter().cloned().collect();
+                    while let Some(c) = st.pop() {
+                        if let Some(sups) = subs_map.get(&c) {
+                            for sup in sups {
+                                if z_set.insert(sup.clone()) {
+                                    st.push(sup.clone());
+                                    changed = true;
+                                }
+                            }
+                        }
+                        if let Some(indices) = concept_rules_by_trigger.get(&c) {
+                            for &idx in indices {
+                                let cr = &concept_rules[idx];
+                                if cr.body.iter().all(|b| z_set.contains(b)) {
+                                    if cr.heads.is_empty() && cr.nom_merge.is_none() {
+                                        return PairVerdict::HornClash;
+                                    }
+                                    if let Some(u_o) = cr.nom_merge {
+                                        let ro = find(&mut uf, u_o);
+                                        if ro != z {
+                                            merge_queue.push((z, ro));
+                                            changed = true;
+                                        }
+                                    } else if cr.heads.len() == 1 {
+                                        let h = &cr.heads[0];
+                                        if let Some(pub_i) = h.strip_prefix("__nom__") {
+                                            if let Some(&u_o) = ind_to_elem.get(pub_i) {
+                                                let ro = find(&mut uf, u_o);
+                                                if ro != z {
+                                                    merge_queue.push((z, ro));
+                                                    changed = true;
+                                                }
+                                            }
+                                        }
+                                        if z_set.insert(h.clone()) {
+                                            st.push(h.clone());
+                                            changed = true;
+                                        }
+                                    } else if !horn_only
+                                        && !cr.heads.iter().any(|h| z_set.contains(h))
+                                    {
+                                        return PairVerdict::Undecided;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(v_dt) = check_dt_val_clash(z_set, horn_only) {
+                        return v_dt;
+                    }
+                    for orig in 0..n_elems {
+                        if find(&mut uf, orig) == z {
+                            for nc in &elem_neg_classes[orig] {
+                                if z_set.contains(nc) {
+                                    return PairVerdict::HornClash;
+                                }
+                            }
+                        }
+                    }
+                    let z_concepts: Vec<String> = z_set.iter().cloned().collect();
+                    for c in &z_concepts {
+                        if singleton_concepts.contains(c) {
+                            for other in 0..n_total_elems {
+                                let ro = find(&mut uf, other);
+                                if ro != z {
+                                    let has_c = c_overrides
+                                        .get(&ro)
+                                        .unwrap_or(&base_c[ro])
+                                        .contains(c);
+                                    if has_c {
+                                        merge_queue.push((z, ro));
+                                        changed = true;
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(indices) = hv_rules_by_trigger.get(c) {
+                            let z_cur = c_overrides.get(&z).unwrap_or(&base_c[z]);
+                            for &idx in indices {
+                                let hv = &has_value_rules[idx];
+                                if hv.target_elem < n_total_elems
+                                    && hv.body.iter().all(|b| z_cur.contains(b))
+                                {
+                                    let rt = find(&mut uf, hv.target_elem);
+                                    let edge = if hv.inv {
+                                        (rt, hv.role.clone(), z)
+                                    } else {
+                                        (z, hv.role.clone(), rt)
+                                    };
+                                    if extra_edges.insert(edge.clone()) {
+                                        active_edges.push(edge);
+                                        all_dirty_elems.insert(rt);
+                                        changed = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Role rules over active edges
+                for i_edge in 0..active_edges.len() {
+                    let (u, ref r, v) = active_edges[i_edge].clone();
+                    let Some(indices) = role_rules_by_role.get(r) else {
+                        continue;
+                    };
+                    for &idx in indices {
+                        let rr = &role_rules[idx];
+                        if rr.self_only && u != v {
+                            continue;
+                        }
+                        let u_has_body = {
+                            let u_set = c_overrides.get(&u).unwrap_or(&base_c[u]);
+                            rr.body_x.iter().all(|b| u_set.contains(b))
+                        };
+                        if !u_has_body {
+                            continue;
+                        }
+                        let v_has_body = {
+                            let v_set = c_overrides.get(&v).unwrap_or(&base_c[v]);
+                            rr.body_y.iter().all(|b| v_set.contains(b))
+                        };
+                        if !v_has_body {
+                            continue;
+                        }
+                        match &rr.action {
+                            RoleHeadAction::Clash => return PairVerdict::HornClash,
+                            RoleHeadAction::AddX(d) => {
+                                if let Some(pub_i) = d.strip_prefix("__nom__") {
+                                    if let Some(&u_o) = ind_to_elem.get(pub_i) {
+                                        let ro = find(&mut uf, u_o);
+                                        if ro != u {
+                                            merge_queue.push((u, ro));
+                                            changed = true;
+                                        }
+                                    }
+                                }
+                                let u_set = c_overrides
+                                    .entry(u)
+                                    .or_insert_with(|| base_c[u].clone());
+                                if u_set.insert(d.clone()) {
+                                    dirty_elems.insert(u);
+                                    all_dirty_elems.insert(u);
+                                    changed = true;
+                                }
+                            }
+                            RoleHeadAction::AddY(d) => {
+                                if let Some(pub_i) = d.strip_prefix("__nom__") {
+                                    if let Some(&u_o) = ind_to_elem.get(pub_i) {
+                                        let ro = find(&mut uf, u_o);
+                                        if ro != v {
+                                            merge_queue.push((v, ro));
+                                            changed = true;
+                                        }
+                                    }
+                                }
+                                let v_set = c_overrides
+                                    .entry(v)
+                                    .or_insert_with(|| base_c[v].clone());
+                                if v_set.insert(d.clone()) {
+                                    dirty_elems.insert(v);
+                                    all_dirty_elems.insert(v);
+                                    changed = true;
+                                }
+                            }
+                            RoleHeadAction::AddRole(s, inv) => {
+                                let edge = if *inv {
+                                    (v, s.clone(), u)
+                                } else {
+                                    (u, s.clone(), v)
+                                };
+                                if extra_edges.insert(edge) {
+                                    changed = true;
+                                }
+                            }
+                            RoleHeadAction::MergeXY => {
+                                if u != v {
+                                    merge_queue.push((u, v));
+                                    changed = true;
+                                }
+                            }
+                            RoleHeadAction::MergeXElem(u_o) => {
+                                let ro = find(&mut uf, *u_o);
+                                if u != ro {
+                                    merge_queue.push((u, ro));
+                                    changed = true;
+                                }
+                            }
+                            RoleHeadAction::MergeYElem(u_o) => {
+                                let ro = find(&mut uf, *u_o);
+                                if v != ro {
+                                    merge_queue.push((v, ro));
+                                    changed = true;
+                                }
+                            }
+                            RoleHeadAction::Disj(disj) => {
+                                if !horn_only {
+                                    let u_set = c_overrides.get(&u).unwrap_or(&base_c[u]);
+                                    let v_set = c_overrides.get(&v).unwrap_or(&base_c[v]);
+                                    if !disj.iter().any(|(is_y, c)| {
+                                        if *is_y {
+                                            v_set.contains(c)
+                                        } else {
+                                            u_set.contains(c)
+                                        }
+                                    }) {
+                                        return PairVerdict::Undecided;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Functionality / InverseFunctionality / Qualified At-Most-N on active edges
+                for r_func in &func_obj_roles {
+                    let mut by_src: HashMap<usize, Vec<usize>> = HashMap::new();
+                    for &(s, ref r, t) in &active_edges {
+                        if r == r_func {
+                            by_src.entry(s).or_default().push(t);
+                        }
+                    }
+                    for tgts in by_src.values() {
+                        for w in tgts.windows(2) {
+                            if w[0] != w[1] {
+                                merge_queue.push((w[0], w[1]));
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                for r_ifunc in &inv_func_obj_roles {
+                    let mut by_tgt: HashMap<usize, Vec<usize>> = HashMap::new();
+                    for &(s, ref r, t) in &active_edges {
+                        if r == r_ifunc {
+                            by_tgt.entry(t).or_default().push(s);
+                        }
+                    }
+                    for srcs in by_tgt.values() {
+                        for w in srcs.windows(2) {
+                            if w[0] != w[1] {
+                                merge_queue.push((w[0], w[1]));
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                for qf in &qual_func_rules {
+                    for &z_raw in &all_dirty_elems {
+                        let z = find(&mut uf, z_raw);
+                        if uf[z] != z {
+                            continue;
+                        }
+                        let z_set = c_overrides.get(&z).unwrap_or(&base_c[z]);
+                        if !qf.body_x.iter().all(|b| z_set.contains(b)) {
+                            continue;
+                        }
+                        let mut matches: Vec<usize> = active_edges
+                            .iter()
+                            .filter_map(|(s, r, t)| {
+                                if r != &qf.role {
+                                    return None;
+                                }
+                                let other = if qf.inv {
+                                    if *t == z { Some(*s) } else { None }
+                                } else if *s == z {
+                                    Some(*t)
+                                } else {
+                                    None
+                                }?;
+                                let o_set = c_overrides.get(&other).unwrap_or(&base_c[other]);
+                                qf.body_y.iter().all(|b| o_set.contains(b)).then_some(other)
+                            })
+                            .collect();
+                        matches.sort_unstable();
+                        matches.dedup();
+                        if matches.len() > qf.max_n {
+                            if qf.max_n == 1 {
+                                for w in matches.windows(2) {
+                                    merge_queue.push((w[0], w[1]));
+                                    changed = true;
+                                }
+                            } else if !horn_only {
+                                return PairVerdict::Undecided;
+                            } else {
+                                let all_pairwise_diff = (0..matches.len()).all(|i| {
+                                    ((i + 1)..matches.len()).all(|j| {
+                                        let a = matches[i];
+                                        let b = matches[j];
+                                        a < n_elems
+                                            && b < n_elems
+                                            && cur_diff.contains(&pair_key(a, b))
+                                    })
+                                });
+                                if all_pairwise_diff {
+                                    return PairVerdict::HornClash;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Check Skolem inequality clashes `[M(x), f1(x) = f2(x)] -> []`
+                if !skolem_ineqs.is_empty() {
+                    for &z_raw in &all_dirty_elems {
+                        let z = find(&mut uf, z_raw);
+                        let z_set = c_overrides.get(&z).unwrap_or(&base_c[z]);
+                        for (b_cons, f1, f2) in &skolem_ineqs {
+                            if b_cons.iter().all(|b| z_set.contains(b)) {
+                                for orig in 0..n_elems {
+                                    if find(&mut uf, orig) == z {
+                                        if let (Some(&w1), Some(&w2)) = (
+                                            skolem_witness_of.get(&(orig, f1.clone())),
+                                            skolem_witness_of.get(&(orig, f2.clone())),
+                                        ) {
+                                            if find(&mut uf, w1) == find(&mut uf, w2) {
+                                                return if horn_only {
+                                                    PairVerdict::HornClash
+                                                } else {
+                                                    PairVerdict::Undecided
+                                                };
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !merge_queue.is_empty() {
+                    continue;
+                }
+                if changed && (!extra_edges.is_empty() || full_e_set.is_some()) {
+                    let mut remapped: HashSet<(usize, String, usize)> =
+                        HashSet::with_capacity(base_e.len() + extra_edges.len());
+                    let src_iter = full_e_set.as_ref().unwrap_or(base_e);
+                    for (s, r, t) in src_iter.iter().chain(extra_edges.iter()) {
+                        remapped.insert((find(&mut uf, *s), r.clone(), find(&mut uf, *t)));
+                    }
+                    if crate::engine::close_edges_under_rbox_rows(
+                        &meta.rbox,
+                        n_total_elems,
+                        &mut remapped,
+                    )
+                    .is_err()
+                    {
+                        return PairVerdict::Undecided;
+                    }
+                    full_e_set = Some(remapped);
+                } else if !changed {
+                    break;
+                }
+            }
+
+            if !horn_only {
+                let touches_blocked = raw.blocked.iter().any(|&(b, blk)| {
+                    (b < n_elems && all_dirty_elems.contains(&b))
+                        || (blk < n_elems && all_dirty_elems.contains(&blk))
+                });
+                if has_unhandled_clause || touches_blocked {
+                    return PairVerdict::Undecided;
+                }
+                let mut active_edges: Vec<(usize, String, usize)> = Vec::new();
+                if let Some(ref fe) = full_e_set {
+                    for &(s, ref r, t) in fe {
+                        if all_dirty_elems.contains(&s) || all_dirty_elems.contains(&t) {
+                            active_edges.push((s, r.clone(), t));
+                        }
+                    }
+                } else {
+                    let mut seen_e: HashSet<(usize, String, usize)> = HashSet::new();
+                    for &d in &all_dirty_elems {
+                        for &(s, ref r, t) in &base_adj[d] {
+                            let edge = (find(&mut uf, s), r.clone(), find(&mut uf, t));
+                            if seen_e.insert(edge.clone()) {
+                                active_edges.push(edge);
+                            }
+                        }
+                    }
+                    for (s, r, t) in &extra_edges {
+                        let edge = (find(&mut uf, *s), r.clone(), find(&mut uf, *t));
+                        if seen_e.insert(edge.clone()) {
+                            active_edges.push(edge);
+                        }
+                    }
+                }
+
+                // Check Skolem existential requirements and cardinality bounds on dirty elements
+                let mut checked_z: HashSet<usize> = HashSet::new();
+                for &z_raw in &all_dirty_elems {
+                    let z = find(&mut uf, z_raw);
+                    if !checked_z.insert(z) {
+                        continue;
+                    }
+                    let z_set = c_overrides.get(&z).unwrap_or(&base_c[z]);
+                    for c in z_set {
+                        if let Some(indices) = skolem_by_trigger.get(c) {
+                            for &idx in indices {
+                                let grp = &skolem_vec[idx].1;
+                                if grp.body.iter().all(|b| z_set.contains(b)) {
+                                    let Some((ref r_short, inv)) = grp.role else {
+                                        return PairVerdict::Undecided;
+                                    };
+                                    let witnessed = active_edges.iter().any(|(s, r, t)| {
+                                        r == r_short
+                                            && if inv { *t == z } else { *s == z }
+                                            && grp.fillers.iter().all(|f| {
+                                                let target = if inv { *s } else { *t };
+                                                let t_set = c_overrides
+                                                    .get(&target)
+                                                    .unwrap_or(&base_c[target]);
+                                                t_set.contains(f)
+                                            })
+                                    });
+                                    if !witnessed {
+                                        return PairVerdict::Undecided;
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(indices) = cards_by_marker.get(c) {
+                            for &idx in indices {
+                                let card = &f_res.cardinalities[idx];
+                                let (r_short, inv) = canon_role(&card.role);
+                                let f_c = canon_concept(&card.filler);
+                                let mut targets: Vec<usize> = active_edges
+                                    .iter()
+                                    .filter_map(|(s, r, t)| {
+                                        if r != &r_short {
+                                            return None;
+                                        }
+                                        let other = if inv {
+                                            if *t == z { Some(*s) } else { None }
+                                        } else if *s == z {
+                                            Some(*t)
+                                        } else {
+                                            None
+                                        }?;
+                                        let o_set =
+                                            c_overrides.get(&other).unwrap_or(&base_c[other]);
+                                        (f_c == "owl:Thing" || o_set.contains(&f_c))
+                                            .then_some(other)
+                                    })
+                                    .collect();
+                                targets.sort_unstable();
+                                targets.dedup();
+                                if card.min && targets.len() < card.n as usize {
+                                    return PairVerdict::Undecided;
+                                }
+                                if !card.min && targets.len() > card.n as usize {
+                                    return PairVerdict::Undecided;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            PairVerdict::NotDifferent
+        };
+
+        // Memoize pure-concept and graph pair evaluations by element signature
+        let mut pure_sig_id: Vec<Option<usize>> = vec![None; n_elems];
+        let mut sig_to_id: HashMap<(Vec<String>, Vec<String>, Vec<String>, Vec<String>), usize> =
+            HashMap::new();
+        let mut special_ind: Vec<bool> = vec![false; n_elems];
+        for &(_, ua, ub) in &neg_role_assertions {
+            if ua < n_elems {
+                special_ind[ua] = true;
+            }
+            if ub < n_elems {
+                special_ind[ub] = true;
+            }
+        }
+        for hv in &has_value_rules {
+            if hv.target_elem < n_elems {
+                special_ind[hv.target_elem] = true;
+            }
+        }
+        for cr in &concept_rules {
+            if let Some(u_o) = cr.nom_merge {
+                if u_o < n_elems {
+                    special_ind[u_o] = true;
+                }
+            }
+        }
+        type GraphSigKey = (
+            Option<usize>,
+            Vec<String>,
+            Vec<String>,
+            Vec<String>,
+            Vec<(String, bool, usize)>,
+            Vec<(String, bool, usize)>,
+            Vec<(String, bool, Vec<String>, Vec<String>)>,
+            Vec<(String, bool, Vec<String>)>,
+        );
+        let mut graph_sig_id: Vec<Option<usize>> = vec![None; n_elems];
+        let mut graph_sig_to_id: HashMap<GraphSigKey, usize> = HashMap::new();
+        for &u in &ind_elems {
+            let mut m_c: Vec<String> = elem_classes[u]
+                .iter()
+                .filter(|c| !c.starts_with("__nom__"))
+                .cloned()
+                .collect();
+            m_c.sort();
+            let mut h_c: Vec<String> = entailed_elem_classes[u]
+                .iter()
+                .filter(|c| !c.starts_with("__nom__"))
+                .cloned()
+                .collect();
+            h_c.sort();
+            let mut n_c: Vec<String> = elem_neg_classes[u].iter().cloned().collect();
+            n_c.sort();
+            if !has_non_refl_edge[u] {
+                let key = (m_c.clone(), h_c.clone(), n_c.clone(), Vec::new());
+                let next_id = sig_to_id.len();
+                let id = *sig_to_id.entry(key).or_insert(next_id);
+                pure_sig_id[u] = Some(id);
+            }
+            if skolem_ineqs.is_empty() {
+                let mut m_ind_e = Vec::new();
+                let mut m_sk_e = Vec::new();
+                let mut can_memo = true;
+                for &(s, ref r, t) in &adj_edges_m[u] {
+                    let (is_out, other) = if s == u { (true, t) } else { (false, s) };
+                    if other < n_elems {
+                        m_ind_e.push((
+                            r.clone(),
+                            is_out,
+                            if other == u { usize::MAX } else { other },
+                        ));
+                    } else if adj_edges_m[other]
+                        .iter()
+                        .all(|&(es, _, et)| (es == u || es == other) && (et == u || et == other))
+                    {
+                        let mut oc_m: Vec<String> = elem_classes[other].iter().cloned().collect();
+                        oc_m.sort();
+                        let mut oc_h: Vec<String> =
+                            entailed_elem_classes[other].iter().cloned().collect();
+                        oc_h.sort();
+                        m_sk_e.push((r.clone(), is_out, oc_m, oc_h));
+                    } else {
+                        can_memo = false;
+                        break;
+                    }
+                }
+                if can_memo {
+                    m_ind_e.sort();
+                    m_sk_e.sort();
+                    let mut h_ind_e = Vec::new();
+                    let mut h_sk_e = Vec::new();
+                    for &(s, ref r, t) in &adj_edges_h[u] {
+                        let (is_out, other) = if s == u { (true, t) } else { (false, s) };
+                        if other < n_elems {
+                            h_ind_e.push((
+                                r.clone(),
+                                is_out,
+                                if other == u { usize::MAX } else { other },
+                            ));
+                        } else {
+                            let mut oc_h: Vec<String> =
+                                entailed_elem_classes[other].iter().cloned().collect();
+                            oc_h.sort();
+                            h_sk_e.push((r.clone(), is_out, oc_h));
+                        }
+                    }
+                    h_ind_e.sort();
+                    h_sk_e.sort();
+                    let gkey = (
+                        special_ind[u].then_some(u),
+                        m_c,
+                        h_c,
+                        n_c,
+                        m_ind_e,
+                        h_ind_e,
+                        m_sk_e,
+                        h_sk_e,
+                    );
+                    let next_gid = graph_sig_to_id.len();
+                    let gid = *graph_sig_to_id.entry(gkey).or_insert(next_gid);
+                    graph_sig_id[u] = Some(gid);
+                }
+            }
+        }
+        let mut pure_memo: HashMap<(usize, usize), (PairVerdict, PairVerdict)> = HashMap::new();
+        let mut graph_memo: HashMap<(usize, usize), (PairVerdict, PairVerdict)> = HashMap::new();
+        let mut mixed_memo: HashMap<(usize, usize, bool), (PairVerdict, PairVerdict)> =
+            HashMap::new();
+        let base_diff = diff.clone();
+        if std::env::var_os("KM_TIMING").is_some() {
+            let n_pure = ind_elems.iter().filter(|&&u| pure_sig_id[u].is_some()).count();
+            let n_graph = ind_elems.iter().filter(|&&u| graph_sig_id[u].is_some()).count();
+            eprintln!(
+                "KM_TIMING abox_rows: ind_elems={} n_total_elems={} pure_sig={}/{} graph_sig={}/{} unhandled={} blocked={} func_data_conflicts={} skolem_ineqs={}",
+                ind_elems.len(),
+                n_total_elems,
+                n_pure,
+                sig_to_id.len(),
+                n_graph,
+                graph_sig_to_id.len(),
+                has_unhandled_clause,
+                raw.blocked.len(),
+                func_data_conflict_pairs.len(),
+                skolem_ineqs.len()
+            );
+        }
+
+        for i in 0..ind_elems.len() {
+            let u = ind_elems[i];
+            for &v in &ind_elems[(i + 1)..] {
+                let pk = pair_key(u, v);
+                if diff.contains(&pk) {
+                    continue;
+                }
+                if func_data_conflict_pairs.contains(&pk) {
+                    for a in &elem_inds[u] {
+                        for b in &elem_inds[v] {
+                            if let (Some(&ai), Some(&bi)) =
+                                (pub_ind_to_idx.get(a), pub_ind_to_idx.get(b))
+                            {
+                                if ai != bi {
+                                    plan.residual_different_pairs
+                                        .insert((ai.min(bi), ai.max(bi)));
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+                let (model_v, horn_v) = match (pure_sig_id[u], pure_sig_id[v]) {
+                    (Some(su), Some(sv)) => {
+                        let sk = (su.min(sv), su.max(sv));
+                        if let Some(&cached) = pure_memo.get(&sk) {
+                            cached
+                        } else {
+                            let mv = test_pure_concept_merge(u, v, false);
+                            let hv = if mv == PairVerdict::NotDifferent {
+                                PairVerdict::NotDifferent
+                            } else {
+                                test_pure_concept_merge(u, v, true)
+                            };
+                            pure_memo.insert(sk, (mv, hv));
+                            (mv, hv)
+                        }
+                    }
+                    _ => {
+                        let direct_link = adj_edges_m[u]
+                            .iter()
+                            .any(|&(s, _, t)| (s == u && t == v) || (s == v && t == u));
+                        if !direct_link {
+                            if let (Some(gu), Some(gv)) = (graph_sig_id[u], graph_sig_id[v]) {
+                                let gk = (gu.min(gv), gu.max(gv));
+                                if let Some(&cached) = graph_memo.get(&gk) {
+                                    cached
+                                } else {
+                                    let mv = test_graph_merge(u, v, false, &base_diff);
+                                    let hv = if mv == PairVerdict::NotDifferent {
+                                        PairVerdict::NotDifferent
+                                    } else {
+                                        test_graph_merge(u, v, true, &base_diff)
+                                    };
+                                    graph_memo.insert(gk, (mv, hv));
+                                    (mv, hv)
+                                }
+                            } else if skolem_ineqs.is_empty()
+                                && pure_sig_id[v].is_some()
+                                && !special_ind[v]
+                            {
+                                let mk = (u, pure_sig_id[v].unwrap(), u < v);
+                                if let Some(&cached) = mixed_memo.get(&mk) {
+                                    cached
+                                } else {
+                                    let mv = test_graph_merge(u, v, false, &base_diff);
+                                    let hv = if mv == PairVerdict::NotDifferent {
+                                        PairVerdict::NotDifferent
+                                    } else {
+                                        test_graph_merge(u, v, true, &base_diff)
+                                    };
+                                    mixed_memo.insert(mk, (mv, hv));
+                                    (mv, hv)
+                                }
+                            } else if skolem_ineqs.is_empty()
+                                && pure_sig_id[u].is_some()
+                                && !special_ind[u]
+                            {
+                                let mk = (v, pure_sig_id[u].unwrap(), v < u);
+                                if let Some(&cached) = mixed_memo.get(&mk) {
+                                    cached
+                                } else {
+                                    let mv = test_graph_merge(u, v, false, &base_diff);
+                                    let hv = if mv == PairVerdict::NotDifferent {
+                                        PairVerdict::NotDifferent
+                                    } else {
+                                        test_graph_merge(u, v, true, &base_diff)
+                                    };
+                                    mixed_memo.insert(mk, (mv, hv));
+                                    (mv, hv)
+                                }
+                            } else {
+                                let mv = test_graph_merge(u, v, false, &diff);
+                                let hv = if mv == PairVerdict::NotDifferent {
+                                    PairVerdict::NotDifferent
+                                } else {
+                                    test_graph_merge(u, v, true, &diff)
+                                };
+                                (mv, hv)
+                            }
+                        } else {
+                            let mv = test_graph_merge(u, v, false, &diff);
+                            let hv = if mv == PairVerdict::NotDifferent {
+                                PairVerdict::NotDifferent
+                            } else {
+                                test_graph_merge(u, v, true, &diff)
+                            };
+                            (mv, hv)
+                        }
+                    }
+                };
+                match (model_v, horn_v) {
+                    (PairVerdict::NotDifferent, _) => {}
+                    (_, PairVerdict::HornClash) => {
+                        diff.insert(pk);
+                    }
+                    _ => {
+                        for a in &elem_inds[u] {
+                            for b in &elem_inds[v] {
+                                if let (Some(&ai), Some(&bi)) =
+                                    (pub_ind_to_idx.get(a), pub_ind_to_idx.get(b))
+                                {
+                                    if ai != bi {
+                                        plan.residual_different_pairs
+                                            .insert((ai.min(bi), ai.max(bi)));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Propagate any newly discovered Horn clashes along functional / inverse-functional roles
+        if (!func_obj_roles.is_empty() || !inv_func_obj_roles.is_empty()) && !diff.is_empty() {
+            let mut func_edges: HashMap<&str, Vec<(usize, usize)>> = HashMap::new();
+            let mut inv_func_edges: HashMap<&str, Vec<(usize, usize)>> = HashMap::new();
+            for &(u, ref r, v) in &proved_edge_set {
+                if u < n_elems && v < n_elems {
+                    if func_obj_roles.contains(r.as_str()) {
+                        func_edges.entry(r.as_str()).or_default().push((u, v));
+                    }
+                    if inv_func_obj_roles.contains(r.as_str()) {
+                        inv_func_edges.entry(r.as_str()).or_default().push((u, v));
+                    }
+                }
+            }
+            loop {
+                let before = diff.len();
+                for list in func_edges.values() {
+                    for i in 0..list.len() {
+                        for j in (i + 1)..list.len() {
+                            let (u1, x1) = list[i];
+                            let (u2, x2) = list[j];
+                            if u1 != u2 && x1 != x2 && diff.contains(&pair_key(x1, x2)) {
+                                diff.insert(pair_key(u1, u2));
+                            }
+                        }
+                    }
+                }
+                for list in inv_func_edges.values() {
+                    for i in 0..list.len() {
+                        for j in (i + 1)..list.len() {
+                            let (x1, u1) = list[i];
+                            let (x2, u2) = list[j];
+                            if u1 != u2 && x1 != x2 && diff.contains(&pair_key(x1, x2)) {
+                                diff.insert(pair_key(u1, u2));
+                            }
+                        }
+                    }
+                }
+                if diff.len() == before {
+                    break;
+                }
+            }
+        }
+
+        for (u, v) in diff {
+            if u < n_elems && v < n_elems {
+                for a in &elem_inds[u] {
+                    for b in &elem_inds[v] {
+                        if a != b {
+                            let (x, y) = if a < b { (a, b) } else { (b, a) };
+                            plan.proved_different.insert([x.clone(), y.clone()]);
+                            if let (Some(&ai), Some(&bi)) =
+                                (pub_ind_to_idx.get(a), pub_ind_to_idx.get(b))
+                            {
+                                plan.residual_different_pairs
+                                    .remove(&(ai.min(bi), ai.max(bi)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Some(plan)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::super::config::Config;
+    use super::super::realize::{classify_extended, TypeMode};
+    use super::super::tmpfile::TempPath;
     use super::*;
+
+    fn assert_model_abox_matches_probe_oracle(name: &str, ofn: &str) {
+        let _test_env = crate::test_env::write();
+        let _env = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "auto");
+        std::env::set_var("KM_THREADS", "1");
+        let path = TempPath::new(&format!("-{name}.ofn"));
+        std::fs::write(path.path(), ofn).unwrap();
+        let cfg = Config::from_env();
+
+        let model_ext = classify_extended(
+            &cfg,
+            path.path(),
+            Some(TypeMode::All),
+            false,
+            false,
+            false,
+            true,
+            true,
+        )
+        .unwrap();
+
+        let probe_ext = {
+            let _g = crate::routing::EnvironmentGuard::capture();
+            std::env::set_var("KM_ABOX_PROBES_ONLY", "1");
+            classify_extended(
+                &cfg,
+                path.path(),
+                Some(TypeMode::All),
+                false,
+                false,
+                false,
+                true,
+                true,
+            )
+            .unwrap()
+        };
+
+        assert_eq!(
+            model_ext.abox.values, probe_ext.abox.values,
+            "VALUE mismatch on {name} (auto)"
+        );
+        assert_eq!(
+            model_ext.abox.different, probe_ext.abox.different,
+            "DIFFERENT mismatch on {name} (auto)"
+        );
+
+        if !ofn.contains("HasKey(") {
+            let _g = crate::routing::EnvironmentGuard::capture();
+            crate::routing::Route::HtBridge.apply_environment();
+            std::env::set_var("KM_ROUTE", "ht_bridge");
+            std::env::set_var("KM_REALIZE_ANY_ROUTE", "1");
+            std::env::set_var("KM_THREADS", "1");
+            let ht_cfg = Config::from_env();
+            let ht_ext = classify_extended(
+                &ht_cfg,
+                path.path(),
+                Some(TypeMode::All),
+                false,
+                false,
+                false,
+                true,
+                true,
+            )
+            .unwrap();
+            assert_eq!(
+                ht_ext.abox.values, probe_ext.abox.values,
+                "VALUE mismatch on {name} (ht_bridge)"
+            );
+            assert_eq!(
+                ht_ext.abox.different, probe_ext.abox.different,
+                "DIFFERENT mismatch on {name} (ht_bridge)"
+            );
+        }
+    }
 
     #[test]
     fn abox_rows_extension_retains_merged_targets_on_adv_ofn() {
@@ -742,5 +4854,175 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn d1_and_d2_supervisor_repros_and_adversarial_cases_match_exact_oracle() {
+        let _test_env = crate::test_env::write();
+
+        // Supervisor repro d1.ofn: merged individual triggers A ⊓ B ⊓ D ⊑ C with DisjointClasses(C, D)
+        let d1 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/d1>\n\
+            Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))\n\
+            ClassAssertion(:A :a) ClassAssertion(:D :a) ClassAssertion(:B :b) ClassAssertion(:B :c) ClassAssertion(:A :c)\n\
+            SubClassOf(ObjectIntersectionOf(:A :B :D) :C)\n\
+            DisjointClasses(:C :D)\n)";
+        assert_model_abox_matches_probe_oracle("d1", d1);
+
+        // Supervisor repro d2.ofn: merged individual gets r-successor and s-successor with ∃r.⊤ ⊓ ∃s.⊤ ⊑ ⊥
+        let d2 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/d2>\n\
+            Declaration(Class(:A)) Declaration(Class(:B)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:x)) Declaration(NamedIndividual(:y))\n\
+            ObjectPropertyAssertion(:r :a :x) ObjectPropertyAssertion(:s :b :y)\n\
+            SubClassOf(ObjectIntersectionOf(ObjectSomeValuesFrom(:r owl:Thing) ObjectSomeValuesFrom(:s owl:Thing)) owl:Nothing)\n)";
+        assert_model_abox_matches_probe_oracle("d2", d2);
+
+        // Adversarial 1: FunctionalObjectProperty + disjoint classes on successors
+        let adv1 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv1>\n\
+            Declaration(Class(:C)) Declaration(Class(:D)) Declaration(ObjectProperty(:r))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:x)) Declaration(NamedIndividual(:y))\n\
+            FunctionalObjectProperty(:r)\n\
+            ObjectPropertyAssertion(:r :a :x) ObjectPropertyAssertion(:r :b :y)\n\
+            ClassAssertion(:C :x) ClassAssertion(:D :y)\n\
+            DisjointClasses(:C :D)\n)";
+        assert_model_abox_matches_probe_oracle("adv1-func-role", adv1);
+
+        // Adversarial 2: InverseFunctionalObjectProperty + DifferentIndividuals on sources
+        let adv2 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv2>\n\
+            Declaration(ObjectProperty(:r))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:x)) Declaration(NamedIndividual(:y))\n\
+            InverseFunctionalObjectProperty(:r)\n\
+            ObjectPropertyAssertion(:r :x :a) ObjectPropertyAssertion(:r :y :b)\n\
+            DifferentIndividuals(:x :y)\n)";
+        assert_model_abox_matches_probe_oracle("adv2-inv-func", adv2);
+
+        // Adversarial 3: HasKey forcing individual merge + disjointness propagation
+        let adv3 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv3>\n\
+            Declaration(Class(:C)) Declaration(Class(:D)) Declaration(Class(:E)) Declaration(ObjectProperty(:r))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:k))\n\
+            HasKey(:C (:r) ())\n\
+            ClassAssertion(:C :a) ClassAssertion(:C :b)\n\
+            ObjectPropertyAssertion(:r :a :k) ObjectPropertyAssertion(:r :b :k)\n\
+            ClassAssertion(:D :a) ClassAssertion(:E :c)\n\
+            DisjointClasses(:D :E)\n)";
+        assert_model_abox_matches_probe_oracle("adv3-haskey", adv3);
+
+        // Adversarial 4: Nominals (ObjectOneOf) + ObjectAllValuesFrom
+        let adv4 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv4>\n\
+            Declaration(Class(:B)) Declaration(ObjectProperty(:r))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:x)) Declaration(NamedIndividual(:y))\n\
+            ObjectPropertyAssertion(:r :a :x)\n\
+            ClassAssertion(:B :b)\n\
+            SubClassOf(:B ObjectAllValuesFrom(:r ObjectOneOf(:y)))\n\
+            DifferentIndividuals(:x :y)\n)";
+        assert_model_abox_matches_probe_oracle("adv4-nominals-forall", adv4);
+
+        // Adversarial 5: NegativeObjectPropertyAssertion + SubObjectPropertyOf
+        let adv5 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv5>\n\
+            Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:x))\n\
+            SubObjectPropertyOf(:r1 :r2)\n\
+            ObjectPropertyAssertion(:r1 :a :x)\n\
+            NegativeObjectPropertyAssertion(:r2 :b :x)\n)";
+        assert_model_abox_matches_probe_oracle("adv5-neg-opa-subrole", adv5);
+
+        // Adversarial 6: FunctionalDataProperty with equal vs unequal lexical literals
+        let adv6 = "Prefix(:=<http://ex.org/>)\n\
+            Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n\
+            Ontology(<http://ex.org/adv6>\n\
+            Declaration(DataProperty(:dp))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))\n\
+            FunctionalDataProperty(:dp)\n\
+            DataPropertyAssertion(:dp :a \"1\"^^xsd:integer)\n\
+            DataPropertyAssertion(:dp :b \"01\"^^xsd:int)\n\
+            DataPropertyAssertion(:dp :c \"2\"^^xsd:integer)\n)";
+        assert_model_abox_matches_probe_oracle("adv6-func-data", adv6);
+
+        // Adversarial 7: Qualified ObjectMaxCardinality(1, r, C)
+        let adv7 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv7>\n\
+            Declaration(Class(:A)) Declaration(Class(:C)) Declaration(ObjectProperty(:r))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:x)) Declaration(NamedIndividual(:y))\n\
+            SubClassOf(:A ObjectMaxCardinality(1 :r :C))\n\
+            ClassAssertion(:A :a)\n\
+            ObjectPropertyAssertion(:r :a :x) ObjectPropertyAssertion(:r :b :y)\n\
+            ClassAssertion(:C :x) ClassAssertion(:C :y)\n\
+            DifferentIndividuals(:x :y)\n)";
+        assert_model_abox_matches_probe_oracle("adv7-qual-max1", adv7);
+
+        // Adversarial 8: ObjectMaxCardinality(2, r, owl:Thing) pigeonhole clash on merge
+        let adv8 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv8>\n\
+            Declaration(ObjectProperty(:r))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\n\
+            Declaration(NamedIndividual(:x1)) Declaration(NamedIndividual(:x2)) Declaration(NamedIndividual(:x3))\n\
+            SubClassOf(owl:Thing ObjectMaxCardinality(2 :r owl:Thing))\n\
+            ObjectPropertyAssertion(:r :a :x1) ObjectPropertyAssertion(:r :a :x2)\n\
+            ObjectPropertyAssertion(:r :b :x3)\n\
+            DifferentIndividuals(:x1 :x2 :x3)\n)";
+        assert_model_abox_matches_probe_oracle("adv8-max2-pigeonhole", adv8);
+
+        // Adversarial 9: Asymmetric / Irreflexive simple role (merging a and b creates self-loop s(a,a))
+        let adv9 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv9>\n\
+            Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:r))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))\n\
+            IrreflexiveObjectProperty(:s)\n\
+            SubObjectPropertyOf(:s :r)\n\
+            TransitiveObjectProperty(:r)\n\
+            ObjectPropertyAssertion(:s :a :b)\n\
+            ObjectPropertyAssertion(:r :b :c)\n)";
+        assert_model_abox_matches_probe_oracle("adv9-irrefl-subrole", adv9);
+
+        // Adversarial 10: ObjectPropertyChain + ObjectAllValuesFrom clash on merge
+        let adv10 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv10>\n\
+            Declaration(Class(:B)) Declaration(Class(:C))\n\
+            Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2)) Declaration(ObjectProperty(:r3))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:m)) Declaration(NamedIndividual(:x))\n\
+            SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :r3)\n\
+            ObjectPropertyAssertion(:r1 :a :m) ObjectPropertyAssertion(:r2 :m :x)\n\
+            ClassAssertion(:B :b)\n\
+            SubClassOf(:B ObjectAllValuesFrom(:r3 :C))\n\
+            ClassAssertion(ObjectComplementOf(:C) :x)\n)";
+        assert_model_abox_matches_probe_oracle("adv10-chain-forall", adv10);
+
+        // Adversarial 11: Disjunctive TBox where both branches are disjoint with D
+        let adv11 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv11>\n\
+            Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\n\
+            SubClassOf(:A ObjectUnionOf(:B :C))\n\
+            DisjointClasses(:B :D)\n\
+            DisjointClasses(:C :D)\n\
+            ClassAssertion(:A :a) ClassAssertion(:D :b)\n)";
+        assert_model_abox_matches_probe_oracle("adv11-disj-both-clash", adv11);
+
+        // Adversarial 12: Disjunctive TBox where only one branch is disjoint with D (a and b are NOT different)
+        let adv12 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv12>\n\
+            Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\n\
+            SubClassOf(:A ObjectUnionOf(:B :C))\n\
+            DisjointClasses(:B :D)\n\
+            ClassAssertion(:A :a) ClassAssertion(:D :b)\n)";
+        assert_model_abox_matches_probe_oracle("adv12-disj-one-branch-sat", adv12);
+
+        // Adversarial 13: VALUE entailed via existential into singleton nominal class (A ⊑ ∃r.C, C ⊑ {b})
+        let adv13 = "Prefix(:=<http://ex.org/>)\n\
+            Ontology(<http://ex.org/adv13>\n\
+            Declaration(Class(:A)) Declaration(Class(:C)) Declaration(ObjectProperty(:r))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\n\
+            ClassAssertion(:A :a)\n\
+            SubClassOf(:A ObjectSomeValuesFrom(:r :C))\n\
+            SubClassOf(:C ObjectOneOf(:b))\n)";
+        assert_model_abox_matches_probe_oracle("adv13-nominal-absorption-value", adv13);
     }
 }

@@ -68,7 +68,7 @@ for d, p in sorted(entries):
     pr = R.get('producer_run') or {}
     row.update(prod_s=pr.get('secs'), prod_mb=pr.get('rss_mb'))
     reason = ''
-    if P:
+    if P and 'nf' in P and 'witness' in P:
         ms = P['models']
         W = P['witness']
         row.update(classes=P['classes'], individuals=P['individuals'], concepts=P['nf']['concepts'], gci=P['nf']['gci'],
@@ -78,20 +78,26 @@ for d, p in sorted(entries):
                    split_wit=W['split_witnesses'], polluted=W['polluted_moves'], rows=R.get('rows_total'),
                    unchecked=R.get('rows_unchecked'),
                    unc_nonsub=P['rows']['nonsub'] - P['unchecked']['nonsub'],
-                   unc_nontype=P['rows']['nontype'] - P['unchecked']['nontype'])
-        if not P['base']['ok']:
-            reason = 'no base model: ' + P['base']['why']
-        elif P.get('stopped'):
-            reason = P['stopped']
-        elif W['fail']:
-            reason = 'witness: ' + ', '.join('%s %d' % kv for kv in W['fail'].items())
-        elif row['unc_nontype']:
-            reason = 'individual types not general'
-        elif row['unc_nonsub']:
-            reason = 'split witnesses incomplete'
-        if ms and all(m['violations'] > 0 for m in ms):
-            fv = next((m.get('first_violation') for m in ms if m.get('first_violation')), None)
-            reason = 'self-check: ' + str(fv)[:80]
+                   unc_nontype=0 if R.get('km', {}).get('realized') is False else (P['rows']['nontype'] - P['unchecked']['nontype']))
+        if R.get('status') != 'model-full':
+            if not P['base']['ok']:
+                reason = 'no base model: ' + P['base']['why']
+            elif P.get('stopped'):
+                reason = P['stopped']
+            elif W['fail']:
+                reason = 'witness: ' + ', '.join('%s %d' % kv for kv in W['fail'].items())
+            elif row['unc_nontype']:
+                reason = 'individual types not general'
+            elif row['unc_nonsub']:
+                reason = 'split witnesses incomplete'
+            if ms and all(m['violations'] > 0 for m in ms):
+                fv = next((m.get('first_violation') for m in ms if m.get('first_violation')), None)
+                reason = 'self-check: ' + str(fv)[:80]
+    elif P:
+        ms = P.get('models') or []
+        row.update(models=len(ms), elements=sum(m.get('elements', 0) for m in ms),
+                   edges=sum(m.get('edges', 0) for m in ms), violations=sum(m.get('violations', 0) for m in ms),
+                   rows=R.get('rows_total'), unchecked=R.get('rows_unchecked'))
     if C:
         cert = C.get('certified', {})
         tried = C.get('rows_tried', {})
@@ -120,11 +126,19 @@ for d, p in sorted(entries):
         s[st] += 1
         s['rows'] += row.get('rows') or 0
         s['unchecked'] += row.get('unchecked') or 0
-        if P and P['base']['ok']:
-            s['general'] += row['general']
-            s['split'] += row['split']
-            s['partial'] += row['partial']
-            s['none'] += row['none']
+        if R.get('export_used'):
+            s['export_used'] += 1
+        if R.get('km', {}).get('realized') is False:
+            s['no_realize'] += 1
+            ns = R.get('nontype_separate') or (P.get('nontype_separate') if P else None) or {}
+            s['nontype_sep_inds'] += ns.get('individuals', 0)
+            s['nontype_sep_pairs'] += ns.get('pairs', 0)
+            s['nontype_sep_cert'] += ns.get('certified_outside', 0)
+        if P and P.get('base', {}).get('ok') and 'classes' in P:
+            s['general'] += row.get('general') or 0
+            s['split'] += row.get('split') or 0
+            s['partial'] += row.get('partial') or 0
+            s['none'] += row.get('none') or 0
             s['classes'] += P['classes'] + 1
         if C and not C.get('skipped') and C.get('calls'):
             s['checked_inputs'] += 1
@@ -147,5 +161,9 @@ for key in sorted(S, key=lambda k: (k != 'all', k)):
         s['checked_inputs'], s['consistency_certified'], s['certified-full'], s['certified-full-but-thing'],
         s['certified-partial'], s['certified-none'], s['cert_rows'], s['thing_rows'],
         {k[4:]: v for k, v in s.items() if k.startswith('chk:')}, s['disagree']), file=out)
+all_s = S['all']
+if all_s['no_realize'] or all_s['export_used']:
+    print('separate nontype (no-realize): inputs %d individuals %d pairs %d certified_outside %d | export_used inputs %d' % (
+        all_s['no_realize'], all_s['nontype_sep_inds'], all_s['nontype_sep_pairs'], all_s['nontype_sep_cert'], all_s['export_used']), file=out)
 reasons = Counter((r['reason'] or '').split(':')[0] for r in allr if r['reason'])
 print('reasons:', dict(reasons), file=out)

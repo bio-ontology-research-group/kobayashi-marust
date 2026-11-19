@@ -25,6 +25,7 @@ pub struct Config {
     pub time_limit: f64,
     pub loops: bool,
     pub write: bool,
+    pub no_realize: bool,
     /// the data clauses, for data stars (None: no `dstar` lines)
     pub data: Option<crate::data::DataNf>,
 }
@@ -144,9 +145,10 @@ fn build_witness(
     target: u32,
     use_clean: bool,
 ) -> Result<Id, Fail> {
-    let scan_cap = if forbid == 0 { 512 } else { 4096 };
+    let scan_cap = if forbid == 0 { 512 } else { 32768 };
     if m.elems.len() <= scan_cap {
         let fb_slice = en.sets.get(forbid);
+        let tgt_slice = en.sets.get(target);
         let mut best: Option<(usize, Id)> = None;
         for y in m.canonical() {
             if !m.elems[y as usize].pending.is_empty() {
@@ -159,6 +161,9 @@ fn build_witness(
                 }
             }
             if forbid != 0 && fb_slice.iter().any(|&b| en.sets.has(ty, b)) {
+                continue;
+            }
+            if !tgt_slice.iter().all(|&s| !cx.rowclass[s as usize] || en.sets.has(ty, s)) {
                 continue;
             }
             let dirty = en
@@ -183,7 +188,10 @@ fn build_witness(
         None => 0,
     };
     let cr = if use_clean {
-        en.close_clean(seed, forbid, target, true)
+        match en.close_clean(seed, forbid, target, true) {
+            CloseRes::Ok(t) => CloseRes::Ok(t),
+            _ => en.close(seed, forbid, target, true),
+        }
     } else {
         en.close(seed, forbid, target, true)
     };
@@ -218,6 +226,16 @@ fn build_witness(
             return Ok(e);
         }
     }
+    let run_sat = |en: &mut Engine, m: &mut Model| -> Result<(), Fail> {
+        let old_step = en.opt.step_budget;
+        let old_node = en.opt.node_budget;
+        en.opt.step_budget = old_step.min(50_000);
+        en.opt.node_budget = old_node.min(m.elems.len() + 20_000);
+        let res = en.saturate(m);
+        en.opt.step_budget = old_step;
+        en.opt.node_budget = old_node;
+        res
+    };
     let w = if let Some(o) = nom {
         let w = match m.nom_elem.get(&o) {
             Some(&w) => m.find(w),
@@ -226,20 +244,46 @@ fn build_witness(
         let ts = en.sets.get(t);
         m.em(w).pending.extend_from_slice(&ts);
         m.enqueue(w);
-        en.saturate(m)?;
+        run_sat(en, m)?;
         m.find(w)
     } else {
-        let cand = m.typemap.get(&t).and_then(|v| {
-            v.iter().rev().copied().find(|&y| {
-                let e = &m.elems[y as usize];
-                e.alive && m.uf[y as usize] == y && e.ty == t && e.pending.is_empty()
+        let cand = m
+            .typemap
+            .get(&t)
+            .and_then(|v| {
+                v.iter().rev().copied().find(|&y| {
+                    let e = &m.elems[y as usize];
+                    e.alive && m.uf[y as usize] == y && e.ty == t && e.pending.is_empty()
+                })
             })
-        });
+            .or_else(|| {
+                if seed == 0 {
+                    return None;
+                }
+                let fb_slice = en.sets.get(forbid);
+                let tgt_slice = en.sets.get(target);
+                m.typemap.get(&(seed | crate::engine::SEED_KEY)).and_then(|v| {
+                    v.iter().rev().copied().find(|&y| {
+                        let e = &m.elems[y as usize];
+                        if !e.alive || m.uf[y as usize] != y || !e.pending.is_empty() || !en.sets.subset(seed, e.ty) {
+                            return false;
+                        }
+                        if forbid != 0 && fb_slice.iter().any(|&b| en.sets.has(e.ty, b)) {
+                            return false;
+                        }
+                        !en.sets
+                            .get(e.ty)
+                            .iter()
+                            .any(|&b| cx.rowclass[b as usize] && !en.sets.has(target, b))
+                            && tgt_slice.iter().all(|&s| !cx.rowclass[s as usize] || en.sets.has(e.ty, s))
+                    })
+                })
+            });
         match cand {
             Some(y) => y,
             None => {
                 let w = en.new_elem_closed(m, seed, t, forbid, target, false);
-                en.saturate(m)?;
+                run_sat(en, m)?;
                 m.find(w)
             }
         }
@@ -271,7 +315,7 @@ fn try_witness(
     let max_attempts = retries.max(1);
     while attempts < max_attempts {
         s.m.begin();
-        match build_witness(cx, en, &mut s.m, a, local_forbid, target, forbid == 0 || attempts == 0) {
+        match build_witness(cx, en, &mut s.m, a, local_forbid, target, attempts == 0) {
             Ok(w) => {
                 let (is_poll, pnoms) = polluted(cx, en, s, check_nom);
                 if is_poll {
@@ -328,6 +372,9 @@ fn try_witness(
                     new = e.blame.iter().copied().filter(|&t| t != 0 && !en.bad.contains(&t)).collect();
                 }
                 if new.is_empty() {
+                    if attempts == 1 {
+                        continue;
+                    }
                     break;
                 }
                 en.bad.extend(new);
@@ -350,6 +397,7 @@ fn restore_bad(en: &mut Engine, base: &crate::engine::FxSet<u32>) {
     }
 }
 
+#[derive(Clone, Copy)]
 struct Place {
     model: usize,
     elem: Id,
@@ -495,6 +543,17 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
             }
         }
     }
+    for (body, head) in &nf.gci {
+        if body.len() == 1 && head.len() == 1 {
+            let (b, h) = (body[0], head[0]);
+            if nf.is_nom[b as usize] && nf.is_nom[h as usize] {
+                let (rx, ry) = (gfind(&grp, b), gfind(&grp, h));
+                if rx != ry {
+                    grp.insert(rx.max(ry), rx.min(ry));
+                }
+            }
+        }
+    }
     let mut ind_types: FxMap<u32, Vec<u32>> = FxMap::default();
     for (iri, c) in &inds {
         let mut v: Vec<u32> =
@@ -515,20 +574,32 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
         let t = en.sets.intern(v);
         gtarget.insert(g, t);
     }
-    for (iri, c) in &inds {
-        let _ = iri;
-        nom_target.insert(*c, gtarget[&gfind(&grp, *c)]);
+    if !cfg.no_realize {
+        for (iri, c) in &inds {
+            let _ = iri;
+            nom_target.insert(*c, gtarget[&gfind(&grp, *c)]);
+        }
     }
     let cx = Ctx { nf, rowclass: rowclass.clone(), target: target.clone(), nom_target };
 
     // precompute which nominals cannot be coalesced before/after saturation
     let mut unsafe_nom = vec![false; n];
     let mut ref_nom = vec![false; n];
+    let mut gci_nom = vec![false; n];
     for (body, head) in &nf.gci {
+        if body.len() == 1
+            && head.len() == 1
+            && nf.is_nom[body[0] as usize]
+            && nf.is_nom[head[0] as usize]
+            && gfind(&grp, body[0]) == gfind(&grp, head[0])
+        {
+            continue;
+        }
         if body.len() > 1 {
             for &a in body {
                 if nf.is_nom[a as usize] {
                     ref_nom[a as usize] = true;
+                    gci_nom[a as usize] = true;
                 }
             }
         }
@@ -730,11 +801,11 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                         return;
                     }
                     let tx_s = en.sets.get(m.elems[x as usize].ty);
-                    let has_ref_nom = tx_s.iter().any(|&a| en.nf.is_nom[a as usize] && ref_nom[a as usize]);
+                    let has_ref_nom = tx_s.iter().any(|&a| en.nf.is_nom[a as usize] && gci_nom[a as usize]);
                     let has_dsome_x = strip_ex && tx_s.iter().any(|&a| in_dsome[a as usize]);
                     let mut placed = false;
                     'sub_loop: for (si, sub) in subs.iter_mut().enumerate() {
-                        if (strip_ex || has_ref_nom) && sub.len() >= 128 {
+                        if (has_ref_nom || has_dsome_x) && sub.len() >= 128 {
                             continue 'sub_loop;
                         }
                         let gid = base_idx + si;
@@ -956,7 +1027,12 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
             let seed = en.sets.intern(os.clone());
             let gt = gtarget[g];
             if attempt == 0 && groups.len() > 64 && os.iter().all(|&o| !unsafe_nom[o as usize] && !ref_nom[o as usize]) {
-                if let CloseRes::Ok(t) = en.close_clean(seed, 0, gt, true) {
+                let cr = if cfg.no_realize {
+                    en.close(seed, 0, gt, true)
+                } else {
+                    en.close_clean(seed, 0, gt, true)
+                };
+                if let CloseRes::Ok(t) = cr {
                     let ts = en.sets.get(t);
                     if ts.iter().all(|&a| !en.nf.is_nom[a as usize] || os.binary_search(&a).is_ok()) {
                         let non_nom_vec: Vec<u32> = ts
@@ -973,13 +1049,32 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                             continue;
                         } else {
                             let y = en.new_elem_closed(&mut base, seed, t, 0, gt, true);
+                            if cfg.no_realize {
+                                base.em(y).owner = y;
+                            }
                             pre_buckets.insert((gt, non_nom_ty), y);
                             continue;
                         }
                     }
                 }
             }
-            if let Err(e) = en.new_elem(&mut base, seed, 0, gt, true) {
+            if cfg.no_realize {
+                match en.close(seed, 0, gt, true) {
+                    CloseRes::Ok(t) => {
+                        let y = en.new_elem_closed(&mut base, seed, t, 0, gt, true);
+                        base.em(y).owner = y;
+                    }
+                    CloseRes::Clash => {
+                        r = Err(Fail::new("clash in a seed type", vec![]));
+                        break;
+                    }
+                    CloseRes::Budget => {
+                        let msg = if en.mem_hit { "memory cap (8 GB)" } else { "closure budget" };
+                        r = Err(Fail::new(msg, vec![]));
+                        break;
+                    }
+                }
+            } else if let Err(e) = en.new_elem(&mut base, seed, 0, gt, true) {
                 r = Err(e);
                 break;
             }
@@ -1135,13 +1230,16 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
             }
         }
         // ---- split base models for dirty individuals ----
-        if stopped.is_none() && !inds.is_empty() {
+        if stopped.is_none() && !inds.is_empty() && !cfg.no_realize {
             let slots_before = slots.len();
+            let saved_bad = en.bad.clone();
             let mut ever_dirty: crate::engine::FxSet<u32> = crate::engine::FxSet::default();
             for _round in 0..8 {
                 if slots.len() >= cfg.max_models + 6 || Instant::now() > deadline {
                     break;
                 }
+                en.bad = saved_bad.clone();
+                en.clear_memo();
                 let mut rem_dirty: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
                 for (&g, os) in &groups {
                     let o0 = os[0];
@@ -1172,7 +1270,14 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                 if rem_dirty.is_empty() {
                     break;
                 }
+                let any_clean_dirty = rem_dirty.iter().any(|(&g, d)| {
+                    let seed = en.sets.intern(groups[&g].clone());
+                    let gt = gtarget[&g];
+                    let f_all = en.sets.intern(d.clone());
+                    matches!(en.close_clean(seed, f_all, gt, true), CloseRes::Ok(_))
+                });
                 let mut skip_fb: crate::engine::FxSet<u32> = crate::engine::FxSet::default();
+                let mut half_fb: crate::engine::FxSet<u32> = crate::engine::FxSet::default();
                 let mut ind_m = Model::new();
                 let mut sat_ok = false;
                 for attempt in 0..32 {
@@ -1184,20 +1289,27 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                     let mut any_forbid = false;
                     let mut ok = true;
                     let mut elem_of_g: Vec<(u32, Id)> = Vec::new();
+                    let mut pre_buckets: FxMap<(u32, u32), Id> = FxMap::default();
+                    let mut pre_extra_noms: FxMap<Id, Vec<u32>> = FxMap::default();
                     for (&g, os) in &groups {
                         let seed = en.sets.intern(os.clone());
                         let gt = gtarget[&g];
                         let mut fb = 0u32;
                         if !skip_fb.contains(&g) {
                             if let Some(d) = rem_dirty.get(&g) {
-                                let f_all = en.sets.intern(d.clone());
+                                let d_use = if half_fb.contains(&g) && d.len() > 1 {
+                                    &d[..1]
+                                } else {
+                                    d.as_slice()
+                                };
+                                let f_all = en.sets.intern(d_use.to_vec());
                                 if matches!(en.close(seed, f_all, gt, true), CloseRes::Ok(_)) {
                                     fb = f_all;
                                     any_forbid = true;
-                                } else if d.len() > 1 {
-                                    let h = d.len() / 2;
-                                    let f_h1 = en.sets.intern(d[..h].to_vec());
-                                    let f_h2 = en.sets.intern(d[h..].to_vec());
+                                } else if d_use.len() > 1 {
+                                    let h = d_use.len() / 2;
+                                    let f_h1 = en.sets.intern(d_use[..h].to_vec());
+                                    let f_h2 = en.sets.intern(d_use[h..].to_vec());
                                     if matches!(en.close(seed, f_h1, gt, true), CloseRes::Ok(_)) {
                                         fb = f_h1;
                                         any_forbid = true;
@@ -1205,7 +1317,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                                         fb = f_h2;
                                         any_forbid = true;
                                     } else {
-                                        for &b in d {
+                                        for &b in d_use {
                                             let f1 = en.sets.intern(vec![b]);
                                             if matches!(en.close(seed, f1, gt, true), CloseRes::Ok(_)) {
                                                 fb = f1;
@@ -1217,11 +1329,39 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                                 }
                             }
                         }
-                        let cr = if fb == 0 && ever_dirty.contains(&g) {
+                        if fb == 0
+                            && !ever_dirty.contains(&g)
+                            && groups.len() > 64
+                            && os.iter().all(|&o| !unsafe_nom[o as usize] && !ref_nom[o as usize])
+                        {
+                            if let CloseRes::Ok(t) = en.close_clean(seed, 0, gt, true) {
+                                let ts = en.sets.get(t);
+                                if ts.iter().all(|&a| !en.nf.is_nom[a as usize] || os.binary_search(&a).is_ok()) {
+                                    let non_nom_vec: Vec<u32> =
+                                        ts.iter().copied().filter(|&a| !en.nf.is_nom[a as usize]).collect();
+                                    let non_nom_ty = en.sets.intern(non_nom_vec);
+                                    if let Some(&y) = pre_buckets.get(&(gt, non_nom_ty)) {
+                                        pre_extra_noms.entry(y).or_default().extend_from_slice(os);
+                                        for &o in os {
+                                            ind_m.set_nom(o, y);
+                                        }
+                                        continue;
+                                    } else {
+                                        let y = en.new_elem_closed(&mut ind_m, seed, t, 0, gt, true);
+                                        pre_buckets.insert((gt, non_nom_ty), y);
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        let mut cr = if fb == 0 && ever_dirty.contains(&g) {
                             en.close(seed, 0, gt, true)
                         } else {
                             en.close_clean(seed, fb, gt, true)
                         };
+                        if !matches!(cr, CloseRes::Ok(_)) && fb != 0 && !any_clean_dirty {
+                            cr = en.close(seed, fb, gt, true);
+                        }
                         match cr {
                             CloseRes::Ok(t) => {
                                 let el = en.new_elem_closed(&mut ind_m, seed, t, fb, gt, true);
@@ -1248,6 +1388,18 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                     if !any_forbid || !ok {
                         break;
                     }
+                    if !pre_extra_noms.is_empty() {
+                        for (y, mut extra) in pre_extra_noms {
+                            extra.sort_unstable();
+                            extra.dedup();
+                            let t_new = en.sets.union_vec(ind_m.elems[y as usize].ty, &extra);
+                            let f_new = en.sets.union_vec(ind_m.elems[y as usize].forced, &extra);
+                            let ey = ind_m.em(y);
+                            ey.ty = t_new;
+                            ey.forced = f_new;
+                            ind_m.tm_push(t_new, y);
+                        }
+                    }
                     match en.saturate(&mut ind_m) {
                         Ok(()) => {
                             ind_m.commit();
@@ -1268,16 +1420,22 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                                         && !en.sets.get(t).iter().any(|&a| en.nf.is_nom[a as usize])
                                 })
                                 .collect();
-                            if !new.is_empty() {
+                            if !new.is_empty() && attempt < 4 {
                                 en.bad.extend(new);
                                 en.clear_memo();
                             } else {
+                                en.bad = saved_bad.clone();
+                                en.clear_memo();
                                 let mut dropped_any = false;
                                 if let Some(&t0) = e.blame.first() {
                                     for &(g, el) in &elem_of_g {
                                         let el = ind_m.find(el);
-                                        if ind_m.elems[el as usize].ty == t0 && skip_fb.insert(g) {
-                                            dropped_any = true;
+                                        if ind_m.elems[el as usize].ty == t0 {
+                                            if rem_dirty.get(&g).map(|d| d.len() > 1).unwrap_or(false) && half_fb.insert(g) {
+                                                dropped_any = true;
+                                            } else if skip_fb.insert(g) {
+                                                dropped_any = true;
+                                            }
                                         }
                                     }
                                 }
@@ -1285,8 +1443,23 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                                     for &(g, el) in &elem_of_g {
                                         let el = ind_m.find(el);
                                         let ty_el = ind_m.elems[el as usize].ty;
-                                        if e.blame.contains(&ty_el) && skip_fb.insert(g) {
+                                        if e.blame.contains(&ty_el) {
+                                            if rem_dirty.get(&g).map(|d| d.len() > 1).unwrap_or(false) && half_fb.insert(g) {
+                                                dropped_any = true;
+                                            } else if skip_fb.insert(g) {
+                                                dropped_any = true;
+                                            }
+                                        }
+                                    }
+                                }
+                                if !dropped_any {
+                                    for &(g, _) in elem_of_g.iter().rev() {
+                                        if rem_dirty.get(&g).map(|d| d.len() > 1).unwrap_or(false) && half_fb.insert(g) {
                                             dropped_any = true;
+                                            break;
+                                        } else if skip_fb.insert(g) {
+                                            dropped_any = true;
+                                            break;
                                         }
                                     }
                                 }
@@ -1297,6 +1470,8 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                         }
                     }
                 }
+                en.bad = saved_bad.clone();
+                en.clear_memo();
                 if !sat_ok {
                     break;
                 }
@@ -1323,7 +1498,11 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                 if !progressed {
                     break;
                 }
-                slots.push(Slot { m: ind_m, wits: Vec::new(), wit_of: FxMap::default() });
+                let wits = match ind_m.canonical().next() {
+                    Some(c0) => vec![(None, c0)],
+                    None => Vec::new(),
+                };
+                slots.push(Slot { m: ind_m, wits, wit_of: FxMap::default() });
             }
             if slots.len() > slots_before && !uncovered.is_empty() {
                 let old_unc = std::mem::take(&mut uncovered);
@@ -1438,6 +1617,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
     let mut sup_missing = 0u64;
     let mut uncovered_rows = 0u64;
     let mut uncovered_examples: Vec<String> = Vec::new();
+    let mut compacted_wits: Vec<Vec<(Option<u32>, Id)>> = vec![Vec::new(); slots.len()];
     for &a in &order_all {
         if let Some(c) = a {
             if is_unsat[c as usize] {
@@ -1448,13 +1628,76 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
         let sup = &sup_of[&a];
         let nonsub: u64 = nclasses - sup.iter().filter(|&&b| rowclass[b as usize]).count() as u64;
         rows_nonsub += nonsub;
-        let places: Vec<&Place> =
-            wit_ok.get(&a).map(|v| v.iter().filter(|p| ok_model(p.model)).collect()).unwrap_or_default();
-        if places.is_empty() {
+        let mut raw_places: Vec<Place> = Vec::new();
+        if let Some(v) = wit_ok.get(&a) {
+            for p in v {
+                if ok_model(p.model) {
+                    let w = slots[p.model].m.find(p.elem);
+                    if !raw_places.iter().any(|q| q.model == p.model && q.elem == w) {
+                        raw_places.push(Place { model: p.model, elem: w });
+                    }
+                }
+            }
+        }
+        if raw_places.is_empty() {
             c_none += 1;
             continue;
         }
         cert_sat += 1;
+        // Compute dirty rowclasses and missing superclasses per candidate place
+        let mut cand_info: Vec<(Place, Vec<u32>, usize)> = Vec::with_capacity(raw_places.len());
+        for p in raw_places {
+            let ts = en.sets.get(slots[p.model].m.elems[p.elem as usize].ty);
+            let miss = sup.iter().filter(|&&b| rowclass[b as usize] && ts.binary_search(&b).is_err()).count();
+            let d: Vec<u32> = ts
+                .iter()
+                .copied()
+                .filter(|&b| rowclass[b as usize] && sup.binary_search(&b).is_err())
+                .collect();
+            cand_info.push((p, d, miss));
+        }
+        // Compact: if any place has 0 missing superclasses and 0 dirty rowclasses, keep only 1 (preferring model 0)
+        let mut places: Vec<Place> = Vec::new();
+        if let Some((best_p, _, _)) = cand_info
+            .iter()
+            .filter(|(_, d, miss)| *miss == 0 && d.is_empty())
+            .min_by_key(|(p, _, _)| (p.model != 0, p.model, p.elem))
+        {
+            places.push(*best_p);
+        } else if cand_info.len() == 1 {
+            places.push(cand_info[0].0);
+        } else {
+            cand_info.sort_by_key(|(p, d, miss)| (*miss, d.len(), p.model != 0, p.model, p.elem));
+            places.push(cand_info[0].0);
+            let mut cur_d = cand_info[0].1.clone();
+            let mut used = vec![false; cand_info.len()];
+            used[0] = true;
+            while !cur_d.is_empty() {
+                let mut best_idx = None;
+                let mut best_rem = 0usize;
+                for (idx, (_, d, miss)) in cand_info.iter().enumerate() {
+                    if used[idx] || *miss > 0 {
+                        continue;
+                    }
+                    let rem = cur_d.iter().filter(|b| d.binary_search(b).is_err()).count();
+                    if rem > best_rem {
+                        best_rem = rem;
+                        best_idx = Some(idx);
+                    }
+                }
+                if let Some(idx) = best_idx {
+                    used[idx] = true;
+                    places.push(cand_info[idx].0);
+                    let d = &cand_info[idx].1;
+                    cur_d.retain(|b| d.binary_search(b).is_ok());
+                } else {
+                    break;
+                }
+            }
+        }
+        for p in &places {
+            compacted_wits[p.model].push((a, p.elem));
+        }
         // names left uncertified: in every witness
         let mut left: Option<Vec<u32>> = None;
         for p in &places {
@@ -1509,62 +1752,107 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
     let mut cert_nontype = 0u64;
     let mut type_missing = 0u64;
     let mut ind_dirty = 0u64;
-    for (iri, c) in &inds {
-        let g = gfind(&grp, *c);
-        let tgt = ind_types.get(&g).cloned().unwrap_or_default();
-        let mut tg = tgt.clone();
-        tg.sort_unstable();
-        tg.dedup();
-        let own: Vec<u32> = {
-            let mut v: Vec<u32> =
-                km.types.get(iri).map(|s| s.iter().filter_map(|x| ci(x)).collect()).unwrap_or_default();
-            v.extend_from_slice(&top);
-            v.sort_unstable();
-            v.dedup();
-            v
-        };
-        let nontype = nclasses - own.iter().filter(|&&b| rowclass[b as usize]).count() as u64;
-        rows_nontype += nontype;
-        if !ok_model(0) {
-            continue;
-        }
-        let mut left_ind: Option<Vec<u32>> = None;
-        for (k, s) in slots.iter().enumerate() {
-            if !ok_model(k) {
+    let mut nontype_sep_outside = 0u64;
+    let mut model_needed_for_ind = vec![false; slots.len()];
+    if !cfg.no_realize {
+        for (iri, c) in &inds {
+            let g = gfind(&grp, *c);
+            let tgt = ind_types.get(&g).cloned().unwrap_or_default();
+            let mut tg = tgt.clone();
+            tg.sort_unstable();
+            tg.dedup();
+            let own: Vec<u32> = {
+                let mut v: Vec<u32> =
+                    km.types.get(iri).map(|s| s.iter().filter_map(|x| ci(x)).collect()).unwrap_or_default();
+                v.extend_from_slice(&top);
+                v.sort_unstable();
+                v.dedup();
+                v
+            };
+            let nontype = nclasses - own.iter().filter(|&&b| rowclass[b as usize]).count() as u64;
+            rows_nontype += nontype;
+            if !ok_model(0) {
                 continue;
             }
-            let e = match s.m.nom_elem.get(c) {
-                Some(&e) => s.m.find(e),
-                None => continue,
-            };
-            let ts = en.sets.get(s.m.elems[e as usize].ty);
-            if k == 0 {
-                for &b in &own {
-                    if rowclass[b as usize] && ts.binary_search(&b).is_err() {
-                        type_missing += 1;
-                        if disagree.len() < 80 {
-                            disagree.push(format!(
-                                "individual {} lacks {} in model 0, which km lists as a type",
-                                iri,
-                                nf.cname_of(b)
-                            ));
+            let mut left_ind: Option<Vec<u32>> = None;
+            for (k, s) in slots.iter().enumerate() {
+                if !ok_model(k) {
+                    continue;
+                }
+                let e = match s.m.nom_elem.get(c) {
+                    Some(&e) => s.m.find(e),
+                    None => continue,
+                };
+                let ts = en.sets.get(s.m.elems[e as usize].ty);
+                if k == 0 {
+                    for &b in &own {
+                        if rowclass[b as usize] && ts.binary_search(&b).is_err() {
+                            type_missing += 1;
+                            if disagree.len() < 80 {
+                                disagree.push(format!(
+                                    "individual {} lacks {} in model 0, which km lists as a type",
+                                    iri,
+                                    nf.cname_of(b)
+                                ));
+                            }
                         }
                     }
                 }
+                let d: Vec<u32> =
+                    ts.iter().copied().filter(|&b| rowclass[b as usize] && own.binary_search(&b).is_err()).collect();
+                left_ind = Some(match left_ind {
+                    None => {
+                        model_needed_for_ind[k] = true;
+                        d
+                    }
+                    Some(l) => {
+                        let prev_len = l.len();
+                        let next_l: Vec<u32> = l.into_iter().filter(|b| d.binary_search(b).is_ok()).collect();
+                        if next_l.len() < prev_len {
+                            model_needed_for_ind[k] = true;
+                        }
+                        next_l
+                    }
+                });
             }
-            let d: Vec<u32> =
-                ts.iter().copied().filter(|&b| rowclass[b as usize] && own.binary_search(&b).is_err()).collect();
-            left_ind = Some(match left_ind {
-                None => d,
-                Some(l) => l.into_iter().filter(|b| d.binary_search(b).is_ok()).collect(),
-            });
+            let Some(left_ind) = left_ind else { continue };
+            let d = left_ind.len() as u64;
+            if d > 0 {
+                ind_dirty += 1;
+            }
+            cert_nontype += nontype - d;
         }
-        let Some(left_ind) = left_ind else { continue };
-        let d = left_ind.len() as u64;
-        if d > 0 {
-            ind_dirty += 1;
+    } else if ok_model(0) {
+        for (_iri, c) in &inds {
+            let mut in_all: Option<Vec<u32>> = None;
+            for (k, s) in slots.iter().enumerate() {
+                if !ok_model(k) {
+                    continue;
+                }
+                let e = match s.m.nom_elem.get(c) {
+                    Some(&e) => s.m.find(e),
+                    None => continue,
+                };
+                let ts = en.sets.get(s.m.elems[e as usize].ty);
+                let d: Vec<u32> = ts.iter().copied().filter(|&b| rowclass[b as usize]).collect();
+                in_all = Some(match in_all {
+                    None => d,
+                    Some(l) => l.into_iter().filter(|b| d.binary_search(b).is_ok()).collect(),
+                });
+            }
+            if let Some(in_all) = in_all {
+                nontype_sep_outside += nclasses - (in_all.len() as u64);
+            }
         }
-        cert_nontype += nontype - d;
+    }
+    for (k, s) in slots.iter_mut().enumerate() {
+        let mut cw = std::mem::take(&mut compacted_wits[k]);
+        if cw.is_empty() && (k == 0 || model_needed_for_ind[k]) {
+            if let Some(c0) = s.m.canonical().next() {
+                cw.push((None, c0));
+            }
+        }
+        s.wits = cw;
     }
 
     if let Some(h) = hook {
@@ -1581,9 +1869,10 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
     let (mut dstar_with, mut dstar_without) = (0usize, 0usize);
     let mut models_json = Vec::new();
     for (k, s) in slots.iter().enumerate() {
-        if k > 0 && (s.wits.is_empty() || s.m.canonical().next().is_none()) {
+        if k > 0 && (!ok_model(k) || s.wits.is_empty() || s.m.canonical().next().is_none()) {
             continue;
         }
+        let out_k = models_json.len();
         let mut roots: Vec<Id> = s.wits.iter().map(|w| w.1).collect();
         roots.extend(s.m.nom_elem.values().copied());
         if roots.is_empty() {
@@ -1592,9 +1881,9 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
         let keep = emit::reachable(&s.m, &roots);
         let mut written = None;
         if cfg.write {
-            let hp = format!("{}/model{}.hint", outdir, k);
+            let hp = format!("{}/model{}.hint", outdir, out_k);
             let dc = dvals.as_ref().map(|v| (cfg.data.as_ref().unwrap(), v));
-            match emit::write_hint_d(&en, &s.m, &keep, &hp, &format!("km-hints global model {}", k), dc) {
+            match emit::write_hint_d(&en, &s.m, &keep, &hp, &format!("km-hints global model {}", out_k), dc) {
                 Ok((w, dw, dwo)) => {
                     dstar_with += dw;
                     dstar_without += dwo;
@@ -1612,7 +1901,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
                             rows.push(("witness", iri.to_string(), i));
                         }
                     }
-                    let _ = emit::write_table(&rows, &format!("{}/model{}.wit", outdir, k));
+                    let _ = emit::write_table(&rows, &format!("{}/model{}.wit", outdir, out_k));
                     written = Some(w);
                 }
                 Err(e) => notes.push(format!("write failed: {}", e)),
@@ -1628,7 +1917,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
         };
         models_json.push(format!(
             "{{\"model\":{},\"elements\":{},\"alive\":{},\"edges\":{},\"type_entries\":{},\"bytes\":{},\"witnesses\":{},\"violations\":{},\"first_violation\":{}}}",
-            k,
+            out_k,
             el,
             alive,
             ed,
@@ -1639,12 +1928,24 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
             verified[k].1.as_deref().map(json_str).unwrap_or("null".into())
         ));
     }
+    if cfg.write {
+        let mut stale_k = models_json.len();
+        while std::path::Path::new(&format!("{}/model{}.hint", outdir, stale_k)).exists() {
+            let _ = std::fs::remove_file(format!("{}/model{}.hint", outdir, stale_k));
+            let _ = std::fs::remove_file(format!("{}/model{}.wit", outdir, stale_k));
+            stale_k += 1;
+        }
+    }
     let total = t0.elapsed().as_secs_f64();
     let st = &en.stats;
     let _ = write!(j, "{{\"nf\":{{\"concepts\":{},\"roles\":{},\"gci\":{},\"some\":{},\"all\":{},\"atleast\":{},\"atmost\":{},\"chain\":{},\"long_chains\":{},\"noms\":{},\"data_clauses\":{}}}",
         nf.n, nf.m, nf.gci.len(), nf.ex.len(), nf.all.len(), nf.ge.len(), nf.le.len(), nf.chains.len(), nf.long_chains, nf.noms.len(), nf.data_clauses);
-    let _ = write!(j, ",\"classes\":{},\"individuals\":{},\"km_unsat\":{},\"km_consistent\":{}", nclasses, inds.len(), unsat.len(),
-        match km.consistent { Some(true) => "true", Some(false) => "false", None => "null" });
+    let _ = write!(j, ",\"classes\":{},\"individuals\":{},\"km_unsat\":{},\"km_consistent\":{},\"no_realize\":{}", nclasses, inds.len(), unsat.len(),
+        match km.consistent { Some(true) => "true", Some(false) => "false", None => "null" }, cfg.no_realize);
+    if cfg.no_realize {
+        let _ = write!(j, ",\"nontype_separate\":{{\"individuals\":{},\"pairs\":{},\"outside\":{}}}",
+            inds.len(), (inds.len() as u64) * nclasses, nontype_sep_outside);
+    }
     let _ = write!(j, ",\"dstars\":{{\"with\":{},\"without\":{}}}", dstar_with, dstar_without);
     let _ = write!(j, ",\"base\":{{\"ok\":{},\"why\":{},\"secs\":{:.3}}}", base_ok, json_str(&base_why), base_secs);
     let _ = write!(j, ",\"models\":[{}]", models_json.join(","));

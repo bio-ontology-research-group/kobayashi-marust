@@ -27,12 +27,14 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCR = os.environ.get('H3_SCR', '/mnt/data1/leechuck/km-work/v170/scratch/h3')
-KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-8dc6c4a7')
+KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-f2eb0196')
+KM_EXP = os.environ.get('H3_KM_EXP', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-7061a272')
 REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h6-9873d697')
 PROD = os.environ.get('H3_PROD', os.path.join(SCR, 'target/release/km-hints'))
 THING = 'http://www.w3.org/2002/07/owl#Thing'
 NOTHING = 'http://www.w3.org/2002/07/owl#Nothing'
 TMP = os.path.join(SCR, 'tmp')
+MAX_KEEP_BYTES = 50 * 1024 * 1024
 
 
 def run(cmd, timeout, out=None, mem_kb=None):
@@ -100,6 +102,8 @@ def km_rows(km_path, idx_path):
         w = line.rstrip('\n').split('\t')
         if w[0] == 'SUB':
             sup.setdefault(w[1], set()).add(w[2])
+            if w[1] == THING:
+                top.add(w[2])
         elif w[0] == 'UNSAT':
             unsat.add(w[1])
         elif w[0] == 'TYPE':
@@ -145,16 +149,44 @@ def main():
             old_R = json.load(open(old_res_path))
         except Exception:
             old_R = {}
-    if (old_R.get('km', {}).get('rc') == 0 and os.path.exists(kl) and os.path.getsize(kl) > 0):
+    if (old_R.get('km', {}).get('rc') == 0 and os.path.exists(kl) and os.path.getsize(kl) > 0
+            and ('--no-realize' not in a or old_R.get('km', {}).get('realized') is False)):
         R['km'] = old_R['km']
-    else:
-        rc, s, m, _, err = run([KM, 'classify', '--lines', '--realize', '--top', src], 300, out=kl)
+        if 'km_realize' in old_R:
+            R['km_realize'] = old_R['km_realize']
+    elif '--no-realize' in a:
+        if 'km_realize' in old_R:
+            R['km_realize'] = old_R['km_realize']
+        elif old_R.get('status') == 'km-failed' and 'km' in old_R:
+            R['km_realize'] = old_R['km']
+        rc, s, m, _, err = run([KM, 'classify', '--lines', '--top', src], 60, out=kl)
         clean_km_tmp()
-        R['km'] = {'rc': rc, 'secs': s, 'rss_mb': m}
+        if rc != 0:
+            rc, s, m, _, err = run([KM, 'classify', '--lines', src], 300, out=kl)
+            clean_km_tmp()
+        R['km'] = {'rc': rc, 'secs': s, 'rss_mb': m, 'realized': False}
         if rc != 0:
             R['status'] = 'km-failed'
             R['km']['err'] = (err or '')[-200:]
             return finish(R, outdir, t0)
+    else:
+        rc, s, m, _, err = run([KM, 'classify', '--lines', '--realize', '--top', src], 300, out=kl)
+        clean_km_tmp()
+        if rc == 0:
+            R['km'] = {'rc': 0, 'secs': s, 'rss_mb': m, 'realized': True}
+        else:
+            R['km_realize'] = {'rc': rc, 'secs': s, 'rss_mb': m, 'err': (err or '')[-200:]}
+            rc2, s2, m2, _, err2 = run([KM, 'classify', '--lines', '--top', src], 60, out=kl)
+            clean_km_tmp()
+            if rc2 != 0:
+                rc2, s2, m2, _, err2 = run([KM, 'classify', '--lines', src], 300, out=kl)
+                clean_km_tmp()
+            R['km'] = {'rc': rc2, 'secs': s2, 'rss_mb': m2, 'realized': False, 'realize_timeout_secs': s}
+            if rc2 != 0:
+                R['status'] = 'km-failed'
+                R['km']['err'] = (err2 or '')[-200:]
+                return finish(R, outdir, t0)
+    realized = R['km'].get('realized', True) is not False
     cons = None
     for line in open(kl):
         if line.startswith('CONSISTENT'):
@@ -170,7 +202,7 @@ def main():
         o0 = R['route']
     else:
         # the witness route's translation, every class of the ontology requested
-        rc1, s1, m1, _, e1 = ref(['--witness-route', '--print-index'], src, 300, out=bi)
+        rc1, s1, m1, _, e1 = ref(['--witness-route', '--print-index'], src, 450, out=bi)
         rc2, s2, m2, _, e2 = (None, None, None, None, None)
         s0 = 0
         if rc1 == 0:
@@ -183,7 +215,7 @@ def main():
                 f.write('\n'.join(names + add) + '\n')
         if rc1 == 0:
             extra = ['--classes', cf] if os.path.exists(cf) else []
-            rc2, s2, m2, _, e2 = ref(['--witness-route'] + extra + ['--print-clauses'], src, 300, out=bc)
+            rc2, s2, m2, _, e2 = ref(['--witness-route'] + extra + ['--print-clauses'], src, 450, out=bc)
         R['dump'] = {'rc': rc2 if rc1 == 0 else rc1, 'secs': round((s1 or 0) + (s2 or 0), 2), 'rss_mb': max(m1 or 0, m2 or 0)}
         if rc1 != 0 or rc2 != 0:
             R['status'] = 'dump-failed'
@@ -203,9 +235,10 @@ def main():
             rc0, _, _, o0, _ = ref(['--witness-route', '--classes', cf, '--check'], src, 300)
         R['route'] = (o0 or '').strip()[-40:]
     loops = [] if 'self' not in (o0 or '') else ['--no-loops']
+    prod_flags = list(loops) + ([] if realized else ['--no-realize'])
     old_P = old_R.get('producer', {})
     old_models = old_P.get('models', [])
-    if ('--recheck' in a and old_R.get('status') == 'model-full' and old_models and
+    if ('--recheck' in a and old_R.get('status') in ('model-full', 'model-partial') and old_models and
             all(os.path.exists(os.path.join(outdir, f'model{m["model"]}.hint')) and
                 os.path.exists(os.path.join(outdir, f'model{m["model"]}.wit')) for m in old_models)):
         R['producer_run'] = old_R.get('producer_run', {'rc': 0, 'secs': 0.0, 'rss_mb': 0})
@@ -218,7 +251,7 @@ def main():
                     os.remove(os.path.join(outdir, fn))
                 except OSError:
                     pass
-        rc, s, m, out, err = run([PROD, 'produce'] + loops + ['--index', bi, '--clauses', bc, '--km', kl, '--out', outdir,
+        rc, s, m, out, err = run([PROD, 'produce'] + prod_flags + ['--index', bi, '--clauses', bc, '--km', kl, '--out', outdir,
                                   '--time', str(ptime)], ptime + 120, mem_kb=8000000)
         R['producer_run'] = {'rc': rc, 'secs': s, 'rss_mb': m}
         if rc != 0 or not out:
@@ -229,149 +262,262 @@ def main():
             else:
                 R['status'] = 'producer-failed'
             R['producer_run']['err'] = err_s
-            return finish(R, outdir, t0)
-        P = json.loads(out)
-        R['producer'] = P
+            P = {'base': {'ok': False, 'why': err_s, 'secs': 0.0}, 'models': [], 'rows': {'consistency': 1, 'sat': 0, 'nonsub': 0, 'nontype': 0}, 'unchecked': {'consistency': 0, 'sat': 0, 'nonsub': 0, 'nontype': 0}}
+            R['producer'] = P
+        else:
+            P = json.loads(out)
+            R['producer'] = P
+    sup, unsat, types, top, cname, cls, inds = km_rows(kl, bi)
+    clsset = set(cls)
+    nc = len(cls)
     tot = P['rows']
-    unc = P['unchecked']
-    R['rows_total'] = 1 + tot['sat'] + tot['nonsub'] + tot['nontype']
-    R['rows_unchecked'] = unc['consistency'] + unc['sat'] + unc['nonsub'] + unc['nontype']
-    R['status'] = ('model-full' if R['rows_unchecked'] == R['rows_total'] else
-                   'model-partial' if R['rows_unchecked'] else 'model-none')
+    unc_p = P['unchecked']
+    if tot['sat'] == 0 and cls:
+        # fallback if producer failed before computing row totals
+        sat_cnt = sum(1 for A in [THING] + cls if A not in unsat)
+        nsub_cnt = sum(nc - len([B for B in (sup.get(A, set()) | top | {A}) if B in clsset]) for A in [THING] + cls if A not in unsat)
+        nt_cnt = 0 if not realized else sum(nc - len([c for c in (types.get(x, set()) | top) if c in clsset]) for x in inds)
+        tot = {'consistency': 1, 'sat': sat_cnt, 'nonsub': nsub_cnt, 'nontype': nt_cnt}
+        P['rows'] = tot
+    R['rows_total'] = 1 + tot['sat'] + tot['nonsub'] + (tot['nontype'] if realized else 0)
+    R['rows_unchecked'] = unc_p['consistency'] + unc_p['sat'] + unc_p['nonsub'] + (unc_p['nontype'] if realized else 0)
+    if R.get('status') not in ('producer-memout', 'producer-failed'):
+        R['status'] = ('model-full' if R['rows_unchecked'] == R['rows_total'] else
+                       'model-partial' if R['rows_unchecked'] else 'model-none')
     # ---- the proved checker: the global witness row (H2), one call per model ----
     C = {'calls': 0, 'secs': 0.0, 'results': {}, 'certified': {'consistency': 0, 'sat': 0, 'nonsub': 0, 'nontype': 0}}
     R['checker'] = C
     if '--no-check' in a:
         C['skipped'] = 'not requested'
         return finish(R, outdir, t0)
-    if not P['base']['ok'] or not P['models'] or max(m['elements'] for m in P['models']) == 0:
-        C['skipped'] = 'no model'
-        return finish(R, outdir, t0)
-    # a guard on the check cost (elements x gcis); the 4bc900f0 check took 14 s at 1.4e8 on ore_ont_33, later binaries are faster
-    est = max(m['elements'] for m in P['models']) * max(1, P['nf']['gci'])
-    C['cost_estimate'] = est
-    if est > float(os.environ.get('H3_MAX_CHECK_COST', '1e13')):
-        C['skipped'] = 'over the checker budget (elements x gcis = %.1e)' % est
-        return finish(R, outdir, t0)
-    sup, unsat, types, top, cname, cls, inds = km_rows(kl, bi)
-    for p_tmp in (kl, bi, bc):
-        try:
-            if os.path.exists(p_tmp) and os.path.getsize(p_tmp) > 5 * 1024 * 1024:
-                os.remove(p_tmp)
-        except OSError:
-            pass
-    clsset = set(cls)
     extra = ['--classes', cf] if os.path.exists(cf) else []
     unc = {}      # class -> uncovered km-negative B's (None: all still uncovered)
     satok = set()
     indunc = {}
     disagree = []
-    k = 0
-    while os.path.exists(os.path.join(outdir, 'model%d.hint' % k)):
-        if P['models'][k]['violations'] != 0 or P['models'][k]['elements'] == 0:
-            k += 1
-            continue
-        hp, wp = os.path.join(outdir, 'model%d.hint' % k), os.path.join(outdir, 'model%d.wit' % k)
-        op = os.path.join(outdir, 'check%d.jsonl' % k)
-        for _ in range(3):
-            rc, sec, mem, out, err = ref(['--witness', wp, '--hint', hp, '--out', op] + extra, src, ctime)
-            # the host sometimes refuses new threads under load
-            if 'failed to create thread' not in (err or ''):
-                break
-            time.sleep(20)
-        C['calls'] += 1
-        C['secs'] += sec or 0
-        C['rss_mb'] = max(C.get('rss_mb', 0), mem or 0)
-        if rc == 124:
-            res = 'timeout'
-        elif rc != 0 and ('memory' in (err or '') or rc in (134, 137, 139)):
-            res = 'out of memory'
-        elif rc != 0:
-            res = 'rejected'
-            # the first failing element, for the report
-            rc3, _, _, out3, err3 = ref(['--witness', wp, '--hint', hp, '--explain'] + extra, src, ctime)
-            C.setdefault('reject_examples', []).append((k, ((err or '') + ' | ' + (err3 or '') + (out3 or '')).strip()[-400:]))
-        else:
-            res = 'certified'
-        C['results'][res] = C['results'].get(res, 0) + 1
-        if res == 'certified' and os.path.exists(op):
-            for line in open(op):
-                try:
-                    J = json.loads(line)
-                except Exception:
-                    continue
-                if J.get('consistent') is True:
-                    C['certified']['consistency'] = 1
-                if 'class' in J and 'error' not in J:
-                    A = J['class']
-                    if NOTHING not in J.get('nonsub_except', [NOTHING]) or NOTHING in J.get('nonsub', []):
-                        satok.add(A)
-                    sA = sup.get(A, set())
-                    if 'nonsub_except' in J:
-                        inside = set(J['nonsub_except'])
-                        bad = [B for B in sA if B in clsset and B not in inside]
-                        cur = {B for B in inside if B in clsset and B != A and B not in sA and B not in top}
-                        unc[A] = cur if unc.get(A) is None else (unc[A] & cur)
+
+    def absorb_check_jsonl(op_path):
+        for line in open(op_path):
+            try:
+                J = json.loads(line)
+            except Exception:
+                continue
+            if J.get('consistent') is True:
+                C['certified']['consistency'] = 1
+            if 'class' in J and 'error' not in J:
+                A = J['class']
+                if NOTHING not in J.get('nonsub_except', [NOTHING]) or NOTHING in J.get('nonsub', []):
+                    satok.add(A)
+                sA = sup.get(A, set())
+                if 'nonsub_except' in J:
+                    inside = set(J['nonsub_except'])
+                    bad = [B for B in sA if B in clsset and B not in inside]
+                    cur = {B for B in inside if B in clsset and B != A and B not in sA and B not in top}
+                    unc[A] = cur if unc.get(A) is None else (unc[A] & cur)
+                else:
+                    outside = set(J.get('nonsub', []))
+                    bad = [B for B in sA if B in outside]
+                    if unc.get(A) is None:
+                        unc[A] = {B for B in cls if B != A and B not in sA and B not in top and B not in outside}
                     else:
-                        outside = set(J.get('nonsub', []))
-                        bad = [B for B in sA if B in outside]
-                        if unc.get(A) is None:
-                            unc[A] = {B for B in cls if B != A and B not in sA and B not in top and B not in outside}
-                        else:
-                            unc[A] -= outside
-                    for B in bad[:3]:
-                        disagree.append('proved %s not under %s; km lists the subsumption' % (A, B))
-                elif 'class' in J:
-                    C.setdefault('table_errors', []).append(J)
-                if 'individual' in J:
-                    x = J['individual']
+                        unc[A] -= outside
+                for B in bad[:3]:
+                    disagree.append('proved %s not under %s; km lists the subsumption' % (A, B))
+            elif 'class' in J:
+                C.setdefault('table_errors', []).append(J)
+            if 'individual' in J:
+                x = J['individual']
+                tx = types.get(x, set()) if realized else set()
+                if 'nontype_except' in J:
+                    inside = set(J['nontype_except'])
+                    bad = [c for c in tx if c in clsset and c not in inside] if realized else []
+                    cur = {c for c in inside if c in clsset and c not in tx and c not in top}
+                else:
+                    outside = set(J.get('nontype', []))
+                    bad = [c for c in tx if c in outside] if realized else []
+                    cur = {c for c in cls if c not in tx and c not in top and c not in outside}
+                indunc[x] = cur if x not in indunc else (indunc[x] & cur)
+                for c in bad[:3]:
+                    disagree.append('proved %s not in %s; km lists the type' % (x, c))
+
+    def recompute_certified():
+        C['certified'] = {'consistency': C['certified'].get('consistency', 0), 'sat': 0, 'nonsub': 0, 'nontype': 0}
+        for A in [THING] + cls:
+            if A in unsat:
+                continue
+            if A in satok or (A == THING and C['certified']['consistency']):
+                C['certified']['sat'] += 1
+            if A in satok:
+                sA = sup.get(A, set())
+                nonsub = nc - len([B for B in (sA | top | {A}) if B in clsset])
+                C['certified']['nonsub'] += nonsub - len(unc.get(A) or ())
+        if realized:
+            for x in inds:
+                if x in indunc:
                     tx = types.get(x, set())
-                    if 'nontype_except' in J:
-                        inside = set(J['nontype_except'])
-                        bad = [c for c in tx if c in clsset and c not in inside]
-                        cur = {c for c in inside if c in clsset and c not in tx and c not in top}
-                    else:
-                        outside = set(J.get('nontype', []))
-                        bad = [c for c in tx if c in outside]
-                        cur = {c for c in cls if c not in tx and c not in top and c not in outside}
-                    indunc[x] = cur if x not in indunc else (indunc[x] & cur)
-                    for c in bad[:3]:
-                        disagree.append('proved %s not in %s; km lists the type' % (x, c))
+                    nontype = nc - len([c for c in (tx | top) if c in clsset])
+                    C['certified']['nontype'] += nontype - len(indunc[x])
+        else:
+            sep_out = 0
+            for x in inds:
+                if x in indunc:
+                    nontype = nc - len([c for c in top if c in clsset])
+                    sep_out += nontype - len(indunc[x])
+            R['nontype_separate'] = {
+                'individuals': len(inds),
+                'pairs': len(inds) * nc,
+                'certified_outside': sep_out,
+            }
+        C['certified_rows'] = sum(C['certified'].values())
+
+    if P.get('base', {}).get('ok') and P.get('models') and max(m['elements'] for m in P['models']) > 0:
+        est = max(m['elements'] for m in P['models']) * max(1, P.get('nf', {}).get('gci', 1))
+        C['cost_estimate'] = est
+        if est > float(os.environ.get('H3_MAX_CHECK_COST', '1e13')):
+            C['skipped'] = 'over the checker budget (elements x gcis = %.1e)' % est
+        else:
+            k = 0
+            while k < len(P['models']) and os.path.exists(os.path.join(outdir, 'model%d.hint' % k)):
+                if P['models'][k]['violations'] != 0 or P['models'][k]['elements'] == 0:
+                    k += 1
+                    continue
+                hp, wp = os.path.join(outdir, 'model%d.hint' % k), os.path.join(outdir, 'model%d.wit' % k)
+                op = os.path.join(outdir, 'check%d.jsonl' % k)
+                for _ in range(3):
+                    rc, sec, mem, out, err = ref(['--witness', wp, '--hint', hp, '--out', op] + extra, src, ctime)
+                    if 'failed to create thread' not in (err or ''):
+                        break
+                    time.sleep(20)
+                C['calls'] += 1
+                C['secs'] += sec or 0
+                C['rss_mb'] = max(C.get('rss_mb', 0), mem or 0)
+                if rc == 124:
+                    res = 'timeout'
+                elif rc != 0 and ('memory' in (err or '') or rc in (134, 137, 139)):
+                    res = 'out of memory'
+                elif rc != 0:
+                    res = 'rejected'
+                    rc3, _, _, out3, err3 = ref(['--witness', wp, '--hint', hp, '--explain'] + extra, src, ctime)
+                    C.setdefault('reject_examples', []).append((k, ((err or '') + ' | ' + (err3 or '') + (out3 or '')).strip()[-400:]))
+                else:
+                    res = 'certified'
+                C['results'][res] = C['results'].get(res, 0) + 1
+                if res == 'certified' and os.path.exists(op):
+                    absorb_check_jsonl(op)
+                try:
+                    if os.path.exists(hp) and os.path.getsize(hp) > MAX_KEEP_BYTES:
+                        os.remove(hp)
+                    if os.path.exists(op) and os.path.getsize(op) > MAX_KEEP_BYTES:
+                        os.remove(op)
+                except OSError:
+                    pass
+                k += 1
+    else:
+        C['skipped'] = 'no model'
+
+    recompute_certified()
+    search_cert_rows = C['certified_rows']
+
+    # Try `--export-model` fallback when search did not achieve `model-full`/`certified-full` (or `--try-export` requested)
+    if ((C['certified_rows'] < R['rows_total'] and R.get('status') != 'model-full') or '--try-export' in a) and '--no-export' not in a and os.path.exists(KM_EXP):
+        exp_dir = os.path.join(outdir, 'export_try')
+        os.makedirs(exp_dir, exist_ok=True)
+        exp_jsonl = os.path.join(exp_dir, 'export.jsonl')
+        exp_kl = os.path.join(exp_dir, 'km_exp.lines')
+        rc_e, s_e, m_e, _, err_e = run([KM_EXP, 'classify', '--lines', '--export-model', exp_jsonl, src], 180, out=exp_kl)
+        clean_km_tmp()
         try:
-            if os.path.exists(hp) and os.path.getsize(hp) > 50 * 1024 * 1024:
-                os.remove(hp)
-            if os.path.exists(op) and os.path.getsize(op) > 1 * 1024 * 1024:
-                os.remove(op)
+            if os.path.exists(exp_kl):
+                os.remove(exp_kl)
         except OSError:
             pass
-        k += 1
-    nc = len(cls)
-    for A in [THING] + cls:
-        if A in unsat:
-            continue
-        if A in satok or (A == THING and C['certified']['consistency']):
-            C['certified']['sat'] += 1
-        if A in satok:
-            sA = sup.get(A, set())
-            nonsub = nc - len([B for B in (sA | top | {A}) if B in clsset])
-            C['certified']['nonsub'] += nonsub - len(unc.get(A) or ())
-    for x in inds:
-        if x in indunc:
-            tx = types.get(x, set())
-            nontype = nc - len([c for c in (tx | top) if c in clsset])
-            C['certified']['nontype'] += nontype - len(indunc[x])
+        exp_info = {'km_rc': rc_e, 'km_secs': s_e, 'km_rss_mb': m_e}
+        if rc_e == 0 and os.path.exists(exp_jsonl) and os.path.getsize(exp_jsonl) > 0:
+            rc_fe, s_fe, m_fe, out_fe, err_fe = run(
+                [PROD, 'from-export'] + loops + ['--index', bi, '--clauses', bc, '--km', kl, '--export', exp_jsonl, '--out', exp_dir, '--time', str(min(ptime, 180))],
+                min(ptime, 180) + 60,
+                mem_kb=8000000,
+            )
+            exp_info['prod_rc'] = rc_fe
+            exp_info['prod_secs'] = s_fe
+            exp_info['prod_rss_mb'] = m_fe
+            if rc_fe == 0 and out_fe:
+                try:
+                    J_fe = json.loads(out_fe)
+                except Exception:
+                    J_fe = {}
+                exp_info['producer'] = J_fe
+                ehp = os.path.join(exp_dir, 'model0.hint')
+                ewp = os.path.join(exp_dir, 'model0.wit')
+                eop = os.path.join(exp_dir, 'check0.jsonl')
+                if J_fe.get('ok') and J_fe.get('violations', 1) == 0 and os.path.exists(ehp) and os.path.exists(ewp):
+                    for _ in range(3):
+                        rc_c, sec_c, mem_c, _, err_c = ref(['--witness', ewp, '--hint', ehp, '--out', eop] + extra, src, ctime)
+                        if 'failed to create thread' not in (err_c or ''):
+                            break
+                        time.sleep(20)
+                    exp_info['chk_rc'] = rc_c
+                    exp_info['chk_secs'] = sec_c
+                    exp_info['chk_rss_mb'] = mem_c
+                    if rc_c == 0 and os.path.exists(eop):
+                        absorb_check_jsonl(eop)
+                        recompute_certified()
+                        if C['certified_rows'] > search_cert_rows:
+                            exp_info['kept'] = True
+                            C.pop('skipped', None)
+                            C['calls'] += 1
+                            C['secs'] += sec_c or 0
+                            C['rss_mb'] = max(C.get('rss_mb', 0), mem_c or 0)
+                            C['results']['certified'] = C['results'].get('certified', 0) + 1
+                            next_k = len(P.get('models', []))
+                            dst_hp = os.path.join(outdir, f'model{next_k}.hint')
+                            dst_wp = os.path.join(outdir, f'model{next_k}.wit')
+                            dst_op = os.path.join(outdir, f'check{next_k}.jsonl')
+                            try:
+                                if os.path.getsize(ehp) <= MAX_KEEP_BYTES:
+                                    os.replace(ehp, dst_hp)
+                                os.replace(ewp, dst_wp)
+                                if os.path.getsize(eop) <= MAX_KEEP_BYTES:
+                                    os.replace(eop, dst_op)
+                            except OSError:
+                                pass
+                            P.setdefault('models', []).append({
+                                'model': next_k,
+                                'elements': J_fe.get('elements', 0),
+                                'alive': J_fe.get('elements', 0),
+                                'edges': J_fe.get('edges', 0),
+                                'type_entries': 0,
+                                'bytes': J_fe.get('bytes', 0),
+                                'witnesses': J_fe.get('witnesses', 0),
+                                'violations': 0,
+                                'first_violation': None,
+                                'source': 'export',
+                            })
+                            P.setdefault('base', {})['ok'] = True
+                            R['rows_unchecked'] = max(R['rows_unchecked'], C['certified_rows'])
+                            R['status'] = ('model-full' if R['rows_unchecked'] == R['rows_total'] else
+                                           'model-partial' if R['rows_unchecked'] else R['status'])
+                            R['export_used'] = True
+        subprocess.run(['rm', '-rf', exp_dir])
+        R['export_try'] = exp_info
+
     C['secs'] = round(C['secs'], 2)
     # owl:Thing's own non-subsumption rows (Thing is not a requested class of the route)
     C['thing_nonsub'] = 0 if THING in unsat else nc - len([B for B in top if B in clsset])
     C['disagreements'] = disagree[:30]
-    C['certified_rows'] = sum(C['certified'].values())
     R['status_checked'] = ('certified-full' if C['certified_rows'] == R['rows_total'] else
                            'certified-partial' if C['certified_rows'] else 'certified-none')
     return finish(R, outdir, t0)
 
 
 def finish(R, outdir, t0):
-    for fn in ('km.lines', 'base.idx', 'base.cl'):
+    p_kl = os.path.join(outdir, 'km.lines')
+    try:
+        if os.path.exists(p_kl) and os.path.getsize(p_kl) > MAX_KEEP_BYTES:
+            os.remove(p_kl)
+    except OSError:
+        pass
+    for fn in ('base.idx', 'base.cl'):
         p_tmp = os.path.join(outdir, fn)
         try:
             if os.path.exists(p_tmp) and os.path.getsize(p_tmp) > 5 * 1024 * 1024:
@@ -381,7 +527,7 @@ def finish(R, outdir, t0):
     R['wall'] = round(time.time() - t0, 1)
     with open(os.path.join(outdir, 'result.json'), 'w') as f:
         json.dump(R, f)
-    print(json.dumps({k: R.get(k) for k in ('input', 'status', 'status_checked', 'rows_total', 'rows_unchecked', 'wall')} | {'certified': (R.get('checker') or {}).get('certified_rows')}))
+    print(json.dumps({k: R.get(k) for k in ('input', 'status', 'status_checked', 'rows_total', 'rows_unchecked', 'wall')} | {'certified': (R.get('checker') or {}).get('certified_rows'), 'realized': R.get('km', {}).get('realized', True), 'export_used': R.get('export_used', False)}))
 
 
 if __name__ == '__main__':

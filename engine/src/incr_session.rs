@@ -702,7 +702,18 @@ fn verified_source_support_with(source: &Arc<Statements>, scanned: &Scan,
         || answer.get("consistent") != Some(&serde_json::Value::Bool(false))
         || answer.get("dropped").and_then(serde_json::Value::as_u64) != Some(0)
     { return None; }
-    InconsistencyCertificate::from_verified_inconsistent(source.clone(), Some(proposal))
+    let has_unsat_field = answer.get("unsatisfiable").is_some();
+    let cert = InconsistencyCertificate::from_verified_inconsistent(source.clone(), Some(proposal))?;
+    if has_unsat_field {
+        INCONSISTENCY_SUPPORT_HAS_UNSAT.with(|flag| flag.set(true));
+    } else {
+        INCONSISTENCY_SUPPORT_HAS_UNSAT.with(|flag| flag.set(false));
+    }
+    Some(cert)
+}
+
+thread_local! {
+    static INCONSISTENCY_SUPPORT_HAS_UNSAT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 struct Revision {
@@ -1725,6 +1736,14 @@ impl Session {
                 if let Some(certificate) = early_object_support_with(new, scanned, &mut verify_support) {
                     let old_total = self.memo[bi].statements.as_ref().expect("selected statements").total;
                     let mut tax = Taxonomy::empty(); tax.consistent = false;
+                    if INCONSISTENCY_SUPPORT_HAS_UNSAT.with(|flag| flag.replace(false)) {
+                        if let Ok(classes) = crate::orchestrate::inconsistent_unsatisfiable_classes_from_text(&new.text) {
+                            for c in classes {
+                                let id = tax.id(&c);
+                                tax.unsat.insert(id);
+                            }
+                        }
+                    }
                     let mut receipt = Receipt { strategy: "verified_inconsistency_support",
                         base_revision_statements: old_total, ..Default::default() };
                     receipt.apply_delta(delta);
@@ -1906,6 +1925,14 @@ impl Session {
             if delta.added_axioms != 0 {
                 if let Some(certificate) = early_object_support_with(new, scanned, &mut verify_support) {
                     let mut tax = Taxonomy::empty(); tax.consistent = false;
+                    if INCONSISTENCY_SUPPORT_HAS_UNSAT.with(|flag| flag.replace(false)) {
+                        if let Ok(classes) = crate::orchestrate::inconsistent_unsatisfiable_classes_from_text(&new.text) {
+                            for c in classes {
+                                let id = tax.id(&c);
+                                tax.unsat.insert(id);
+                            }
+                        }
+                    }
                     let mut receipt = Receipt { strategy: "verified_inconsistency_support",
                         base_revision_statements: old.total, ..Default::default() };
                     receipt.apply_delta(delta);
