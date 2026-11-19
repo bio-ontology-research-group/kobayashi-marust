@@ -114,10 +114,15 @@ pub fn write_hint_d(
                 writeln!(w, "{}", l)?;
             }
         }
-        let mut cache: FxMap<u32, Option<Vec<crate::data::Entry>>> = FxMap::default();
+        let mut cache: FxMap<Vec<u32>, Option<Vec<crate::data::Entry>>> = FxMap::default();
         for (i, &x) in keep.iter().enumerate() {
             let t = m.elems[x as usize].ty;
-            let st = cache.entry(t).or_insert_with(|| crate::data::star(d, vals, &en.sets.get(t)));
+            let active = en.filter_active_data(&en.sets.get(t));
+            let st = if active.is_empty() {
+                &Some(Vec::new())
+            } else {
+                cache.entry(active).or_insert_with_key(|act| crate::data::star(d, vals, act))
+            };
             match st {
                 Some(ents) => {
                     with += 1;

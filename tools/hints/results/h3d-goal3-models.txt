@@ -1,0 +1,3 @@
+Goal 3 (partial 73 + none 27): 100 inputs
+  pool1m   (43 inputs, export_used=13): {('model-full', 'certified-full'): 33, ('model-partial', 'certified-partial'): 10}
+  poolrest (57 inputs, export_used=0): {('model-partial', 'certified-partial'): 23, ('model-partial', 'certified-none'): 9, ('model-full', 'certified-none'): 11, ('model-full', 'certified-full'): 8, ('model-full', 'certified-partial'): 4, ('model-none', 'certified-none'): 2}
