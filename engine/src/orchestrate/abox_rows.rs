@@ -1159,13 +1159,50 @@ pub(super) fn from_exported_model(
     // derive new role edges between named individuals during clause saturation,
     // and every named-individual edge in `edge_set` is already in `proved_edge_set`,
     // `proved_edge_set` and `edge_set` are already final on `0..n_elems`.
+    let has_elided_func_hazard = raw.abox_elided && {
+        if text.contains("ObjectMaxCardinality(")
+            || text.contains("ObjectExactCardinality(")
+            || text.contains("ObjectMinCardinality(")
+        {
+            true
+        } else if func_obj_roles.is_empty() && inv_func_obj_roles.is_empty() {
+            false
+        } else if n_elems <= 256 {
+            true
+        } else {
+            let mut seen_src: HashMap<(usize, &str), usize> = HashMap::new();
+            let mut seen_dst: HashMap<(&str, usize), usize> = HashMap::new();
+            let mut collision = false;
+            for (u, r, v) in &edge_set {
+                if *u >= n_elems || *v >= n_elems {
+                    continue;
+                }
+                if func_obj_roles.contains(r.as_str()) {
+                    if let Some(&prev_v) = seen_src.get(&(*u, r.as_str())) {
+                        if prev_v != *v {
+                            collision = true;
+                            break;
+                        }
+                    } else {
+                        seen_src.insert((*u, r.as_str()), *v);
+                    }
+                }
+                if inv_func_obj_roles.contains(r.as_str()) {
+                    if let Some(&prev_u) = seen_dst.get(&(r.as_str(), *v)) {
+                        if prev_u != *u {
+                            collision = true;
+                            break;
+                        }
+                    } else {
+                        seen_dst.insert((r.as_str(), *v), *u);
+                    }
+                }
+            }
+            collision
+        }
+    };
     if !different_requested
-        && (!raw.abox_elided
-            || (func_obj_roles.is_empty()
-                && inv_func_obj_roles.is_empty()
-                && !text.contains("ObjectMaxCardinality(")
-                && !text.contains("ObjectExactCardinality(")
-                && !text.contains("ObjectMinCardinality(")))
+        && !has_elided_func_hazard
         && !text.contains("ObjectHasValue(")
         && !text.contains("ObjectOneOf(")
         && !text.contains("ObjectHasSelf(")

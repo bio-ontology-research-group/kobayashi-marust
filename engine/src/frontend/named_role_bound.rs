@@ -598,7 +598,9 @@ impl NamedRoleBound {
                         }
                     }
                     if !is_data && neg && *n >= 2 {
-                        *forest_exact_for_rules = false;
+                        if *n >= 3 {
+                            *forest_exact_for_rules = false;
+                        }
                         match r {
                             Role::Name(rn) => {
                                 card_functional.insert(rn.clone());
@@ -641,7 +643,9 @@ impl NamedRoleBound {
                         *data_gen = true;
                     }
                     if !is_data && pos && *n >= 1 {
-                        *forest_exact_for_rules = false;
+                        if *n >= 2 {
+                            *forest_exact_for_rules = false;
+                        }
                         match r {
                             Role::Name(rn) => {
                                 card_functional.insert(rn.clone());
@@ -963,6 +967,19 @@ impl NamedRoleBound {
                             && super_roles.get(&(t.clone(), true)).is_some_and(|s| s.contains(&(rj.clone(), false))))
                             || (super_roles.get(&(t.clone(), true)).is_some_and(|s| s.contains(&(ri.clone(), false)))
                                 && super_roles.get(&(t.clone(), false)).is_some_and(|s| s.contains(&(rj.clone(), false))))
+                    }) || functional.iter().chain(inv_functional.iter()).any(|f| {
+                        (super_roles
+                            .get(&(ri.clone(), false))
+                            .is_some_and(|s| s.contains(&(f.clone(), false)))
+                            && super_roles
+                                .get(&(rj.clone(), true))
+                                .is_some_and(|s| s.contains(&(f.clone(), false))))
+                            || (super_roles
+                                .get(&(ri.clone(), false))
+                                .is_some_and(|s| s.contains(&(f.clone(), true)))
+                                && super_roles
+                                    .get(&(rj.clone(), true))
+                                    .is_some_and(|s| s.contains(&(f.clone(), true))))
                     }) {
                         can_fold = true;
                         break;
@@ -1428,12 +1445,11 @@ impl NamedRoleBound {
             for f in &functional {
                 if universal_roles.contains(f)
                     || w_dst.get(f).is_some_and(|s| !s.is_empty())
-                    || inv_existential_roles.contains(f)
                     || (pos_existential_roles.contains(f)
                         && (w_src.get(f).is_some_and(|s| !s.is_empty())
-                            || edges.get(f).is_some_and(|s| !s.is_empty())
-                            || self_roles.contains(f)
-                            || chains.iter().any(|(_, sup)| sup == f)))
+                            || edges.get(f).is_some_and(|s| !s.is_empty())))
+                    || (inv_existential_roles.contains(f)
+                        && w_src.get(f).is_some_and(|s| !s.is_empty()))
                 {
                     if !all_named_merged {
                         all_named_merged = true;
@@ -1487,8 +1503,11 @@ impl NamedRoleBound {
             for f in &inv_functional {
                 if universal_roles.contains(f)
                     || w_src.get(f).is_some_and(|s| !s.is_empty())
-                    || pos_existential_roles.contains(f)
-                    || inv_existential_roles.contains(f)
+                    || (inv_existential_roles.contains(f)
+                        && (w_dst.get(f).is_some_and(|s| !s.is_empty())
+                            || edges.get(f).is_some_and(|s| !s.is_empty())))
+                    || (pos_existential_roles.contains(f)
+                        && w_dst.get(f).is_some_and(|s| !s.is_empty()))
                 {
                     if !all_named_merged {
                         all_named_merged = true;
