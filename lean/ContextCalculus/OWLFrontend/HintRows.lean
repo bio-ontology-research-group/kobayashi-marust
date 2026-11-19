@@ -265,64 +265,78 @@ theorem mapOfR_get {α β : Type} [DecidableEq α] [Hashable α] :
     · have h1 : (e.1 == p) = false := beq_false_of_ne h
       simp [h1]
 
-/-- Insert `(i, w)` for every concept `i` of `l`. -/
-def insTy {N k : Nat} (w : Fin k) : List (Fin N) → Std.HashMap (Fin N) (Fin k) →
-    Std.HashMap (Fin N) (Fin k)
-  | [], m => m
-  | x :: l, m => (insTy w l m).insert x w
+/-- Insert `(x, w)` for every concept `x` of `l` that belongs to `inom`
+(tail-recursive `foldl` so `m` is updated in place without copying the
+hash table on every element). -/
+def insTyInom {N k : Nat} (inom : Std.HashSet (Fin N)) (w : Fin k)
+    (m : Std.HashMap (Fin N) (Fin k)) (l : List (Fin N)) : Std.HashMap (Fin N) (Fin k) :=
+  l.foldl (fun m x => if inom.contains x then m.insert x w else m) m
 
-theorem insTy_get {N k : Nat} (w : Fin k) (i : Fin N) :
+theorem insTyInom_get {N k : Nat} (inom : Std.HashSet (Fin N)) (w : Fin k) (i : Fin N)
+    (hi : inom.contains i = true) :
     ∀ (l : List (Fin N)) (m : Std.HashMap (Fin N) (Fin k)),
-      (insTy w l m)[i]? = if i ∈ l then some w else m[i]?
-  | [], m => by simp [insTy]
+      (insTyInom inom w m l)[i]? = if i ∈ l then some w else m[i]?
+  | [], m => by simp [insTyInom]
   | x :: l, m => by
-    simp only [insTy, Std.HashMap.getElem?_insert, insTy_get w i l m]
+    rw [insTyInom, List.foldl_cons, ← insTyInom, insTyInom_get inom w i hi l]
     by_cases h : x = i
-    · subst h; simp
-    · have hb : (x == i) = false := beq_false_of_ne h
-      simp [hb, Ne.symm h]
+    · subst h
+      simp [hi, Std.HashMap.getElem?_insert]
+    · by_cases hx : inom.contains x = true
+      · simp [hx, Std.HashMap.getElem?_insert, h, Ne.symm h]
+      · simp [hx, Ne.symm h]
 
-theorem foldr_insTy_get {N k : Nat} (ty : Fin k → Finset (Fin N)) (i : Fin N) :
+theorem foldr_insTyInom_get {N k : Nat} (inom : Std.HashSet (Fin N))
+    (ty : Fin k → Finset (Fin N)) (i : Fin N) (hi : inom.contains i = true) :
     ∀ (ws : List (Fin k)),
-      (ws.foldr (fun w m => insTy w (SRI.Proc.toL (ty w)) m) ∅)[i]? =
+      (ws.foldr (fun w m => insTyInom inom w m (SRI.Proc.toL (ty w))) ∅)[i]? =
         ws.find? fun w => decide (i ∈ ty w)
   | [] => by simp
   | w :: ws => by
-    simp only [List.foldr_cons, insTy_get, SRI.Proc.mem_toL, List.find?_cons]
+    simp only [List.foldr_cons, insTyInom_get inom w i hi, SRI.Proc.mem_toL, List.find?_cons]
     by_cases h : i ∈ ty w
     · simp [h]
-    · simp [h, foldr_insTy_get ty i ws]
+    · simp [h, foldr_insTyInom_get inom ty i hi ws]
 
-/-- First core element holding each concept index. -/
+/-- First core element holding each nominal concept index in `W.inds`. -/
 def ownerMap (W : WTab) : Std.HashMap (Fin W.N) (Fin W.k) :=
-  (List.finRange W.k).reverse.foldl (fun m w => insTy w (SRI.Proc.toL (W.ty w)) m) ∅
+  if W.inds.isEmpty then ∅
+  else
+    let inom := Std.HashSet.ofList (W.inds.map Prod.snd)
+    (List.finRange W.k).reverse.foldl
+      (fun m w => insTyInom inom w m (SRI.Proc.toL (W.ty w))) ∅
 
-theorem ownerMap_get (W : WTab) (i : Fin W.N) :
+theorem ownerMap_get (W : WTab) {a : IRI} {i : Fin W.N} (h : (a, i) ∈ W.inds) :
     (ownerMap W)[i]? = (List.finRange W.k).find? fun w => decide (i ∈ W.ty w) := by
   unfold ownerMap
-  rw [← List.foldr_eq_foldl_reverse]
-  exact foldr_insTy_get W.ty i (List.finRange W.k)
+  have hne : W.inds.isEmpty = false := List.isEmpty_eq_false_iff.2 (List.ne_nil_of_mem h)
+  rw [if_neg (by simp [hne]), ← List.foldr_eq_foldl_reverse]
+  refine foldr_insTyInom_get _ W.ty i ?_ (List.finRange W.k)
+  rw [Std.HashSet.contains_ofList]
+  exact List.elem_eq_true_of_mem (List.mem_map.2 ⟨(a, i), h, rfl⟩)
 
 def ckSuccBF (W : WTab)
     (pm rm : Std.HashMap ObjProp (SRI.RoleT (Fin W.M)))
     (sc : Stack (Fin W.M) → List (Option (SROIQ.Proc.RT W.M) × Stack (Fin W.M)))
+    (br : Fin W.k → SROIQ.Proc.RT W.M → List (Fin W.k))
     (fuel : Nat) (p : ObjProp) (w : Fin W.k) : List (Fin W.k) × Bool :=
   if W.chainR then
     match pm[p]? with
-    | some R => ((W.adj w).filterMap fun e => if R ∈ e.2 then some e.1 else none, true)
+    | some R => (br w R, true)
     | none =>
       match rm[p]? with
-      | some R => let r := succOf sc W.adj fuel R w; (r.1, r.2 && W.flat)
+      | some R => let r := SROIQ.Proc.succOfR sc br fuel R w; (r.1, r.2 && W.flat)
       | none => ([], false)
   else ([], false)
 
 def ckSuccF (W : WTab)
     (pm rm : Std.HashMap ObjProp (SRI.RoleT (Fin W.M)))
     (sc : Stack (Fin W.M) → List (Option (SROIQ.Proc.RT W.M) × Stack (Fin W.M)))
+    (br : Fin W.k → SROIQ.Proc.RT W.M → List (Fin W.k))
     (fuel : Nat) : ObjProp → Fin W.k → List (Fin W.k) × Bool
   | .top, _ => (List.finRange W.k, true)
   | .bot, _ => ([], true)
-  | p, w => ckSuccBF W pm rm sc fuel p w
+  | p, w => ckSuccBF W pm rm sc br fuel p w
 
 def ckClsF (W : WTab) (cm : Std.HashMap IRI (Fin W.N)) (A : IRI) (w : Fin W.k) : Option Bool :=
   (cm[A]?).map fun i => decide (i ∈ W.ty w)
@@ -337,12 +351,13 @@ def ckOfF (W : WTab) (fuel : Nat) : CK W.k :=
   let hm := Std.HashMap.ofList (SROIQ.Proc.mkTab W.ob)
   let le := SROIQ.Proc.leH hm
   let tb := SROIQ.Proc.movesTab rs le
+  let br := (SROIQ.Proc.byRoleS W.adj).f
   let pm := mapOfR W.props
   let rm := mapOfR W.rprops
   let cm := mapOfR W.cls
   let im := mapOfR W.inds
   let om := ownerMap W
-  { succ := ckSuccF W pm rm (SROIQ.Proc.succsM tb rs le) fuel
+  { succ := ckSuccF W pm rm (SROIQ.Proc.succsM tb rs le) br fuel
     cls := ckClsF W cm
     ind := ckIndF W im om
     surj := W.chainR && W.flat }
@@ -352,21 +367,28 @@ def ckOfF (W : WTab) (fuel : Nat) : CK W.k :=
   simp only [ckOf, ckOfF, CK.mk.injEq, and_true]
   refine ⟨?_, ?_, ?_⟩
   · funext p w
-    cases p <;> simp [ckSucc, ckSuccF, ckSuccB, ckSuccBF, mapOfR_get, SROIQ.Proc.succsT_eq_M]
+    cases p <;> simp [ckSucc, ckSuccF, ckSuccB, ckSuccBF, mapOfR_get, SROIQ.Proc.succsT_eq_M,
+      SROIQ.Proc.byRoleS, SROIQ.Proc.succOfR_byRole, SROIQ.Proc.byRole]
   · funext A w
     simp [ckCls, ckClsF, mapOfR_get]
   · funext a
-    simp [ckInd, ckIndF, mapOfR_get, ownerMap_get]
+    unfold ckInd ckIndF
+    rw [mapOfR_get]
+    cases h : findR W.inds a with
+    | none => rfl
+    | some i =>
+      simp only [Option.bind_some]
+      exact (ownerMap_get W (findR_mem h)).symm
 
 /-- `K` with the successors of the properties `ps` computed once. -/
 def ckMemo {k : Nat} (K : CK k) (ps : List ObjProp) : CK k :=
-  let arr := ps.toArray.map fun p => (p, Array.ofFn fun w => Thunk.mk fun _ => K.succ p w)
+  let arr := ps.toArray.map fun p => (p, Thunk.mk fun _ => Array.ofFn fun w => Thunk.mk fun _ => K.succ p w)
   let idx : Std.HashMap ObjProp Nat := ps.zipIdx.foldl (fun mp e => mp.insertIfNew e.1 e.2) {}
   { K with succ := fun p w =>
       match idx[p]? with
       | some i =>
         match arr[i]? with
-        | some e => if e.1 == p then ((e.2[w.val]?).map Thunk.get).getD (K.succ p w) else K.succ p w
+        | some e => if e.1 == p then ((e.2.get[w.val]?).map Thunk.get).getD (K.succ p w) else K.succ p w
         | none => K.succ p w
       | none => K.succ p w }
 
@@ -383,10 +405,9 @@ theorem ckMemo_eq {k : Nat} (K : CK k) (ps : List ObjProp) : ckMemo K ps = K := 
       · rw [Array.getElem?_map] at he
         obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.1 he
         rw [beq_iff_eq] at hp
-        dsimp only at hp ⊢
+        dsimp only [Thunk.get, Thunk.mk] at hp ⊢
         subst hp
-        simp
-        rfl
+        simp [Thunk.get]
       · rfl
     · rfl
   · rfl

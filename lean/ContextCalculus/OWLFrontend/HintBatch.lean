@@ -100,6 +100,36 @@ def sroiqHPartsB (T : SRIQDKBTranslation) (L : List IRI)
     (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp)) (owlE sp) false
     (hs.map fun h => h.toHintS _ _)
 
+def sroiqHPartsBF (T : SRIQDKBTranslation) (L : List IRI)
+    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
+    (hs : List RawHint) : List Bool :=
+  let spS := specS T.tab
+  let sp := spS.f
+  let as := allBases sp
+  let cs := cellsOf as
+  let szS := cellSizeS as
+  let sz := szS.f
+  let eS := owlES sp
+  let oe := eS.f
+  let vS := vtcOwlS sp
+  let D := encC T L E
+  let bnd := ContextCalculus.SRIQD.dbnd (SRIQN.dbase (SRIQN.Proc.encTransDN D)) *
+    (ContextCalculus.SRIQD.allG (allFrees sp).length).length
+  let spT := SRIQN.HF.splitTabV cs sz bnd vS.f
+  SRIQN.HF.hintPartsPBV D cs sz
+    (SRIQN.HF.lookSplitHS spT (ContextCalculus.SRIQD.splitCell cs sz bnd oe)).f vS.f false
+    (hs.map fun h => h.toHintS _ _)
+
+@[csimp] theorem sroiqHPartsB_eq_F : @sroiqHPartsB = @sroiqHPartsBF := by
+  funext T L E hs
+  unfold sroiqHPartsBF sroiqHPartsB sroiqBound
+  dsimp only
+  rw [specS_f]
+  simp only [cellSizeS_f, owlES_f,
+    SRIQN.HF.hintPartsPBV_eq _ _ _ _ (owlE (spec T.tab)) _ (vtcOwlS_f (spec T.tab)),
+    SRIQN.HF.splitTabV_eq _ _ _ (owlE (spec T.tab)) _ (vtcOwlS_f (spec T.tab)),
+    SRIQN.HF.lookSplitHS_eq]
+
 theorem sroiqHPartsB_eq (T : SRIQDKBTranslation) (L : List IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) (hs : List RawHint) :
     sroiqHPartsB T L E hs = hs.map (sroiqHParts T L E) := by
@@ -118,6 +148,37 @@ def sroiqSHPartsB (T : SRIQDKBTranslation) (L : List IRI)
   SRIQN.HF.hintPartsPB D cs (cellSize as)
     (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqSBound T L E SC) (owlE sp)) (owlE sp) true
     (hs.map fun h => h.toHintS _ _)
+
+def sroiqSHPartsBF (T : SRIQDKBTranslation) (L : List IRI)
+    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
+    (SC : List (SRIQN.SClause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
+    (hs : List RawHint) : List Bool :=
+  let spS := specS T.tab
+  let sp := spS.f
+  let as := allBases sp
+  let cs := cellsOf as
+  let szS := cellSizeS as
+  let sz := szS.f
+  let eS := owlES sp
+  let oe := eS.f
+  let vS := vtcOwlS sp
+  let D := encS T L E SC
+  let bnd := ContextCalculus.SRIQD.dbnd (SRIQN.dbase (SRIQN.Proc.encTransDN D)) *
+    (ContextCalculus.SRIQD.allG (allFrees sp).length).length
+  let spT := SRIQN.HF.splitTabV cs sz bnd vS.f
+  SRIQN.HF.hintPartsPBV D cs sz
+    (SRIQN.HF.lookSplitHS spT (ContextCalculus.SRIQD.splitCell cs sz bnd oe)).f vS.f true
+    (hs.map fun h => h.toHintS _ _)
+
+@[csimp] theorem sroiqSHPartsB_eq_F : @sroiqSHPartsB = @sroiqSHPartsBF := by
+  funext T L E SC hs
+  unfold sroiqSHPartsBF sroiqSHPartsB sroiqSBound
+  dsimp only
+  rw [specS_f]
+  simp only [cellSizeS_f, owlES_f,
+    SRIQN.HF.hintPartsPBV_eq _ _ _ _ (owlE (spec T.tab)) _ (vtcOwlS_f (spec T.tab)),
+    SRIQN.HF.splitTabV_eq _ _ _ (owlE (spec T.tab)) _ (vtcOwlS_f (spec T.tab)),
+    SRIQN.HF.lookSplitHS_eq]
 
 theorem sroiqSHPartsB_eq (T : SRIQDKBTranslation) (L : List IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))

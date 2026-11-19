@@ -220,6 +220,90 @@ theorem pushAll_mono : ∀ (l : List (PSt m k)) (acc : Std.HashSet (PSt m k) × 
     · exact h
     · exact Std.HashSet.mem_insert.2 (Or.inr h)
 
+theorem pushAll_sub_snd : ∀ (l : List (PSt m k)) (acc : Std.HashSet (PSt m k) × List (PSt m k))
+    (u : PSt m k), u ∈ acc.2 → u ∈ (pushAll l acc).2
+  | [], _, _, h => h
+  | z :: l, acc, u, h => by
+    unfold pushAll
+    rw [List.foldl_cons]
+    refine pushAll_sub_snd l _ u ?_
+    split_ifs
+    · exact h
+    · exact List.mem_cons_of_mem _ h
+
+theorem pushAll_mem_or : ∀ (l : List (PSt m k)) (acc : Std.HashSet (PSt m k) × List (PSt m k))
+    (x : PSt m k), x ∈ (pushAll l acc).1 → x ∈ acc.1 ∨ x ∈ (pushAll l acc).2
+  | [], _, _, h => Or.inl h
+  | z :: l, acc, x, h => by
+    unfold pushAll at h ⊢
+    rw [List.foldl_cons] at h ⊢
+    split_ifs at h ⊢
+    · exact pushAll_mem_or l acc x h
+    · rcases pushAll_mem_or l (acc.1.insert z, z :: acc.2) x h with h1 | h2
+      · rcases Std.HashSet.mem_insert.1 h1 with hxz | h1
+        · rw [← beq_iff_eq.1 hxz]
+          exact Or.inr (pushAll_sub_snd l (acc.1.insert z, z :: acc.2) z List.mem_cons_self)
+        · exact Or.inl h1
+      · exact Or.inr h2
+
+theorem pushAll_mem_fst : ∀ (l : List (PSt m k)) (acc : Std.HashSet (PSt m k) × List (PSt m k))
+    (y : PSt m k), y ∈ l → y ∈ (pushAll l acc).1
+  | [], _, _, h => by cases h
+  | z :: l, acc, y, h => by
+    unfold pushAll
+    rw [List.foldl_cons]
+    rcases List.mem_cons.1 h with rfl | h
+    · refine pushAll_mono l _ y ?_
+      split_ifs with hc
+      · exact Std.HashSet.contains_iff_mem.1 hc
+      · exact Std.HashSet.mem_insert_self
+    · exact pushAll_mem_fst l _ y h
+
+variable (sc adj) in
+theorem bfsP_closed_aux : ∀ (fuel : Nat) (seen : Std.HashSet (PSt m k)) (fr : List (PSt m k)),
+    (∀ x ∈ seen, x ∈ fr ∨ ∀ y ∈ pstep sc adj x, y ∈ seen) →
+    (bfsP sc adj fuel seen fr).2 = true →
+    closedP sc adj (bfsP sc adj fuel seen fr).1 = true
+  | 0, seen, fr, hinv, h2 => by
+    simp only [bfsP, List.isEmpty_iff] at h2 ⊢
+    subst h2
+    unfold closedP
+    refine List.all_eq_true.2 fun x hx => List.all_eq_true.2 fun y hy => Std.HashSet.contains_iff_mem.2 ?_
+    exact (hinv x (Std.HashSet.mem_toList.1 hx)).resolve_left List.not_mem_nil y hy
+  | _ + 1, seen, [], hinv, _ => by
+    simp only [bfsP]
+    unfold closedP
+    refine List.all_eq_true.2 fun x hx => List.all_eq_true.2 fun y hy => Std.HashSet.contains_iff_mem.2 ?_
+    exact (hinv x (Std.HashSet.mem_toList.1 hx)).resolve_left List.not_mem_nil y hy
+  | fuel + 1, seen, z :: rest, hinv, h2 => by
+    simp only [bfsP] at h2 ⊢
+    refine bfsP_closed_aux fuel _ _ (fun x hx => ?_) h2
+    rcases pushAll_mem_or (pstep sc adj z) (seen, rest) x hx with hs | hfr
+    · rcases hinv x hs with hzf | hp
+      · rcases List.mem_cons.1 hzf with rfl | hr
+        · exact Or.inr fun y hy => pushAll_mem_fst (pstep sc adj x) (seen, rest) y hy
+        · exact Or.inl (pushAll_sub_snd (pstep sc adj z) (seen, rest) x hr)
+      · exact Or.inr fun y hy => pushAll_mono (pstep sc adj z) (seen, rest) y (hp y hy)
+    · exact Or.inl hfr
+
+variable (sc adj) in
+theorem reachP_eq_bfsP (fuel : Nat) (R : RT m) (x : Fin k) :
+    let s0 : PSt m k := (x, [(R, false)])
+    reachP sc adj fuel R x = bfsP sc adj fuel (({} : Std.HashSet (PSt m k)).insert s0) [s0] := by
+  dsimp only
+  unfold reachP
+  set s0 : PSt m k := (x, [(R, false)])
+  set r := bfsP sc adj fuel (({} : Std.HashSet (PSt m k)).insert s0) [s0]
+  refine Prod.ext rfl ?_
+  dsimp only
+  cases hr : r.2
+  · simp
+  · rw [Bool.true_and]
+    refine bfsP_closed_aux sc adj fuel _ _ (fun u hu => Or.inl ?_) hr
+    rcases Std.HashSet.mem_insert.1 hu with h | h
+    · rw [← beq_iff_eq.1 h]; exact List.mem_singleton_self _
+    · exact absurd h Std.HashSet.not_mem_empty
+
 variable (sc adj) in
 theorem bfsP_mem_start : ∀ (fuel : Nat) (seen : Std.HashSet (PSt m k)) (fr : List (PSt m k))
     (y : PSt m k), y ∈ seen → y ∈ (bfsP sc adj fuel seen fr).1
@@ -246,14 +330,15 @@ theorem succOf_complete (hsc : ∀ st l st', Move O st l st' → (l, st') ∈ sc
 def succOfF (sc : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
     (adj : Fin k → List (Fin k × Finset (RT m))) (fuel : Nat) (R : RT m) (x : Fin k) :
     List (Fin k) × Bool :=
-  let r := reachP sc adj fuel R x
+  let s0 : PSt m k := (x, [(R, false)])
+  let r := bfsP sc adj fuel (({} : Std.HashSet (PSt m k)).insert s0) [s0]
   (if r.1.toList.any (fun s => s.2.isEmpty) then
     (List.finRange k).filter fun y => r.1.contains (y, [])
    else [], r.2)
 
 @[csimp] theorem succOf_eq_F : @succOf = @succOfF := by
   funext m k sc adj fuel R x
-  simp only [succOf, succOfF, Prod.mk.injEq, and_true]
+  simp only [succOf, succOfF, ← reachP_eq_bfsP, Prod.mk.injEq, and_true]
   split_ifs with h
   · rfl
   · rw [List.filter_eq_nil_iff]
@@ -262,6 +347,186 @@ def succOfF (sc : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
     intro hc
     apply h
     exact List.any_eq_true.2 ⟨(y, []), Std.HashSet.mem_toList.2 (Std.HashSet.contains_iff_mem.1 hc), rfl⟩
+
+/-- Integer code of a role term. -/
+def rtEnc (R : RT m) : Nat := match R with
+  | .pos r => 2 * r.val
+  | .inv r => 2 * r.val + 1
+
+/-- Role term from its integer code. -/
+def rtDec (m : Nat) (c : Nat) : Option (RT m) :=
+  if h : c / 2 < m then
+    if c % 2 = 0 then some (.pos ⟨c / 2, h⟩) else some (.inv ⟨c / 2, h⟩)
+  else none
+
+theorem rtDec_rtEnc (R : RT m) : rtDec m (rtEnc R) = some R := by
+  cases R with
+  | pos r =>
+    unfold rtEnc rtDec
+    have h1 : 2 * r.val / 2 = r.val := Nat.mul_div_right r.val (by decide)
+    have h2 : 2 * r.val % 2 = 0 := Nat.mul_mod_right 2 r.val
+    simp [h1, h2, r.isLt]
+  | inv r =>
+    unfold rtEnc rtDec
+    have h1 : (2 * r.val + 1) / 2 = r.val := by omega
+    have h2 : (2 * r.val + 1) % 2 = 1 := by omega
+    simp [h1, h2, r.isLt]
+
+theorem rtEnc_of_rtDec {c : Nat} {R : RT m} (h : rtDec m c = some R) : rtEnc R = c := by
+  unfold rtDec at h
+  split_ifs at h with h1 h2
+  · cases h; unfold rtEnc; dsimp only; omega
+  · cases h; unfold rtEnc; dsimp only; omega
+
+/-- The members of a role-term finite set as a duplicate-free list. -/
+def toLRT (L : Finset (RT m)) : List (RT m) :=
+  ((L.image rtEnc).sort (· ≤ ·)).filterMap (rtDec m)
+
+theorem mem_toLRT (L : Finset (RT m)) (R : RT m) : R ∈ toLRT L ↔ R ∈ L := by
+  unfold toLRT
+  rw [List.mem_filterMap]
+  constructor
+  · rintro ⟨c, hc, hdec⟩
+    rw [Finset.mem_sort, Finset.mem_image] at hc
+    obtain ⟨S, hS, hSc⟩ := hc
+    rw [← hSc, rtDec_rtEnc] at hdec
+    cases hdec
+    exact hS
+  · intro hR
+    refine ⟨rtEnc R, ?_, rtDec_rtEnc R⟩
+    rw [Finset.mem_sort, Finset.mem_image]
+    exact ⟨R, hR, rfl⟩
+
+theorem nodup_toLRT (L : Finset (RT m)) : (toLRT L).Nodup := by
+  unfold toLRT
+  refine (Finset.sort_nodup (L.image rtEnc) (· ≤ ·)).filterMap ?_
+  intro a b R ha hb
+  rw [← rtEnc_of_rtDec ha, ← rtEnc_of_rtDec hb]
+
+/-- The `R`-targets of `x` in `adj`. -/
+def byRole (adj : Fin k → List (Fin k × Finset (RT m))) (x : Fin k) (R : RT m) : List (Fin k) :=
+  (adj x).filterMap fun e => if R ∈ e.2 then some e.1 else none
+
+/-- Insert target `y` under each role in `l`. -/
+def insAdjEdge (y : Fin k) (mp : Std.HashMap (RT m) (List (Fin k))) (l : List (RT m)) :
+    Std.HashMap (RT m) (List (Fin k)) :=
+  l.foldl (fun mp R => mp.insert R (y :: mp.getD R [])) mp
+
+theorem insAdjEdge_getD (y : Fin k) (R : RT m) :
+    ∀ (l : List (RT m)) (_ : l.Nodup) (mp : Std.HashMap (RT m) (List (Fin k))),
+      (insAdjEdge y mp l).getD R [] = if R ∈ l then y :: mp.getD R [] else mp.getD R []
+  | [], _, mp => by simp [insAdjEdge]
+  | S :: l, hl, mp => by
+    obtain ⟨hS, hnd⟩ := List.nodup_cons.1 hl
+    rw [insAdjEdge, List.foldl_cons, ← insAdjEdge, insAdjEdge_getD y R l hnd]
+    by_cases hRS : R = S
+    · subst hRS
+      simp [hS]
+    · have hne : (S == R) = false := beq_false_of_ne (Ne.symm hRS)
+      simp [hRS, Std.HashMap.getD_insert, hne]
+
+/-- The outgoing edges of a node indexed by role term. -/
+def adjMapOf (es : List (Fin k × Finset (RT m))) : Std.HashMap (RT m) (List (Fin k)) :=
+  es.reverse.foldl (fun mp e => insAdjEdge e.1 mp (toLRT e.2)) ∅
+
+theorem foldr_insAdjEdge_getD (R : RT m) :
+    ∀ (es : List (Fin k × Finset (RT m))),
+      (es.foldr (fun e mp => insAdjEdge e.1 mp (toLRT e.2)) ∅).getD R [] =
+        es.filterMap fun e => if R ∈ e.2 then some e.1 else none
+  | [] => by simp
+  | e :: es => by
+    rw [List.foldr_cons, insAdjEdge_getD e.1 R (toLRT e.2) (nodup_toLRT e.2),
+      foldr_insAdjEdge_getD R es, List.filterMap_cons]
+    by_cases h : R ∈ e.2
+    · have h' : R ∈ toLRT e.2 := (mem_toLRT e.2 R).2 h
+      simp [h, h']
+    · have h' : R ∉ toLRT e.2 := fun hc => h ((mem_toLRT e.2 R).1 hc)
+      simp [h, h']
+
+theorem adjMapOf_getD (es : List (Fin k × Finset (RT m))) (R : RT m) :
+    (adjMapOf es).getD R [] = es.filterMap fun e => if R ∈ e.2 then some e.1 else none := by
+  unfold adjMapOf
+  rw [← List.foldr_eq_foldl_reverse]
+  exact foldr_insAdjEdge_getD R es
+
+/-- Wrapper so the per-node role map array is computed once per graph. -/
+structure ByRoleS (m k : Nat) where
+  f : Fin k → RT m → List (Fin k)
+
+def byRoleS (adj : Fin k → List (Fin k × Finset (RT m))) : ByRoleS m k :=
+  ⟨byRole adj⟩
+
+/-- `byRoleS` backed by a precomputed per-node hash map array. -/
+@[noinline] def byRoleFS (adj : Fin k → List (Fin k × Finset (RT m))) : ByRoleS m k :=
+  let arr : Array (Std.HashMap (RT m) (List (Fin k))) := Array.ofFn fun x => adjMapOf (adj x)
+  ⟨fun x R => match arr[x.val]? with
+    | some mp => mp.getD R []
+    | none => byRole adj x R⟩
+
+@[csimp] theorem byRoleS_eq_F : @byRoleS = @byRoleFS := by
+  funext m k adj
+  simp only [byRoleS, byRoleFS, ByRoleS.mk.injEq]
+  funext x R
+  unfold byRole
+  rw [Array.getElem?_ofFn]
+  simp [x.isLt, adjMapOf_getD]
+
+/-- The successors of a product state using role-indexed adjacency `br`. -/
+def pstepR (sc : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
+    (br : Fin k → RT m → List (Fin k)) (s : PSt m k) : List (PSt m k) :=
+  (sc s.2).flatMap fun p => match p.1 with
+    | none => [(s.1, p.2)]
+    | some R => (br s.1 R).map fun y => (y, p.2)
+
+variable (sc adj) in
+theorem pstepR_byRole (s : PSt m k) : pstepR sc (byRole adj) s = pstep sc adj s := by
+  unfold pstepR pstep byRole
+  congr 1
+  funext p
+  cases p.1 with
+  | none => rfl
+  | some R =>
+    dsimp only
+    rw [List.map_filterMap]
+    congr 1
+    funext e
+    split_ifs <;> rfl
+
+/-- Depth-first listing over role-indexed adjacency `br`. -/
+def bfsPR (sc : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
+    (br : Fin k → RT m → List (Fin k)) :
+    Nat → Std.HashSet (PSt m k) → List (PSt m k) → Std.HashSet (PSt m k) × Bool
+  | 0, seen, fr => (seen, fr.isEmpty)
+  | _ + 1, seen, [] => (seen, true)
+  | fuel + 1, seen, x :: rest =>
+    let a := pushAll (pstepR sc br x) (seen, rest)
+    bfsPR sc br fuel a.1 a.2
+
+variable (sc adj) in
+theorem bfsPR_byRole : ∀ (fuel : Nat) (seen : Std.HashSet (PSt m k)) (fr : List (PSt m k)),
+    bfsPR sc (byRole adj) fuel seen fr = bfsP sc adj fuel seen fr
+  | 0, _, _ => rfl
+  | _ + 1, _, [] => rfl
+  | fuel + 1, seen, x :: rest => by
+    simp only [bfsPR, bfsP, pstepR_byRole, bfsPR_byRole fuel]
+
+/-- `succOf` over a precomputed role-indexed adjacency function `br`. -/
+def succOfR (sc : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
+    (br : Fin k → RT m → List (Fin k)) (fuel : Nat) (R : RT m) (x : Fin k) :
+    List (Fin k) × Bool :=
+  let s0 : PSt m k := (x, [(R, false)])
+  let r := bfsPR sc br fuel (({} : Std.HashSet (PSt m k)).insert s0) [s0]
+  (if r.1.toList.any (fun s => s.2.isEmpty) then
+    (List.finRange k).filter fun y => r.1.contains (y, [])
+   else [], r.2)
+
+variable (sc adj) in
+theorem succOfR_byRole (fuel : Nat) (R : RT m) (x : Fin k) :
+    succOfR sc (byRole adj) fuel R x = succOf sc adj fuel R x := by
+  rw [succOf_eq_F]
+  unfold succOfR succOfF
+  dsimp only
+  rw [bfsPR_byRole]
 
 end Proofs
 

@@ -1567,13 +1567,16 @@ def partWhy (hint : RawHint) (sizes : List (Option Nat)) (G : Nat) : Option Stri
 /-- The first core element whose given data star fails, on the named part
 (diagnostic, `--explain`; stage H4): the test of `hintPartsP` element by
 element, with no search. -/
-def starWhyD {n m p q s : Nat} {K : Type} [DecidableEq K] (O : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin q))
-    (cells : List K) (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+def starWhyD {n m p q s : Nat} {K : Type} [DecidableEq K] [Hashable K]
+    (O : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin q))
+    (cells : List K) (size : K → Option Nat) (sp : K → Bool)
+    (vtcF : K → (Fin s → Bool) → Finset (Fin q))
     (hint : RawHint) : Option String :=
   match hint.toHintS (n + SRIQN.Proc.encKD O) m with
   | none => none
   | some h =>
     let Dd := SRIQN.HF.dataOnly (SRIQN.dbase (SRIQN.Proc.encTransDN O))
+    let ixD := SRIQN.HF.mkDIx Dd
     let sc := cells.filter sp
     -- the named part, or the first part (the reason is then for that part)
     let x? := if h.partNamed then some (SRIQN.HF.namedPart sc (ContextCalculus.SRIQD.allG s).length h.part)
@@ -1581,26 +1584,44 @@ def starWhyD {n m p q s : Nat} {K : Type} [DecidableEq K] (O : SRIQN.DOntology (
     match x? with
     | none => none
     | some x =>
-    let card := SRIQN.HF.partCardT (SRIQN.HF.partTab cells size sp E (ContextCalculus.SRIQD.toPart s x))
+    let cardS := SRIQN.HF.partCardTS (SRIQN.HF.partTabV cells size sp vtcF (SRIQN.HF.toPartHS s x).f)
+    let card := cardS.f
     let stars := SRIQN.HF.starsOf (p := p) (q := q) h
     let show_ := fun (e : ContextCalculus.SRIQD.DNbr (Fin p) (Fin q)) =>
       s!"{(e.1.sort (· ≤ ·)).map (·.val)} / {(e.2.sort (· ≤ ·)).map (·.val)}"
     (List.finRange h.k).findSome? fun b =>
       match (stars[b.val]?).getD none with
-      | none => none
+      | none =>
+        if ContextCalculus.SRIQD.Proc.dataSatB Dd card (h.tyF b) then none
+        else some s!"core element {b.val}: no dstar entry and dataSatB fails"
       | some l =>
         if !(l.all Option.isSome) then
           some s!"core element {b.val}: a dstar entry names a data property or an atom out of range"
         else
           let Dn := l.filterMap id
           let t := h.tyF b
-          if Dn.length > ContextCalculus.SRIQD.dbnd Dd then
-            some s!"core element {b.val}: {Dn.length} dstar entries, more than the bound {ContextCalculus.SRIQD.dbnd Dd}"
-          else match Dn.find? (fun e => !decide (ContextCalculus.SRIQD.Proc.dcandOK Dd card t e)) with
-            | some e => some s!"core element {b.val}: the dstar entry {show_ e} is not a possible entry (a data sub-property, a value-type count, a universal or an upper bound fails for it alone, or it serves no data clause of the type)"
-            | none =>
-              if decide (ContextCalculus.SRIQD.DOK Dd card t Dn) then none
-              else some s!"core element {b.val}: the dstar entries together fail the star conditions (a lower bound is not met, or counts exceed an upper bound or a value-type count)"
+          if SRIQN.HF.starGivenBF ixD card t Dn then none
+          else
+            let lows := (SRI.Proc.toL t).flatMap fun a => (ixD.lowBy[a.val]?).getD []
+            if Dn.length > ixD.bnd then
+              some s!"core element {b.val}: {Dn.length} dstar entries, more than the bound {ixD.bnd}"
+            else match Dn.find? (fun e => !lows.any fun c => decide (c.2.1 ∈ e.1 ∧ ContextCalculus.SRIQD.rngOK c.2.2.1 c.2.2.2 e.2)) with
+              | some e => some s!"core element {b.val}: the dstar entry {show_ e} serves no data clause of the type (lows.length={lows.length})"
+              | none =>
+                match Dn.find? (fun e => !ixD.dSub.all fun q' => !decide (q'.1 ∈ e.1) || decide (q'.2 ∈ e.1)) with
+                | some e => some s!"core element {b.val}: the dstar entry {show_ e} fails dSub"
+                | none =>
+                  match Dn.find? (fun e => !ContextCalculus.SRIQD.cardOK card Dn e.2) with
+                  | some e => some s!"core element {b.val}: the dstar entry {show_ e} fails cardOK (card={reprStr (card e.2)})"
+                  | none =>
+                    if !SRIQN.HF.fAll t (fun a => ((ixD.allBy[a.val]?).getD []).all fun c =>
+                        Dn.all fun e => !decide (c.1 ∈ e.1) || c.2.any fun l => decide (ContextCalculus.SRIQD.litOK l e.2)) then
+                      some s!"core element {b.val}: fails dAll"
+                    else if !SRIQN.HF.fAll t (fun a => ((ixD.uppBy[a.val]?).getD []).all fun c =>
+                        decide (ContextCalculus.SRIQD.dcnt Dn c.2.1 c.2.2.1 c.2.2.2 ≤ c.1)) then
+                      some s!"core element {b.val}: fails dUpper"
+                    else
+                      some s!"core element {b.val}: fails dLower"
 
 /-- Why a hint is rejected on an encoded ontology (diagnostic, `--explain`);
 `dataWhy` is the reason when the object part checks. -/
@@ -1626,8 +1647,8 @@ def splitSizes (T : SRIQDKBTranslation) (L : List OWL.IRI)
   let cs := OWL.Datatypes.cellsOf as
   let szS := OWLFrontend.cellSizeS as
   let sz := szS.f
-  let eS := OWLFrontend.owlES sp
-  let spT := SRIQN.HF.splitTab cs sz bound eS.f
+  let vS := OWLFrontend.vtcOwlS sp
+  let spT := SRIQN.HF.splitTabV cs sz bound vS.f
   let sc := spT.filterMap fun p => if p.2 then some p.1 else none
   (sc.map sz, (ContextCalculus.SRIQD.allG (OWL.Datatypes.allFrees sp).length).length)
 
@@ -1850,8 +1871,8 @@ def emitData {n : Nat} (T : SRIQDKBTranslation)
   let cs := OWL.Datatypes.cellsOf as
   let szS := OWLFrontend.cellSizeS as
   let sz := szS.f
-  let eS := OWLFrontend.owlES sp
-  let spT := SRIQN.HF.splitTab cs sz bound eS.f
+  let vS := OWLFrontend.vtcOwlS sp
+  let spT := SRIQN.HF.splitTabV cs sz bound vS.f
   let sc := spT.filterMap fun p => if p.2 then some p.1 else none
   for (c, i) in sc.zipIdx do
     out.putStrLn s!"cell {i} {((sz c).map toString).getD "inf"} {(reprStr c).replace "\n" " "}"
@@ -2006,8 +2027,16 @@ def publishData (out : IO.FS.Stream) (W : OWLFrontend.WTab) (KD : OWLFrontend.CK
     let nondis := others.filter fun t => OWLFrontend.refuteD KD (.disjointDataProperties [p, t])
     let nonempty := OWLFrontend.refuteD KD (.subDataPropertyOf p .bot)
     let notE := if OWLFrontend.refuteD KD (.functionalData p) then ["functional"] else []
-    let domNot := clsI.filter fun C => OWLFrontend.refuteD KD (.dataDomain p (.cls C))
-    let ranNot := (List.finRange W.q).filter fun j => OWLFrontend.refuteD KD (.dataRange p (W.dsp j))
+    let domW := (List.finRange W.k).filter fun w => !(KD.dv p w).1.isEmpty
+    let ranWI := domW.flatMap fun w => (KD.dv p w).1.map fun i => (w, i)
+    let domNot :=
+      if domW.isEmpty then []
+      else clsI.filter fun C => domW.any fun w => KD.cls C w == some false
+    let ranNot :=
+      if ranWI.isEmpty then []
+      else (List.finRange W.q).filter fun j =>
+        let R := W.dsp j
+        ranWI.any fun (w, i) => KD.dr R w i == some false
     out.putStrLn ("{\"data_property\":" ++ (Json.str P).compress ++ ",\"nonempty\":" ++
       toString nonempty ++ ",\"nonsub\":" ++ jsonList (nonsub.map dname) ++
       ",\"nonequiv\":" ++ jsonList (noneq.map dname) ++
@@ -2039,15 +2068,51 @@ def publishRoles (out : IO.FS.Stream) (W : OWLFrontend.WTab) (showInd : OWL.IRI 
   -- `ObjectPropertyAssertion(P a b)` refuted: P exact at `a`'s element and
   -- `b`'s element not listed; `NegativeObjectPropertyAssertion(P a b)`
   -- refuted: listed
-  let exact := props.filter fun p => elems.all fun w => (K.succ p w).2
+  let pm := OWLFrontend.mapOfR W.props
+  let simpleByR : Std.HashMap (SRI.RoleT (Fin W.M)) (List (Nat × OWL.ObjProp)) :=
+    props.zipIdx.reverse.foldl (fun mp (p, idx) =>
+      match pm[p]? with
+      | some R => mp.insert R ((idx, p) :: mp.getD R [])
+      | none => mp) {}
+  let nonSimple : List (Nat × OWL.ObjProp) :=
+    (props.zipIdx.filter fun (p, _) => !pm.contains p).map fun (p, idx) => (idx, p)
+  let nonEmptyElems := elems.filter fun w => !(W.adj w).isEmpty
+  let emptyRep := elems.find? fun w => (W.adj w).isEmpty
+  let checkElems := match emptyRep with
+    | some w0 => w0 :: nonEmptyElems
+    | none => nonEmptyElems
+  let exact :=
+    if elems.isEmpty then props
+    else if !W.chainR then []
+    else props.filter fun p =>
+      if pm.contains p then true
+      else if !W.flat then false
+      else checkElems.all fun w => (K.succ p w).2
   let mut edges : Array String := #[]
-  for w in elems do
-    let per : List (Nat × OWL.ObjProp) := props.flatMap fun p =>
-      ((K.succ p w).1.filter fun v => elemSet.contains v.val).map fun v => (v.val, p)
-    let tgt : Std.HashMap Nat (List String) :=
-      per.foldl (fun mp e => mp.insert e.1 (propName e.2 :: mp.getD e.1 [])) {}
-    for (v, ps) in tgt.toList do
-      edges := edges.push ("[" ++ toString w.val ++ "," ++ toString v ++ "," ++ jsonList ps.reverse ++ "]")
+  if W.chainR then
+    for w in elems do
+      let adjW := W.adj w
+      if !adjW.isEmpty then
+        let adjIn := adjW.filter fun e => elemSet.contains e.1.val
+        let sChunks : List (Nat × List (Nat × OWL.ObjProp)) :=
+          if adjIn.isEmpty then []
+          else
+            let adjInByR : Std.HashMap (SRI.RoleT (Fin W.M)) (List Nat) :=
+              adjIn.reverse.foldl (fun mp e =>
+                (SROIQ.Proc.toLRT e.2).foldl (fun mp R => mp.insert R (e.1.val :: mp.getD R [])) mp) {}
+            adjInByR.toList.flatMap fun (R, targets) =>
+              (simpleByR.getD R []).map fun (pos, p) =>
+                (pos, targets.map fun v => (v, p))
+        let nsChunks : List (Nat × List (Nat × OWL.ObjProp)) :=
+          nonSimple.filterMap fun (pos, p) =>
+            let vs := ((K.succ p w).1.filter fun v => elemSet.contains v.val).map fun v => (v.val, p)
+            if vs.isEmpty then none else some (pos, vs)
+        let allChunks := (sChunks ++ nsChunks).mergeSort (fun a b => decide (a.1 ≤ b.1))
+        let per : List (Nat × OWL.ObjProp) := allChunks.flatMap Prod.snd
+        let tgt : Std.HashMap Nat (List String) :=
+          per.foldl (fun mp e => mp.insert e.1 (propName e.2 :: mp.getD e.1 [])) {}
+        for (v, ps) in tgt.toList do
+          edges := edges.push ("[" ++ toString w.val ++ "," ++ toString v ++ "," ++ jsonList ps.reverse ++ "]")
   out.putStrLn ("{\"individual_edges_all\":[" ++ ",".intercalate edges.toList ++
     "],\"exact_properties\":" ++ jsonList (exact.map propName) ++ "}")
   if propRows then
@@ -2064,8 +2129,14 @@ def publishRoles (out : IO.FS.Stream) (W : OWLFrontend.WTab) (showInd : OWL.IRI 
         ("transitive", .transitive p)]
       let notE := (chars.filter fun c => OWLFrontend.refute K c.2).map (·.1)
       let nonempty := OWLFrontend.refute K (.subObjectPropertyOf [p] .bot)
-      let domNot := clsI.filter fun C => OWLFrontend.refute K (.domain p (.cls C))
-      let ranNot := clsI.filter fun C => OWLFrontend.refute K (.range p (.cls C))
+      let domW := (List.finRange W.k).filter fun w => !(K.succ p w).1.isEmpty
+      let ranV := (OWLFrontend.dedupH (domW.flatMap fun w => (K.succ p w).1)).reverse
+      let domNot :=
+        if domW.isEmpty then []
+        else clsI.filter fun C => domW.any fun w => K.cls C w == some false
+      let ranNot :=
+        if ranV.isEmpty then []
+        else clsI.filter fun C => ranV.any fun v => K.cls C v == some false
       out.putStrLn ("{\"property\":" ++ (Json.str (propName p)).compress ++ ",\"nonempty\":" ++
         toString nonempty ++ ",\"nonsub\":" ++ jsonList (nonsub.map propName) ++
         ",\"nonequiv\":" ++ jsonList (noneq.map propName) ++
@@ -2111,7 +2182,7 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   let cix : Std.HashMap OWL.IRI (Fin W.N) := W.cls.foldl (fun mp p => mp.insertIfNew p.1 p.2) {}
   let nreq := W.cls.length + (if thingReq then 1 else 0) + (if nothingReq then 1 else 0)
   -- the requested classes by concept index (a type is short, the class list long)
-  let byIx : Std.HashMap Nat (List OWL.IRI) := W.cls.foldl (fun mp p => mp.insert p.2.val (p.1 :: mp.getD p.2.val [])) {}
+  let byIxA : Array (List OWL.IRI) := W.cls.foldl (fun A p => A.modify p.2.val (p.1 :: ·)) (Array.replicate W.N [])
   -- the requested classes an element is in: those in its type, and owl:Thing
   -- the sorted type of each core element, from the hint's `ty` lines (printing
   -- only: `W.ty w` is the set of these indices; stage H4, no sort per query)
@@ -2127,7 +2198,7 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
     d.filterMap fun x => if h : x < W.N then some ⟨x, h⟩ else none
   let sortedTy := fun (w : Fin W.k) => tyL[w.val]?.getD []
   let insideOfL := fun (l : List (Fin W.N)) =>
-    (if thingReq then [thingI] else []) ++ l.flatMap fun x => byIx.getD x.val []
+    (if thingReq then [thingI] else []) ++ l.flatMap fun x => byIxA[x.val]?.getD []
   -- the requested classes an element is not in: those outside its type, and owl:Nothing
   let outsideOf := fun (M : Fin W.N → Bool) =>
     (W.cls.filter fun p => !M p.2).map (·.1) ++ (if nothingReq then [nothingI] else [])
@@ -2139,13 +2210,21 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   -- `--counts-only`: no class or individual lines; `--compact`: classes by
   -- their position in the `class_index` line (stage H4)
   let emit : (Unit → String) → IO Unit := fun l => if countsOnly then pure () else out.putStrLn (l ())
-  let cnames : List OWL.IRI := (if thingReq then [thingI] else []) ++ (OWLFrontend.dedupH (W.cls.map (·.1))).reverse ++
-    (if nothingReq then [nothingI] else [])
-  let cpos : Std.HashMap OWL.IRI Nat := cnames.zipIdx.foldl (fun mp e => mp.insertIfNew e.1 e.2) {}
+  let cnames : List OWL.IRI :=
+    if compact then
+      (if thingReq then [thingI] else []) ++ (OWLFrontend.dedupH (W.cls.map (·.1))).reverse ++
+        (if nothingReq then [nothingI] else [])
+    else []
+  let cpos : Std.HashMap OWL.IRI Nat :=
+    if compact then cnames.zipIdx.foldl (fun mp e => mp.insertIfNew e.1 e.2) {} else {}
   let nm : OWL.IRI → String := fun A =>
     if compact then (match cpos.get? A with | some i => toString i | none => (Json.str A).compress)
     else (Json.str A).compress
   let jl : List OWL.IRI → String := fun l => if compact then "[" ++ ",".intercalate (l.map nm) ++ "]" else jsonList l
+  let byIxNm : Array (List String) :=
+    if countsOnly then #[] else byIxA.map fun l => l.map nm
+  let thingNm : List String := if thingReq then [nm thingI] else []
+  let mut insideCache : Array (Option (Nat × String)) := Array.replicate W.k none
   if compact && !countsOnly then out.putStrLn ("{\"class_index\":" ++ jsonList cnames ++ "}")
   -- owl:Thing as subject: every requested B some core element lacks
   if thingReq then
@@ -2172,17 +2251,26 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
         let t := W.ty ⟨w, hw⟩
         -- one membership test: a scan of the type (stage H5: no hash set per witness)
         if decide (iA ∈ t) then
-          let inside := insideOfL (sortedTy ⟨w, hw⟩)
-          let nout := nreq - inside.length
+          let (inLen, inStr) ← match insideCache[w]?.getD none with
+            | some p => pure p
+            | none =>
+              let st := sortedTy ⟨w, hw⟩
+              let len := (if thingReq then 1 else 0) + st.foldl (fun k x => k + (byIxA[x.val]?.getD []).length) 0
+              let s := if countsOnly || (nreq - len) * 2 ≤ nreq then ""
+                else "[" ++ ",".intercalate (thingNm ++ st.flatMap fun x => byIxNm[x.val]?.getD []) ++ "]"
+              insideCache := insideCache.setIfInBounds w (some (len, s))
+              pure (len, s)
+          let nout := nreq - inLen
           nNon := nNon + nout
           if nout * 2 ≤ nreq then
             -- the requested classes A shares the witness with: A ⊓ B satisfiable
+            let inside := insideOfL (sortedTy ⟨w, hw⟩)
             emit fun _ => ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
               ",\"nonsub\":" ++ jl (outsideOf (SRIQN.HF.memTS t).f) ++ ",\"sat_with\":" ++
               jl ((inside.filter fun B => B != A && B != thingI)) ++ "}")
           else
             emit fun _ => ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
-              ",\"nonsub_except\":" ++ jl inside ++ "}")
+              ",\"nonsub_except\":" ++ inStr ++ "}")
         else
           nBad := nBad + 1
           emit fun _ => ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
@@ -2201,17 +2289,25 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
     | none => pure ()
     | some w =>
       groups := groups.insert w.val (a :: groups.getD w.val [])
-      let MS := SRIQN.HF.memTS (W.ty w)
-      let M := MS.f
-      let inside := insideOfL (sortedTy w)
-      let nout := nreq - inside.length
+      let (inLen, inStr) ← match insideCache[w.val]?.getD none with
+        | some p => pure p
+        | none =>
+          let st := sortedTy w
+          let len := (if thingReq then 1 else 0) + st.foldl (fun k x => k + (byIxA[x.val]?.getD []).length) 0
+          let s := if countsOnly || (nreq - len) * 2 ≤ nreq then ""
+            else "[" ++ ",".intercalate (thingNm ++ st.flatMap fun x => byIxNm[x.val]?.getD []) ++ "]"
+          insideCache := insideCache.setIfInBounds w.val (some (len, s))
+          pure (len, s)
+      let nout := nreq - inLen
       nType := nType + nout
       if nout * 2 ≤ nreq then
-        emit fun _ => ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
-          ",\"nontype\":" ++ jl (outsideOf M) ++ "}")
+        emit fun _ =>
+          let MS := SRIQN.HF.memTS (W.ty w)
+          ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
+            ",\"nontype\":" ++ jl (outsideOf MS.f) ++ "}")
       else
         emit fun _ => ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
-          ",\"nontype_except\":" ++ jl inside ++ "}")
+          ",\"nontype_except\":" ++ inStr ++ "}")
   let gs := groups.toList.map (·.2.reverse)
   out.putStrLn ("{\"nonsame_groups\":[" ++ ",".intercalate (gs.map jsonList) ++ "]}")
   -- `hintWitnessMore_sound`: individuals in one group are not entailed
@@ -2228,13 +2324,20 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   out.putStrLn ("{\"simple_properties\":[" ++ ",".intercalate (W.props.map fun (r, R) =>
     "[" ++ (Json.str (propStr r)).compress ++ "," ++ (Json.str (rtStr R)).compress ++ "]") ++ "]}")
   let elems := (groups.toList.map (·.1)).filterMap fun i => if h : i < W.k then some (⟨i, h⟩ : Fin W.k) else none
-  let edges := elems.flatMap fun w => elems.filterMap fun v =>
-    if w.val ≠ v.val then
-      let L := W.lab w v
-      if L = ∅ then none else
-        some ("[" ++ toString w.val ++ "," ++ toString v.val ++ "," ++
-          jsonList ((W.props.filter fun p => decide (p.2 ∈ L)).map fun p => propStr p.1) ++ "]")
-    else none
+  let elemPos : Std.HashMap Nat Nat := elems.zipIdx.foldl (fun mp (v, pos) => mp.insert v.val pos) {}
+  let propsByR : Std.HashMap (SRI.RoleT (Fin W.M)) (List (Nat × String)) :=
+    W.props.zipIdx.reverse.foldl (fun mp (p, idx) =>
+      mp.insert p.2 ((idx, propStr p.1) :: mp.getD p.2 [])) {}
+  let edges := elems.flatMap fun w =>
+    let nbrs := (SRIQN.HF.merged (W.adj w)).filterMap fun (v, L) =>
+      if w.val ≠ v.val && decide (L ≠ ∅) then
+        (elemPos[v.val]?).map fun pos => (pos, v, L)
+      else none
+    (nbrs.mergeSort fun a b => decide (a.1 ≤ b.1)).map fun (_, v, L) =>
+      let ps := (((SROIQ.Proc.toLRT L).flatMap fun R => propsByR.getD R []).mergeSort
+        fun a b => decide (a.1 ≤ b.1)).map Prod.snd
+      "[" ++ toString w.val ++ "," ++ toString v.val ++ "," ++
+        jsonList ps ++ "]"
   out.putStrLn ("{\"individual_edges\":[" ++ ",".intercalate edges ++ "]}")
   out.putStrLn ("{\"counts\":{\"nonsub\":" ++ toString nNon ++ ",\"nontype\":" ++ toString nType ++
     ",\"table_errors\":" ++ toString nBad ++ ",\"element_groups\":" ++ toString gs.length ++
@@ -2464,10 +2567,11 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
           let cs := OWL.Datatypes.cellsOf as
           let szS := OWLFrontend.cellSizeS as
           let eS := OWLFrontend.owlES sp
-          let spT := SRIQN.HF.splitTab cs szS.f bnd eS.f
+          let vS := OWLFrontend.vtcOwlS sp
+          let spT := SRIQN.HF.splitTabV cs szS.f bnd vS.f
           let why := (partWhy hint sz G).orElse fun _ => starWhyD (encC T L E) cs szS.f
-            (SRIQN.HF.lookSplit spT (ContextCalculus.SRIQD.splitCell cs szS.f bnd eS.f))
-            eS.f hint
+            (SRIQN.HF.lookSplitHS spT (ContextCalculus.SRIQD.splitCell cs szS.f bnd eS.f)).f
+            vS.f hint
           IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false why}"
           return 0)
         (fun T L E SC _ _ => do
