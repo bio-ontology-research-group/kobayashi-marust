@@ -337,26 +337,26 @@ theorem wTabA_dfacts (pat : String → String → Prop) {O : Ontology} {req : Li
     rw [if_neg (by simpa using hdt)]
   rw [hwd] at hw
   dsimp only at hw
-  split_ifs at hw with hk2
-  rw [Bool.and_eq_true] at hk2
-  obtain ⟨hk, hkX⟩ := hk2
-  obtain ⟨W0, hW0, rfl⟩ := Option.map_eq_some_iff.1 hw
+  obtain ⟨E, W0, hE, hEn, hk, hkX, hW0, rfl⟩ := wTabEdge_cases' hw
   obtain ⟨Dom, hD, J, f, hJ, hinj, hcls, hind, hrole, hadj, hpos, hneg, hsur, hdat⟩ :=
     wCoreA_dfacts pat hW0 hcr
   haveI := hD
-  set g := anonG [] (duOff (edgeP O))
-  have hM1 : OWL.Model O (J.indMap g) := model_of_edgeP ((model_duOff _ _).1 (model_of_anonOff' hk hJ))
+  set g := anonG [] (duOff E)
   have hgcls : (J.indMap g).cls = J.cls := by cases J; rfl
   have hgprop : (J.indMap g).prop = J.prop := by cases J; rfl
   have hgdp : (J.indMap g).dprop = J.dprop := by cases J; rfl
   have hgdt : (J.indMap g).dtype = J.dtype := by cases J; rfl
+  have hM1 : OWL.Model O (J.indMap g) :=
+    wTabEdge_model (fun r R hr w v => by rw [hgprop]; exact hrole r R hr w v) hadj hsur hE
+      ((model_duOff _ _).1 (model_of_anonOff' hk hJ))
   refine ⟨Dom, hD, J.indMap g, f, hM1, hinj, fun s x hs w => ?_, fun a x hax w => ?_,
     fun r R hr w v => by rw [hgprop]; exact hrole r R hr w v, hadj,
     fun r R hr w v word hg hpth => by rw [hgprop]; exact hpos r R hr w v word hg hpth,
     fun hfl r R hr w v h => hneg hfl r R hr w v (by rw [← hgprop]; exact h), hsur, ?_⟩
   · rw [hgcls]; exact hcls s x hs w
   · obtain ⟨hax, hc⟩ := List.mem_filter.1 hax
-    have ha : a ∈ (duOff (edgeP O)).namedIndividuals := by
+    have ha : a ∈ (duOff E).namedIndividuals := by
+      rw [mem_namedIndividuals_duOff, hEn]
       simpa [Std.HashSet.contains_ofList] using hc
     have hfix : g (.named a) = .named a := anonF_short (anonBase_long (by
       simp only [List.nil_append]; exact ha))

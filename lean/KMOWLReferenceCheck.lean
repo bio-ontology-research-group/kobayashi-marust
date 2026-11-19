@@ -2231,8 +2231,8 @@ between the class expressions of the requested IRIs; `owl:Thing` and
 `not_entails_nothing_of_consistent`, `not_thing_sub_nothing_of_consistent`). -/
 def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingReq nothingReq : Bool)
     {O : OWL.Ontology} {R : OWL.OntologyR} (showInd : OWL.IRI → Bool := fun _ => true)
-    {req : List OWL.IRI} {hint : RawHint} (W : OWLFrontend.WTab)
-    (_h : OWLFrontend.wTabA O req hint = some W ∨ OWLFrontend.wTabR R req hint = some W)
+    {req : List OWL.IRI} (W : OWLFrontend.WTab)
+    (_h : ∃ hint, OWLFrontend.wTabA O req hint = some W ∨ OWLFrontend.wTabR R req hint = some W)
     (propRows : Bool := false) (axs : List OWL.Axiom := []) (countsOnly compact : Bool := false)
     (parseMs : Nat := 0) (KD : Option (OWLFrontend.CKX W.k) := none) (dataRows : Bool := false)
     (dOn : Bool := false) :
@@ -2244,19 +2244,10 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   -- the requested classes by concept index (a type is short, the class list long)
   let byIxA : Array (List OWL.IRI) := W.cls.foldl (fun A p => A.modify p.2.val (p.1 :: ·)) (Array.replicate W.N [])
   -- the requested classes an element is in: those in its type, and owl:Thing
-  -- the sorted type of each core element, from the hint's `ty` lines (printing
-  -- only: `W.ty w` is the set of these indices; stage H4, no sort per query)
-  let tyRaw : Array (List Nat) := hint.ty.foldl (fun A e =>
-    if e.1 < W.k then A.modify e.1 (e.2 ++ ·) else A) (Array.replicate W.k [])
-  let tyL : Array (List (Fin W.N)) := tyRaw.map fun l =>
-    -- a strictly increasing `ty` line needs no sort (the producers write them so)
-    let a0 := l.toArray
-    let a := if incA a0 then a0 else a0.qsort (· < ·)
-    let d := a.toList.foldr (fun x acc => match acc with
-      | y :: _ => if x == y then acc else x :: acc
-      | [] => [x]) []
-    d.filterMap fun x => if h : x < W.N then some ⟨x, h⟩ else none
-  let sortedTy := fun (w : Fin W.k) => tyL[w.val]?.getD []
+  -- the sorted type of each core element, read directly from `W.ty w`
+  let sortedTy := fun (w : Fin W.k) =>
+    let l := SRI.Proc.toL (W.ty w)
+    if OWLFrontend.incL l then l else (l.toArray.qsort (fun a b => a.val < b.val)).toList
   let insideOfL := fun (l : List (Fin W.N)) =>
     (if thingReq then [thingI] else []) ++ l.flatMap fun x => byIxA[x.val]?.getD []
   -- the requested classes an element is not in: those outside its type, and owl:Nothing
@@ -2284,6 +2275,9 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   let byIxNm : Array (List String) :=
     if countsOnly then #[] else byIxA.map fun l => l.map nm
   let thingNm : List String := if thingReq then [nm thingI] else []
+  let useCnt : Array Nat :=
+    let A0 := table.foldl (fun A (_, w) => if w < W.k then A.modify w (· + 1) else A) (Array.replicate W.k 0)
+    if W.inds.isEmpty then A0 else A0.map (· + 1)
   let mut insideCache : Array (Option (Nat × String)) := Array.replicate W.k none
   if compact && !countsOnly then out.putStrLn ("{\"class_index\":" ++ jsonList cnames ++ "}")
   -- owl:Thing as subject: every requested B some core element lacks
@@ -2318,7 +2312,8 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
               let len := (if thingReq then 1 else 0) + st.foldl (fun k x => k + (byIxA[x.val]?.getD []).length) 0
               let s := if countsOnly || (nreq - len) * 2 ≤ nreq then ""
                 else "[" ++ ",".intercalate (thingNm ++ st.flatMap fun x => byIxNm[x.val]?.getD []) ++ "]"
-              insideCache := insideCache.setIfInBounds w (some (len, s))
+              if useCnt[w]?.getD 0 > 1 then
+                insideCache := insideCache.setIfInBounds w (some (len, s))
               pure (len, s)
           let nout := nreq - inLen
           nNon := nNon + nout
@@ -2600,7 +2595,7 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
         let KD := OWLFrontend.ckxMemo (OWLFrontend.ckOfDM W OWLFrontend.ckFuel (splitDef O.axioms).isNone
           (W.rprops.map (·.1))) ((dedupS W.dpsA.toList).map OWL.DataProp.named)
         some <$> (publishWitness (O := O) (R := ⟨O, []⟩) (showInd := fun _ => true) outS table thingReq nothingReq W
-          (Or.inl h.symm) args.propertyRows axs args.countsOnly args.compact (if args.out.isSome then parseMs else 0)
+          ⟨hint, Or.inl h.symm⟩ args.propertyRows axs args.countsOnly args.compact (if args.out.isSome then parseMs else 0)
           (some KD) args.dataPropertyRows (W.chainR && (splitDef O.axioms).isNone))
       | none, _ => pure none
     | some R =>
@@ -2610,13 +2605,16 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
         -- the individuals of the input: not the fresh individual of the grounding
         let names := Std.HashSet.ofList R.named
         some <$> (publishWitness (O := O) (R := R) (showInd := names.contains) outS table thingReq
-          nothingReq W (Or.inr h.symm) args.propertyRows axs args.countsOnly args.compact (if args.out.isSome then parseMs else 0)
+          nothingReq W ⟨hint, Or.inr h.symm⟩ args.propertyRows axs args.countsOnly args.compact (if args.out.isSome then parseMs else 0)
           none args.dataPropertyRows)
       | none, _ => pure none
   match done with
   | some c => return c
   | none =>
     if args.explain then
+      let hintE ← match parseHintBytes (← IO.FS.readBinFile hf) with
+        | .ok h => pure h
+        | .error _ => pure {}
       let _ ← withWitnessTarget O req
         (fun T L E _ => do
           let bnd := sroiqBound T L E
@@ -2629,13 +2627,13 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
           let eS := OWLFrontend.owlES sp
           let vS := OWLFrontend.vtcOwlS sp
           let spT := SRIQN.HF.splitTabV cs szS.f bnd vS.f
-          let why := (partWhy hint sz G).orElse fun _ => starWhyD (encC T L E) cs szS.f
+          let why := (partWhy hintE sz G).orElse fun _ => starWhyD (encC T L E) cs szS.f
             (SRIQN.HF.lookSplitHS spT (ContextCalculus.SRIQD.splitCell cs szS.f bnd eS.f)).f
-            vS.f hint
-          IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false why}"
+            vS.f hintE
+          IO.eprintln s!"hint: reason: {explainOn (encC T L E) hintE false why}"
           return 0)
         (fun T L E SC _ _ => do
-          IO.eprintln s!"hint: reason: {explainOn (encS T L E SC) hint true}"
+          IO.eprintln s!"hint: reason: {explainOn (encS T L E SC) hintE true}"
           return 0)
     decline ("witness: not certified (outside the chain route, keys, datatype definitions, " ++
       "ObjectHasSelf, or the hint does not check)")

@@ -1004,14 +1004,18 @@ structure MemBox (n : Nat) where
 @[noinline] def mkMemBox (t : Finset (Fin n)) : MemBox n :=
   ⟨(memTS t).f, false⟩
 
-def getMem (memA : Array (MemBox n)) (c : Fin h.k) : MemS n :=
-  ⟨(memA[c.val]?.getD (mkMemBox (h.tyF c))).f⟩
+def getMem (memA : Array (Option (MemBox n))) (c : Fin h.k) : MemS n :=
+  match memA[c.val]?.getD none with
+  | some mb => ⟨mb.f⟩
+  | none => memTS (h.tyF c)
 
-theorem getMem_eq (c : Fin h.k) :
-    getMem h (Array.ofFn fun b : Fin h.k => mkMemBox (h.tyF b)) c = memTS (h.tyF c) := by
+theorem getMem_eq (p : Fin h.k → Bool) (c : Fin h.k) :
+    getMem h (Array.ofFn fun b : Fin h.k => if p b then some (mkMemBox (h.tyF b)) else none) c =
+      memTS (h.tyF c) := by
   unfold getMem mkMemBox
   rw [Array.getElem?_ofFn]
-  simp [c.isLt]
+  simp only [c.isLt, dite_true, Option.getD_some]
+  split_ifs <;> rfl
 
 instance instHashableRoleTF {m : Nat} : Hashable (RoleT (Fin m)) where
   hash
@@ -1086,16 +1090,19 @@ theorem checkAllsBwd_eq {n m : Nat} (ps : List (RoleT (Fin m) × Fin n))
     have hR' : R.flip.flip ∈ L := by rwa [SRI.RoleT.flip_flip]
     exact (h (R.flip, c) hp).resolve_left (not_not.2 hR')
 
-def getAllsM (ix : SIx n m) (allMA : Array (Std.HashMap (RoleT (Fin m)) (List (Fin n)))) (c : Fin h.k) :
+def getAllsM (ix : SIx n m) (allMA : Array (Option (Std.HashMap (RoleT (Fin m)) (List (Fin n))))) (c : Fin h.k) :
     Std.HashMap (RoleT (Fin m)) (List (Fin n)) :=
-  allMA[c.val]?.getD (allsMapOf (allsOf ix (h.tyF c)))
+  match allMA[c.val]?.getD none with
+  | some mp => mp
+  | none => allsMapOf (allsOf ix (h.tyF c))
 
-theorem getAllsM_eq (ix : SIx n m) (c : Fin h.k) :
-    getAllsM h ix (Array.ofFn fun b : Fin h.k => allsMapOf (allsOf ix (h.tyF b))) c =
+theorem getAllsM_eq (ix : SIx n m) (p : Fin h.k → Bool) (c : Fin h.k) :
+    getAllsM h ix (Array.ofFn fun b : Fin h.k => if p b then some (allsMapOf (allsOf ix (h.tyF b))) else none) c =
       allsMapOf (allsOf ix (h.tyF c)) := by
   unfold getAllsM
   rw [Array.getElem?_ofFn]
-  simp [c.isLt]
+  simp only [c.isLt, dite_true, Option.getD_some]
+  split_ifs <;> rfl
 
 def addNbrC {n m : Nat} (L : Finset (RoleT (Fin m))) (c : Fin n)
     (mp : Std.HashMap (Fin n) (List (Finset (RoleT (Fin m))))) :
@@ -1176,8 +1183,8 @@ theorem checkLowsUpps_eq {n m : Nat} (lows upps : List (Nat × RoleT (Fin m) × 
   unfold checkLowsUpps
   simp only [atLeastP_eq, cnt_nbrsByC, cnt_map_memTS, ite_self]
 
-def starCoreF (ix : SIx n m) (memA : Array (MemBox n))
-    (allMA : Array (Std.HashMap (RoleT (Fin m)) (List (Fin n))))
+def starCoreF (ix : SIx n m) (memA : Array (Option (MemBox n)))
+    (allMA : Array (Option (Std.HashMap (RoleT (Fin m)) (List (Fin n)))))
     (A : Array (List (Fin h.k × Finset (RoleT (Fin m)))))
     (kb : Array (List (QNbr n m))) (b : Fin h.k) : Bool :=
   let t := h.tyF b
@@ -1203,11 +1210,11 @@ theorem if_isEmpty_pair {α β : Type} (l1 : List α) (l2 : List β) (p1 : α �
       (l1.all p1, l2.all p2) := by
   cases l1 <;> cases l2 <;> rfl
 
-theorem starCoreF_eq (ix : SIx n m)
+theorem starCoreF_eq (ix : SIx n m) (p : Fin h.k → Bool)
     (A : Array (List (Fin h.k × Finset (RoleT (Fin m)))))
     (kb : Array (List (QNbr n m))) (b : Fin h.k) :
-    starCoreF h ix (Array.ofFn fun c : Fin h.k => mkMemBox (h.tyF c))
-      (Array.ofFn fun c : Fin h.k => allsMapOf (allsOf ix (h.tyF c))) A kb b =
+    starCoreF h ix (Array.ofFn fun c : Fin h.k => if p c then some (mkMemBox (h.tyF c)) else none)
+      (Array.ofFn fun c : Fin h.k => if p c then some (allsMapOf (allsOf ix (h.tyF c))) else none) A kb b =
     starF ix (h.tyF b) (h.starL A b ++ getL kb b.val) := by
   unfold starCoreF starF
   dsimp only
@@ -1247,8 +1254,9 @@ theorem starCoreF_eq (ix : SIx n m)
 def coreBF (ix : SIx n m) (N : List (Fin n)) : Bool :=
   let A := h.adj
   let kb := h.kidIdx
-  let memA := Array.ofFn fun c : Fin h.k => mkMemBox (h.tyF c)
-  let allMA := Array.ofFn fun c : Fin h.k => allsMapOf (allsOf ix (h.tyF c))
+  let cacheP := fun c : Fin h.k => decide (h.k ≤ 65536) || decide (4 < (getL A c.val).length)
+  let memA := Array.ofFn fun c : Fin h.k => if cacheP c then some (mkMemBox (h.tyF c)) else none
+  let allMA := Array.ofFn fun c : Fin h.k => if cacheP c then some (allsMapOf (allsOf ix (h.tyF c))) else none
   decide (0 < h.k) && nomOKS h N &&
     (List.finRange h.k).all fun b => starCoreF h ix memA allMA A kb b
 
@@ -1257,7 +1265,7 @@ def coreBF (ix : SIx n m) (N : List (Fin n)) : Bool :=
   unfold coreB coreBF
   dsimp only
   congr 1
-  refine List.all_congr rfl fun b => (starCoreF_eq h ix h.adj h.kidIdx b).symm
+  refine List.all_congr rfl fun b => (starCoreF_eq h ix _ h.adj h.kidIdx b).symm
 
 theorem coreB_eq (O : SRIQ.Ontology (Fin n) (Fin m)) (N : List (Fin n)) :
     coreB h (mkSIx O) N = decide (0 < h.toN.k ∧ coreOKN N h.toN.ty h.toN.lab ∧

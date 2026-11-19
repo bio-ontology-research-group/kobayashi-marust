@@ -41,19 +41,6 @@ theorem scOf_eq {n m : Nat} (O : SRIQ.Ontology (Fin n) (Fin m)) : scOf O = SROIQ
 
 /-! ## The knowledge of a witness table -/
 
-/-- The value of the first entry with key `p`. -/
-def findR {α β : Type} [BEq α] (L : List (α × β)) (p : α) : Option β :=
-  (L.find? fun e => e.1 == p).map Prod.snd
-
-theorem findR_mem {α β : Type} [BEq α] [LawfulBEq α] {L : List (α × β)} {p : α} {b : β}
-    (h : findR L p = some b) : (p, b) ∈ L := by
-  obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.1 h
-  have hm := List.mem_of_find?_eq_some he
-  have hp := List.find?_some he
-  rw [beq_iff_eq] at hp
-  rw [← hp]
-  exact hm
-
 /-- Successors of a named property or inverse. -/
 def ckSuccB (W : WTab) (sc : Stack (Fin W.M) → List (Option (SROIQ.Proc.RT W.M) × Stack (Fin W.M)))
     (fuel : Nat) (p : ObjProp) (w : Fin W.k) : List (Fin W.k) × Bool :=
