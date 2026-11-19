@@ -1160,14 +1160,15 @@ pub(super) fn from_exported_model(
     // and every named-individual edge in `edge_set` is already in `proved_edge_set`,
     // `proved_edge_set` and `edge_set` are already final on `0..n_elems`.
     if !different_requested
-        && func_obj_roles.is_empty()
-        && inv_func_obj_roles.is_empty()
+        && (!raw.abox_elided
+            || (func_obj_roles.is_empty()
+                && inv_func_obj_roles.is_empty()
+                && !text.contains("ObjectMaxCardinality(")
+                && !text.contains("ObjectExactCardinality(")
+                && !text.contains("ObjectMinCardinality(")))
         && !text.contains("ObjectHasValue(")
         && !text.contains("ObjectOneOf(")
         && !text.contains("ObjectHasSelf(")
-        && !text.contains("ObjectMaxCardinality(")
-        && !text.contains("ObjectExactCardinality(")
-        && !text.contains("ObjectMinCardinality(")
         && edge_set
             .iter()
             .all(|e| e.0 >= n_elems || e.2 >= n_elems || proved_edge_set.contains(e))
@@ -2157,20 +2158,21 @@ pub(super) fn from_exported_model(
             .push(idx);
     }
 
-    let has_horn_merges = !func_obj_roles.is_empty()
-        || !inv_func_obj_roles.is_empty()
-        || qual_func_rules.iter().any(|qf| qf.max_n == 1)
-        || concept_rules
-            .iter()
-            .any(|cr| cr.nom_merge.is_some() && cr.heads.len() <= 1)
-        || role_rules.iter().any(|rr| {
-            matches!(
-                rr.action,
-                RoleHeadAction::MergeXElem(_)
-                    | RoleHeadAction::MergeYElem(_)
-                    | RoleHeadAction::MergeXY
-            )
-        });
+    let has_horn_merges = raw.abox_elided
+        && (!func_obj_roles.is_empty()
+            || !inv_func_obj_roles.is_empty()
+            || qual_func_rules.iter().any(|qf| qf.max_n == 1)
+            || concept_rules
+                .iter()
+                .any(|cr| cr.nom_merge.is_some() && cr.heads.len() <= 1)
+            || role_rules.iter().any(|rr| {
+                matches!(
+                    rr.action,
+                    RoleHeadAction::MergeXElem(_)
+                        | RoleHeadAction::MergeYElem(_)
+                        | RoleHeadAction::MergeXY
+                )
+            }));
 
     // Saturate a `(classes, edges)` state under deterministic 1-head Horn rules
     let saturate_horn_in_place = |classes: &mut [HashSet<String>],
@@ -2450,17 +2452,17 @@ pub(super) fn from_exported_model(
             }
         }
         let mut merged_named_pairs: Vec<(usize, usize)> = Vec::new();
-        let mut members_by_root: HashMap<usize, Vec<usize>> = HashMap::new();
-        for u in 0..num.min(n_elems) {
-            let r = find_uf(&mut uf, u);
-            if r != u && r < n_elems {
-                merged_named_pairs.push((r, u));
+        if has_horn_merges && (0..num).any(|u| find_uf(&mut uf, u) != u) {
+            let mut members_by_root: HashMap<usize, Vec<usize>> = HashMap::new();
+            for u in 0..num.min(n_elems) {
+                let r = find_uf(&mut uf, u);
+                if r != u && r < n_elems {
+                    merged_named_pairs.push((r, u));
+                }
+                if r < n_elems {
+                    members_by_root.entry(r).or_default().push(u);
+                }
             }
-            if r < n_elems {
-                members_by_root.entry(r).or_default().push(u);
-            }
-        }
-        if (0..num).any(|u| find_uf(&mut uf, u) != u) {
             let cur_edges: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
             for (s, role, t) in cur_edges {
                 let rs = find_uf(&mut uf, s);
@@ -2493,7 +2495,8 @@ pub(super) fn from_exported_model(
     // existential checks see asserted existential successors (`d2.ofn`, `adv4`, `13700`).
     let mut n_total_elems = n_elems;
     let mut skolem_witness_of: HashMap<(usize, String), usize> = HashMap::new();
-    for _sk_round in 0..3 {
+    let sk_rounds = if has_horn_merges { 3 } else { 2 };
+    for _sk_round in 0..sk_rounds {
         let cur_limit = n_total_elems;
         let mut added_sk = false;
         let mut proved_out: HashMap<(usize, String), Vec<usize>> = HashMap::new();
