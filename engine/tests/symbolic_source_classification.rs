@@ -44,7 +44,7 @@ fn symbolic_unsatisfiable_assertion_is_global_inconsistency() {
     let output: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
     assert_eq!(output["consistent"], false);
     assert_eq!(output["subsumptions"], serde_json::json!([]));
-    assert_eq!(output["unsatisfiable"], serde_json::json!([]));
+    assert_eq!(output["unsatisfiable"], serde_json::json!(["http://x#A", "http://x#B", "http://x#F"]));
 }
 
 #[test]

@@ -80,6 +80,8 @@ pub struct SeparableAboxExport {
     pub inert_role_assertions: Vec<(String, String, String)>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inert_extra_individuals: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub projected_data_assertions: Vec<(String, String, String)>,
 }
 
 /// Result of `ofn_to_clauses`: the JSON clause set plus the output-mapping
@@ -1807,6 +1809,7 @@ fn ofn_to_clauses_representation_with(
             &ontology.axioms_iter().collect::<Vec<_>>(),
         );
     let data_count_bound = literal_profiles::data_count_bound(&ontology.axioms_iter().collect::<Vec<_>>());
+    let projected_data_assertions = ontology.take_projected_data_assertions();
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
@@ -2488,7 +2491,13 @@ fn ofn_to_clauses_representation_with(
             exp.inert_role_assertions = raw_inert_role_assertions;
             exp.inert_extra_individuals = raw_inert_extra_individuals;
         }
+        exp.projected_data_assertions = projected_data_assertions;
         Some(exp)
+    } else if export_active && !projected_data_assertions.is_empty() {
+        Some(SeparableAboxExport {
+            projected_data_assertions,
+            ..SeparableAboxExport::default()
+        })
     } else {
         None
     };

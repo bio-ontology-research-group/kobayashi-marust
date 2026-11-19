@@ -133,12 +133,26 @@ def eval_one(item):
             json.dump(res, open(res_file, 'w'))
             return res
 
-        chk_f = os.path.join(wdir, 'chk.jsonl')
-        rc_c, chk_s, _, c_err = run_cmd(
-            [REF, '--procedure', 'sroiq-hint', '--witness', wp, '--hint', hp, '--out', chk_f, '--classes', cf, owl],
-            300, 16000000
-        )
-        chk_ok = (rc_c == 0 and os.path.exists(chk_f))
+        chk_files = []
+        chk_s = 0.0
+        rc_c = 0
+        k_slot = 0
+        while os.path.exists(os.path.join(odir, f'model{k_slot}.hint')) and os.path.exists(os.path.join(odir, f'model{k_slot}.wit')):
+            cur_hp = os.path.join(odir, f'model{k_slot}.hint')
+            cur_wp = os.path.join(odir, f'model{k_slot}.wit')
+            cur_chk = os.path.join(wdir, f'chk{k_slot}.jsonl')
+            rc_k, s_k, _, _ = run_cmd(
+                [REF, '--procedure', 'sroiq-hint', '--witness', cur_wp, '--hint', cur_hp, '--out', cur_chk, '--classes', cf, owl],
+                300, 16000000
+            )
+            chk_s = round(chk_s + s_k, 2)
+            if rc_k != 0 or not os.path.exists(cur_chk):
+                rc_c = rc_k if rc_k != 0 else 1
+                chk_files = []
+                break
+            chk_files.append(cur_chk)
+            k_slot += 1
+        chk_ok = (rc_c == 0 and len(chk_files) > 0)
         chk_full = False
         if chk_ok:
             cls = [l.rstrip('\n') for l in open(cf) if l.strip()]
@@ -166,16 +180,17 @@ def eval_one(item):
                         ch = True
             cert = {}
             cons = False
-            for l in open(chk_f):
-                if not l.strip():
-                    continue
-                j = json.loads(l)
-                if j.get('consistent'):
-                    cons = True
-                if 'class' in j and 'nonsub' in j:
-                    cert.setdefault(j['class'], set()).update(j['nonsub'])
-                if 'class' in j and 'nonsub_except' in j:
-                    cert.setdefault(j['class'], set()).update(set(cls) - set(j['nonsub_except']))
+            for cur_chk in chk_files:
+                for l in open(cur_chk):
+                    if not l.strip():
+                        continue
+                    j = json.loads(l)
+                    if j.get('consistent'):
+                        cons = True
+                    if 'class' in j and 'nonsub' in j:
+                        cert.setdefault(j['class'], set()).update(j['nonsub'])
+                    if 'class' in j and 'nonsub_except' in j:
+                        cert.setdefault(j['class'], set()).update(set(cls) - set(j['nonsub_except']))
             miss = wrong = 0
             allc = set(cls) - {NOTHING}
             for a in allc - unsat - {THING}:

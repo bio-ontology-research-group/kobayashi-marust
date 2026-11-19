@@ -1166,6 +1166,19 @@ where
         ontology.block_literal_abstraction();
     }
     ontology.commit_data_assertions_as_class(data_assertion_literal_cap());
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let projected_short = ontology.take_projected_data_assertions();
+        if !projected_short.is_empty() {
+            let mut projected_full: Vec<(String, String, String)> = projected_short
+                .into_iter()
+                .map(|(ind, prop, lit)| (reg.full_iri(&ind), reg.full_iri(&prop), lit))
+                .collect();
+            projected_full.sort();
+            projected_full.dedup();
+            crate::orchestrate::model_export::append_projected_data_assertions(&projected_full);
+            ontology.set_projected_data_assertions(projected_full);
+        }
+    }
     add_bottom_property_axioms(reg, ontology);
     Ok(())
 }
