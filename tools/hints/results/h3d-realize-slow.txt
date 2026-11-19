@@ -1,0 +1,130 @@
+Goal 1: 116 km-failed inputs (7 in pool1m, 109 in poolrest) re-run without --realize
+=====================================================================================
+- Classified OK without --realize (realization was the slow/failing part): 97 / 116
+  - certified-full (class hierarchy): 64 (58 within 300s + 6 within 1800s)
+  - certified-partial (class hierarchy): 6
+  - model-full, checker >300s: 23
+  - model-partial, checker >300s: 1
+  - dump-failed (SWRL 200k cap in Lean normalizer): 3
+- Still km-failed without --realize: 19 / 116
+
+input           slice     realize_s  class_s realize_cause             status         status_checked     rows_certified     rows_total    ind_outside/ind_pairs   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ore_ont_3726    pool1m          3.4     8.08 realize-declined-rc3      dump-failed    -                               0              0    0/0                     
+ore_ont_714     pool1m         0.01     0.31 realize-declined-rc3      dump-failed    -                               0              0    0/0                     
+ore_ont_7278    pool1m         3.49     7.97 realize-declined-rc3      dump-failed    -                               0              0    0/0                     
+ore_ont_7532    pool1m        300.0     2.28 realize-timeout-300s      model-partial  certified-partial         3315798        3689301    3846/3846               
+ore_ont_9540    pool1m       300.07    47.73 realize-timeout-300s      model-partial  certified-partial            2292           2481    9514/9900               
+ore_ont_9662    pool1m        300.0     1.91 realize-timeout-300s      model-partial  certified-partial         1987967        2281520    1513/1513               
+ore_ont_1012    poolrest     300.12     12.7 realize-timeout-300s      model-full     certified-none                  0     1441151408    0/8844462684            
+ore_ont_10125   poolrest      96.02    19.53 realize-race-cancel-bug   model-full     certified-full         5393276503     5393276503    1468960/1468980         
+ore_ont_10136   poolrest      30.81     7.24 realize-race-cancel-bug   model-full     certified-full          727070846      727070846    296659/296670           
+ore_ont_10380   poolrest      52.87     9.78 realize-race-cancel-bug   model-full     certified-full         1310051771     1310051771    325827/325836           
+ore_ont_10750   poolrest     300.13    17.73 realize-timeout-300s      model-full     certified-none                  0     1407112634    0/8581016360            
+ore_ont_11037   poolrest       39.4     9.67 realize-race-cancel-bug   model-full     certified-full         1405720314     1405720314    262500/262507           
+ore_ont_11110   poolrest       12.0     1.39 realize-race-cancel-bug   model-full     certified-full          265567852      265567852    114107/114114           
+ore_ont_11311   poolrest     254.74     2.75 realize-declined-rc3      model-full     certified-full           64280705       64280705    176462/176484           
+ore_ont_11315   poolrest      43.25     6.11 realize-race-cancel-bug   model-full     certified-full         1302541055     1302541055    433368/433380           
+ore_ont_11426   poolrest     113.36     1.58 realize-declined-rc3      model-full     certified-full           60847921       60847921    180444088/180467210     
+ore_ont_11745   poolrest      54.34    14.09 realize-race-cancel-bug   model-full     certified-full         1858392667     1858392667    658740/658755           
+ore_ont_11827   poolrest     300.05      3.5 realize-timeout-300s      model-full     certified-full          568723275      568723275    3456228141/3456373038   
+ore_ont_11899   poolrest      46.31     6.36 realize-race-cancel-bug   model-full     certified-full         1303118061     1303118061    433476/433488           
+ore_ont_12128   poolrest      51.36    44.63 realize-rc1               model-full     certified-none                  0    34276697924    0/3187806               
+ore_ont_12351   poolrest     300.43    19.84 realize-timeout-300s      model-full     certified-none                  0     5403563191    0/54992064962           
+ore_ont_12414   poolrest       15.3     2.67 realize-race-cancel-bug   model-full     certified-full          777537126      777537126    195216/195223           
+ore_ont_12448   poolrest      14.11     2.32 realize-race-cancel-bug   model-full     certified-full          389760596      389760596    177723/177732           
+ore_ont_12567   poolrest     300.27    51.96 realize-timeout-300s      model-full     certified-none                  0    52885486160    0/51278495632           
+ore_ont_1306    poolrest     300.12     9.83 realize-timeout-300s      model-full     certified-none                  0     1268962508    0/6511131648            
+ore_ont_13136   poolrest     300.01     3.88 realize-timeout-300s      model-full     certified-full           44671542       44671542    106992/107008           
+ore_ont_1330    poolrest     111.98     1.96 realize-declined-rc3      model-full     certified-full           74740741       74740741    191005429/191027508     
+ore_ont_13482   poolrest     300.18    17.35 realize-timeout-300s      model-full     certified-none                  0     3407815754    0/17057350448           
+ore_ont_13846   poolrest      48.48    13.53 realize-race-cancel-bug   model-full     certified-full         1274233916     1274233916    321345/321354           
+ore_ont_14012   poolrest     300.01     3.99 realize-timeout-300s      model-full     certified-full           44671542       44671542    106992/107008           
+ore_ont_14216   poolrest     144.93      3.7 realize-rc1               model-full     certified-none                  0      368428832    0/1275518076            
+ore_ont_14543   poolrest      12.04     1.74 realize-race-cancel-bug   model-full     certified-full          667722018      667722018    180901/180908           
+ore_ont_14861   poolrest      21.82     3.61 realize-race-cancel-bug   model-full     certified-full          776840166      776840166    195286/195293           
+ore_ont_14881   poolrest      13.65     3.79 realize-race-cancel-bug   model-full     certified-full          419428958      419428958    266292/266305           
+ore_ont_14897   poolrest     300.01     2.23 realize-timeout-300s      model-full     certified-full           18237577       18237577    12819/12822             
+ore_ont_15133   poolrest     300.05     4.54 realize-timeout-300s      model-full     certified-full          568723275      568723275    3456228141/3456373038   
+ore_ont_15280   poolrest     300.18    15.42 realize-timeout-300s      model-full     certified-none                  0     2698750552    0/15023962494           
+ore_ont_15733   poolrest     268.68     2.04 realize-declined-rc3      model-full     certified-full           60801097       60801097    171622/171644           
+ore_ont_16235   poolrest      18.63     2.78 realize-race-cancel-bug   model-full     certified-full          777146682      777146682    195167/195174           
+ore_ont_1634    poolrest     300.01     3.89 realize-timeout-300s      model-full     certified-full           44671542       44671542    106992/107008           
+ore_ont_191     poolrest      11.83     1.62 realize-race-cancel-bug   model-full     certified-full          265584641      265584641    114114/114121           
+ore_ont_1966    poolrest      14.31     3.31 realize-race-cancel-bug   model-full     certified-full          420360729      420360729    143591/143598           
+ore_ont_2046    poolrest     126.52      2.7 realize-rc1               model-full     certified-none                  0      117863594    0/656809712             
+ore_ont_205     poolrest      300.0    14.96 realize-timeout-300s      model-partial  certified-partial        30158631       30172876    817740/818904           
+ore_ont_2111    poolrest      41.56     9.75 realize-race-cancel-bug   model-full     certified-full         2641915570     2641915570    719824/719838           
+ore_ont_2253    poolrest     144.66     3.44 realize-rc1               model-full     certified-none                  0      424504214    0/1388497979            
+ore_ont_2361    poolrest      22.56     3.24 realize-race-cancel-bug   model-full     certified-full          568580157      568580157    262350/262361           
+ore_ont_239     poolrest     226.95     2.26 realize-declined-rc3      model-full     certified-full           64280705       64280705    176462/176484           
+ore_ont_2415    poolrest       24.3     6.43 realize-race-cancel-bug   model-full     certified-full          569152356      569152356    262482/262493           
+ore_ont_2486    poolrest     300.29     8.37 realize-timeout-300s      model-full     certified-full         1312949318     1312949318    17465429214/17465911112 
+ore_ont_318     poolrest      28.19     4.29 realize-race-cancel-bug   model-full     certified-full         1164788569     1164788569    375463/375474           
+ore_ont_3560    poolrest     300.11     9.04 realize-timeout-300s      model-full     certified-none                  0    22795704277    0/32431537528           
+ore_ont_3575    poolrest      70.67    16.17 realize-race-cancel-bug   model-full     certified-full         7994374148     7994374148    1978438/1978460         
+ore_ont_3733    poolrest      52.09     9.06 realize-race-cancel-bug   model-full     certified-full         6584536124     6584536124    973777/973800           
+ore_ont_3737    poolrest      12.29     1.42 realize-race-cancel-bug   model-full     certified-full          265584641      265584641    114114/114121           
+ore_ont_3914    poolrest     300.82     9.22 realize-timeout-300s      model-full     certified-none                  0      154670726    0/8188135253            
+ore_ont_4054    poolrest      24.07     3.04 realize-race-cancel-bug   model-full     certified-full          909900637      909900637    241344/241352           
+ore_ont_4412    poolrest       75.3    18.15 realize-race-cancel-bug   model-full     certified-full         3716491442     3716491442    2560782/2560824         
+ore_ont_4557    poolrest     144.49     3.16 realize-rc1               model-full     certified-none                  0      351881324    0/1195803742            
+ore_ont_4598    poolrest      34.52      8.9 realize-race-cancel-bug   model-full     certified-full         1730130717     1730130717    832320/832340           
+ore_ont_4669    poolrest     300.02    32.05 realize-timeout-300s      model-partial  certified-none                  0     5326620806    0/0                     
+ore_ont_4755    poolrest      21.47      3.5 realize-race-cancel-bug   model-full     certified-full          777592753      777592753    195223/195230           
+ore_ont_5218    poolrest      71.94    16.45 realize-race-cancel-bug   model-full     certified-full         7994374148     7994374148    1978438/1978460         
+ore_ont_5358    poolrest      24.54     2.82 realize-race-cancel-bug   model-full     certified-full          909900637      909900637    241344/241352           
+ore_ont_5418    poolrest      34.57     4.62 realize-race-cancel-bug   model-full     certified-full         1387425757     1387425757    409772/409783           
+ore_ont_5475    poolrest     300.12     9.49 realize-timeout-300s      model-full     certified-full         1013954884     1013954884    14988627492/14989098063 
+ore_ont_5549    poolrest      22.86     3.07 realize-race-cancel-bug   model-full     certified-full          568580157      568580157    262350/262361           
+ore_ont_5602    poolrest     143.84     2.64 realize-rc1               model-full     certified-none                  0      409070852    0/1326072350            
+ore_ont_5760    poolrest     181.81      3.5 realize-rc1               model-full     certified-none                  0      414305672    0/1606622636            
+ore_ont_5857    poolrest     127.22    42.08 realize-race-cancel-bug   model-full     certified-full         4353172624     4353172624    726484/726495           
+ore_ont_6108    poolrest      13.17     2.84 realize-race-cancel-bug   model-full     certified-full          366334407      366334407    382880/382900           
+ore_ont_6223    poolrest      30.88     4.54 realize-race-cancel-bug   model-full     certified-full         1387276759     1387276759    409750/409761           
+ore_ont_6233    poolrest     300.11      8.7 realize-timeout-300s      model-full     certified-none                  0      898290814    0/5276184753            
+ore_ont_6477    poolrest     199.24     7.59 realize-rc1               model-full     certified-none                  0     8354716168    0/6074161416            
+ore_ont_6792    poolrest     300.01     0.17 realize-timeout-300s      model-full     certified-full             203997         203997    1510974/1610592         
+ore_ont_6816    poolrest     257.93     1.94 realize-declined-rc3      model-full     certified-full          389879096      389879096    2033657500/2033760470   
+ore_ont_6948    poolrest     300.14    26.54 realize-timeout-300s      model-full     certified-none                  0    53081903638    0/42112519680           
+ore_ont_7174    poolrest     263.93     2.07 realize-declined-rc3      model-full     certified-full           60801097       60801097    171622/171644           
+ore_ont_7361    poolrest     128.89    40.12 realize-declined-rc3      model-partial  certified-partial               2      534840544    0/0                     
+ore_ont_7416    poolrest      12.52     4.11 realize-race-cancel-bug   model-full     certified-full          298921496      298921496    121058/121065           
+ore_ont_7499    poolrest      300.0    14.27 realize-timeout-300s      model-partial  certified-partial        26057124       26070847    760077/761241           
+ore_ont_751     poolrest     300.08     6.94 realize-timeout-300s      model-full     certified-full         1387500277     1387500277    9912427252/9912693336   
+ore_ont_7578    poolrest     300.15     7.11 realize-timeout-300s      model-full     certified-full         1013954884     1013954884    14988627492/14989098063 
+ore_ont_7803    poolrest       15.3     3.11 realize-race-cancel-bug   model-full     certified-full          348437684      348437684    130697/130704           
+ore_ont_7993    poolrest     180.84     3.49 realize-rc1               model-full     certified-none                  0      406728058    0/1583048999            
+ore_ont_8068    poolrest       14.4     1.91 realize-race-cancel-bug   model-full     certified-full          651028525      651028525    178633/178640           
+ore_ont_8194    poolrest      26.54     6.53 realize-race-cancel-bug   model-full     certified-full          919728780      919728780    212331/212338           
+ore_ont_8441    poolrest     250.63     2.01 realize-declined-rc3      model-full     certified-full           60801097       60801097    171622/171644           
+ore_ont_8787    poolrest     300.07     2.12 realize-timeout-300s      model-full     certified-full          308072413      308072413    3165049520/3165229762   
+ore_ont_9027    poolrest     300.24    46.56 realize-timeout-300s      model-full     certified-none                  0    11163051009    0/3540071290            
+ore_ont_9400    poolrest     300.09      4.6 realize-timeout-300s      model-full     certified-full         1172035763     1172035763    8669314800/8669568000   
+ore_ont_9499    poolrest     300.09     5.28 realize-timeout-300s      model-full     certified-full         1402665931     1402665931    9967079056/9967345157   
+ore_ont_9684    poolrest     300.01      2.9 realize-timeout-300s      model-full     certified-full           19691851       19691851    13326/13329             
+ore_ont_9739    poolrest     227.33     2.22 realize-declined-rc3      model-full     certified-full           64280705       64280705    176462/176484           
+ore_ont_9767    poolrest      32.74     4.79 realize-race-cancel-bug   model-full     certified-full         1387276759     1387276759    409750/409761           
+ore_ont_9768    poolrest     144.62     3.14 realize-rc1               model-full     certified-none                  0      415731712    0/1365594053            
+ore_ont_9809    poolrest     188.55     6.16 realize-rc1               model-full     certified-none                  0     8252837895    0/6084525565            
+
+Still km-failed without --realize (19 inputs):
+  ore_ont_8250    pool1m   rc=3 secs=0.21 rss_mb=23 err=ss queries through a nominal, and the rule-aware taxonomy would omit 1 clause(s) and 1 fenced construct(s) of the rule w
+  ore_ont_10568   poolrest rc=124 secs=300.03 rss_mb=4689 err=
+  ore_ont_1066    poolrest rc=124 secs=300.0 rss_mb=1785 err=
+  ore_ont_10926   poolrest rc=1 secs=244.08 rss_mb=20894 err=worker engine terminated by signal 6: memory allocation of 4325392 bytes failed note: run with `RUST_BACKTRACE=1` enviro
+  ore_ont_11196   poolrest rc=124 secs=300.0 rss_mb=18437 err=
+  ore_ont_11553   poolrest rc=124 secs=300.0 rss_mb=18443 err=
+  ore_ont_1194    poolrest rc=124 secs=300.8 rss_mb=6360 err=
+  ore_ont_13700   poolrest rc=124 secs=300.0 rss_mb=43 err=
+  ore_ont_15344   poolrest rc=124 secs=300.0 rss_mb=2822 err=
+  ore_ont_15695   poolrest rc=124 secs=300.01 rss_mb=8203 err=
+  ore_ont_16744   poolrest rc=124 secs=300.08 rss_mb=8231 err=
+  ore_ont_2548    poolrest rc=124 secs=300.0 rss_mb=44 err=
+  ore_ont_2574    poolrest rc=124 secs=300.03 rss_mb=6980 err=
+  ore_ont_3080    poolrest rc=124 secs=300.0 rss_mb=82 err=
+  ore_ont_5548    poolrest rc=124 secs=300.0 rss_mb=7197 err=
+  ore_ont_6712    poolrest rc=124 secs=300.01 rss_mb=1070 err=
+  ore_ont_7192    poolrest rc=124 secs=300.08 rss_mb=7838 err=
+  ore_ont_8475    poolrest rc=124 secs=300.06 rss_mb=5426 err=
+  ore_ont_8737    poolrest rc=124 secs=300.05 rss_mb=7316 err=

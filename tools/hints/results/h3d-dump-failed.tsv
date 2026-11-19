@@ -1,0 +1,11 @@
+input	suite	bytes	dump_rc	dump_secs	dump_rss_mb	cause	detail
+ore_ont_6615	pool1m	126128	3	0.07	72	rules-cap	rules: 16777216 ground instances over 16 named individuals (more than 200000)
+ore_ont_15753	pool1m	178957	3	0.08	72	rules-cap	rules: 1277495 ground instances over 41 named individuals (more than 200000)
+ore_ont_12451	poolrest	1373820	3	0.14	70	rules-cap	rules: 13152527 ground instances over 23 named individuals (more than 200000)
+ore_ont_15063	poolrest	2253994	3	0.26	78	rules-cap	rules: 4134520125 ground instances over 1605 named individuals (more than 200000)
+ore_ont_7345	poolrest	2285768	3	0.28	77	rules-cap	rules: 73009716833704 ground instances over 2221 named individuals (more than 200000)
+ore_ont_13077	pool1m	66100	3	0.23	73	unsupported-datatype-restriction	DatatypeRestriction(xsd:dateTime xsd:minExclusive "2004-12-27T06:00:00"^^xsd:dateTime)
+ore_ont_10929	poolrest	51968091	1	40.54	13408	dump-oom-16gb	INTERNAL PANIC: out of memory
+ore_ont_4572	poolrest	55753906	1	47.17	12086	dump-oom-16gb	INTERNAL PANIC: out of memory
+ore_ont_15635	poolrest	60895447	1	41.38	13417	dump-oom-16gb	INTERNAL PANIC: out of memory
+ore_ont_16286	poolrest	23984350	124	505.82	275	dump-timeout-300s	print-index 200.1s + print-clauses 318.55s > 300s per-step limit
