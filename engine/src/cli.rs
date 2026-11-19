@@ -7922,7 +7922,14 @@ pub fn run_tableau() {
     // complete stdin document does not sit under the classification peak.
     let worker = crate::bigstack::run("tableau worker", stack_mb << 20, move || {
         if compact_bridge {
-            crate::tableau::run_bridge_json_owned_compact(buf).map(WorkerOutput::Compact)
+            if std::env::var_os("KM_HT_BRIDGE_ONLY").is_some() {
+                crate::tableau::run_bridge_json_owned_compact(buf).map(WorkerOutput::Compact)
+            } else {
+                crate::tableau::run_bridge_or_json_owned_compact(buf).map(|out| match out {
+                    Ok(compact) => WorkerOutput::Compact(compact),
+                    Err(json) => WorkerOutput::Json(json),
+                })
+            }
         } else {
             crate::tableau::run_json_owned(buf).map(WorkerOutput::Json)
         }

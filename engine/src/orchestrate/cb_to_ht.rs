@@ -3493,7 +3493,7 @@ fn convert_with_rule_abox(
             }
         }
     }
-    if card_active {
+    if card_active && projection_evidence {
         // The cardinality projection checker accounts for exactly the source
         // expansion clauses replaced by first-class definitions. Preserve the
         // complete residual source for the ordinary direct checker. If even one
@@ -4972,10 +4972,11 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
     // clauses with positive concept atoms (forward chaining with one counter
     // per clause).
     let mut universal: HashSet<usize> = HashSet::new();
+    let mut horn_bodies: Vec<Vec<usize>> = Vec::new();
+    let mut head_of: Vec<usize> = Vec::new();
+    let mut watch: HashMap<usize, Vec<usize>> = HashMap::new();
     {
         let mut need: Vec<usize> = Vec::new();
-        let mut head_of: Vec<usize> = Vec::new();
-        let mut watch: HashMap<usize, Vec<usize>> = HashMap::new();
         let mut queue: Vec<usize> = Vec::new();
         for clause in ht.iter() {
             let [head] = clause.head.as_slice() else { continue };
@@ -5002,10 +5003,11 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
             if body.is_empty() {
                 queue.push(c);
             } else {
-                for b in body {
+                for &b in &body {
                     watch.entry(b).or_default().push(index);
                 }
             }
+            horn_bodies.push(body);
         }
         while let Some(c) = queue.pop() {
             if !universal.insert(c) {
@@ -5024,8 +5026,6 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
     // (role, end, concept): the concept holds at the source (end `false`) or
     // target (end `true`) of every role atom. Only relevant roles are tracked.
     let mut implied: BTreeSet<(usize, bool, usize)> = BTreeSet::new();
-    // The (role, end) pairs with at least one implied concept.
-    let mut ends: BTreeSet<(usize, bool)> = BTreeSet::new();
     let holds = |implied: &BTreeSet<(usize, bool, usize)>, role: usize, end: bool, c: usize| {
         universal.contains(&c) || implied.contains(&(role, end, c))
     };
@@ -5038,21 +5038,32 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
         concepts: Vec<(usize, usize)>,
     }
     let mut one_role: Vec<OneRole> = Vec::new();
-    let mut no_role: Vec<(usize, usize, Vec<(usize, usize)>)> = Vec::new();
     for clause in ht.iter() {
         let [head] = clause.head.as_slice() else { continue };
         let Some((c, t)) = positive_concept(head) else { continue };
+        if clause.body.len() == 1
+            && matches!(clause.body[0], HAtom::Role { r, s, t: u } if s != u && (t == s || t == u) && relevant.contains(&r))
+        {
+            if let HAtom::Role { r, s, t: u } = clause.body[0] {
+                one_role.push(OneRole {
+                    r,
+                    s,
+                    u,
+                    c,
+                    t,
+                    concepts: Vec::new(),
+                });
+            }
+            continue;
+        }
         let Some(concepts) = body_concepts(clause) else { continue };
-        match body_roles(clause).as_slice() {
-            // R(s,u) ∧ concepts on s or u → C(s) or C(u).
-            [(r, s, u)] if s != u && (t == *s || t == *u) && relevant.contains(r) => {
+        if let [(r, s, u)] = body_roles(clause).as_slice() {
+            if s != u && (t == *s || t == *u) && relevant.contains(r) {
                 one_role.push(OneRole { r: *r, s: *s, u: *u, c, t, concepts });
             }
-            // Concepts on the head variable → C, at every role end.
-            [] => no_role.push((c, t, concepts)),
-            _ => {}
         }
     }
+    let mut pending_horn: Vec<(usize, bool, usize)> = Vec::new();
     loop {
         let mut changed = false;
         for rule in &one_role {
@@ -5060,19 +5071,24 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
                 (bt == rule.s && holds(&implied, rule.r, false, b))
                     || (bt == rule.u && holds(&implied, rule.r, true, b))
             });
-            if ok && implied.insert((rule.r, rule.t == rule.u, rule.c)) {
-                ends.insert((rule.r, rule.t == rule.u));
+            if ok && !universal.contains(&rule.c) && implied.insert((rule.r, rule.t == rule.u, rule.c)) {
+                pending_horn.push((rule.r, rule.t == rule.u, rule.c));
                 changed = true;
             }
         }
-        let snapshot: Vec<(usize, bool)> = ends.iter().copied().collect();
-        for (c, t, concepts) in &no_role {
-            for &(r, e) in &snapshot {
-                if concepts.iter().all(|&(b, bt)| bt == *t && holds(&implied, r, e, b))
-                    && implied.insert((r, e, *c))
-                {
-                    ends.insert((r, e));
-                    changed = true;
+        while let Some((r, e, b)) = pending_horn.pop() {
+            if let Some(indices) = watch.get(&b) {
+                for &idx in indices {
+                    let c = head_of[idx];
+                    if !holds(&implied, r, e, c)
+                        && horn_bodies[idx]
+                            .iter()
+                            .all(|&bc| holds(&implied, r, e, bc))
+                        && implied.insert((r, e, c))
+                    {
+                        pending_horn.push((r, e, c));
+                        changed = true;
+                    }
                 }
             }
         }
@@ -5087,9 +5103,25 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
                 .map(|&(_, e, c)| (e, c))
                 .collect();
             for (e, c) in from_q {
-                if implied.insert((r, e ^ swapped, c)) {
-                    ends.insert((r, e ^ swapped));
+                if !universal.contains(&c) && implied.insert((r, e ^ swapped, c)) {
+                    pending_horn.push((r, e ^ swapped, c));
                     changed = true;
+                }
+            }
+        }
+        while let Some((r, e, b)) = pending_horn.pop() {
+            if let Some(indices) = watch.get(&b) {
+                for &idx in indices {
+                    let c = head_of[idx];
+                    if !holds(&implied, r, e, c)
+                        && horn_bodies[idx]
+                            .iter()
+                            .all(|&bc| holds(&implied, r, e, bc))
+                        && implied.insert((r, e, c))
+                    {
+                        pending_horn.push((r, e, c));
+                        changed = true;
+                    }
                 }
             }
         }
@@ -7487,5 +7519,36 @@ mod empty_grounding_model_tests {
             let verdict = crate::tableau::rules_consistency_verdict(&worker, crate::tableau::clauses_of_tinput(&worker)).unwrap();
             assert_eq!(verdict, consistent);
         }
+    }
+
+    #[test]
+    fn entailed_functional_clauses_closes_role_domain_and_range_through_horn_watchlist() {
+        // r(x, y) -> A(x), A(x) -> B(x), and B(x) & r(x, y) & r(x, z) -> y = z
+        // entails unconditional functionality of r: r(x, y) & r(x, z) -> y = z.
+        let mut ht = vec![
+            HtClause {
+                body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+                head: vec![HAtom::Concept { neg: false, c: 0, t: 0 }],
+            },
+            HtClause {
+                body: vec![HAtom::Concept { neg: false, c: 0, t: 0 }],
+                head: vec![HAtom::Concept { neg: false, c: 1, t: 0 }],
+            },
+            HtClause {
+                body: vec![
+                    HAtom::Concept { neg: false, c: 1, t: 0 },
+                    HAtom::Role { r: 0, s: 0, t: 1 },
+                    HAtom::Role { r: 0, s: 0, t: 2 },
+                ],
+                head: vec![HAtom::Eq { s: 1, t: 2 }],
+            },
+        ];
+        let added = add_entailed_functional_clauses(&mut ht);
+        assert_eq!(added, 1);
+        assert!(ht.iter().any(|cl| {
+            cl.body.len() == 2
+                && cl.body.iter().all(|a| matches!(a, HAtom::Role { r: 0, .. }))
+                && matches!(cl.head.as_slice(), [HAtom::Eq { s: 1, t: 2 }])
+        }));
     }
 }

@@ -27076,11 +27076,11 @@ fn backend_expansion_reuse_replays_only_nondeterministic_values_under_the_branch
     let negated_choice = new_test_concept(&mut env, 4102);
 
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![
+    replay.cached_concept_values = std::sync::Arc::new(vec![
         (deterministic_concept, false, true),
         (chosen_disjunct, false, false),
         (negated_choice, true, false),
-    ];
+    ]);
     let node = make_reuse_nominal(&mut env, 7, replay);
     let reuse_tp = install_reuse_track_point(&mut env, node, 1);
 
@@ -27117,7 +27117,7 @@ fn backend_expansion_reuse_is_inert_without_a_nondeterministic_track_point() {
     let chosen_disjunct = new_test_concept(&mut env, 4110);
 
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     let node = make_reuse_nominal(&mut env, 8, replay);
 
     // (a) no track point at all.
@@ -27158,7 +27158,7 @@ fn backend_expansion_reuse_declines_and_discards_an_unrepresentable_record() {
 
     let mut replay = reusable_replay_record();
     replay.reuse_replay_representable = false;
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     let node = make_reuse_nominal(&mut env, 9, replay);
     install_reuse_track_point(&mut env, node, 1);
 
@@ -27205,7 +27205,7 @@ fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() 
     let contested = new_test_concept(&mut env, 4130);
 
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(contested, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(contested, false, false)]);
     let node = make_reuse_nominal(&mut env, 10, replay);
 
     // A deterministically present ¬contested refutes the recorded choice.
@@ -27230,7 +27230,7 @@ fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() 
     env.algo.conf_build_dependencies = true;
     let contested = new_test_concept(&mut env, 4130);
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(contested, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(contested, false, false)]);
     let node = make_reuse_nominal(&mut env, 10, replay);
     let branch_tp = real_dependency_track_point(&mut env, node, ConDescId::NONE, DepKind::Or, 1, 3);
     env.ctx
@@ -27259,7 +27259,7 @@ fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() 
     env.algo.conf_build_dependencies = true;
     let contested = new_test_concept(&mut env, 4130);
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(contested, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(contested, false, false)]);
     let node = make_reuse_nominal(&mut env, 10, replay);
     let branch_tp = real_dependency_track_point(&mut env, node, ConDescId::NONE, DepKind::Or, 1, 3);
     env.ctx
@@ -27419,7 +27419,7 @@ fn backend_expansion_reuse_replay_is_rolled_back_with_its_branch_epoch() {
     let chosen_disjunct = new_test_concept(&mut env, 4150);
 
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     replay.cached_nondeterministic_different_individuals = vec![31];
     let node = make_reuse_nominal(&mut env, 30, replay);
     let _different = make_reuse_nominal(&mut env, 31, reusable_replay_record());
@@ -27552,7 +27552,7 @@ fn backend_expansion_reuse_discard_alternative_retains_the_ordinary_expansion() 
     env.algo.conf_build_dependencies = true;
     let chosen_disjunct = new_test_concept(&mut env, 4160);
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     let node = make_reuse_nominal(&mut env, 50, replay);
 
     let discarded = env
@@ -27608,7 +27608,7 @@ fn reaching_a_retained_nominal_activates_backend_expansion_reuse_before_its_disj
     env.algo.conf_backend_expansion_reuse = true;
     let chosen_disjunct = new_test_concept(&mut env, 4200);
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     let node = make_reuse_nominal(&mut env, 61, replay);
     // The node belongs to the retained deterministic consistency base, so its
     // inherited concept-processing queue may hold undecided disjunctions.
@@ -28331,4 +28331,71 @@ fn preferred_nominal_probe_tracks_cow_local_write_and_rollback() {
     env.ctx.process_context_mut().pop_branch_epoch();
     assert!(preferred_nominal_probe_decision(&env, left, right, 900));
     assert!(env.algo.ht_label_concept_clash_set(left, right, &env.ctx));
+}
+
+#[test]
+fn ht_label_concept_clash_set_with_descriptors_selects_single_minimum_branching_level_pair() {
+    let _test_env = crate::test_env::read();
+    for use_sorted_walk in [false, true] {
+        let mut env = build_env();
+        env.algo.map_comparison_direct_lookup_factor = if use_sorted_walk { 10 } else { 0 };
+        let left = env.ctx.process_context_mut().alloc_node(IndividualProcessNode::new(Id::NONE));
+        let right = env.ctx.process_context_mut().alloc_node(IndividualProcessNode::new(Id::NONE));
+        let c_early_tag = atom_concept_with_tag(&mut env, 100);
+        let c_late_tag = atom_concept_with_tag(&mut env, 200);
+        let tp_high = real_dependency_track_point(&mut env, left, ConDescId::NONE, DepKind::Or, 3001, 30);
+        let tp_low = real_dependency_track_point(&mut env, left, ConDescId::NONE, DepKind::Or, 3002, 5);
+
+        let d_left_100 = concept_descriptor_with_dependency(&mut env, c_early_tag, false, tp_high);
+        let d_left_200 = concept_descriptor_with_dependency(&mut env, c_late_tag, false, tp_low);
+        let d_right_100 = concept_descriptor_with_dependency(&mut env, c_early_tag, true, TrackPointId::NONE);
+        let d_right_200 = concept_descriptor_with_dependency(&mut env, c_late_tag, true, TrackPointId::NONE);
+
+        let mut left_label = ReapplyConceptLabelSet::new(INVALID);
+        left_label.concept_des_dep_map.insert(100, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: d_left_100, pos_neg_reapply_queue: Default::default(),
+        });
+        left_label.concept_des_dep_map.insert(200, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: d_left_200, pos_neg_reapply_queue: Default::default(),
+        });
+        left_label.concept_count = 2;
+
+        let mut right_label = ReapplyConceptLabelSet::new(INVALID);
+        right_label.concept_des_dep_map.insert(100, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: d_right_100, pos_neg_reapply_queue: Default::default(),
+        });
+        right_label.concept_des_dep_map.insert(200, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: d_right_200, pos_neg_reapply_queue: Default::default(),
+        });
+        right_label.concept_count = 3;
+
+        let left_ls = env.ctx.process_context_mut().alloc_label_set(left_label);
+        let right_ls = env.ctx.process_context_mut().alloc_label_set(right_label);
+        env.ctx.process_context_mut().node_mut(left).set_reapply_concept_label_set(left_ls);
+        env.ctx.process_context_mut().node_mut(right).set_reapply_concept_label_set(right_ls);
+
+        let mut clashes = ClashDescId::NONE;
+        assert!(env.algo.ht_label_concept_clash_set_with_descriptors(
+            left,
+            right,
+            &mut clashes,
+            &mut env.ctx,
+        ));
+        let mut chain = Vec::new();
+        let mut cur = clashes;
+        while cur.is_some() {
+            let cd = env.ctx.process_context().clash_desc(cur);
+            chain.push((cd.get_concept_descriptor(), cd.get_dependency_track_point()));
+            cur = cd.next;
+        }
+        assert_eq!(chain.len(), 2, "must emit a single 2-descriptor clash pair (use_sorted_walk={use_sorted_walk})");
+        assert!(
+            chain.iter().any(|&(d, tp)| d == d_left_200 && tp == tp_low),
+            "must select the minimum branching-level pair at tag 200 (level 5) over tag 100 (level 30)"
+        );
+        assert!(
+            chain.iter().any(|&(d, tp)| d == d_right_200 && tp == TrackPointId::NONE),
+            "must pair right descriptor at tag 200"
+        );
+    }
 }

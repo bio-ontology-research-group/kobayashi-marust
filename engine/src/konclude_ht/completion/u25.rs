@@ -955,7 +955,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .node(indi_node)
                     .use_reapply_con_label_set;
                 if con_set_label.is_some() {
-                    for &(concept, negation, deterministic) in &replay.cached_concept_values {
+                    for &(concept, negation, deterministic) in replay.cached_concept_values.iter() {
                         if deterministic {
                             continue;
                         }
@@ -1381,7 +1381,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .backend_sync_data(loc_backend_sync_data)
             .has_reuse_non_deterministic_concepts_added()
         {
-            for &(concept, negation, deterministic) in &replay.cached_concept_values {
+            for &(concept, negation, deterministic) in replay.cached_concept_values.iter() {
                 // if (!deterministic) addConceptToIndividual(concept, negation,
                 //     modifingIndiNode, reuseExpDepTrackPoint, false, false, ctx);
                 if deterministic {
