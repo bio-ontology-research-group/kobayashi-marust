@@ -2201,6 +2201,43 @@ fn from_export_slot(
                 json_str(why)
             );
         }
+        if !data_rel_concepts.is_empty() {
+            let mut cur_d: Vec<u32> = data_rel_concepts
+                .iter()
+                .copied()
+                .filter(|&a| pos.get(x, a as usize))
+                .collect();
+            let filt_cur: Vec<u32> = cur_d
+                .iter()
+                .copied()
+                .filter(|&a| !is_pure_oneof_dall_vec[a as usize])
+                .collect();
+            let filt_cur = en.filter_active_data(&filt_cur);
+            if !filt_cur.is_empty() && !en.has_data_star(filt_cur) {
+                cur_d.sort_by_key(|&a| (!nf.named[a as usize], a));
+                let mut kept: Vec<u32> = Vec::new();
+                for a in cur_d {
+                    let mut try_k = kept.clone();
+                    try_k.push(a);
+                    try_k.sort_unstable();
+                    let filt_try: Vec<u32> = try_k
+                        .iter()
+                        .copied()
+                        .filter(|&b| !is_pure_oneof_dall_vec[b as usize])
+                        .collect();
+                    let filt_try = en.filter_active_data(&filt_try);
+                    if !kept.iter().any(|&b| en.has_conflict_peer(a, b))
+                        && (filt_try.is_empty() || en.has_data_star(filt_try))
+                    {
+                        kept = try_k;
+                    } else {
+                        pos.set(x, a as usize, false);
+                        pos_list[x].retain(|&p| p != a);
+                        neg.set(x, a as usize, true);
+                    }
+                }
+            }
+        }
         for _pass in 0..3 {
             let mut any_change = false;
             let mut cand_gis: Vec<usize> = nf.gci_empty.iter().map(|&g| g as usize).collect();
@@ -2345,7 +2382,7 @@ fn from_export_slot(
             e.forbid = fid;
             e.target = tgt_id;
         }
-        let rep_deadline = deadline.min(Instant::now() + std::time::Duration::from_secs(10));
+        let rep_deadline = deadline.min(Instant::now() + std::time::Duration::from_secs(12));
         en.opt.deadline = Some(rep_deadline);
         for _round in 0..4 {
             if rep.violations == 0 || Instant::now() > rep_deadline || en.mem_exceeded() {
@@ -2404,7 +2441,27 @@ fn from_export_slot(
                 }
                 m.enqueue(bad_x);
             }
-            let _ = en.saturate(&mut m);
+            // Process queued elements one by one so a single failing element does not abort the repair queue
+            let mut proc_steps = 0usize;
+            while let Some(x) = m.pop() {
+                proc_steps += 1;
+                if proc_steps > 25_000 || Instant::now() > rep_deadline || en.mem_exceeded() {
+                    break;
+                }
+                if en.process(&mut m, x).is_err() {
+                    let x = m.find(x);
+                    if m.elems[x as usize].alive {
+                        m.em(x).forbid = 0;
+                        let nbs: Vec<Id> = m.elems[x as usize].edges.iter().map(|e| m.find(e.0)).collect();
+                        for y in nbs {
+                            if m.elems[y as usize].alive {
+                                m.em(y).forbid = 0;
+                            }
+                        }
+                        let _ = en.process(&mut m, x);
+                    }
+                }
+            }
             let canon_now: Vec<Id> = m.canonical().collect();
             for &x in &canon_now {
                 let tx = en.sets.get(m.elems[x as usize].ty);
@@ -2434,6 +2491,7 @@ fn from_export_slot(
                         em.ty = t_new;
                         em.target = new_tgt;
                         em.forced = new_tgt;
+                        m.enqueue(x);
                     } else {
                         let orig = en.sets.get(tgt0);
                         let mut kept: Vec<u32> = orig.iter().copied().filter(|&a| nf.is_nom[a as usize]).collect();
@@ -2456,6 +2514,7 @@ fn from_export_slot(
                             em.forced = kid;
                             em.target = kid;
                             em.forbid = 0;
+                            m.enqueue(x);
                         }
                     }
                 }
@@ -2476,8 +2535,11 @@ fn from_export_slot(
                         drop_y.push(y);
                     }
                 }
-                for y in drop_y {
-                    en.remove_edge(&mut m, x, y);
+                if !drop_y.is_empty() {
+                    for y in drop_y {
+                        en.remove_edge(&mut m, x, y);
+                    }
+                    m.enqueue(x);
                 }
             }
             rep = check::verify(&mut en, &m);
@@ -2629,38 +2691,88 @@ fn from_export_slot(
             m.tm_clear();
             let try_add_clean_wit = |en: &mut Engine, m: &mut Model, c: u32, fb: u32, tgt: u32| -> Option<Id> {
                 let seed = en.sets.intern(vec![c]);
-                let (t, is_clean) = match en.close_clean(seed, fb, tgt, true) {
-                    CloseRes::Ok(t) => (t, true),
-                    _ => match en.close(seed, fb, tgt, true) {
-                        CloseRes::Ok(t) => (t, false),
-                        _ => return None,
-                    },
-                };
-                if en.sets.get(t).iter().any(|&o| en.nf.is_nom[o as usize]) {
-                    return None;
-                }
-                m.begin();
-                let w = en.new_elem_closed(m, seed, t, fb, tgt, false);
-                if !is_clean {
-                    m.em(w).owner = w;
-                }
-                if en.saturate(m).is_ok() {
-                    let w = m.find(w);
-                    let polluted = m.saved_iter().any(|(&i, old)| {
-                        let cur = m.find(i);
-                        m.elems[cur as usize].ty != old.ty
-                    });
-                    if !polluted
-                        && en.sets.has(m.elems[w as usize].ty, c)
-                        && (fb == 0 || !en.sets.get(fb).iter().any(|&b| en.sets.has(m.elems[w as usize].ty, b)))
-                    {
-                        m.em(w).pinned = true;
-                        m.commit();
-                        return Some(w);
+                let base_bad = en.bad.clone();
+                let mut res = None;
+                for attempt in 0..4 {
+                    let (t, is_clean) = if attempt == 0 {
+                        match en.close_clean(seed, fb, tgt, true) {
+                            CloseRes::Ok(t) => (t, true),
+                            _ => match en.close(seed, fb, tgt, true) {
+                                CloseRes::Ok(t) => (t, false),
+                                _ => break,
+                            },
+                        }
+                    } else {
+                        match en.close(seed, fb, tgt, true) {
+                            CloseRes::Ok(t) => (t, false),
+                            _ => break,
+                        }
+                    };
+                    if en.sets.get(t).iter().any(|&o| en.nf.is_nom[o as usize]) {
+                        break;
+                    }
+                    m.begin();
+                    let w = en.new_elem_closed(m, seed, t, fb, tgt, false);
+                    if !is_clean {
+                        m.em(w).owner = w;
+                    }
+                    match en.saturate(m) {
+                        Ok(()) => {
+                            let w = m.find(w);
+                            let polluted = m.saved_iter().any(|(&i, old)| {
+                                let cur = m.find(i);
+                                if cur != i {
+                                    return true;
+                                }
+                                let newt = m.elems[cur as usize].ty;
+                                if newt == old.ty {
+                                    return false;
+                                }
+                                en.sets
+                                    .get(newt)
+                                    .iter()
+                                    .any(|&a| (rowclass[a as usize] || nf.is_nom[a as usize]) && !en.sets.has(old.ty, a))
+                            });
+                            if !polluted
+                                && en.sets.has(m.elems[w as usize].ty, c)
+                                && (fb == 0 || !en.sets.get(fb).iter().any(|&b| en.sets.has(m.elems[w as usize].ty, b)))
+                            {
+                                m.em(w).pinned = true;
+                                m.commit();
+                                res = Some(w);
+                                break;
+                            }
+                            m.rollback();
+                            break;
+                        }
+                        Err(e) => {
+                            m.rollback();
+                            if e.is_budget() {
+                                break;
+                            }
+                            let new: Vec<u32> = e
+                                .blame
+                                .iter()
+                                .copied()
+                                .filter(|&bt| {
+                                    bt != 0
+                                        && !en.bad.contains(&bt)
+                                        && !en.sets.get(bt).iter().any(|&a| en.nf.is_nom[a as usize])
+                                })
+                                .collect();
+                            if new.is_empty() {
+                                break;
+                            }
+                            en.bad.extend(new);
+                            en.clear_memo();
+                        }
                     }
                 }
-                m.rollback();
-                None
+                if en.bad.len() != base_bad.len() {
+                    en.bad = base_bad;
+                    en.clear_memo();
+                }
+                res
             };
             for &c in &classes {
                 if Instant::now() > deadline || en.mem_exceeded() {
@@ -2725,6 +2837,74 @@ fn from_export_slot(
                 rep = check::verify(&mut en, &m);
             }
         }
+        // Compact `wits` per class so any class with a clean witness (0 dirty rowclasses) keeps only 1 witness
+        let mut by_cls: BTreeMap<Option<u32>, Vec<Id>> = BTreeMap::new();
+        for &(a, w) in &wits {
+            let w = m.find(w);
+            let e = by_cls.entry(a).or_default();
+            if !e.contains(&w) {
+                e.push(w);
+            }
+        }
+        let mut comp_wits: Vec<(Option<u32>, Id)> = Vec::new();
+        for (a, ws) in by_cls {
+            let Some(c) = a else {
+                for w in ws {
+                    comp_wits.push((None, w));
+                }
+                continue;
+            };
+            if ws.len() <= 1 {
+                for w in ws {
+                    comp_wits.push((Some(c), w));
+                }
+                continue;
+            }
+            let sup = &sup_of[&c];
+            let mut cands: Vec<(Id, Vec<u32>, usize)> = Vec::with_capacity(ws.len());
+            for w in ws {
+                let ts = en.sets.get(m.elems[w as usize].ty);
+                let miss = sup.iter().filter(|&&b| rowclass[b as usize] && ts.binary_search(&b).is_err()).count();
+                let d: Vec<u32> = ts
+                    .iter()
+                    .copied()
+                    .filter(|&b| rowclass[b as usize] && sup.binary_search(&b).is_err())
+                    .collect();
+                cands.push((w, d, miss));
+            }
+            if let Some((best_w, _, _)) = cands.iter().find(|(_, d, miss)| *miss == 0 && d.is_empty()) {
+                comp_wits.push((Some(c), *best_w));
+            } else {
+                cands.sort_by_key(|(w, d, miss)| (*miss, d.len(), *w));
+                comp_wits.push((Some(c), cands[0].0));
+                let mut cur_d = cands[0].1.clone();
+                let mut used = vec![false; cands.len()];
+                used[0] = true;
+                while !cur_d.is_empty() {
+                    let mut best_i = None;
+                    let mut best_rem = 0usize;
+                    for (i, (_, d, miss)) in cands.iter().enumerate() {
+                        if used[i] || *miss > 0 {
+                            continue;
+                        }
+                        let rem = cur_d.iter().filter(|b| d.binary_search(b).is_err()).count();
+                        if rem > best_rem {
+                            best_rem = rem;
+                            best_i = Some(i);
+                        }
+                    }
+                    if let Some(i) = best_i {
+                        used[i] = true;
+                        comp_wits.push((Some(c), cands[i].0));
+                        let d = &cands[i].1;
+                        cur_d.retain(|b| d.binary_search(b).is_ok());
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        wits = comp_wits;
         if let Some((target_set, prev_dirty)) = aux_targets {
             wits.retain(|&(wc, _)| wc.is_none() || wc.is_some_and(|c| target_set.contains(&c)));
             dirty_of.clear();

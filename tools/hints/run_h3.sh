@@ -11,14 +11,14 @@ shift 3
 export DARGS="$*"
 one() {
   o=$1
-  [ -f $OUT/$o/result.json ] && exit 0
+  [ "${H3_FORCE:-0}" != 1 ] && [ -f $OUT/$o/result.json ] && exit 0
   mkdir -p $OUT/$o
-  timeout 2400 python3 $D $C/$o.owl $OUT/$o $DARGS > $OUT/$o/driver.out 2> $OUT/$o/driver.err
+  timeout 2700 python3 $D $C/$o.owl $OUT/$o $DARGS > $OUT/$o/driver.out 2> $OUT/$o/driver.err
   [ -f $OUT/$o/result.json ] || echo "{\"input\": \"$o\", \"status\": \"driver-timeout\"}" > $OUT/$o/result.json
-  # keep every evidence file (model*.hint, model*.wit, classes.txt) under 50 MB
-  find $OUT/$o \( -name '*.hint' -o -name '*.wit' -o -name 'classes.txt' \) -size +50M -delete
-  find $OUT/$o -name 'check*.jsonl' -size +1M -delete
-  find $OUT/$o \( -name 'base.cl' -o -name 'base.idx' -o -name 'km.lines' \) -size +10M -delete
+  # keep every evidence file and km.lines under 50 MB
+  find $OUT/$o \( -name '*.hint' -o -name '*.wit' -o -name 'classes.txt' -o -name 'km.lines' \) -size +50M -delete
+  find $OUT/$o -name 'check*.jsonl' -size +5M -delete
+  find $OUT/$o \( -name 'base.cl' -o -name 'base.idx' \) -size +5M -delete
 }
 export -f one
 cut -f1 $LIST | xargs -P $P -I{} bash -c 'one {}'
