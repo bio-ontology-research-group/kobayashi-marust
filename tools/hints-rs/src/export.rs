@@ -60,13 +60,14 @@ impl JVal {
 }
 
 struct JParser<'a> {
+    s: &'a str,
     b: &'a [u8],
     i: usize,
 }
 
 impl<'a> JParser<'a> {
     fn new(s: &'a str) -> Self {
-        Self { b: s.as_bytes(), i: 0 }
+        Self { s, b: s.as_bytes(), i: 0 }
     }
     fn skip_ws(&mut self) {
         while self.i < self.b.len() && matches!(self.b[self.i], b' ' | b'\t' | b'\r' | b'\n') {
@@ -112,14 +113,28 @@ impl<'a> JParser<'a> {
     }
     fn parse_str(&mut self) -> Result<String, String> {
         self.i += 1; // skip '"'
-        let mut out = String::new();
+        let start = self.i;
         while self.i < self.b.len() {
             let c = self.b[self.i];
-            self.i += 1;
             if c == b'"' {
+                let slice = &self.s[start..self.i];
+                self.i += 1;
+                return Ok(slice.to_string());
+            }
+            if c == b'\\' {
+                break;
+            }
+            self.i += 1;
+        }
+        let mut out = String::from(&self.s[start..self.i]);
+        while self.i < self.b.len() {
+            let c = self.b[self.i];
+            if c == b'"' {
+                self.i += 1;
                 return Ok(out);
             }
             if c == b'\\' {
+                self.i += 1;
                 if self.i >= self.b.len() {
                     return Err("unterminated escape".into());
                 }
@@ -138,7 +153,7 @@ impl<'a> JParser<'a> {
                         if self.i + 4 > self.b.len() {
                             return Err("short \\u escape".into());
                         }
-                        let hex = std::str::from_utf8(&self.b[self.i..self.i + 4]).map_err(|e| e.to_string())?;
+                        let hex = &self.s[self.i..self.i + 4];
                         let code = u32::from_str_radix(hex, 16).map_err(|e| e.to_string())?;
                         if let Some(ch) = char::from_u32(code) {
                             out.push(ch);
@@ -148,12 +163,12 @@ impl<'a> JParser<'a> {
                     other => out.push(other as char),
                 }
             } else {
-                // UTF-8 byte sequence
-                self.i -= 1;
-                let rest = std::str::from_utf8(&self.b[self.i..]).map_err(|e| e.to_string())?;
-                let ch = rest.chars().next().ok_or("empty utf8")?;
-                out.push(ch);
-                self.i += ch.len_utf8();
+                let seg_start = self.i;
+                self.i += 1;
+                while self.i < self.b.len() && self.b[self.i] != b'"' && self.b[self.i] != b'\\' {
+                    self.i += 1;
+                }
+                out.push_str(&self.s[seg_start..self.i]);
             }
         }
         Err("unterminated string".into())
@@ -443,14 +458,9 @@ fn from_export_slot(
     // Apply `same` groups and ensure every ontology nominal is placed on exactly one element
     let mut ind_elem: HashMap<String, usize> = HashMap::new();
     for (idx, e) in exp_elems.iter_mut().enumerate() {
-        let mut kept = Vec::new();
         for ind in e.individuals.drain(..) {
-            if !ind_elem.contains_key(&ind) {
-                ind_elem.insert(ind.clone(), idx);
-                kept.push(ind);
-            }
+            ind_elem.entry(ind).or_insert(idx);
         }
-        e.individuals = kept;
     }
     for (grp, el_opt) in &exp_sames {
         let target_idx = el_opt
@@ -459,22 +469,23 @@ fn from_export_slot(
             .or_else(|| grp.iter().find_map(|ind| ind_elem.get(ind).copied()))
             .unwrap_or(0);
         for ind in grp {
-            if let Some(&prev_idx) = ind_elem.get(ind) {
-                if prev_idx != target_idx {
-                    exp_elems[prev_idx].individuals.retain(|x| x != ind);
-                }
-            }
-            if !exp_elems[target_idx].individuals.contains(ind) {
-                exp_elems[target_idx].individuals.push(ind.clone());
-            }
             ind_elem.insert(ind.clone(), target_idx);
         }
     }
+    let mut inds_by_elem: Vec<Vec<String>> = vec![Vec::new(); exp_elems.len()];
+    for (ind, &idx) in &ind_elem {
+        if idx < inds_by_elem.len() {
+            inds_by_elem[idx].push(ind.clone());
+        }
+    }
+    let nom_lookup: HashMap<&str, u32> = nf.nominal.iter().map(|(i, c)| (i.as_str(), *c)).collect();
     let mut placed_noms: BTreeSet<u32> = BTreeSet::new();
-    for e in &mut exp_elems {
-        let mut kept = Vec::new();
-        for ind in e.individuals.drain(..) {
-            if let Some(& (_, c)) = nf.nominal.iter().find(|(i, _)| i == &ind) {
+    for (idx, e) in exp_elems.iter_mut().enumerate() {
+        let mut inds = std::mem::take(&mut inds_by_elem[idx]);
+        inds.sort_unstable();
+        let mut kept = Vec::with_capacity(inds.len());
+        for ind in inds {
+            if let Some(&c) = nom_lookup.get(ind.as_str()) {
                 if placed_noms.insert(c) {
                     kept.push(ind);
                 }
