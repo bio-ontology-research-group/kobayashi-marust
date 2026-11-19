@@ -223,4 +223,67 @@ public class LenientInputTest {
             assertTrue(expected.getMessage().contains("declined a complete classification"));
         }
     }
+
+    @Test
+    public void anonymousSuccessorMergeAndComplementMinCardinality2ValuesMatchHermiT() throws Exception {
+        StringBuilder pad = new StringBuilder();
+        for (int i = 0; i < 10; i++) {
+            pad.append("  Declaration(ObjectProperty(:pad").append(i).append("))\n");
+        }
+        for (int i = 0; i < 30; i++) {
+            pad.append("  Declaration(NamedIndividual(:z").append(i).append("))\n");
+        }
+        String c4 = "Prefix(:=<" + NS + ">)\nOntology(\n" + pad
+                + "  Declaration(Class(:X4))\n"
+                + "  Declaration(ObjectProperty(:r4))\n"
+                + "  Declaration(ObjectProperty(:t4))\n"
+                + "  Declaration(ObjectProperty(:u4))\n"
+                + "  Declaration(NamedIndividual(:d4))\n"
+                + "  Declaration(NamedIndividual(:e4))\n"
+                + "  Declaration(NamedIndividual(:k4))\n"
+                + "  Declaration(NamedIndividual(:m4))\n"
+                + "  InverseFunctionalObjectProperty(:r4)\n"
+                + "  ClassAssertion(ObjectSomeValuesFrom(:r4 :X4) :d4)\n"
+                + "  SubClassOf(:X4 ObjectHasValue(ObjectInverseOf(:r4) :e4))\n"
+                + "  ObjectPropertyAssertion(:t4 :k4 :d4)\n"
+                + "  ObjectPropertyAssertion(:u4 :e4 :m4)\n"
+                + ")\n";
+        OWLOntology o4 = parse(c4);
+        OWLDataFactory df4 = o4.getOWLOntologyManager().getOWLDataFactory();
+        OWLNamedIndividual k4 = df4.getOWLNamedIndividual(IRI.create(NS + "k4"));
+        OWLNamedIndividual d4 = df4.getOWLNamedIndividual(IRI.create(NS + "d4"));
+        OWLNamedIndividual e4 = df4.getOWLNamedIndividual(IRI.create(NS + "e4"));
+        OWLReasoner h4 = hermit(o4);
+        OWLReasoner km4 = km(o4);
+        assertEquals(
+                h4.getObjectPropertyValues(k4, df4.getOWLObjectProperty(IRI.create(NS + "t4"))).getFlattened(),
+                km4.getObjectPropertyValues(k4, df4.getOWLObjectProperty(IRI.create(NS + "t4"))).getFlattened());
+        assertTrue(km4.getObjectPropertyValues(k4, df4.getOWLObjectProperty(IRI.create(NS + "t4"))).containsEntity(d4));
+        assertTrue(km4.getObjectPropertyValues(k4, df4.getOWLObjectProperty(IRI.create(NS + "t4"))).containsEntity(e4));
+
+        String c6 = "Prefix(:=<" + NS + ">)\nOntology(\n" + pad
+                + "  Declaration(ObjectProperty(:r6))\n"
+                + "  Declaration(ObjectProperty(:t6))\n"
+                + "  Declaration(NamedIndividual(:a6))\n"
+                + "  Declaration(NamedIndividual(:b6))\n"
+                + "  Declaration(NamedIndividual(:c6))\n"
+                + "  Declaration(NamedIndividual(:k6))\n"
+                + "  ClassAssertion(ObjectComplementOf(ObjectMinCardinality(2 :r6)) :a6)\n"
+                + "  ObjectPropertyAssertion(:r6 :a6 :b6)\n"
+                + "  ObjectPropertyAssertion(:r6 :a6 :c6)\n"
+                + "  ObjectPropertyAssertion(:t6 :k6 :b6)\n"
+                + ")\n";
+        OWLOntology o6 = parse(c6);
+        OWLDataFactory df6 = o6.getOWLOntologyManager().getOWLDataFactory();
+        OWLNamedIndividual k6 = df6.getOWLNamedIndividual(IRI.create(NS + "k6"));
+        OWLNamedIndividual b6 = df6.getOWLNamedIndividual(IRI.create(NS + "b6"));
+        OWLNamedIndividual c6Ind = df6.getOWLNamedIndividual(IRI.create(NS + "c6"));
+        OWLReasoner h6 = hermit(o6);
+        OWLReasoner km6 = km(o6);
+        assertEquals(
+                h6.getObjectPropertyValues(k6, df6.getOWLObjectProperty(IRI.create(NS + "t6"))).getFlattened(),
+                km6.getObjectPropertyValues(k6, df6.getOWLObjectProperty(IRI.create(NS + "t6"))).getFlattened());
+        assertTrue(km6.getObjectPropertyValues(k6, df6.getOWLObjectProperty(IRI.create(NS + "t6"))).containsEntity(b6));
+        assertTrue(km6.getObjectPropertyValues(k6, df6.getOWLObjectProperty(IRI.create(NS + "t6"))).containsEntity(c6Ind));
+    }
 }

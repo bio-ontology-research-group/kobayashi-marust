@@ -85,7 +85,10 @@ final class ForestABoxRollup {
                 for (OWLClassExpression ce : ax.getNestedClassExpressions()) {
                     if (ce instanceof OWLObjectOneOf || ce instanceof OWLObjectHasValue) return null;
                     tboxDataProps.addAll(ce.getDataPropertiesInSignature());
-                    if (ce instanceof OWLObjectMaxCardinality || ce instanceof OWLObjectExactCardinality) {
+                    if (ce instanceof OWLObjectMaxCardinality
+                            || ce instanceof OWLObjectExactCardinality
+                            || (ce instanceof OWLObjectMinCardinality
+                                    && ((OWLObjectMinCardinality) ce).getCardinality() >= 2)) {
                         constrainedRoles.addAll(ce.getObjectPropertiesInSignature());
                     }
                 }
@@ -950,7 +953,9 @@ final class ForestABoxRollup {
                         || ce instanceof OWLObjectHasValue
                         || ce instanceof OWLObjectHasSelf
                         || ce instanceof OWLObjectMaxCardinality
-                        || ce instanceof OWLObjectExactCardinality) {
+                        || ce instanceof OWLObjectExactCardinality
+                        || (ce instanceof OWLObjectMinCardinality
+                                && ((OWLObjectMinCardinality) ce).getCardinality() >= 2)) {
                     return false;
                 }
                 if (ce instanceof OWLObjectRestriction) {
@@ -989,13 +994,19 @@ final class ForestABoxRollup {
                             && funcProps.add(sub.getSubProperty().getNamedProperty())) {
                         changed = true;
                     }
-                } else if (ax instanceof OWLEquivalentObjectPropertiesAxiom) {
+                } else if (ax instanceof OWLEquivalentObjectPropertiesAxiom
+                        || ax instanceof OWLInverseObjectPropertiesAxiom) {
                     Set<OWLObjectProperty> sig = ax.getObjectPropertiesInSignature();
                     for (OWLObjectProperty p : sig) {
                         if (funcProps.contains(p)) {
+                            if (ax instanceof OWLInverseObjectPropertiesAxiom) return false;
                             if (funcProps.addAll(sig)) changed = true;
                             break;
                         }
+                    }
+                } else if (ax instanceof OWLSymmetricObjectPropertyAxiom) {
+                    for (OWLObjectProperty p : ax.getObjectPropertiesInSignature()) {
+                        if (funcProps.contains(p)) return false;
                     }
                 }
             }

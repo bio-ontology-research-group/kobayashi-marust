@@ -206,7 +206,19 @@ fn literal_identity_key(literal: &str) -> Option<String> {
 static CACHED_ROLE_BOUND: Mutex<Option<(Arc<str>, Option<NamedRoleBound>)>> = Mutex::new(None);
 
 impl NamedRoleBound {
+    pub fn bound_disabled() -> bool {
+        std::env::var("KM_DISABLE_NAMED_ROLE_BOUND")
+            .ok()
+            .is_some_and(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            || std::env::var("KM_NAMED_ROLE_BOUND")
+                .ok()
+                .is_some_and(|v| matches!(v.trim(), "0" | "false" | "FALSE" | "no" | "NO" | "off" | "OFF"))
+    }
+
     pub fn compute(text: &str) -> Option<Self> {
+        if Self::bound_disabled() {
+            return None;
+        }
         if text.len() <= 16 * 1024 * 1024 {
             if let Some((_, cached)) = CACHED_ROLE_BOUND
                 .lock()
@@ -508,7 +520,6 @@ impl NamedRoleBound {
                                 pos_existential_roles.insert(rn.clone());
                             }
                             Role::Inverse(rn) => {
-                                pos_existential_roles.insert(rn.clone());
                                 inv_existential_roles.insert(rn.clone());
                             }
                             Role::Universal => return Err(()),
@@ -544,7 +555,6 @@ impl NamedRoleBound {
                             pos_existential_roles.insert(rn.clone());
                         }
                         Role::Inverse(rn) if neg => {
-                            pos_existential_roles.insert(rn.clone());
                             inv_existential_roles.insert(rn.clone());
                         }
                         _ => {}
@@ -582,7 +592,6 @@ impl NamedRoleBound {
                                 pos_existential_roles.insert(rn.clone());
                             }
                             Role::Inverse(rn) => {
-                                pos_existential_roles.insert(rn.clone());
                                 inv_existential_roles.insert(rn.clone());
                             }
                             Role::Universal => return Err(()),
@@ -649,7 +658,6 @@ impl NamedRoleBound {
                                 pos_existential_roles.insert(rn.clone());
                             }
                             Role::Inverse(rn) => {
-                                pos_existential_roles.insert(rn.clone());
                                 inv_existential_roles.insert(rn.clone());
                             }
                             Role::Universal => return Err(()),
@@ -1116,6 +1124,18 @@ impl NamedRoleBound {
                 if inv_functional.contains(b) {
                     changed |= functional.insert(a.clone());
                 }
+                if pos_existential_roles.contains(a) {
+                    changed |= inv_existential_roles.insert(b.clone());
+                }
+                if inv_existential_roles.contains(a) {
+                    changed |= pos_existential_roles.insert(b.clone());
+                }
+                if pos_existential_roles.contains(b) {
+                    changed |= inv_existential_roles.insert(a.clone());
+                }
+                if inv_existential_roles.contains(b) {
+                    changed |= pos_existential_roles.insert(a.clone());
+                }
                 if let Some(ea) = edges.get(a).cloned() {
                     let eb = edges.entry(b.clone()).or_default();
                     for (x, y) in ea {
@@ -1167,6 +1187,12 @@ impl NamedRoleBound {
                 }
                 if inv_functional.contains(sup) {
                     changed |= inv_functional.insert(sub.clone());
+                }
+                if pos_existential_roles.contains(sub) {
+                    changed |= pos_existential_roles.insert(sup.clone());
+                }
+                if inv_existential_roles.contains(sub) {
+                    changed |= inv_existential_roles.insert(sup.clone());
                 }
                 if let Some(es) = edges.get(sub).cloned() {
                     let entry = edges.entry(sup.clone()).or_default();
@@ -1241,6 +1267,12 @@ impl NamedRoleBound {
                 if ch.iter().all(|r| self_roles.contains(r)) {
                     changed |= self_roles.insert(sup.clone());
                 }
+                if ch.iter().any(|r| pos_existential_roles.contains(r)) {
+                    changed |= pos_existential_roles.insert(sup.clone());
+                }
+                if ch.iter().any(|r| inv_existential_roles.contains(r)) {
+                    changed |= inv_existential_roles.insert(sup.clone());
+                }
                 // Relational composition along `ch`, allowing identity step on `self_roles`.
                 let mut current: BTreeSet<(String, String)> = BTreeSet::new();
                 let mut cur_w_src: BTreeSet<String> = BTreeSet::new();
@@ -1305,13 +1337,7 @@ impl NamedRoleBound {
                             next_univ = true;
                         }
                         if step_univ {
-                            if !current.is_empty()
-                                || !cur_w_src.is_empty()
-                                || !cur_w_dst.is_empty()
-                                || prefix_all_self
-                            {
-                                next_univ = true;
-                            }
+                            next_univ = true;
                             for (a, _) in &current {
                                 next_w_dst.insert(a.clone());
                             }
@@ -1400,7 +1426,15 @@ impl NamedRoleBound {
 
             // Propagate equalities from functional, inverse-functional, and max-cardinality roles.
             for f in &functional {
-                if universal_roles.contains(f) || w_dst.get(f).is_some_and(|s| !s.is_empty()) {
+                if universal_roles.contains(f)
+                    || w_dst.get(f).is_some_and(|s| !s.is_empty())
+                    || inv_existential_roles.contains(f)
+                    || (pos_existential_roles.contains(f)
+                        && (w_src.get(f).is_some_and(|s| !s.is_empty())
+                            || edges.get(f).is_some_and(|s| !s.is_empty())
+                            || self_roles.contains(f)
+                            || chains.iter().any(|(_, sup)| sup == f)))
+                {
                     if !all_named_merged {
                         all_named_merged = true;
                         forest_exact_for_rules = false;
@@ -1451,7 +1485,11 @@ impl NamedRoleBound {
                 }
             }
             for f in &inv_functional {
-                if universal_roles.contains(f) || w_src.get(f).is_some_and(|s| !s.is_empty()) {
+                if universal_roles.contains(f)
+                    || w_src.get(f).is_some_and(|s| !s.is_empty())
+                    || pos_existential_roles.contains(f)
+                    || inv_existential_roles.contains(f)
+                {
                     if !all_named_merged {
                         all_named_merged = true;
                         forest_exact_for_rules = false;
@@ -1507,7 +1545,7 @@ impl NamedRoleBound {
             }
 
             if all_named_merged {
-                for r in &pos_existential_roles {
+                for r in pos_existential_roles.iter().chain(inv_existential_roles.iter()) {
                     changed |= universal_roles.insert(r.clone());
                 }
                 let active: Vec<String> = edges
@@ -3039,6 +3077,336 @@ ObjectPropertyAssertion(:s14 :a14 :c14)
                 assert!(
                     targets.contains(exp),
                     "case {name}: missing expected target {exp} in {targets:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn named_role_bound_covers_c4_c6_and_20_anonymous_routing_cases() {
+        let _test_env = crate::test_env::read();
+        let mut pad = String::new();
+        for i in 0..10 {
+            pad.push_str(&format!("Declaration(ObjectProperty(:pad{i}))\n"));
+        }
+        for i in 0..30 {
+            pad.push_str(&format!("Declaration(NamedIndividual(:z{i}))\n"));
+        }
+        let cases: &[(&str, &str, &str, &[&str])] = &[
+            (
+                "c4_inv_func_anon_succ_inv_has_value",
+                r#"Declaration(Class(:X4))
+                   Declaration(ObjectProperty(:r4)) Declaration(ObjectProperty(:t4)) Declaration(ObjectProperty(:u4))
+                   Declaration(NamedIndividual(:d4)) Declaration(NamedIndividual(:e4))
+                   Declaration(NamedIndividual(:k4)) Declaration(NamedIndividual(:m4))
+                   InverseFunctionalObjectProperty(:r4)
+                   ClassAssertion(ObjectSomeValuesFrom(:r4 :X4) :d4)
+                   SubClassOf(:X4 ObjectHasValue(ObjectInverseOf(:r4) :e4))
+                   ObjectPropertyAssertion(:t4 :k4 :d4)
+                   ObjectPropertyAssertion(:u4 :e4 :m4)"#,
+                ":t4",
+                &[":d4", ":e4"],
+            ),
+            (
+                "c6_complement_min_cardinality_2_merge",
+                r#"Declaration(ObjectProperty(:r6)) Declaration(ObjectProperty(:t6))
+                   Declaration(NamedIndividual(:a6)) Declaration(NamedIndividual(:b6))
+                   Declaration(NamedIndividual(:c6)) Declaration(NamedIndividual(:k6))
+                   ClassAssertion(ObjectComplementOf(ObjectMinCardinality(2 :r6)) :a6)
+                   ObjectPropertyAssertion(:r6 :a6 :b6)
+                   ObjectPropertyAssertion(:r6 :a6 :c6)
+                   ObjectPropertyAssertion(:t6 :k6 :b6)"#,
+                ":t6",
+                &[":b6", ":c6"],
+            ),
+            // M3.1: subrole existential successor into inverse-functional superrole with inverse HasValue
+            (
+                "m01_inv_func_subrole_anon_succ_inv_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:sub_r)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubObjectPropertyOf(:sub_r :r)
+                   InverseFunctionalObjectProperty(:r)
+                   ClassAssertion(ObjectSomeValuesFrom(:sub_r :X) :d)
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.2: functional role with inverse existential and forward ObjectHasValue
+            (
+                "m02_func_inv_existential_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(ObjectInverseOf(:f) :X) :d)
+                   SubClassOf(:X ObjectHasValue(:f :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.3: named inverse property existential with functional role and ObjectHasValue
+            (
+                "m03_named_inv_prop_existential_func_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:inv_f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   InverseObjectProperties(:f :inv_f)
+                   ClassAssertion(ObjectSomeValuesFrom(:inv_f :X) :d)
+                   SubClassOf(:X ObjectHasValue(:f :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.4: min cardinality 1 creating anonymous witness merged by max cardinality 1 on inverse role
+            (
+                "m04_min_card_anon_succ_max_card_inv_merge",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubClassOf(:A ObjectMaxCardinality(1 ObjectInverseOf(:r)))
+                   ClassAssertion(ObjectMinCardinality(1 :r ObjectIntersectionOf(:A ObjectHasValue(ObjectInverseOf(:r) :e))) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.5: complement of min cardinality 2 on inverse role with anonymous witness
+            (
+                "m05_neg_min_card_2_inv_anon_merge",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubClassOf(:X ObjectComplementOf(ObjectMinCardinality(2 ObjectInverseOf(:r))))
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ClassAssertion(ObjectSomeValuesFrom(:r :X) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.6: anonymous subrole witness merging with asserted functional superrole target (no ObjectHasValue)
+            (
+                "m06_subrole_anon_merge_with_asserted_superrole_target",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:other :f)
+                   ObjectPropertyAssertion(:f :a :b)
+                   ClassAssertion(ObjectSomeValuesFrom(:other owl:Thing) :a)"#,
+                ":other",
+                &[":b"],
+            ),
+            // M3.7: anonymous subrole witness merging with asserted functional superrole target, cascading to inverse-functional merge
+            (
+                "m07_subrole_anon_merge_cascading_to_inv_func",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:r :f)
+                   InverseFunctionalObjectProperty(:r)
+                   ObjectPropertyAssertion(:f :b :c)
+                   ObjectPropertyAssertion(:r :a :c)
+                   ClassAssertion(ObjectSomeValuesFrom(:r owl:Thing) :b)
+                   ObjectPropertyAssertion(:other :k :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            // M3.8: cascade through two functional roles over anonymous witness
+            (
+                "m08_cascade_two_functional_roles_over_anon_witness",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c1)) Declaration(NamedIndividual(:c2)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2)
+                   ObjectPropertyAssertion(:f1 :a :b)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectHasValue(:f2 :c1)) :a)
+                   ObjectPropertyAssertion(:f2 :b :c2)
+                   ObjectPropertyAssertion(:other :k :c1)"#,
+                ":other",
+                &[":c1", ":c2"],
+            ),
+            // M3.9: cascade through three functional roles over two-hop anonymous existential chain
+            (
+                "m09_cascade_three_level_anon_functional_chain",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2))
+                   Declaration(ObjectProperty(:f3)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))
+                   Declaration(NamedIndividual(:d1)) Declaration(NamedIndividual(:d2)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2) FunctionalObjectProperty(:f3)
+                   ObjectPropertyAssertion(:f1 :a :b)
+                   ObjectPropertyAssertion(:f2 :b :c)
+                   ObjectPropertyAssertion(:f3 :c :d2)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectSomeValuesFrom(:f2 ObjectHasValue(:f3 :d1))) :a)
+                   ObjectPropertyAssertion(:other :k :d1)"#,
+                ":other",
+                &[":d1", ":d2"],
+            ),
+            // M3.10: 3-role chain over two anonymous middle elements with nested ObjectHasValue
+            (
+                "m10_chain_over_two_anon_middle_elements_with_nested_has_value",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:c))
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectSomeValuesFrom(:r2 ObjectHasValue(:r3 :c))) :a)"#,
+                ":other",
+                &[":c"],
+            ),
+            // M3.11: chain over anonymous middle element created via named inverse existential
+            (
+                "m11_chain_over_anon_middle_via_named_inverse_existential",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   InverseObjectProperties(:r2 :s)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:s ObjectHasValue(ObjectInverseOf(:r1) :a)) :b)"#,
+                ":other",
+                &[":b"],
+            ),
+            // M3.12: chain over anonymous middle element whose anonymous leaf merges with named target via functional superrole
+            (
+                "m12_chain_into_functional_merging_anon_leaf_with_named",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   SubObjectPropertyOf(:r2 :f)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectIntersectionOf(ObjectSomeValuesFrom(:r2 owl:Thing) ObjectHasValue(:f :b))) :a)"#,
+                ":other",
+                &[":b"],
+            ),
+            // M3.13: two anonymous witnesses merged via subroles of a functional role, cascading to inverse-functional merge
+            (
+                "m13_chain_into_functional_cascading_to_inv_func_merge",
+                r#"Declaration(Class(:X1)) Declaration(Class(:X2))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:f_sub1))
+                   Declaration(ObjectProperty(:f_sub2)) Declaration(ObjectProperty(:g)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:k)) Declaration(NamedIndividual(:m))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:f_sub1 :f)
+                   SubObjectPropertyOf(:f_sub2 :f)
+                   InverseFunctionalObjectProperty(:g)
+                   SubClassOf(:X1 ObjectHasValue(ObjectInverseOf(:f_sub1) :k))
+                   SubClassOf(:X2 ObjectHasValue(ObjectInverseOf(:f_sub2) :k))
+                   ClassAssertion(ObjectSomeValuesFrom(:g :X1) :a)
+                   ClassAssertion(ObjectSomeValuesFrom(:g :X2) :b)
+                   ObjectPropertyAssertion(:other :m :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            // M3.14: anonymous witness merged with named individual by inverse-functional role, feeding a 3-step chain
+            (
+                "m14_anon_witness_merged_by_inv_func_feeds_chain_middle",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:c))
+                   Declaration(NamedIndividual(:k)) Declaration(NamedIndividual(:m))
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                   InverseFunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectSomeValuesFrom(:r2 ObjectHasValue(:f :k))) :a)
+                   ObjectPropertyAssertion(:f :m :k)
+                   ObjectPropertyAssertion(:r3 :m :c)"#,
+                ":other",
+                &[":c"],
+            ),
+            // M3.15: tree folding across two functional subroles (no ObjectHasValue)
+            (
+                "m15_tree_folding_across_two_functional_subroles",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r1))
+                   Declaration(ObjectProperty(:r2)) Declaration(ObjectProperty(:inv_r2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:r1 :f)
+                   SubObjectPropertyOf(:r2 :f)
+                   InverseObjectProperties(:r2 :inv_r2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :inv_r2) :other)
+                   ClassAssertion(ObjectIntersectionOf(ObjectSomeValuesFrom(:r1 owl:Thing) ObjectSomeValuesFrom(:r2 owl:Thing)) :a)"#,
+                ":other",
+                &[":a"],
+            ),
+            // M3.16: inverse-functional parent merge in anonymous tree producing self-loop (no ObjectHasValue)
+            (
+                "m16_inv_func_parent_merge_in_anon_tree_self_loop",
+                r#"Declaration(ObjectProperty(:g)) Declaration(ObjectProperty(:f1))
+                   Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:inv_f2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a))
+                   InverseFunctionalObjectProperty(:g)
+                   SubObjectPropertyOf(:f1 :g)
+                   SubObjectPropertyOf(:f2 :g)
+                   InverseObjectProperties(:f2 :inv_f2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:f1 :inv_f2) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectSomeValuesFrom(:inv_f2 owl:Thing)) :a)"#,
+                ":other",
+                &[":a"],
+            ),
+            // M3.17: symmetric + functional role with anonymous successor and ObjectHasValue
+            (
+                "m17_symmetric_func_anon_succ_has_value_merge",
+                r#"Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SymmetricObjectProperty(:r)
+                   FunctionalObjectProperty(:r)
+                   ClassAssertion(ObjectSomeValuesFrom(:r ObjectHasValue(:r :e)) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.18: transitive role over two anonymous steps merged with named target by functional role
+            (
+                "m18_transitive_role_over_two_anon_steps_and_func_merge",
+                r#"Declaration(ObjectProperty(:other)) Declaration(ObjectProperty(:f))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:k))
+                   TransitiveObjectProperty(:other)
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:other ObjectSomeValuesFrom(:other ObjectHasValue(ObjectInverseOf(:f) :k))) :a)
+                   ObjectPropertyAssertion(:f :k :b)
+                   ObjectPropertyAssertion(:other :b :c)"#,
+                ":other",
+                &[":b", ":c"],
+            ),
+            // M3.19: anonymous witness with ObjectHasSelf on subrole of inverse-functional role merging with named source
+            (
+                "m19_anon_has_self_on_inv_func_subrole_self_loop_and_merge",
+                r#"Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:k))
+                   InverseFunctionalObjectProperty(:r)
+                   SubObjectPropertyOf(:s :r)
+                   ClassAssertion(ObjectSomeValuesFrom(:r ObjectHasSelf(:s)) :a)
+                   ObjectPropertyAssertion(:r :b :a)
+                   ObjectPropertyAssertion(:other :k :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            // M3.20: negated ObjectAllValuesFrom creating anonymous witness with nested ObjectHasValue and inverse-functional merge
+            (
+                "m20_neg_all_values_anon_witness_with_nested_has_value_merge",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   InverseFunctionalObjectProperty(:r)
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ClassAssertion(ObjectComplementOf(ObjectAllValuesFrom(:r ObjectComplementOf(:X))) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+        ];
+
+        for (name, body, role, expected) in cases {
+            let doc = format!("Prefix(:=<http://ex.org/>)\nOntology(<http://ex.org/{name}>\n{pad}{body}\n)");
+            let bound = NamedRoleBound::compute(&doc)
+                .unwrap_or_else(|| panic!("NamedRoleBound::compute failed on case {name}"));
+            let targets = bound.reachable_targets_by_full_iri(role);
+            for &exp in *expected {
+                assert!(
+                    targets.contains(exp),
+                    "case {name}: missing expected target {exp} for {role} in {targets:?}"
                 );
             }
         }

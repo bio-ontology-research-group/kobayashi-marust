@@ -430,4 +430,317 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn abox_rows_extension_retains_targets_on_c4_c6_and_20_anonymous_routing_cases() {
+        let _test_env = crate::test_env::read();
+        let mut pad = String::new();
+        for i in 0..10 {
+            pad.push_str(&format!("Declaration(ObjectProperty(:pad{i}))\n"));
+        }
+        for i in 0..30 {
+            pad.push_str(&format!("Declaration(NamedIndividual(:z{i}))\n"));
+        }
+        let cases: &[(&str, &str, &str, &[&str])] = &[
+            (
+                "c4_inv_func_anon_succ_inv_has_value",
+                r#"Declaration(Class(:X4))
+                   Declaration(ObjectProperty(:r4)) Declaration(ObjectProperty(:t4)) Declaration(ObjectProperty(:u4))
+                   Declaration(NamedIndividual(:d4)) Declaration(NamedIndividual(:e4))
+                   Declaration(NamedIndividual(:k4)) Declaration(NamedIndividual(:m4))
+                   InverseFunctionalObjectProperty(:r4)
+                   ClassAssertion(ObjectSomeValuesFrom(:r4 :X4) :d4)
+                   SubClassOf(:X4 ObjectHasValue(ObjectInverseOf(:r4) :e4))
+                   ObjectPropertyAssertion(:t4 :k4 :d4)
+                   ObjectPropertyAssertion(:u4 :e4 :m4)"#,
+                ":t4",
+                &[":d4", ":e4"],
+            ),
+            (
+                "c6_complement_min_cardinality_2_merge",
+                r#"Declaration(ObjectProperty(:r6)) Declaration(ObjectProperty(:t6))
+                   Declaration(NamedIndividual(:a6)) Declaration(NamedIndividual(:b6))
+                   Declaration(NamedIndividual(:c6)) Declaration(NamedIndividual(:k6))
+                   ClassAssertion(ObjectComplementOf(ObjectMinCardinality(2 :r6)) :a6)
+                   ObjectPropertyAssertion(:r6 :a6 :b6)
+                   ObjectPropertyAssertion(:r6 :a6 :c6)
+                   ObjectPropertyAssertion(:t6 :k6 :b6)"#,
+                ":t6",
+                &[":b6", ":c6"],
+            ),
+            (
+                "m01_inv_func_subrole_anon_succ_inv_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:sub_r)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubObjectPropertyOf(:sub_r :r)
+                   InverseFunctionalObjectProperty(:r)
+                   ClassAssertion(ObjectSomeValuesFrom(:sub_r :X) :d)
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m02_func_inv_existential_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(ObjectInverseOf(:f) :X) :d)
+                   SubClassOf(:X ObjectHasValue(:f :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m03_named_inv_prop_existential_func_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:inv_f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   InverseObjectProperties(:f :inv_f)
+                   ClassAssertion(ObjectSomeValuesFrom(:inv_f :X) :d)
+                   SubClassOf(:X ObjectHasValue(:f :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m04_min_card_anon_succ_max_card_inv_merge",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubClassOf(:A ObjectMaxCardinality(1 ObjectInverseOf(:r)))
+                   ClassAssertion(ObjectMinCardinality(1 :r ObjectIntersectionOf(:A ObjectHasValue(ObjectInverseOf(:r) :e))) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m05_neg_min_card_2_inv_anon_merge",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubClassOf(:X ObjectComplementOf(ObjectMinCardinality(2 ObjectInverseOf(:r))))
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ClassAssertion(ObjectSomeValuesFrom(:r :X) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m06_subrole_anon_merge_with_asserted_superrole_target",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:other :f)
+                   ObjectPropertyAssertion(:f :a :b)
+                   ClassAssertion(ObjectSomeValuesFrom(:other owl:Thing) :a)"#,
+                ":other",
+                &[":b"],
+            ),
+            (
+                "m07_subrole_anon_merge_cascading_to_inv_func",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:r :f)
+                   InverseFunctionalObjectProperty(:r)
+                   ObjectPropertyAssertion(:f :b :c)
+                   ObjectPropertyAssertion(:r :a :c)
+                   ClassAssertion(ObjectSomeValuesFrom(:r owl:Thing) :b)
+                   ObjectPropertyAssertion(:other :k :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            (
+                "m08_cascade_two_functional_roles_over_anon_witness",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c1)) Declaration(NamedIndividual(:c2)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2)
+                   ObjectPropertyAssertion(:f1 :a :b)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectHasValue(:f2 :c1)) :a)
+                   ObjectPropertyAssertion(:f2 :b :c2)
+                   ObjectPropertyAssertion(:other :k :c1)"#,
+                ":other",
+                &[":c1", ":c2"],
+            ),
+            (
+                "m09_cascade_three_level_anon_functional_chain",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2))
+                   Declaration(ObjectProperty(:f3)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))
+                   Declaration(NamedIndividual(:d1)) Declaration(NamedIndividual(:d2)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2) FunctionalObjectProperty(:f3)
+                   ObjectPropertyAssertion(:f1 :a :b)
+                   ObjectPropertyAssertion(:f2 :b :c)
+                   ObjectPropertyAssertion(:f3 :c :d2)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectSomeValuesFrom(:f2 ObjectHasValue(:f3 :d1))) :a)
+                   ObjectPropertyAssertion(:other :k :d1)"#,
+                ":other",
+                &[":d1", ":d2"],
+            ),
+            (
+                "m10_chain_over_two_anon_middle_elements_with_nested_has_value",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:c))
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectSomeValuesFrom(:r2 ObjectHasValue(:r3 :c))) :a)"#,
+                ":other",
+                &[":c"],
+            ),
+            (
+                "m11_chain_over_anon_middle_via_named_inverse_existential",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   InverseObjectProperties(:r2 :s)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:s ObjectHasValue(ObjectInverseOf(:r1) :a)) :b)"#,
+                ":other",
+                &[":b"],
+            ),
+            (
+                "m12_chain_into_functional_merging_anon_leaf_with_named",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   SubObjectPropertyOf(:r2 :f)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectIntersectionOf(ObjectSomeValuesFrom(:r2 owl:Thing) ObjectHasValue(:f :b))) :a)"#,
+                ":other",
+                &[":b"],
+            ),
+            (
+                "m13_chain_into_functional_cascading_to_inv_func_merge",
+                r#"Declaration(Class(:X1)) Declaration(Class(:X2))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:f_sub1))
+                   Declaration(ObjectProperty(:f_sub2)) Declaration(ObjectProperty(:g)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:k)) Declaration(NamedIndividual(:m))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:f_sub1 :f)
+                   SubObjectPropertyOf(:f_sub2 :f)
+                   InverseFunctionalObjectProperty(:g)
+                   SubClassOf(:X1 ObjectHasValue(ObjectInverseOf(:f_sub1) :k))
+                   SubClassOf(:X2 ObjectHasValue(ObjectInverseOf(:f_sub2) :k))
+                   ClassAssertion(ObjectSomeValuesFrom(:g :X1) :a)
+                   ClassAssertion(ObjectSomeValuesFrom(:g :X2) :b)
+                   ObjectPropertyAssertion(:other :m :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            (
+                "m14_anon_witness_merged_by_inv_func_feeds_chain_middle",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:c))
+                   Declaration(NamedIndividual(:k)) Declaration(NamedIndividual(:m))
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                   InverseFunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectSomeValuesFrom(:r2 ObjectHasValue(:f :k))) :a)
+                   ObjectPropertyAssertion(:f :m :k)
+                   ObjectPropertyAssertion(:r3 :m :c)"#,
+                ":other",
+                &[":c"],
+            ),
+            (
+                "m15_tree_folding_across_two_functional_subroles",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r1))
+                   Declaration(ObjectProperty(:r2)) Declaration(ObjectProperty(:inv_r2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:r1 :f)
+                   SubObjectPropertyOf(:r2 :f)
+                   InverseObjectProperties(:r2 :inv_r2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :inv_r2) :other)
+                   ClassAssertion(ObjectIntersectionOf(ObjectSomeValuesFrom(:r1 owl:Thing) ObjectSomeValuesFrom(:r2 owl:Thing)) :a)"#,
+                ":other",
+                &[":a"],
+            ),
+            (
+                "m16_inv_func_parent_merge_in_anon_tree_self_loop",
+                r#"Declaration(ObjectProperty(:g)) Declaration(ObjectProperty(:f1))
+                   Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:inv_f2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a))
+                   InverseFunctionalObjectProperty(:g)
+                   SubObjectPropertyOf(:f1 :g)
+                   SubObjectPropertyOf(:f2 :g)
+                   InverseObjectProperties(:f2 :inv_f2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:f1 :inv_f2) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectSomeValuesFrom(:inv_f2 owl:Thing)) :a)"#,
+                ":other",
+                &[":a"],
+            ),
+            (
+                "m17_symmetric_func_anon_succ_has_value_merge",
+                r#"Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SymmetricObjectProperty(:r)
+                   FunctionalObjectProperty(:r)
+                   ClassAssertion(ObjectSomeValuesFrom(:r ObjectHasValue(:r :e)) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m18_transitive_role_over_two_anon_steps_and_func_merge",
+                r#"Declaration(ObjectProperty(:other)) Declaration(ObjectProperty(:f))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:k))
+                   TransitiveObjectProperty(:other)
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:other ObjectSomeValuesFrom(:other ObjectHasValue(ObjectInverseOf(:f) :k))) :a)
+                   ObjectPropertyAssertion(:f :k :b)
+                   ObjectPropertyAssertion(:other :b :c)"#,
+                ":other",
+                &[":b", ":c"],
+            ),
+            (
+                "m19_anon_has_self_on_inv_func_subrole_self_loop_and_merge",
+                r#"Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:k))
+                   InverseFunctionalObjectProperty(:r)
+                   SubObjectPropertyOf(:s :r)
+                   ClassAssertion(ObjectSomeValuesFrom(:r ObjectHasSelf(:s)) :a)
+                   ObjectPropertyAssertion(:r :b :a)
+                   ObjectPropertyAssertion(:other :k :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            (
+                "m20_neg_all_values_anon_witness_with_nested_has_value_merge",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   InverseFunctionalObjectProperty(:r)
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ClassAssertion(ObjectComplementOf(ObjectAllValuesFrom(:r ObjectComplementOf(:X))) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+        ];
+
+        for (name, body, role, expected) in cases {
+            let doc = format!("Prefix(:=<http://ex.org/>)\nOntology(<http://ex.org/{name}>\n{pad}{body}\n)");
+            let (canon, individuals) = super::super::realize::canonical_individuals(&doc).unwrap();
+            let roles = super::super::properties::canonical_properties(&canon).unwrap();
+            assert!(roles.len() * individuals.len() >= 256);
+            let (_ext, abox_probes) = extension(&canon, &roles, &individuals, true, false);
+            let r_idx = abox_probes.roles.iter().position(|r| r == role).unwrap();
+            for &exp in *expected {
+                let b_idx = abox_probes.individuals.iter().position(|i| i == exp).unwrap();
+                assert!(
+                    abox_probes.probes.values().any(|&p| p == Probe::Value(r_idx, b_idx)),
+                    "case {name}: missing probe for ({role}, {exp})"
+                );
+            }
+        }
+    }
 }
