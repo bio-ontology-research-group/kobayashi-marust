@@ -375,12 +375,13 @@ theorem atLeastP_eq {α : Type} (k : Nat) (l : List α) (p : α → Bool) :
   · rfl
 
 theorem cnt_map_memTS (N : List (QNbr n m)) (R : RoleT (Fin m)) (c : Fin n) :
-    (N.map fun e => (e.1, memTS e.2)).countP (fun e => decide (R ∈ e.1) && e.2.f c) =
+    (N.map fun e => (e.1, memTS e.2)).countP (fun e => e.2.f c && decide (R ∈ e.1)) =
       cnt N R c := by
   unfold cnt
   rw [List.countP_map]
   refine List.countP_congr fun e _ => ?_
-  simp only [Function.comp_apply, Bool.and_eq_true, decide_eq_true_eq]
+  simp only [Function.comp_apply, Bool.and_comm ((memTS e.2).f c), Bool.and_eq_true,
+    decide_eq_true_eq]
   exact and_congr_right fun _ => memT_iff e.2 c
 
 theorem all_comm {α β : Type} (l1 : List α) (l2 : List β) (f : α → β → Bool) :
@@ -1152,19 +1153,24 @@ theorem cnt_nbrsByC {n m : Nat} (N : List (QNbr n m)) (R : RoleT (Fin m)) (c : F
   refine List.countP_congr fun e _ => ?_
   simp only [Function.comp_apply, Bool.decide_and, Bool.and_comm]
 
+def smallTy {α : Type} (s : Finset α) : Bool :=
+  Quot.liftOn s.val (fun l => (l.drop 512).isEmpty) fun l l' (h : l.Perm l') => by
+    apply Bool.eq_iff_iff.2
+    rw [List.isEmpty_iff, List.isEmpty_iff, List.drop_eq_nil_iff, List.drop_eq_nil_iff, h.length_eq]
+
 def checkLowsUpps {n m : Nat} (lows upps : List (Nat × RoleT (Fin m) × Fin n))
-    (N_M : List (Finset (RoleT (Fin m)) × MemS n)) (N : List (QNbr n m)) : Bool × Bool :=
-  if 64 < lows.length + upps.length && 64 < N_M.length then
-    let byC := nbrsByC N
+    (N_M : List (Finset (RoleT (Fin m)) × MemS n)) (N : Unit → List (QNbr n m)) : Bool × Bool :=
+  if 64 < lows.length + upps.length && 64 < N_M.length && (N ()).all (fun e => smallTy e.2) then
+    let byC := nbrsByC (N ())
     (lows.all (fun q => atLeastP q.1 ((byC[q.2.2]?).getD []) (fun L => decide (q.2.1 ∈ L))),
      upps.all (fun q => decide ((((byC[q.2.2]?).getD []).countP fun L => decide (q.2.1 ∈ L)) ≤ q.1)))
   else
-    (lows.all (fun q => atLeastP q.1 N_M (fun e => decide (q.2.1 ∈ e.1) && e.2.f q.2.2)),
-     upps.all (fun q => decide (N_M.countP (fun e => decide (q.2.1 ∈ e.1) && e.2.f q.2.2) ≤ q.1)))
+    (lows.all (fun q => atLeastP q.1 N_M (fun e => e.2.f q.2.2 && decide (q.2.1 ∈ e.1))),
+     upps.all (fun q => decide (N_M.countP (fun e => e.2.f q.2.2 && decide (q.2.1 ∈ e.1)) ≤ q.1)))
 
 theorem checkLowsUpps_eq {n m : Nat} (lows upps : List (Nat × RoleT (Fin m) × Fin n))
     (N : List (QNbr n m)) :
-    checkLowsUpps lows upps (N.map fun e => (e.1, memTS e.2)) N =
+    checkLowsUpps lows upps (N.map fun e => (e.1, memTS e.2)) (fun _ => N) =
       (lows.all (fun q => decide (q.1 ≤ cnt N q.2.1 q.2.2)),
        upps.all (fun q => decide (cnt N q.2.1 q.2.2 ≤ q.1))) := by
   unfold checkLowsUpps
@@ -1185,7 +1191,7 @@ def starCoreF (ix : SIx n m) (memA : Array (MemBox n))
   let N_M : List (Finset (RoleT (Fin m)) × MemS n) :=
     (cEdges.map fun e => (e.2, getMem h memA e.1)) ++ (kEdges.map fun e => (e.1, memTS e.2))
   let lu := if lows.isEmpty && upps.isEmpty then (true, true)
-    else checkLowsUpps lows upps N_M ((cEdges.map fun e => (e.2, h.tyF e.1)) ++ kEdges)
+    else checkLowsUpps lows upps N_M (fun _ => (cEdges.map fun e => (e.2, h.tyF e.1)) ++ kEdges)
   closedBF ix M t &&
   (cEdges.all (fun e => upB ix e.2 && checkAllsBwd (getAllsM h ix allMA e.1) e.2 M) &&
    kEdges.all (fun e => upB ix e.1 &&
@@ -1209,7 +1215,7 @@ theorem starCoreF_eq (ix : SIx n m)
   set cEdges := (merged (getL A b.val)).filter fun e => decide (e.2 ≠ ∅)
   set kEdges := getL kb b.val
   set N := h.starL A b ++ kEdges
-  have hN0 : (cEdges.map fun e => (e.2, h.tyF e.1)) ++ kEdges = N := rfl
+  have hN0 : (fun _ : Unit => (cEdges.map fun e => (e.2, h.tyF e.1)) ++ kEdges) = (fun _ => N) := rfl
   have hNM : (cEdges.map fun e => (e.2, memTS (h.tyF e.1))) ++ (kEdges.map fun e => (e.1, memTS e.2)) =
       N.map fun e => (e.1, memTS e.2) := by
     simp [N, HintS.starL, cEdges, List.map_append, List.map_map, Function.comp_def]

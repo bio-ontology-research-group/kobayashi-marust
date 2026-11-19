@@ -2624,7 +2624,7 @@ def rulesDeclineR (R0 : OWL.OntologyR) : String :=
   | none => "keys: a HasKey with data properties"
   | some R =>
   let N := R.named.eraseDups
-  let k := (R.rules.map fun ρ => N.length ^ ρ.ivars.eraseDups.length).sum
+  let k := (R.rules.map (OWLFrontend.ruleInstCount (OWLFrontend.ruleU R) (OWLFrontend.ruleH R) N)).sum
   if k > ruleCap then s!"rules: {k} ground instances over {N.length} named individuals (more than {ruleCap})"
   else "rules: an instance with a data variable, a data range atom, a built-in atom or an " ++
     "anonymous individual"
