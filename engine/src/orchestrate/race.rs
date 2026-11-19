@@ -398,21 +398,24 @@ pub fn race_absorbed_plain(
     absorbed_path: &Path,
     engine_threads: &ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
-    if let Some(plain) = frontend_run::run_ofn_plain(cfg, ont, false) {
-        let threads = engine_threads.get().map(|t| t.to_string());
-        let (engine_prog, engine_pre) = cfg.engine_cmd();
-        let res = engine_run::run_engine(
-            &engine_prog,
-            &engine_pre,
-            plain.path(),
-            threads.as_deref(),
-            Some(cfg.par_mem_gb),
-            Some(cfg.absorb_probe_s),
-            &[],
-            false,
-        )?;
-        if res.code == 0 {
-            return parse_out(&res);
+    let skip_plain_probe = std::fs::metadata(absorbed_path).is_ok_and(|m| m.len() > 50_000_000);
+    if !skip_plain_probe {
+        if let Some(plain) = frontend_run::run_ofn_plain(cfg, ont, false) {
+            let threads = engine_threads.get().map(|t| t.to_string());
+            let (engine_prog, engine_pre) = cfg.engine_cmd();
+            let res = engine_run::run_engine(
+                &engine_prog,
+                &engine_pre,
+                plain.path(),
+                threads.as_deref(),
+                Some(cfg.par_mem_gb),
+                Some(cfg.absorb_probe_s),
+                &[],
+                false,
+            )?;
+            if res.code == 0 {
+                return parse_out(&res);
+            }
         }
     }
     // plain absent or did not finish fast: run the absorbed set with full budget
@@ -459,14 +462,25 @@ fn ordinary_ht_workers(clause_count: usize, available: usize) -> usize {
 /// hundreds-of-MB) output goes straight to a temp file, never an undrained pipe.
 /// Not registered in the LIVE engine set — it is killed directly, mirroring
 /// `owl_classify` where `elc_race` is never added to `_LIVE_ENGINES`.
-fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
+fn spawn_elc_cert(
+    cfg: &Config,
+    clauses_path: &Path,
+    nice: bool,
+) -> Option<(Child, super::tmpfile::TempPath)> {
     let out_path = super::tmpfile::TempPath::new(".elcrace.json");
     let cert = std::env::var("KM_ELC_CERT").unwrap_or_else(|_| "2".to_string());
     let (elc_prog, elc_pre) = cfg.elc_cmd();
-    let mut cmd = Command::new(&elc_prog);
+    let mut cmd = if nice && cfg.tab_race_nice {
+        let mut c = Command::new("nice");
+        c.arg("-n").arg("19").arg(&elc_prog).args(&elc_pre);
+        c
+    } else {
+        let mut c = Command::new(&elc_prog);
+        c.args(&elc_pre);
+        c
+    };
     cmd.env("KM_ELC_OUTPUT_BINARY", "1");
-    cmd.args(&elc_pre)
-        .stdin(File::open(clauses_path).ok()?)
+    cmd.stdin(File::open(clauses_path).ok()?)
         .stdout(File::create(out_path.path()).ok()?)
         .stderr(Stdio::null())
         .env("KM_ELC_CERT", &cert);
@@ -529,7 +543,7 @@ fn sequential_elc_then_residue(
     clauses_path: &Path,
     engine_threads: &ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
-    let Some((mut elc, elc_out)) = spawn_elc_cert(cfg, clauses_path) else {
+    let Some((mut elc, elc_out)) = spawn_elc_cert(cfg, clauses_path, false) else {
         return run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads);
     };
     let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
@@ -623,7 +637,8 @@ pub fn race_adaptive_vs_elc(
     if std::env::var_os("KM_ELC_SEQUENTIAL").is_some() {
         return sequential_elc_then_residue(cfg, ont, clauses_path, &engine_threads);
     }
-    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path) {
+    let nice_elc = std::fs::metadata(ont).is_ok_and(|m| m.len() < 1_000_000);
+    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path, nice_elc) {
         Some(x) => x,
         // elc could not start: the engine answers alone.
         None => return run_elc_portfolio_cb(cfg, ont, clauses_path, &engine_threads),
@@ -2212,6 +2227,24 @@ fn spawn_ht(
     prepare_ht(cfg, clauses_path, named)?.launch()
 }
 
+fn spawn_ht_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    cached_input: Option<JInput>,
+) -> Option<(
+    Child,
+    super::tmpfile::TempPath,
+    bool,
+    Option<usize>,
+    bool,
+    bool,
+    Option<ProxyAboxCertificate>,
+    Option<super::tmpfile::TempPath>,
+)> {
+    prepare_ht_with_input(cfg, clauses_path, named, cached_input)?.launch()
+}
+
 /// Owns the validated input and command before any HT worker exists.
 /// Output/marker paths retain their original RAII cleanup while preparation
 /// is dropped or launch fails. Serialization remains part of launch.
@@ -2234,6 +2267,15 @@ fn prepare_ht(
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
 ) -> Option<PreparedHt> {
+    prepare_ht_with_input(cfg, clauses_path, named, None)
+}
+
+fn prepare_ht_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    cached_input: Option<JInput>,
+) -> Option<PreparedHt> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, rbox, cards, definers, source_axioms, nominal_abox, rules, data_roles): (
         Vec<JClause>,
@@ -2245,10 +2287,14 @@ fn prepare_ht(
         Vec<crate::json_io::JRule>,
         Vec<String>,
     ) = {
-        // from_slice on a read buffer, not from_reader — the clause file is
-        // multi-MB on large onts and the reader path is markedly slower.
-        let buf = std::fs::read(clauses_path).ok()?;
-        let mut v: JInput = serde_json::from_slice(&buf).ok()?;
+        let mut v: JInput = if let Some(v) = cached_input {
+            v
+        } else {
+            // from_slice on a read buffer, not from_reader — the clause file is
+            // multi-MB on large onts and the reader path is markedly slower.
+            let buf = std::fs::read(clauses_path).ok()?;
+            serde_json::from_slice(&buf).ok()?
+        };
         if std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some() {
             v.nominal_abox = crate::json_io::NominalAboxMeta::default();
         }
@@ -2828,19 +2874,20 @@ impl PreparedHt {
             forward_ht_worker_errors(stderr);
         }
         let stdin = child.stdin.take()?;
-        let bytes = serde_json::to_vec(&tin).ok()?;
+        let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
+        let bridge_queries = bridge_candidate.then_some(tin.queries.len());
         thread::spawn(move || {
-            let mut w = stdin;
-            let _ = w.write_all(&bytes);
-            // The serialised TInput is the largest transient this process holds
-            // while the worker runs, and it is dead once the pipe has drained. The
+            let mut w = std::io::BufWriter::with_capacity(1 << 20, stdin);
+            let _ = serde_json::to_writer(&mut w, &tin);
+            let _ = w.flush();
+            // The TInput is the largest transient this process holds while the
+            // worker runs, and it is dead once the pipe has drained. The
             // callers' trim runs before this write finishes, so release it here
             // exactly as `spawn_tableau` does.
             drop(w);
-            drop(bytes);
+            drop(tin);
             release_transient_heap();
         });
-        let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
         // The third element gates the SHORT race budget: true for the fast certify-or-
         // defer arms (SHOQ fast-Ht AND the QO hybrid). Both emit an answer ONLY when
         // they soundly+completely certify (CERTIFY_ONLY), so harvesting that answer as
@@ -2858,7 +2905,7 @@ impl PreparedHt {
             child,
             out_path,
             short_race,
-            bridge_candidate.then_some(tin.queries.len()),
+            bridge_queries,
             // Whether KM_HT_BRIDGE_ONLY was set on this worker: only then does the
             // race scheduler's instant (0 s) trigger-absorb harvest apply — any
             // other worker can answer from a non-bridge arm without the bridge's
@@ -2960,21 +3007,31 @@ impl HtFirstProbe {
         if mode == "race" || ht_first_deadline().is_none() {
             return None;
         }
-        let (child, out, fast_certify, _, bridge_exclusive, typed_nominal_exclusive, proxy, marker) =
-            spawn_ht(cfg, clauses_path, named)?;
+        let prepared = prepare_ht(cfg, clauses_path, named)?;
         let trigger_absorb = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
         let budget = ht_acceptance_budget(
             trigger_absorb,
-            bridge_exclusive,
-            fast_certify,
+            prepared.bridge_exclusive,
+            prepared.short_race,
             cfg.shoq_budget_s,
             cfg.ht_budget_s,
         );
+        let typed_nominal_exclusive =
+            typed_nominal_bridge_exclusive(&prepared.tin, prepared.bridge_exclusive);
+        if (typed_nominal_exclusive && prepared.cb_first_structural_source)
+            || !(budget == 0.0
+                || prepared.bridge_answer_marker.is_some()
+                || prepared.proxy_abox_certificate.is_some())
+        {
+            return None;
+        }
+        let (child, out, fast_certify, _, _bridge_exclusive, _typed_nominal_exclusive, proxy, marker) =
+            prepared.launch()?;
         let cap_gb = std::env::var("KM_HT_MEM_GB")
             .ok()
             .and_then(|v| v.parse::<f64>().ok())
             .unwrap_or(12.0);
-        let mut probe = HtFirstProbe {
+        Some(HtFirstProbe {
             child,
             out,
             proxy,
@@ -2986,13 +3043,7 @@ impl HtFirstProbe {
             ht_budget_s: cfg.ht_budget_s,
             cap_bytes: (cap_gb * (1u64 << 30) as f64) as u64,
             finished: false,
-        };
-        // The race's HT-first phase runs only these workers.
-        if typed_nominal_exclusive || !(budget == 0.0 || probe.marker.is_some()) {
-            probe.stop();
-            return None;
-        }
-        Some(probe)
+        })
     }
 
     pub fn bridge_answered(&self) -> bool {
@@ -3033,7 +3084,7 @@ impl HtFirstProbe {
                         self.ht_budget_s,
                     );
                 }
-                if budget == 0.0 {
+                if budget == 0.0 || self.proxy.is_some() {
                     HtFirstProbeState::Accepted(answer)
                 } else {
                     HtFirstProbeState::NoAnswer
@@ -3236,6 +3287,7 @@ pub fn run_ht_shoq_in_process(
         nominal_abox,
         rules,
     ));
+    release_transient_heap();
 
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
@@ -3317,6 +3369,7 @@ pub fn run_ht_general_in_process(
         nominal_abox,
         rules,
     ));
+    release_transient_heap();
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
         ("KM_HT", "1"),
@@ -3376,7 +3429,15 @@ pub fn run_ht_bridge_in_process(
             "native HT bridge received rules".into(),
         ));
     }
-    let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, !nominal_abox.same.is_empty(), false);
+    let view = native_nominal_bridge_clauses(
+        &clauses,
+        &nominal_abox,
+        &definers,
+        (std::env::var_os("KM_NOMINALS").is_some()
+            && std::env::var_os("KM_TRIGGER_ABSORB").is_some())
+            || !nominal_abox.same.is_empty(),
+        false,
+    );
     let mut tin = cb_to_ht::convert(
         &view,
         Some(rbox.as_slice()),
@@ -3384,7 +3445,7 @@ pub fn run_ht_bridge_in_process(
         &cardinalities,
         &definers,
         &source_axioms,
-        false,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
     );
@@ -3419,6 +3480,7 @@ pub fn run_ht_bridge_in_process(
         nominal_abox,
         rules,
     ));
+    release_transient_heap();
 
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
@@ -3470,13 +3532,24 @@ pub fn run_ht_only_until(
     named: &std::collections::HashSet<String>,
     deadline: Instant,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    run_ht_only_until_with_input(cfg, clauses_path, named, deadline, None)
+}
+
+pub fn run_ht_only_until_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    deadline: Instant,
+    cached_input: Option<JInput>,
+) -> Result<Option<EngineOut>, OrchestrateError> {
     let now = Instant::now();
-    run_ht_only_bounded_from(
+    run_ht_only_bounded_from_with_input(
         cfg,
         clauses_path,
         named,
         deadline.saturating_duration_since(now),
         Some(now),
+        cached_input,
     )
 }
 
@@ -3487,8 +3560,19 @@ fn run_ht_only_bounded_from(
     budget: Duration,
     charged_from: Option<Instant>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    run_ht_only_bounded_from_with_input(cfg, clauses_path, named, budget, charged_from, None)
+}
+
+fn run_ht_only_bounded_from_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    budget: Duration,
+    charged_from: Option<Instant>,
+    cached_input: Option<JInput>,
+) -> Result<Option<EngineOut>, OrchestrateError> {
     let Some((mut child, out_path, _, _, _, _, proxy_abox_certificate, _)) =
-        spawn_ht(cfg, clauses_path, named)
+        spawn_ht_with_input(cfg, clauses_path, named, cached_input)
     else {
         return Ok(None);
     };
@@ -3846,6 +3930,9 @@ where
         // Whatever happens below, the CB thread must receive its count.
         let budget_guard = budget_cell.resolve_on_drop(cfg.threads);
         let prepared = prepare_ht(cfg, clauses_path, named);
+        let cb_first_source = prepared
+            .as_ref()
+            .is_some_and(|prepared| prepared.cb_first_structural_source);
         let cb_first = cb_first_duration(
             std::env::var("KM_CB_FIRST_TYPED_NOMINAL_S").ok().as_deref(),
         )
@@ -3987,13 +4074,19 @@ where
         // worker that marks bridge answers). Run it alone for at most the
         // deadline; then start the unchanged CB stack and race as before.
         let mut ht_first_won: Option<EngineOut> = None;
-        // Typed-nominal bridge workers (complete native ABox channel) are
-        // excluded: on the frozen corpus their nominal ABox completion is
-        // often far slower than the exact nominal-aware CB fallback (ORE 5544:
-        // CB 3 s vs bridge 169 s; ORE 11085: CB 35 s vs bridge > 180 s), so
-        // they keep the shared race.
-        if let Some(deadline) = ht_first.filter(|_| !typed_nominal_exclusive) {
-            if pending_cb.is_some() && (budget == 0.0 || bridge_answer_marker.is_some()) {
+        // Typed-nominal bridge workers whose source TBox is nominal-free
+        // (`cb_first_source`) are excluded: on the frozen corpus their nominal
+        // ABox completion is often far slower than the exact nominal-aware CB
+        // fallback (ORE 5544: CB 3 s vs bridge 169 s; ORE 11085: CB 35 s vs
+        // bridge > 180 s), so they keep the shared race. When the TBox itself
+        // contains nominals (`!cb_first_source`), the native bridge is the
+        // primary arm and runs HT-first before starting the CB stack.
+        if let Some(deadline) = ht_first.filter(|_| !(typed_nominal_exclusive && cb_first_source)) {
+            if pending_cb.is_some()
+                && (budget == 0.0
+                    || bridge_answer_marker.is_some()
+                    || proxy_abox_certificate.is_some())
+            {
                 let mut interval = Duration::from_millis(1);
                 let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
                 let export_ext = deadline * 2 + Duration::from_secs(3);
@@ -4039,7 +4132,7 @@ where
                         ht_res.is_some()
                     );
                 }
-                if budget == 0.0 {
+                if budget == 0.0 || proxy_abox_certificate.is_some() {
                     ht_first_won = ht_res.take();
                 }
             }

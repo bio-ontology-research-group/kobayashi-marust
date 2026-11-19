@@ -2667,10 +2667,10 @@ pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
         return match parse_complex(text) {
             DRange::Float(range) if range.part == Partition::Float32 => Some("float"),
             DRange::Float(range) if range.part == Partition::Float64 => Some("double"),
-            // Facet intervals over the decimal tower (decimal or an integer
-            // datatype base). Their realizability is certified by
+            // Facet intervals over the numeric tower (real, rational, decimal
+            // or an integer datatype base). Their realizability is certified by
             // `bridge_decimal_cells_realizable`.
-            DRange::Num(range) if !matches!(range.base_kind, "real" | "rational") => Some("decimal"),
+            DRange::Num(_) => Some("decimal"),
             // A union of named datatypes from the exact map. Its semantics
             // reaches the bridge through the member inclusions and the union
             // cover clause, both checked by the bridge.
@@ -2698,10 +2698,15 @@ pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
         DRange::Named(datatype) if datatype.kind == "anyURI" => Some("anyURI"),
         DRange::Named(datatype) if datatype.kind == "XMLLiteral" => Some("XMLLiteral"),
         DRange::Named(datatype) if datatype.kind == "double" => Some("double"),
-        // Every bounded/unbounded integer datatype of the map (`long`, `short`,
-        // `unsignedInt`, `negativeInteger`, ...): an integral interval, decided
-        // by `bridge_decimal_cells_realizable` like the narrow members.
-        DRange::Named(datatype) if datatype.part == Partition::Numeric && datatype.integral => Some("decimal"),
+        // Every bounded/unbounded numeric-tower datatype of the map (`real`,
+        // `rational`, `long`, `short`, `unsignedInt`, `negativeInteger`, ...):
+        // decided by `bridge_decimal_cells_realizable`.
+        DRange::Named(datatype)
+            if datatype.part == Partition::Numeric
+                && (datatype.integral || matches!(datatype.kind, "real" | "rational")) =>
+        {
+            Some("decimal")
+        }
         _ => None,
     }
 }
@@ -2768,30 +2773,46 @@ fn bridge_ieee_interval(name: &str) -> Option<FloatRange> {
     }
 }
 
-/// An admitted decimal-tower range as an interval of the decimal value
-/// space, optionally restricted to integers.
+/// An admitted numeric-tower range as an interval of the real/rational/decimal
+/// value space, with its tower level (`0` = integer, `1` = decimal,
+/// `2` = rational, `3` = real).
 #[derive(Clone, Debug)]
 struct DecimalInterval {
     integral: bool,
+    level: u8,
     lo: Option<(Rat, bool)>,
     hi: Option<(Rat, bool)>,
 }
 
 impl DecimalInterval {
     fn of(name: &str) -> Option<Self> {
+        let tower_level = |integral: bool, kind: &str| -> u8 {
+            if integral {
+                0
+            } else {
+                match kind {
+                    "decimal" => 1,
+                    "rational" => 2,
+                    "real" => 3,
+                    _ => 1,
+                }
+            }
+        };
         match bridge_exact_atomic_range(name)? {
             DRange::Named(datatype)
                 if datatype.part == Partition::Numeric
-                    && !matches!(datatype.kind, "float" | "double" | "real" | "rational") =>
+                    && !matches!(datatype.kind, "float" | "double") =>
             {
                 Some(Self {
                     integral: datatype.integral,
+                    level: tower_level(datatype.integral, datatype.kind),
                     lo: datatype.min.map(|bound| (Rat::from_int(bound), true)),
                     hi: datatype.max.map(|bound| (Rat::from_int(bound), true)),
                 })
             }
-            DRange::Num(range) if !matches!(range.base_kind, "real" | "rational") => Some(Self {
+            DRange::Num(range) => Some(Self {
                 integral: range.integral,
+                level: tower_level(range.integral, range.base_kind),
                 lo: range.min,
                 hi: range.max,
             }),
@@ -3046,8 +3067,6 @@ pub(crate) fn bridge_decimal_cells_realizable(
     }
     let sensitive = body_sensitive.iter().enumerate()
         .fold(0u32, |mask, (index, &flag)| if flag { mask | (1 << index) } else { mask });
-    let integral_mask = intervals.iter().enumerate()
-        .fold(0u32, |mask, (index, range)| if range.integral { mask | (1 << index) } else { mask });
     for set in 1u32..(1u32 << k) {
         let member = |index: usize| set & (1 << index) != 0;
         let closed = (0..k).all(|i| !member(i) || (0..k).all(|j| member(j) || !inclusion(i, j)));
@@ -3062,7 +3081,12 @@ pub(crate) fn bridge_decimal_cells_realizable(
         if covers.iter().any(|(body, heads)| member(*body) && !heads.iter().any(|&h| member(h))) {
             continue;
         }
-        let integers_only = set & integral_mask != 0;
+        let min_level = (0..k)
+            .filter(|&i| member(i))
+            .map(|i| intervals[i].level)
+            .min()
+            .unwrap_or(3);
+        let integers_only = min_level == 0;
         let excluded = sensitive & !set;
         let mut available: u128 = 0;
         for cell in &cells {
@@ -3075,8 +3099,10 @@ pub(crate) fn bridge_decimal_cells_realizable(
                     if integers_only && !value.is_integer() {
                         continue;
                     }
-                    // A non-integral excluded range removes the point; an
-                    // integral one only when the point is an integer.
+                    // Every `Rat` endpoint in `pts` is a terminating decimal
+                    // (or integer when `value.is_integer()`), so a non-integral
+                    // excluded range (`level >= 1`) removes any point, and an
+                    // integral one (`level == 0`) removes integer points.
                     let removed = (0..k).any(|j| blocking & (1 << j) != 0
                         && (!intervals[j].integral || value.is_integer()));
                     if removed || values.iter().any(|literal| literal == value) {
@@ -3085,13 +3111,19 @@ pub(crate) fn bridge_decimal_cells_realizable(
                     available = available.saturating_add(1);
                 }
                 None => {
-                    let removed_all = (0..k).any(|j| blocking & (1 << j) != 0
-                        && (!intervals[j].integral || integers_only));
+                    // An excluded range removes the entire open interval only if
+                    // its tower level is at least `min_level` (e.g. excluding
+                    // `xsd:decimal` (`level 1`) leaves infinitely many
+                    // non-decimal rationals (`level 2`) and irrationals
+                    // (`level 3`) in any open interval).
+                    let removed_all = (0..k).any(|j| {
+                        blocking & (1 << j) != 0 && intervals[j].level >= min_level
+                    });
                     if removed_all {
                         continue;
                     }
                     if !integers_only {
-                        // Infinitely many non-integer decimals remain; integral
+                        // Infinitely many values at `min_level` remain; lower-level
                         // exclusions and finitely many literals cannot exhaust them.
                         available = u128::MAX;
                         continue;
@@ -3311,6 +3343,45 @@ pub(crate) fn bridge_ieee_cells_by_atoms(
         }
     }
     Some(true)
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ParsedBridgeAtomic {
+    pub family: &'static str,
+    range: Option<DRange>,
+    pub is_ieee_range: bool,
+    pub is_decimal_range: bool,
+    pub complement_operand_family: Option<&'static str>,
+}
+
+impl ParsedBridgeAtomic {
+    pub(crate) fn of(name: &str) -> Option<Self> {
+        let family = bridge_tbox_atomic_family(name)?;
+        let range = bridge_exact_atomic_range(name);
+        let is_ieee_range = !name.starts_with("__dt__val__")
+            && matches!(family, "float" | "double")
+            && bridge_ieee_interval(name).is_some();
+        let is_decimal_range = !name.starts_with("__dt__val__")
+            && family == "decimal"
+            && DecimalInterval::of(name).is_some();
+        let complement_operand_family = bridge_exact_complement_operand(name)
+            .and_then(|operand| bridge_tbox_atomic_family(&operand));
+        Some(Self {
+            family,
+            range,
+            is_ieee_range,
+            is_decimal_range,
+            complement_operand_family,
+        })
+    }
+
+    pub(crate) fn subsumed(&self, sup: &Self) -> Option<bool> {
+        range_subsumed(self.range.as_ref()?, sup.range.as_ref()?)
+    }
+
+    pub(crate) fn disjoint(&self, right: &Self) -> Option<bool> {
+        range_disjoint(self.range.as_ref()?, right.range.as_ref()?)
+    }
 }
 
 fn bridge_exact_atomic_range(name: &str) -> Option<DRange> {
@@ -3846,7 +3917,7 @@ fn integral_difference(
 /// forms have the same models over the source vocabulary (docs/DATATYPES.md,
 /// "Exact data values without a literal cap"), so the limit is a performance
 /// knob only; at or below it the output is the pairwise form unchanged.
-const PAIRWISE_VALUE_LIMIT: usize = 1024;
+const PAIRWISE_VALUE_LIMIT: usize = 128;
 
 /// The finite cover of a range, as glued literals: the members of a
 /// `DataOneOf`, or an enumerated finite range of at most `cap` values.

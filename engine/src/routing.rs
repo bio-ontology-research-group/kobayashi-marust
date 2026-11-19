@@ -683,7 +683,8 @@ pub(crate) fn bounded_bridge_first_candidate(selected: Route, profile: &Ontology
                 semantic_fragment(profile),
                 SemanticFragment::Nominal | SemanticFragment::NativeBridgeAbox
             )
-            && reflexive_roles == 0
+            && (reflexive_roles == 0
+                || (source.max_cardinalities == 0 && source.exact_cardinalities == 0))
             && source.file_bytes <= BOUNDED_BRIDGE_FIRST_MAX_BYTES
             && source.imports == 0
             && source.rule_axioms == 0
@@ -697,7 +698,8 @@ pub(crate) fn bounded_bridge_first_candidate(selected: Route, profile: &Ontology
             semantic_fragment(profile),
             SemanticFragment::Nominal | SemanticFragment::NativeBridgeAbox
         )
-        && reflexive_roles == 0
+        && (reflexive_roles == 0
+            || (source.max_cardinalities == 0 && source.exact_cardinalities == 0))
         && !(selected == Route::CertifiedNominals
             && source.unions == 0
             && source.role_assertions > 0
