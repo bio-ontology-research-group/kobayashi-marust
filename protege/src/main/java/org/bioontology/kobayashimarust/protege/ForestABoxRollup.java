@@ -696,7 +696,8 @@ final class ForestABoxRollup {
             OWLOntology snapshot,
             boolean onlyThingUnsat,
             java.util.function.BiPredicate<OWLNamedIndividual, OWLClass> hasEntailedType) {
-        if (tryBuildPositiveRBoxProperties(snapshot, onlyThingUnsat) == null) return null;
+        boolean positiveRBox = tryBuildPositiveRBoxProperties(snapshot, onlyThingUnsat) != null;
+        if (!positiveRBox && !canComputeForestRBoxValues(snapshot)) return null;
         KMReasoner.recordReduction("R06_positive_rbox_values");
         List<OWLObjectProperty> ops = new ArrayList<>(snapshot.getObjectPropertiesInSignature());
         ops.removeIf(p -> p.isOWLTopObjectProperty() || p.isOWLBottomObjectProperty());
@@ -774,6 +775,11 @@ final class ForestABoxRollup {
         for (int k = 0; k < 2 * n; k++) {
             for (int i = 0; i < 2 * n; i++) {
                 if (reach[i].get(k)) reach[i].or(reach[k]);
+            }
+        }
+        for (int i = 0; i < 2 * n; i++) {
+            for (int j = reach[i].nextSetBit(0); j >= 0; j = reach[i].nextSetBit(j + 1)) {
+                if (functional[j]) functional[i] = true;
             }
         }
 
@@ -890,6 +896,7 @@ final class ForestABoxRollup {
                     int first = edges[p][x].nextSetBit(0);
                     if (first >= 0) {
                         for (int y = edges[p][x].nextSetBit(first + 1); y >= 0; y = edges[p][x].nextSetBit(y + 1)) {
+                            if (!positiveRBox) return null;
                             if (!same[first].get(y)) {
                                 same[first].set(y);
                                 same[y].set(first);
@@ -915,6 +922,88 @@ final class ForestABoxRollup {
             out.put(ops.get(p), map);
         }
         return out;
+    }
+
+    private static boolean canComputeForestRBoxValues(OWLOntology snapshot) {
+        Set<OWLObjectProperty> funcProps = new HashSet<>();
+        Set<OWLObjectProperty> exprProps = new HashSet<>();
+        Set<OWLObjectProperty> rboxProps = new HashSet<>();
+        Set<OWLObjectProperty> anonOpaProps = new HashSet<>();
+        for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
+            if (ax instanceof SWRLRule
+                    || ax instanceof OWLHasKeyAxiom
+                    || ax instanceof OWLSubPropertyChainOfAxiom
+                    || ax instanceof OWLDisjointObjectPropertiesAxiom
+                    || ax instanceof OWLIrreflexiveObjectPropertyAxiom
+                    || ax instanceof OWLAsymmetricObjectPropertyAxiom
+                    || ax instanceof OWLNegativeObjectPropertyAssertionAxiom
+                    || ax instanceof OWLInverseFunctionalObjectPropertyAxiom
+                    || ax instanceof OWLSameIndividualAxiom
+                    || ax instanceof OWLReflexiveObjectPropertyAxiom) {
+                return false;
+            }
+            for (OWLObjectProperty op : ax.getObjectPropertiesInSignature()) {
+                if (op.isOWLTopObjectProperty() || op.isOWLBottomObjectProperty()) return false;
+            }
+            for (OWLClassExpression ce : ax.getNestedClassExpressions()) {
+                if (ce instanceof OWLObjectOneOf
+                        || ce instanceof OWLObjectHasValue
+                        || ce instanceof OWLObjectHasSelf
+                        || ce instanceof OWLObjectMaxCardinality
+                        || ce instanceof OWLObjectExactCardinality) {
+                    return false;
+                }
+                if (ce instanceof OWLObjectRestriction) {
+                    if (((OWLObjectRestriction) ce).getProperty().isAnonymous()) return false;
+                }
+                exprProps.addAll(ce.getObjectPropertiesInSignature());
+            }
+            if (ax instanceof OWLFunctionalObjectPropertyAxiom) {
+                OWLObjectPropertyExpression pe = ((OWLFunctionalObjectPropertyAxiom) ax).getProperty();
+                if (pe.isAnonymous()) return false;
+                funcProps.add(pe.asOWLObjectProperty());
+            } else if (ax instanceof OWLSubObjectPropertyOfAxiom
+                    || ax instanceof OWLEquivalentObjectPropertiesAxiom
+                    || ax instanceof OWLInverseObjectPropertiesAxiom
+                    || ax instanceof OWLSymmetricObjectPropertyAxiom
+                    || ax instanceof OWLTransitiveObjectPropertyAxiom) {
+                rboxProps.addAll(ax.getObjectPropertiesInSignature());
+            } else if (ax instanceof OWLObjectPropertyAssertionAxiom) {
+                OWLObjectPropertyAssertionAxiom opa = (OWLObjectPropertyAssertionAxiom) ax;
+                if (opa.getProperty().isAnonymous()) return false;
+                if (opa.getSubject().isAnonymous() || opa.getObject().isAnonymous()) {
+                    anonOpaProps.add(opa.getProperty().asOWLObjectProperty());
+                }
+            }
+        }
+        for (OWLObjectProperty p : anonOpaProps) {
+            if (rboxProps.contains(p)) return false;
+        }
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
+                if (ax instanceof OWLSubObjectPropertyOfAxiom) {
+                    OWLSubObjectPropertyOfAxiom sub = (OWLSubObjectPropertyOfAxiom) ax;
+                    if (funcProps.contains(sub.getSuperProperty().getNamedProperty())
+                            && funcProps.add(sub.getSubProperty().getNamedProperty())) {
+                        changed = true;
+                    }
+                } else if (ax instanceof OWLEquivalentObjectPropertiesAxiom) {
+                    Set<OWLObjectProperty> sig = ax.getObjectPropertiesInSignature();
+                    for (OWLObjectProperty p : sig) {
+                        if (funcProps.contains(p)) {
+                            if (funcProps.addAll(sig)) changed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        for (OWLObjectProperty f : funcProps) {
+            if (exprProps.contains(f)) return false;
+        }
+        return true;
     }
 
     private static int codeOf(OWLObjectPropertyExpression pe, Map<OWLObjectProperty, Integer> idx, int n) {
