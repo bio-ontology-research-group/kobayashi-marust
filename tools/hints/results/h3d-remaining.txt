@@ -1,0 +1,12 @@
+Total pool inputs not confirmed full: 191 / 1708
+
+By cause category:
+   62 | model-full, checker timeout
+   46 | km-inconsistent (confirmed by Konclude/HermiT)
+   29 | partial: producer 285s time budget
+   19 | km-failed (classify without --realize > 300s)
+   13 | dump-failed (Lean witness-route dump failure)
+   13 | partial: local witness construction / edgeOff over-strengthening
+    6 | partial: split witnesses incomplete
+    2 | no base model
+    1 | partial: other

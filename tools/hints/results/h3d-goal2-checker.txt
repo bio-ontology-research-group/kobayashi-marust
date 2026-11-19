@@ -1,0 +1,11 @@
+Goal 2 (model full, checker too slow): 92 inputs
+Status after h3d: {'certified-full': 67, 'certified-none': 24, 'certified-partial': 1}
+Certification window: {'1800s': 20, '300s': 47, '>300s': 19, '>1800s': 6}
+
+By status and bottleneck:
+  certified-full     | 18 | closedB/starF memTS scan over large class hierarchy (>35k-981k elements)
+  certified-full     | 49 | publishRoles nominal-element pair/NFA reachability + coreB
+  certified-none     |  1 | SRIQD data-cell splitTab/partTab + dcandOK Finset scans
+  certified-none     | 18 | closedB/starF memTS scan over large class hierarchy (>35k-981k elements)
+  certified-none     |  5 | publishRoles nominal-element pair/NFA reachability + coreB
+  certified-partial  |  1 | publishRoles nominal-element pair/NFA reachability + coreB

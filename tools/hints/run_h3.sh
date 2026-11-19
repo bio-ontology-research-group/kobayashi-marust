@@ -13,7 +13,7 @@ one() {
   o=$1
   [ "${H3_FORCE:-0}" != 1 ] && [ -f $OUT/$o/result.json ] && exit 0
   mkdir -p $OUT/$o
-  timeout 2400 python3 $D $C/$o.owl $OUT/$o $DARGS > $OUT/$o/driver.out 2> $OUT/$o/driver.err
+  timeout 2700 python3 $D $C/$o.owl $OUT/$o $DARGS > $OUT/$o/driver.out 2> $OUT/$o/driver.err
   [ -f $OUT/$o/result.json ] || echo "{\"input\": \"$o\", \"status\": \"driver-timeout\"}" > $OUT/$o/result.json
   # keep every evidence file and km.lines under 50 MB
   find $OUT/$o \( -name '*.hint' -o -name '*.wit' -o -name 'classes.txt' -o -name 'km.lines' \) -size +50M -delete

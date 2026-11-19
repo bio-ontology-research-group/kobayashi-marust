@@ -1,0 +1,101 @@
+input	slice	fragment	size	bytes	old_status	old_status_checked	old_cert_rows	old_reason	new_status	new_status_checked	rows	new_unchecked	new_cert_rows	export_used	new_reason
+ore_ont_10019	pool1m	SHIQ	a<100K	28871	model-partial	certified-partial	1152	witness: at-most: no fold possible 1, seed type clash 21	model-full	certified-full	2096	2096	2096	False	
+ore_ont_10080	poolrest	SROIQ	c<10M	3569579	model-partial	certified-none	0	time budget in the split witnesses	model-partial	certified-partial	13021300	13021289	13021289	False	split witnesses incomplete
+ore_ont_10109	pool1m	SHIQ+ABox	b<1M	134711	model-partial	certified-partial	35135	witness: seed type clash 3	model-full	certified-full	35681	35681	35681	True	
+ore_ont_10140	poolrest	SHIQ	d>=10M	31906036	model-partial	certified-none	0	time budget after 65910 of 83037 witnesses	model-partial	certified-none	6894688024	5484939439	0	False	time budget after 66059 of 83037 witnesses
+ore_ont_1028	poolrest	SHIQ	c<10M	4049212	model-partial	certified-partial	9096662	time budget after 1243 of 7333 witnesses	model-partial	certified-partial	53707718	15256269	15256269	False	time budget after 2084 of 7333 witnesses
+ore_ont_10391	poolrest	SHOIQ	c<10M	7000301	model-none		0	no base model: closure budget	model-full	certified-none	440765	440765	0	False	checker timeout on full model
+ore_ont_10425	poolrest	SHIQ+ABox	c<10M	2099324	model-none		0	no base model: clash in a seed type	model-full	certified-none	4672	4672	0	False	checker timeout on full model
+ore_ont_10460	pool1m	SHIQ	b<1M	141422	model-partial	certified-partial	355953	witness: at-most: no fold possible 4, no type for a successor 1	model-partial	certified-partial	358945	355959	355959	True	witness: at-most: no fold possible 7, no type for a successor 1
+ore_ont_10621	poolrest	SHOIQ	d>=10M	28758860	model-partial	certified-partial	345391070	witness: seed type clash 5	model-full	certified-full	345599275	345599275	345599275	False	
+ore_ont_10754	poolrest	SHOIQ	c<10M	2662581	model-none		0	no base model: clash in a seed type	model-partial	certified-partial	393516	393391	393391	False	witness: seed type clash 1
+ore_ont_10874	pool1m	SHIQ+ABox	b<1M	478092	model-none		0	no base model: time budget	model-full	certified-full	16848	16848	16848	False	
+ore_ont_10949	poolrest	SHOIQ	c<10M	2782932	model-none		0	no base model: time budget	model-full	certified-none	19354497	19354497	0	False	checker timeout on full model
+ore_ont_11064	pool1m	SROIQ	b<1M	139435	model-partial	certified-partial	7594	witness: seed type clash 192	model-partial	certified-partial	50286	7594	7594	False	witness: seed type clash 192
+ore_ont_11270	poolrest	SHOIQ	d>=10M	28758810	model-partial	certified-partial	345391070	witness: seed type clash 5	model-full	certified-full	345599275	345599275	345599275	False	
+ore_ont_11460	poolrest	SHI	d>=10M	41676585	model-partial	certified-partial	453624654	time budget after 5434 of 83483 witnesses	model-partial	certified-partial	6968881354	450285494	450285494	False	time budget after 5394 of 83483 witnesses
+ore_ont_11477	pool1m	SHOIQ	b<1M	246602	model-partial	certified-partial	91228	witness: closure budget 1	model-partial	certified-partial	91456	91449	91449	True	individual types not general
+ore_ont_11554	pool1m	SHIQ	b<1M	168239	model-partial	certified-partial	8482	witness: seed type clash 1	model-full	certified-full	8574	8574	8574	False	
+ore_ont_11629	poolrest	SHIQ	c<10M	3950348	model-partial	certified-partial	6359	time budget after 4 of 6358 witnesses	model-partial	certified-partial	40258458	6359	6359	False	time budget after 16 of 6358 witnesses
+ore_ont_11647	pool1m	SHOIQ	b<1M	423957	model-partial	certified-partial	61603	time budget after 32 of 155 witnesses	model-partial	certified-partial	85055	77317	77317	False	witness: clash when growing a type 5, seed type clash 46
+ore_ont_11695	poolrest	SHIQ	c<10M	6541417	model-partial	certified-partial	482973	time budget after 46 of 11787 witnesses	model-partial	certified-partial	138799622	18923861	18923861	False	time budget after 1608 of 11787 witnesses
+ore_ont_12182	poolrest	SHIQ+ABox	c<10M	6352776	model-none		0	no base model: closure budget	model-full	certified-none	135878	135878	0	False	checker timeout on full model
+ore_ont_12698	poolrest	SHOIQ	c<10M	4167485	model-partial	certified-partial	242376001	split witnesses incomplete	model-full	certified-full	242376007	242376007	242376007	False	
+ore_ont_12723	pool1m	SROIQ	b<1M	412959	model-partial	certified-partial	1242188	witness: seed type clash 518	model-partial	certified-partial	1966182	1636434	1636434	False	witness: seed type clash 236
+ore_ont_13229	poolrest	SHIQ	d>=10M	25110489	model-partial	certified-partial	175143	time budget after 46731 of 58388 witnesses	model-partial	certified-partial	3407915173	2780132208	2393389	False	time budget after 47635 of 58388 witnesses
+ore_ont_13242	poolrest	SHIQ	d>=10M	21168228	model-partial	certified-partial	133833238	time budget after 2365 of 56247 witnesses	model-partial	certified-partial	3184618219	171596383	171596383	False	time budget after 3036 of 56247 witnesses
+ore_ont_13526	poolrest	SHOIQ	c<10M	7001602	model-none		0	no base model: closure budget	model-full	certified-none	428446	428446	0	False	checker timeout on full model
+ore_ont_13859	pool1m	SHOIQ	b<1M	462252	model-partial	certified-partial	1046865	witness: closure budget 1	model-full	certified-full	1047820	1047820	1047820	False	
+ore_ont_14379	pool1m	SHIQ+ABox	a<100K	67963	model-partial	certified-partial	9652	witness: closure budget 1	model-full	certified-full	9730	9730	9730	True	
+ore_ont_14551	poolrest	SHOIQ	c<10M	1447287	model-partial	certified-partial	866368	split witnesses incomplete	model-partial	certified-partial	8251738	8251736	8251736	False	split witnesses incomplete
+ore_ont_14572	poolrest	SHIQ	d>=10M	10532344	model-partial	certified-partial	23138	time budget after 2 of 23137 witnesses	model-partial	certified-partial	534840544	23138	23138	False	time budget after 2 of 23137 witnesses
+ore_ont_1478	pool1m	SHOIQ	b<1M	236669	model-partial	certified-partial	14961	witness: seed type clash 1	model-full	certified-full	15080	15080	15080	False	
+ore_ont_14817	poolrest	SHIQ	d>=10M	25102486	model-partial	certified-partial	175074	time budget after 46708 of 58365 witnesses	model-partial	certified-partial	3405230170	2777927925	2450791	False	time budget after 47616 of 58365 witnesses
+ore_ont_15074	poolrest	SHIQ+ABox	c<10M	5541381	model-partial	certified-partial	167411	time budget after 146 of 1160 witnesses	model-full	certified-full	1337843	1337843	1337843	False	
+ore_ont_1509	pool1m	SHOIQ	b<1M	361678	model-partial	certified-none	0	witness: closure budget 1	model-full	certified-full	70529	70529	70529	False	
+ore_ont_15526	pool1m	SROIQ	b<1M	420753	model-partial	certified-partial	1285373	witness: seed type clash 525	model-partial	certified-partial	2031217	1688947	1688947	False	witness: seed type clash 241
+ore_ont_15655	poolrest	SHOIQ	c<10M	2531841	model-none		0	no base model: time budget	model-partial	certified-none	10178132	7645290	0	False	time budget after 0 of 1595 witnesses
+ore_ont_15682	pool1m	SHIQ+ABox	b<1M	156703	model-partial	certified-partial	54482	individual types not general	model-full	certified-full	54739	54739	54739	True	
+ore_ont_15687	poolrest	SHOIQ	d>=10M	21974908	model-partial	certified-partial	21174643	witness: at-most: no fold possible 1	model-partial	certified-partial	663661662	663634275	21174643	False	witness: at-most: no fold possible 1
+ore_ont_16420	poolrest	SHOIQ	c<10M	4329875	model-none		0	no base model: time budget	model-full	certified-partial	119248402	119248402	67128900	False	checker timeout on full model
+ore_ont_1646	pool1m	SHIQ	b<1M	305062	model-partial	certified-partial	9221	witness: seed type clash 1	model-full	certified-full	9317	9317	9317	False	
+ore_ont_16462	poolrest	SHOIQ	d>=10M	50530513	model-full	certified-partial	5409607	secondary split model checker timeout	model-full	certified-full	21379583647	21379583647	21379583647	False	
+ore_ont_1672	pool1m	SHOIQ	b<1M	952614	model-none		0	no base model: clash in a seed type	model-full	certified-full	140508	140508	140508	False	
+ore_ont_1673	poolrest	SHOIQ	d>=10M	123049579	model-full	certified-partial	6896230	secondary split model checker timeout	model-full	certified-partial	34743879925	34743879925	6896230	False	checker timeout on full model
+ore_ont_16847	pool1m	SHI	b<1M	129169	model-partial	certified-partial	77232	witness: closure budget 6	model-full	certified-full	78889	78889	78889	False	
+ore_ont_1685	poolrest	SHIQ+ABox	c<10M	7246969	model-none		0	no base model: closure budget	model-full	certified-none	3730757	3730757	0	False	checker timeout on full model
+ore_ont_16853	poolrest	SHIQ+ABox	c<10M	5631863	model-none		0	no base model: closure budget	model-full	certified-none	2388911	2388911	0	False	checker timeout on full model
+ore_ont_1707	pool1m	SHIQ	b<1M	373592	model-partial	certified-partial	873214	witness: at-most: no fold possible 1, seed type clash 194	model-full	certified-full	1074292	1074292	1074292	False	
+ore_ont_1833	poolrest	SHIQ+ABox	c<10M	7654706	model-none		0	no base model: clash in a seed type	model-partial	certified-none	1931047	1893309	0	False	time budget after 0 of 196 witnesses
+ore_ont_1997	pool1m	SHI	a<100K	44340	model-partial	certified-partial	7962	witness: closure budget 3, no type for a successor 3	model-full	certified-full	8507	8507	8507	True	
+ore_ont_2504	poolrest	SHOIQ	d>=10M	25213072	model-none		0	no base model: clash in a seed type	model-partial	certified-none	297563610	208142498	0	False	time budget after 0 of 9463 witnesses
+ore_ont_2738	poolrest	SROIQ	d>=10M	19292810	model-partial	certified-partial	16738033	time budget after 38233 of 45620 witnesses	model-partial	certified-partial	2080498980	1842399808	15734146	False	time budget after 40405 of 45620 witnesses
+ore_ont_2874	poolrest	SROIQ	d>=10M	23428896	model-partial	certified-partial	1185098687	time budget after 22945 of 46864 witnesses	model-partial	certified-partial	2420673752	1836809060	15082638	False	time budget after 35570 of 46864 witnesses
+ore_ont_2901	pool1m	SHIQ+ABox	b<1M	168971	model-partial	certified-partial	486122	witness: at-most: no fold possible 1	model-partial	certified-partial	486821	486122	486122	False	witness: at-most: no fold possible 1
+ore_ont_3215	poolrest	SHI	d>=10M	20131064	model-partial	certified-partial	164602831	time budget after 2999 of 54974 witnesses	model-partial	certified-partial	3018162533	230689799	230689799	False	time budget after 4203 of 54974 witnesses
+ore_ont_3262	pool1m	SHOIQ	b<1M	256401	model-partial	certified-partial	24657	witness: seed type clash 1	model-full	certified-full	24811	24811	24811	False	
+ore_ont_345	poolrest	SROIQ	d>=10M	111427640	model-partial	certified-none	0	time budget after 12018 of 89736 witnesses	model-partial	certified-none	8051922691	1085218436	0	False	time budget after 12096 of 89736 witnesses
+ore_ont_3561	poolrest	SHOIQ	c<10M	1583712	model-none		0	no base model: clash in a seed type	model-partial	certified-partial	201507	201399	201399	False	witness: seed type clash 1
+ore_ont_3794	poolrest	SHIQ	d>=10M	17266272	model-partial	certified-none	0	time budget after 2 of 28466 witnesses	model-partial	certified-none	809404110	28467	0	False	time budget after 2 of 28466 witnesses
+ore_ont_4208	poolrest	SHI	d>=10M	35678481	model-partial	certified-none	0	time budget after 66018 of 83037 witnesses	model-partial	certified-none	6894688020	5510595553	0	False	time budget after 66367 of 83037 witnesses
+ore_ont_4410	poolrest	SHIQ+ABox	d>=10M	45114936	model-none		0	no base model: clash in a seed type	model-none	certified-none	60464	0	0	False	no base model: time budget
+ore_ont_4604	poolrest	SHI	d>=10M	36459115	model-partial	certified-none	0	time budget after 65514 of 83201 witnesses	model-partial	certified-none	6921949842	5465991016	0	False	time budget after 65701 of 83201 witnesses
+ore_ont_4668	pool1m	SHI	b<1M	112075	model-partial	certified-partial	67848	split witnesses incomplete	model-full	certified-full	67849	67849	67849	True	
+ore_ont_4796	pool1m	SHOIQ	b<1M	303903	model-none		0	no base model: clash in a seed type	model-full	certified-full	45528	45528	45528	False	
+ore_ont_4903	pool1m	SHOIQ	b<1M	860208	model-partial	certified-partial	645077	split witnesses incomplete	model-partial	certified-partial	4029516	4029509	4029509	True	split witnesses incomplete
+ore_ont_5162	poolrest	SHIQ	d>=10M	25110627	model-partial	certified-partial	175149	time budget after 46731 of 58390 witnesses	model-partial	certified-partial	3408149037	2780227791	2393471	False	time budget after 47635 of 58390 witnesses
+ore_ont_5303	pool1m	SHI	a<100K	41889	model-partial	certified-partial	8143	witness: closure budget 3, no type for a successor 3	model-full	certified-full	8694	8694	8694	True	
+ore_ont_5359	pool1m	SHOIQ	b<1M	155371	model-partial	certified-partial	133138	split witnesses incomplete	model-full	certified-full	133140	133140	133140	True	
+ore_ont_5368	poolrest	SHIQ+ABox	c<10M	4126729	model-none		0	no base model: closure budget	model-none	certified-none	74462578	0	0	False	model-none
+ore_ont_5964	pool1m	SHOIQ	b<1M	257475	model-partial	certified-partial	518972	split witnesses incomplete	model-full	certified-full	518973	518973	518973	False	
+ore_ont_6111	poolrest	SHIQ	c<10M	1327366	model-partial	certified-partial	1793956	time budget after 466 of 3898 witnesses	model-full	certified-full	15133972	15133972	15133972	False	
+ore_ont_6132	poolrest	SROIQ	c<10M	2916871	model-none		0	no base model: time budget	model-full	certified-none	1507399	1507399	0	False	checker timeout on full model
+ore_ont_6333	pool1m	SHIQ	a<100K	47204	model-partial	certified-partial	6023	witness: closure budget 1	model-full	certified-full	6130	6130	6130	True	
+ore_ont_6485	pool1m	SHIQ	a<100K	46696	model-partial	certified-partial	11514	witness: at-most: no fold possible 1, seed type clash 21	model-full	certified-full	14042	14042	14042	False	
+ore_ont_6822	pool1m	SHOIQ	b<1M	947689	model-partial	certified-partial	982782	individual types not general	model-full	certified-full	982783	982783	982783	False	
+ore_ont_6951	pool1m	SHOIQ	b<1M	277602	model-none		0	no base model: closure budget	model-full	certified-full	13865	13865	13865	False	
+ore_ont_6952	poolrest	SHIQ	d>=10M	20734427	model-partial	certified-partial	5328181107	time budget after 64170 of 83037 witnesses	model-partial	certified-partial	6894688104	5328181107	5328181107	False	time budget after 64170 of 83037 witnesses
+ore_ont_6967	pool1m	SHOIQ	b<1M	176616	model-partial	certified-partial	80243	witness: closure budget 5, seed type clash 4	model-full	certified-full	82808	82808	82808	True	
+ore_ont_6999	pool1m	SHOIQ	b<1M	176451	model-partial	certified-partial	18498	witness: pollution in every model 23, seed type clash 1	model-full	certified-full	20544	20544	20544	False	
+ore_ont_7007	pool1m	SHIQ+ABox	b<1M	389922	model-none		0	no base model: clash in a seed type	model-full	certified-full	25824	25824	25824	False	
+ore_ont_7507	poolrest	SROIQ	d>=10M	99005867	model-partial	certified-none	0	time budget after 12277 of 77611 witnesses	model-partial	certified-none	6022917796	947490293	0	False	time budget after 12211 of 77611 witnesses
+ore_ont_7607	poolrest	SHIQ+ABox	d>=10M	11855152	model-none		0	no base model: clash in a seed type	model-full	certified-none	8970362	8970362	0	False	checker timeout on full model
+ore_ont_7729	poolrest	SHOIQ	d>=10M	49990879	model-full	certified-partial	5628425	secondary split model checker timeout	model-full	certified-full	23143890759	23143890759	23143890759	False	
+ore_ont_7877	pool1m	SHIQ	b<1M	265970	model-partial	certified-partial	72233	witness: closure budget 5	model-full	certified-full	73565	73565	73565	False	
+ore_ont_7893	pool1m	SHIQ	b<1M	458210	model-partial	certified-partial	118063	witness: closure budget 1	model-full	certified-full	118404	118404	118404	False	
+ore_ont_8141	pool1m	SHOIQ	b<1M	155373	model-partial	certified-partial	133138	split witnesses incomplete	model-full	certified-full	133140	133140	133140	True	
+ore_ont_8273	pool1m	SHIQ	b<1M	359194	model-partial	certified-partial	97631	witness: closure budget 2	model-full	certified-full	98249	98249	98249	False	
+ore_ont_8911	pool1m	SHOIQ	b<1M	359868	model-partial	certified-none	0	witness: closure budget 1	model-full	certified-full	70426	70426	70426	False	
+ore_ont_9151	poolrest	SHOIQ	c<10M	4249405	model-none		0	no base model: time budget	model-full	certified-partial	116386827	116386827	62207658	False	checker timeout on full model
+ore_ont_934	pool1m	SHOIQ	b<1M	150512	model-partial	certified-partial	26352	witness: closure budget 3	model-partial	certified-partial	26664	26560	26560	False	witness: seed type clash 1
+ore_ont_9347	poolrest	SHIQ+ABox	c<10M	8579986	model-none		0	no base model: time budget	model-full	certified-none	1496012	1496012	0	False	checker timeout on full model
+ore_ont_9429	poolrest	SHOIQ	c<10M	1382637	model-partial	certified-partial	7156826	split witnesses incomplete	model-partial	certified-partial	7156912	7156910	7156910	False	split witnesses incomplete
+ore_ont_9577	poolrest	SHOIQ	c<10M	4395211	model-none		0	no base model: time budget	model-full	certified-partial	121029755	121029755	68131177	False	checker timeout on full model
+ore_ont_9724	poolrest	SHIQ	d>=10M	10532295	model-partial	certified-partial	23138	time budget after 2 of 23137 witnesses	model-partial	certified-partial	534840544	23138	23138	False	time budget after 2 of 23137 witnesses
+ore_ont_9786	pool1m	SROIQ	b<1M	379212	model-partial	certified-partial	995281	witness: seed type clash 511	model-partial	certified-partial	1649104	1399680	1399680	False	witness: seed type clash 195
+ore_ont_9791	poolrest	SHIQ	d>=10M	25110092	model-partial	certified-partial	175143	time budget after 46731 of 58388 witnesses	model-partial	certified-partial	3407915173	2781299760	2626893	False	time budget after 47655 of 58388 witnesses
+ore_ont_9800	poolrest	SHIQ+ABox	c<10M	1495083	model-none		0	no base model: clash in a seed type	model-full	certified-full	6085044	6085044	6085044	False	
+ore_ont_9835	poolrest	SHI	d>=10M	18885107	model-partial	certified-partial	2138153525	split witnesses incomplete	model-partial	certified-partial	2138153528	2138153525	2138153525	False	split witnesses incomplete
+ore_ont_9855	poolrest	SHIQ	c<10M	3954077	model-partial	certified-partial	6363	time budget after 4 of 6362 witnesses	model-partial	certified-partial	40309258	6363	6363	False	time budget after 16 of 6362 witnesses
+ore_ont_9890	pool1m	SHOIQ	b<1M	270008	model-partial	certified-partial	502875	witness: closure budget 1	model-full	certified-full	503538	503538	503538	False	
+ore_ont_9899	poolrest	SROIQ	c<10M	2957106	model-none		0	no base model: time budget	model-full	certified-none	1905329	1905329	0	False	checker timeout on full model

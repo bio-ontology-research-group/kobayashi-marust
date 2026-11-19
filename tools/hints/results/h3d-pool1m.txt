@@ -1,0 +1,31 @@
+all            inputs  892 | producer: model-full  850 partial  13 none   0 other  29 | classes  517795 general  503729 split 12437 partial   93 none 1370 | rows 974582765 unchecked 972939845 | checker: inputs 863 consistency 863 full 850 full-but-Thing 0 partial 13 none 0 | certified rows 972939845 (+ Thing rows 516586) | calls {'certified': 989} | disagreements 0
+frag:ALC       inputs    2 | producer: model-full    2 partial   0 none   0 other   0 | classes    1745 general    1745 split     0 partial    0 none    0 | rows 2890988 unchecked 2890988 | checker: inputs 2 consistency 2 full 2 full-but-Thing 0 partial 0 none 0 | certified rows 2890988 (+ Thing rows 1743) | calls {'certified': 2} | disagreements 0
+frag:EL        inputs  274 | producer: model-full  274 partial   0 none   0 other   0 | classes  266422 general  266407 split     0 partial    0 none    0 | rows 550494018 unchecked 550494018 | checker: inputs 274 consistency 274 full 274 full-but-Thing 0 partial 0 none 0 | certified rows 550494018 (+ Thing rows 266098) | calls {'certified': 274} | disagreements 0
+frag:SHI       inputs   34 | producer: model-full   34 partial   0 none   0 other   0 | classes   11717 general   11424 split   273 partial   19 none    0 | rows 16255338 unchecked 16255338 | checker: inputs 34 consistency 34 full 34 full-but-Thing 0 partial 0 none 0 | certified rows 16255338 (+ Thing rows 11653) | calls {'certified': 37} | disagreements 0
+frag:SHIQ      inputs   65 | producer: model-full   64 partial   1 none   0 other   0 | classes   13486 general   12208 split  1220 partial   20 none    8 | rows 10588144 unchecked 10585158 | checker: inputs 65 consistency 65 full 64 full-but-Thing 0 partial 1 none 0 | certified rows 10585158 (+ Thing rows 13384) | calls {'certified': 70} | disagreements 0
+frag:SHIQ+ABox inputs  295 | producer: model-full  279 partial   1 none   0 other  15 | classes  112749 general  112245 split   451 partial    4 none    5 | rows 217139436 unchecked 217138737 | checker: inputs 280 consistency 280 full 279 full-but-Thing 0 partial 1 none 0 | certified rows 217138737 (+ Thing rows 112385) | calls {'certified': 299} | disagreements 0
+frag:SHOIQ     inputs  200 | producer: model-full  182 partial   5 none   0 other  13 | classes   86894 general   77940 split  8742 partial   35 none  103 | rows 129846823 unchecked 129838778 | checker: inputs 187 consistency 187 full 182 full-but-Thing 0 partial 5 none 0 | certified rows 129838778 (+ Thing rows 86574) | calls {'certified': 283} | disagreements 0
+frag:SROIQ     inputs   22 | producer: model-full   15 partial   6 none   0 other   1 | classes   24782 general   21760 split  1751 partial   15 none 1254 | rows 47368018 unchecked 45736828 | checker: inputs 21 consistency 21 full 15 full-but-Thing 0 partial 6 none 0 | certified rows 45736828 (+ Thing rows 24749) | calls {'certified': 24} | disagreements 0
+size:a<100K    inputs  382 | producer: model-full  378 partial   0 none   0 other   4 | classes   43056 general   42169 split   810 partial   34 none    2 | rows 9693557 unchecked 9693557 | checker: inputs 378 consistency 378 full 378 full-but-Thing 0 partial 0 none 0 | certified rows 9693557 (+ Thing rows 42475) | calls {'certified': 397} | disagreements 0
+size:b<1M      inputs  510 | producer: model-full  472 partial  13 none   0 other  25 | classes  474739 general  461560 split 11627 partial   59 none 1368 | rows 964889208 unchecked 963246288 | checker: inputs 485 consistency 485 full 472 full-but-Thing 0 partial 13 none 0 | certified rows 963246288 (+ Thing rows 474111) | calls {'certified': 592} | disagreements 0
+separate nontype (no-realize): inputs 7 individuals 201 pairs 15259 certified_outside 14873 | export_used inputs 14
+reasons: {'witness': 10, 'km-inconsistent': 22, 'individual types not general': 1, 'dump-failed': 6, 'split witnesses incomplete': 2, 'km-failed': 1}
+
+|  | inputs | confirmed full | model full, checker too slow | partial | none | no rows | km-inconsistent | km-failed | dump-failed | model full | rows | unchecked | certified |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| all | 892 | 850 | 0 | 13 | 0 | 29 | 22 | 1 | 6 | 850 | 974,582,765 | 972,939,845 | 972,939,845 |
+
+| size | inputs | confirmed full | model full, checker too slow | partial | none | no rows | km-inconsistent | km-failed | dump-failed | model full | rows | unchecked | certified |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| a<100K | 382 | 378 | 0 | 0 | 0 | 4 | 2 | 0 | 2 | 378 | 9,693,557 | 9,693,557 | 9,693,557 |
+| b<1M | 510 | 472 | 0 | 13 | 0 | 25 | 20 | 1 | 4 | 472 | 964,889,208 | 963,246,288 | 963,246,288 |
+
+| fragment | inputs | confirmed full | model full, checker too slow | partial | none | no rows | km-inconsistent | km-failed | dump-failed | model full | rows | unchecked | certified |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| ALC | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 2,890,988 | 2,890,988 | 2,890,988 |
+| EL | 274 | 274 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 274 | 550,494,018 | 550,494,018 | 550,494,018 |
+| SHI | 34 | 34 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 34 | 16,255,338 | 16,255,338 | 16,255,338 |
+| SHIQ | 65 | 64 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 64 | 10,588,144 | 10,585,158 | 10,585,158 |
+| SHIQ+ABox | 295 | 279 | 0 | 1 | 0 | 15 | 14 | 0 | 1 | 279 | 217,139,436 | 217,138,737 | 217,138,737 |
+| SHOIQ | 200 | 182 | 0 | 5 | 0 | 13 | 8 | 0 | 5 | 182 | 129,846,823 | 129,838,778 | 129,838,778 |
+| SROIQ | 22 | 15 | 0 | 6 | 0 | 1 | 0 | 1 | 0 | 15 | 47,368,018 | 45,736,828 | 45,736,828 |
