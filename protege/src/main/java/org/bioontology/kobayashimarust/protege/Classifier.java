@@ -49,6 +49,27 @@ public final class Classifier {
         public int dropped = 0;
         public final List<String[]> subsumptions = new ArrayList<>(); // {sub, super}
         public final List<String> unsatisfiable = new ArrayList<>();
+        public final List<String> lenient = new ArrayList<>();
+    }
+
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger(Classifier.class);
+    private static final java.util.concurrent.atomic.AtomicBoolean LENIENT_MODE_LOGGED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static volatile String lastLoggedModeNote;
+
+    static void logLenientModeOnFirstUse() {
+        if (LENIENT_MODE_LOGGED.compareAndSet(false, true)) {
+            String note = "Kobayashi-MaRust Protege plugin: using lenient input mode "
+                    + "(--lenient --unknown-datatypes=free) for OWL API / HermiT compatibility";
+            lastLoggedModeNote = note;
+            LOG.info(note);
+            System.err.println(note);
+        }
+    }
+
+    static String lastLoggedModeNote() {
+        return lastLoggedModeNote;
     }
 
     /** Receipt for the last native source-level transaction. */
@@ -122,6 +143,7 @@ public final class Classifier {
         /** One String instance per distinct IRI: the retained rows must not hold 2 copies per pair. */
         private Map<String, String> pool = new HashMap<>();
         private List<String> unsat = new ArrayList<>();
+        private List<String> lenient = new ArrayList<>();
         private boolean consistent = true;
         private int dropped;
         /** Revision of the committed answer; -1 until the first one. */
@@ -145,10 +167,12 @@ public final class Classifier {
          */
         public Session(String functionalSyntax, java.util.function.Consumer<Session> started)
                 throws Exception {
+            logLenientModeOnFirstUse();
             this.kmBin = KMExecutable.resolve();
             this.timeoutSeconds = parseTimeout();
             this.log = Files.createTempFile("kmarust-incremental-", ".log");
-            ProcessBuilder builder = new ProcessBuilder(kmBin, "incremental-source");
+            ProcessBuilder builder = new ProcessBuilder(
+                    kmBin, "incremental-source", "--lenient", "--unknown-datatypes=free");
             builder.redirectError(log.toFile());
             this.process = builder.start();
             this.input = new BufferedWriter(new OutputStreamWriter(
@@ -197,10 +221,13 @@ public final class Classifier {
                     for (String o : e.getValue()) r.subsumptions.add(new String[]{e.getKey(), o});
                 }
                 r.unsatisfiable.addAll(unsat);
+                r.lenient.addAll(lenient);
                 result = r;
             }
             return result;
         }
+
+        public synchronized List<String> lenient() { return Collections.unmodifiableList(lenient); }
 
         /** Retained subject rows; the map is the live committed state, read it under no concurrent update. */
         public synchronized Map<String, String[]> rows() { return Collections.unmodifiableMap(rows); }
@@ -298,6 +325,7 @@ public final class Classifier {
                 changed = true;
             }
             unsat = newUnsat;
+            lenient = r.lenient == null ? new ArrayList<>() : r.lenient;
             consistent = r.consistent;
             dropped = r.dropped;
             committedRevision = wire.revision == null ? committedRevision + 1 : wire.revision;
@@ -319,6 +347,10 @@ public final class Classifier {
             command.addProperty("op", op);
             if (source != null) command.addProperty("functional_syntax", source);
             if (baseRevision != null) command.addProperty("base_revision", baseRevision);
+            if ("init".equals(op) || "replace".equals(op)) {
+                command.addProperty("lenient", true);
+                command.addProperty("unknown_datatypes", "free");
+            }
             // Stream the request: same bytes as toJson(command), without a second
             // copy of the whole source as an intermediate String.
             gson.toJson(command, input);
@@ -429,6 +461,14 @@ public final class Classifier {
                         while (reader.hasNext()) list.add(reader.nextString());
                         reader.endArray();
                         r.unsatisfiable = list;
+                        break;
+                    }
+                    case "lenient": {
+                        List<String> list = new ArrayList<>();
+                        reader.beginArray();
+                        while (reader.hasNext()) list.add(reader.nextString());
+                        reader.endArray();
+                        r.lenient = list;
                         break;
                     }
                     case "rows": {
@@ -578,6 +618,7 @@ public final class Classifier {
         Map<String, String[]> builtRows;
         Map<String, String> builtPool;
         List<String> unsatisfiable;
+        List<String> lenient;
         // Row-delta answers: only subjects whose superclass set changed.
         Boolean delta;
         Long base_revision;
@@ -633,6 +674,7 @@ public final class Classifier {
      */
     static List<String> oneShot(String functionalSyntax, String[] flags, String label,
                                         java.util.function.Consumer<Process> onStart) throws Exception {
+        logLenientModeOnFirstUse();
         String kmBin = KMExecutable.resolve();
         long timeout = parseTimeout();
         Path tmp = Files.createTempFile("kmarust-" + label + "-", ".ofn");
@@ -643,7 +685,13 @@ public final class Classifier {
             command.add(kmBin);
             command.add("classify");
             command.add("--lines");
-            for (String flag : flags) command.add(flag);
+            command.add("--lenient");
+            command.add("--unknown-datatypes=free");
+            for (String flag : flags) {
+                if (!"--lenient".equals(flag) && !"--unknown-datatypes=free".equals(flag)) {
+                    command.add(flag);
+                }
+            }
             command.add("--format");
             command.add("functional");
             command.add(tmp.toString());
@@ -908,6 +956,7 @@ public final class Classifier {
     }
 
     public static Result classify(OWLOntology ontology) throws Exception {
+        logLenientModeOnFirstUse();
         String kmBin = KMExecutable.resolve();
         long timeout = parseTimeout();
 
@@ -920,7 +969,8 @@ public final class Classifier {
             FlattenedOntology.save(ontology, tmp);
 
             ProcessBuilder pb = new ProcessBuilder(
-                    kmBin, "classify", "--lines", "--format", "functional",
+                    kmBin, "classify", "--lines", "--lenient", "--unknown-datatypes=free",
+                    "--format", "functional",
                     tmp.toString());
             pb.redirectErrorStream(true);
             pb.redirectOutput(log.toFile());
@@ -952,6 +1002,8 @@ public final class Classifier {
                     catch (NumberFormatException ignore) {}
                 } else if (f.length == 2 && f[0].equals("APPROXIMATE")) {
                     approximate = f[1];
+                } else if (f.length == 2 && f[0].equals("LENIENT")) {
+                    r.lenient.add(f[1]);
                 } else if (f.length == 3 && f[0].equals("SUB")) {
                     r.subsumptions.add(new String[]{f[1], f[2]});
                 } else if (f.length == 2 && f[0].equals("UNSAT")) {

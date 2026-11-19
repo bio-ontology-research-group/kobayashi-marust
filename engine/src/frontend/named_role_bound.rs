@@ -39,8 +39,17 @@ pub struct NamedRoleBound {
     pub edges: BTreeMap<String, BTreeSet<(String, String)>>,
     /// Reverse pairs `(b, a)` per short role name `r`.
     pub rev_edges: BTreeMap<String, BTreeSet<(String, String)>>,
+    /// Wildcard-source targets `b` (`(*, b) in r`) per short role name `r`.
+    pub w_src: BTreeMap<String, BTreeSet<String>>,
+    /// Wildcard-target sources `a` (`(a, *) in r`) per short role name `r`.
+    pub w_dst: BTreeMap<String, BTreeSet<String>>,
+    /// Short role names `r` with universal target reachability `(*, *)`.
+    pub universal_roles: BTreeSet<String>,
     /// Short role names `r` that hold on the diagonal `(a, a)` for all `a in N`.
     pub self_roles: BTreeSet<String>,
+    /// Whether the strict forest precondition for DL-safe rule grounding holds
+    /// (no `SameIndividual`, `ObjectHasValue`, `AtMost >= 1`, or role merges).
+    pub forest_exact_for_rules: bool,
     /// Whether `ObjectHasSelf` already occurs in the source ontology.
     pub has_self_in_source: bool,
     /// Closed value-partition classes `v -> {a_1, ..., a_k}` (short names).
@@ -52,6 +61,69 @@ pub struct NamedRoleBound {
     pub entailed_roles: BTreeSet<(String, String, String)>,
     /// Entailed positive atomic class assertions `(c, a)` that hold in every model.
     pub entailed_classes: BTreeSet<(String, String)>,
+}
+
+struct Equiv {
+    parent: BTreeMap<String, String>,
+    num_merges: usize,
+}
+
+impl Equiv {
+    fn new() -> Self {
+        Self {
+            parent: BTreeMap::new(),
+            num_merges: 0,
+        }
+    }
+
+    fn find(&mut self, x: &str) -> String {
+        let Some(p) = self.parent.get(x).cloned() else {
+            self.parent.insert(x.to_owned(), x.to_owned());
+            return x.to_owned();
+        };
+        if p == x {
+            return p;
+        }
+        let root = self.find(&p);
+        self.parent.insert(x.to_owned(), root.clone());
+        root
+    }
+
+    fn union(&mut self, a: &str, b: &str) -> bool {
+        let ra = self.find(a);
+        let rb = self.find(b);
+        if ra == rb {
+            return false;
+        }
+        if ra < rb {
+            self.parent.insert(rb, ra);
+        } else {
+            self.parent.insert(ra, rb);
+        }
+        self.num_merges += 1;
+        true
+    }
+
+    fn multi_member_map(&mut self) -> Option<BTreeMap<String, Vec<String>>> {
+        let keys: Vec<String> = self.parent.keys().cloned().collect();
+        let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for k in keys {
+            let r = self.find(&k);
+            groups.entry(r).or_default().push(k);
+        }
+        let mut out = BTreeMap::new();
+        for (_, members) in groups {
+            if members.len() > 256 {
+                return None;
+            }
+            if members.len() >= 2 {
+                for m in &members {
+                    out.insert(m.clone(), members.clone());
+                }
+            }
+        }
+        Some(out)
+    }
 }
 
 fn is_universal_role_token(token: &str) -> bool {
@@ -76,7 +148,7 @@ fn mentions_disqualifying_construct(node: &Node<'_>, data_gen: &mut bool) -> boo
     match *head {
         "Annotation" | "AnnotationAssertion" | "SubAnnotationPropertyOf"
         | "AnnotationPropertyDomain" | "AnnotationPropertyRange" | "Declaration" => return false,
-        "SameIndividual" | "HasKey" => return true,
+        "HasKey" => return true,
         "SubDataPropertyOf" | "EquivalentDataProperties" => {
             *data_gen = true;
             return false;
@@ -134,7 +206,19 @@ fn literal_identity_key(literal: &str) -> Option<String> {
 static CACHED_ROLE_BOUND: Mutex<Option<(Arc<str>, Option<NamedRoleBound>)>> = Mutex::new(None);
 
 impl NamedRoleBound {
+    pub fn bound_disabled() -> bool {
+        std::env::var("KM_DISABLE_NAMED_ROLE_BOUND")
+            .ok()
+            .is_some_and(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            || std::env::var("KM_NAMED_ROLE_BOUND")
+                .ok()
+                .is_some_and(|v| matches!(v.trim(), "0" | "false" | "FALSE" | "no" | "NO" | "off" | "OFF"))
+    }
+
     pub fn compute(text: &str) -> Option<Self> {
+        if Self::bound_disabled() {
+            return None;
+        }
         if text.len() <= 16 * 1024 * 1024 {
             if let Some((_, cached)) = CACHED_ROLE_BOUND
                 .lock()
@@ -202,6 +286,9 @@ impl NamedRoleBound {
                     }
                 }
             }
+        }
+        for op in profile.object_property_names() {
+            registry.short(op);
         }
         let mut full_iris = BTreeMap::new();
         let mut short_of_full = BTreeMap::new();
@@ -301,7 +388,16 @@ impl NamedRoleBound {
         let mut pos_classes: BTreeSet<String> = BTreeSet::new();
         let mut has_self_roles: BTreeSet<String> = BTreeSet::new();
         let mut has_self_in_source = false;
+        let mut forest_exact_for_rules = true;
+        let mut w_src: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut w_dst: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut card_functional: BTreeSet<String> = BTreeSet::new();
+        let mut card_inv_functional: BTreeSet<String> = BTreeSet::new();
+        let mut pos_existential_roles: BTreeSet<String> = BTreeSet::new();
+        let mut inv_existential_roles: BTreeSet<String> = BTreeSet::new();
+        let mut same_pairs: Vec<(String, String)> = Vec::new();
 
+        #[allow(clippy::too_many_arguments)]
         fn walk_concept(
             c: &Concept,
             pos: bool,
@@ -311,6 +407,13 @@ impl NamedRoleBound {
             has_self_roles: &mut BTreeSet<String>,
             has_self_in_source: &mut bool,
             data_gen: &mut bool,
+            forest_exact_for_rules: &mut bool,
+            w_src: &mut BTreeMap<String, BTreeSet<String>>,
+            w_dst: &mut BTreeMap<String, BTreeSet<String>>,
+            card_functional: &mut BTreeSet<String>,
+            card_inv_functional: &mut BTreeSet<String>,
+            pos_existential_roles: &mut BTreeSet<String>,
+            inv_existential_roles: &mut BTreeSet<String>,
         ) -> Result<(), ()> {
             match c {
                 Concept::Name(n) => {
@@ -336,6 +439,13 @@ impl NamedRoleBound {
                     has_self_roles,
                     has_self_in_source,
                     data_gen,
+                    forest_exact_for_rules,
+                    w_src,
+                    w_dst,
+                    card_functional,
+                    card_inv_functional,
+                    pos_existential_roles,
+                    inv_existential_roles,
                 ),
                 Concept::And(cs) | Concept::Or(cs) => {
                     for d in cs {
@@ -348,6 +458,13 @@ impl NamedRoleBound {
                             has_self_roles,
                             has_self_in_source,
                             data_gen,
+                            forest_exact_for_rules,
+                            w_src,
+                            w_dst,
+                            card_functional,
+                            card_inv_functional,
+                            pos_existential_roles,
+                            inv_existential_roles,
                         )?;
                     }
                     Ok(())
@@ -355,10 +472,58 @@ impl NamedRoleBound {
                 Concept::Exists(r, filler) => {
                     match r {
                         Role::Universal => return Err(()),
-                        Role::Name(rn) if data_props.contains(rn) && pos => {
-                            *data_gen = true;
+                        Role::Name(rn) if data_props.contains(rn) => {
+                            if pos {
+                                *data_gen = true;
+                            }
+                            return walk_concept(
+                                filler,
+                                pos,
+                                neg,
+                                data_props,
+                                pos_classes,
+                                has_self_roles,
+                                has_self_in_source,
+                                data_gen,
+                                forest_exact_for_rules,
+                                w_src,
+                                w_dst,
+                                card_functional,
+                                card_inv_functional,
+                                pos_existential_roles,
+                                inv_existential_roles,
+                            );
                         }
                         _ => {}
+                    }
+                    if let Concept::Nominal(b) = filler.as_ref() {
+                        if b.starts_with("_:") {
+                            return Err(());
+                        }
+                        *forest_exact_for_rules = false;
+                        if pos {
+                            match r {
+                                Role::Name(rn) => {
+                                    w_src.entry(rn.clone()).or_default().insert(b.clone());
+                                }
+                                Role::Inverse(rn) => {
+                                    w_dst.entry(rn.clone()).or_default().insert(b.clone());
+                                }
+                                Role::Universal => return Err(()),
+                            }
+                        }
+                        return Ok(());
+                    }
+                    if pos {
+                        match r {
+                            Role::Name(rn) => {
+                                pos_existential_roles.insert(rn.clone());
+                            }
+                            Role::Inverse(rn) => {
+                                inv_existential_roles.insert(rn.clone());
+                            }
+                            Role::Universal => return Err(()),
+                        }
                     }
                     walk_concept(
                         filler,
@@ -369,13 +534,28 @@ impl NamedRoleBound {
                         has_self_roles,
                         has_self_in_source,
                         data_gen,
+                        forest_exact_for_rules,
+                        w_src,
+                        w_dst,
+                        card_functional,
+                        card_inv_functional,
+                        pos_existential_roles,
+                        inv_existential_roles,
                     )
                 }
                 Concept::Forall(r, filler) => {
                     match r {
                         Role::Universal => return Err(()),
-                        Role::Name(rn) if data_props.contains(rn) && neg => {
-                            *data_gen = true;
+                        Role::Name(rn) if data_props.contains(rn) => {
+                            if neg {
+                                *data_gen = true;
+                            }
+                        }
+                        Role::Name(rn) if neg => {
+                            pos_existential_roles.insert(rn.clone());
+                        }
+                        Role::Inverse(rn) if neg => {
+                            inv_existential_roles.insert(rn.clone());
                         }
                         _ => {}
                     }
@@ -388,15 +568,48 @@ impl NamedRoleBound {
                         has_self_roles,
                         has_self_in_source,
                         data_gen,
+                        forest_exact_for_rules,
+                        w_src,
+                        w_dst,
+                        card_functional,
+                        card_inv_functional,
+                        pos_existential_roles,
+                        inv_existential_roles,
                     )
                 }
                 Concept::AtLeast(n, r, filler) => {
-                    match r {
+                    let is_data = match r {
                         Role::Universal => return Err(()),
-                        Role::Name(rn) if data_props.contains(rn) && pos && *n >= 1 => {
-                            *data_gen = true;
+                        Role::Name(rn) => data_props.contains(rn),
+                        Role::Inverse(_) => false,
+                    };
+                    if is_data && pos && *n >= 1 {
+                        *data_gen = true;
+                    }
+                    if !is_data && pos && *n >= 1 {
+                        match r {
+                            Role::Name(rn) => {
+                                pos_existential_roles.insert(rn.clone());
+                            }
+                            Role::Inverse(rn) => {
+                                inv_existential_roles.insert(rn.clone());
+                            }
+                            Role::Universal => return Err(()),
                         }
-                        _ => {}
+                    }
+                    if !is_data && neg && *n >= 2 {
+                        if *n >= 3 {
+                            *forest_exact_for_rules = false;
+                        }
+                        match r {
+                            Role::Name(rn) => {
+                                card_functional.insert(rn.clone());
+                            }
+                            Role::Inverse(rn) => {
+                                card_inv_functional.insert(rn.clone());
+                            }
+                            Role::Universal => return Err(()),
+                        }
                     }
                     if *n > 0 {
                         walk_concept(
@@ -408,6 +621,13 @@ impl NamedRoleBound {
                             has_self_roles,
                             has_self_in_source,
                             data_gen,
+                            forest_exact_for_rules,
+                            w_src,
+                            w_dst,
+                            card_functional,
+                            card_inv_functional,
+                            pos_existential_roles,
+                            inv_existential_roles,
                         )
                     } else {
                         Ok(())
@@ -423,7 +643,29 @@ impl NamedRoleBound {
                         *data_gen = true;
                     }
                     if !is_data && pos && *n >= 1 {
-                        return Err(());
+                        if *n >= 2 {
+                            *forest_exact_for_rules = false;
+                        }
+                        match r {
+                            Role::Name(rn) => {
+                                card_functional.insert(rn.clone());
+                            }
+                            Role::Inverse(rn) => {
+                                card_inv_functional.insert(rn.clone());
+                            }
+                            Role::Universal => return Err(()),
+                        }
+                    }
+                    if !is_data && neg && *n >= 0 {
+                        match r {
+                            Role::Name(rn) => {
+                                pos_existential_roles.insert(rn.clone());
+                            }
+                            Role::Inverse(rn) => {
+                                inv_existential_roles.insert(rn.clone());
+                            }
+                            Role::Universal => return Err(()),
+                        }
                     }
                     walk_concept(
                         filler,
@@ -434,6 +676,13 @@ impl NamedRoleBound {
                         has_self_roles,
                         has_self_in_source,
                         data_gen,
+                        forest_exact_for_rules,
+                        w_src,
+                        w_dst,
+                        card_functional,
+                        card_inv_functional,
+                        pos_existential_roles,
+                        inv_existential_roles,
                     )
                 }
                 Concept::HasSelf(r) => match r {
@@ -449,22 +698,67 @@ impl NamedRoleBound {
             }
         }
 
+        fn concept_mentions_class(c: &Concept, target: &str) -> bool {
+            match c {
+                Concept::Name(n) => n == target,
+                Concept::Not(inner)
+                | Concept::Exists(_, inner)
+                | Concept::Forall(_, inner)
+                | Concept::AtLeast(_, _, inner)
+                | Concept::AtMost(_, _, inner) => concept_mentions_class(inner, target),
+                Concept::And(cs) | Concept::Or(cs) => cs.iter().any(|d| concept_mentions_class(d, target)),
+                _ => false,
+            }
+        }
+
+        let mut equiv_def_count: BTreeMap<String, usize> = BTreeMap::new();
+        for (idx, ax) in all_axioms.iter().enumerate() {
+            if skip_axiom[idx] {
+                continue;
+            }
+            if let Axiom::EquivalentClasses(a, b) = ax {
+                if let Concept::Name(c) = a {
+                    *equiv_def_count.entry(c.clone()).or_default() += 1;
+                }
+                if let Concept::Name(c) = b {
+                    *equiv_def_count.entry(c.clone()).or_default() += 1;
+                }
+            }
+        }
+
+        let mut deferred_equiv_defs: Vec<(String, &Concept)> = Vec::new();
         for (idx, ax) in all_axioms.iter().enumerate() {
             if skip_axiom[idx] {
                 continue;
             }
             match ax {
                 Axiom::SubClassOf(a, b) => {
-                    walk_concept(a, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen).ok()?;
-                    walk_concept(b, true, false, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen).ok()?;
+                    walk_concept(a, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                    walk_concept(b, true, false, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
                 }
                 Axiom::EquivalentClasses(a, b) => {
-                    walk_concept(a, true, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen).ok()?;
-                    walk_concept(b, true, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen).ok()?;
+                    let candidate = match (a, b) {
+                        (Concept::Name(c), rhs) if !matches!(rhs, Concept::Name(_)) => Some((c, rhs)),
+                        (rhs, Concept::Name(c)) if !matches!(rhs, Concept::Name(_)) => Some((c, rhs)),
+                        _ => None,
+                    };
+                    if let Some((c, rhs)) = candidate.filter(|(c, rhs)| {
+                        !is_probe_class(c)
+                            && !vp_classes.contains_key(*c)
+                            && full_iris.get(*c).map(String::as_str) != Some("http://www.w3.org/2002/07/owl#Thing")
+                            && equiv_def_count.get(*c).copied() == Some(1)
+                            && !concept_mentions_class(rhs, c)
+                    }) {
+                        walk_concept(rhs, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                        deferred_equiv_defs.push((c.clone(), rhs));
+                    } else {
+                        walk_concept(a, true, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                        walk_concept(b, true, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                    }
                 }
                 Axiom::DisjointClasses(a, b) => {
-                    walk_concept(a, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen).ok()?;
-                    walk_concept(b, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen).ok()?;
+                    walk_concept(a, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                    walk_concept(b, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
                 }
                 Axiom::ConceptAssertion(c, ind) => {
                     if let Concept::Name(v) = c {
@@ -472,7 +766,7 @@ impl NamedRoleBound {
                             continue;
                         }
                     }
-                    walk_concept(c, true, false, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen).ok()?;
+                    walk_concept(c, true, false, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
                 }
                 Axiom::Rule(body, head) | Axiom::DataRule(body, head) => {
                     if head.is_empty() {
@@ -480,7 +774,7 @@ impl NamedRoleBound {
                     }
                     for atom in body {
                         if let RuleAtom::Class(c, _) = atom {
-                            walk_concept(c, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen).ok()?;
+                            walk_concept(c, false, true, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
                         }
                     }
                     for atom in head {
@@ -489,7 +783,7 @@ impl NamedRoleBound {
                                 if matches!(term, RuleTerm::Ind(_)) {
                                     return None;
                                 }
-                                walk_concept(c, true, false, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen).ok()?;
+                                walk_concept(c, true, false, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
                             }
                             RuleAtom::Role(_, _, _) => {}
                             RuleAtom::Data(..) | RuleAtom::DataRange(..) => {
@@ -501,7 +795,13 @@ impl NamedRoleBound {
                         }
                     }
                 }
-                Axiom::SameIndividual(..) => return None,
+                Axiom::SameIndividual(a, b) => {
+                    if a.starts_with("_:") || b.starts_with("_:") {
+                        return None;
+                    }
+                    forest_exact_for_rules = false;
+                    same_pairs.push((a.clone(), b.clone()));
+                }
                 _ => {}
             }
         }
@@ -512,6 +812,25 @@ impl NamedRoleBound {
                 }
                 _ => {}
             }
+        }
+        if !deferred_equiv_defs.is_empty() {
+            let mut activated = vec![false; deferred_equiv_defs.len()];
+            loop {
+                let mut progress = false;
+                for (i, (c, rhs)) in deferred_equiv_defs.iter().enumerate() {
+                    if !activated[i] && pos_classes.contains(c) {
+                        activated[i] = true;
+                        progress = true;
+                        walk_concept(rhs, true, false, &data_prop_shorts, &mut pos_classes, &mut has_self_roles, &mut has_self_in_source, &mut data_gen, &mut forest_exact_for_rules, &mut w_src, &mut w_dst, &mut card_functional, &mut card_inv_functional, &mut pos_existential_roles, &mut inv_existential_roles).ok()?;
+                    }
+                }
+                if !progress {
+                    break;
+                }
+            }
+        }
+        if !forest_exact_for_rules && !vp_classes.is_empty() {
+            return None;
         }
         for v in vp_classes.keys() {
             if pos_classes.contains(v) {
@@ -537,9 +856,10 @@ impl NamedRoleBound {
         let mut symmetric: BTreeSet<String> = BTreeSet::new();
         let mut transitive: BTreeSet<String> = BTreeSet::new();
         let mut chains: Vec<(Vec<String>, String)> = Vec::new();
-        let mut functional: BTreeSet<String> = BTreeSet::new();
-        let mut inv_functional: BTreeSet<String> = BTreeSet::new();
+        let mut functional: BTreeSet<String> = card_functional;
+        let mut inv_functional: BTreeSet<String> = card_inv_functional;
         let mut self_roles: BTreeSet<String> = has_self_roles;
+        let mut universal_roles: BTreeSet<String> = BTreeSet::new();
         let mut edges: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
 
         for ax in &all_axioms {
@@ -560,10 +880,10 @@ impl NamedRoleBound {
                     self_roles.insert(r.clone());
                 }
                 Axiom::RoleChain(ch, sup) => chains.push((ch.clone(), sup.clone())),
-                Axiom::FunctionalRole(r) => {
+                Axiom::FunctionalRole(r) if !data_prop_shorts.contains(r) => {
                     functional.insert(r.clone());
                 }
-                Axiom::InverseFunctionalRole(r) => {
+                Axiom::InverseFunctionalRole(r) if !data_prop_shorts.contains(r) => {
                     inv_functional.insert(r.clone());
                 }
                 _ => {}
@@ -647,6 +967,19 @@ impl NamedRoleBound {
                             && super_roles.get(&(t.clone(), true)).is_some_and(|s| s.contains(&(rj.clone(), false))))
                             || (super_roles.get(&(t.clone(), true)).is_some_and(|s| s.contains(&(ri.clone(), false)))
                                 && super_roles.get(&(t.clone(), false)).is_some_and(|s| s.contains(&(rj.clone(), false))))
+                    }) || functional.iter().chain(inv_functional.iter()).any(|f| {
+                        (super_roles
+                            .get(&(ri.clone(), false))
+                            .is_some_and(|s| s.contains(&(f.clone(), false)))
+                            && super_roles
+                                .get(&(rj.clone(), true))
+                                .is_some_and(|s| s.contains(&(f.clone(), false))))
+                            || (super_roles
+                                .get(&(ri.clone(), false))
+                                .is_some_and(|s| s.contains(&(f.clone(), true)))
+                                && super_roles
+                                    .get(&(rj.clone(), true))
+                                    .is_some_and(|s| s.contains(&(f.clone(), true))))
                     }) {
                         can_fold = true;
                         break;
@@ -684,6 +1017,10 @@ impl NamedRoleBound {
             } else {
                 return None;
             }
+        }
+
+        if !forest_exact_for_rules && !all_rules.is_empty() {
+            return None;
         }
 
         // Separate rules whose head roles feed back into rule bodies or RBox axioms
@@ -735,14 +1072,47 @@ impl NamedRoleBound {
             }
         }
 
-        // Datalog fixpoint of `(edges, self_roles)`.
+        let mut equiv = Equiv::new();
+        for (a, b) in &same_pairs {
+            equiv.union(a, b);
+        }
+        let mut all_named_merged = false;
+
+        // Datalog fixpoint of `(edges, self_roles, w_src, w_dst, universal_roles, equiv)`.
         loop {
             let mut changed = false;
+            if !forest_exact_for_rules {
+                for r in &inv_existential_roles {
+                    changed |= universal_roles.insert(r.clone());
+                }
+            }
             for r in &symmetric {
                 if let Some(es) = edges.get(r).cloned() {
                     let entry = edges.entry(r.clone()).or_default();
                     for (a, b) in es {
                         changed |= entry.insert((b, a));
+                    }
+                }
+                if !forest_exact_for_rules {
+                    let ws = w_src.get(r).cloned().unwrap_or_default();
+                    let wd = w_dst.get(r).cloned().unwrap_or_default();
+                    if !ws.is_empty() {
+                        let ed = w_dst.entry(r.clone()).or_default();
+                        for v in ws {
+                            changed |= ed.insert(v);
+                        }
+                    }
+                    if !wd.is_empty() {
+                        let es = w_src.entry(r.clone()).or_default();
+                        for v in wd {
+                            changed |= es.insert(v);
+                        }
+                    }
+                    if functional.contains(r) {
+                        changed |= inv_functional.insert(r.clone());
+                    }
+                    if inv_functional.contains(r) {
+                        changed |= functional.insert(r.clone());
                     }
                 }
             }
@@ -752,6 +1122,36 @@ impl NamedRoleBound {
                 }
                 if self_roles.contains(b) {
                     changed |= self_roles.insert(a.clone());
+                }
+                if universal_roles.contains(a) {
+                    changed |= universal_roles.insert(b.clone());
+                }
+                if universal_roles.contains(b) {
+                    changed |= universal_roles.insert(a.clone());
+                }
+                if functional.contains(a) {
+                    changed |= inv_functional.insert(b.clone());
+                }
+                if inv_functional.contains(a) {
+                    changed |= functional.insert(b.clone());
+                }
+                if functional.contains(b) {
+                    changed |= inv_functional.insert(a.clone());
+                }
+                if inv_functional.contains(b) {
+                    changed |= functional.insert(a.clone());
+                }
+                if pos_existential_roles.contains(a) {
+                    changed |= inv_existential_roles.insert(b.clone());
+                }
+                if inv_existential_roles.contains(a) {
+                    changed |= pos_existential_roles.insert(b.clone());
+                }
+                if pos_existential_roles.contains(b) {
+                    changed |= inv_existential_roles.insert(a.clone());
+                }
+                if inv_existential_roles.contains(b) {
+                    changed |= pos_existential_roles.insert(a.clone());
                 }
                 if let Some(ea) = edges.get(a).cloned() {
                     let eb = edges.entry(b.clone()).or_default();
@@ -765,15 +1165,70 @@ impl NamedRoleBound {
                         changed |= ea.insert((y, x));
                     }
                 }
+                if !forest_exact_for_rules {
+                    if let Some(wsa) = w_src.get(a).cloned() {
+                        let wdb = w_dst.entry(b.clone()).or_default();
+                        for v in wsa {
+                            changed |= wdb.insert(v);
+                        }
+                    }
+                    if let Some(wda) = w_dst.get(a).cloned() {
+                        let wsb = w_src.entry(b.clone()).or_default();
+                        for v in wda {
+                            changed |= wsb.insert(v);
+                        }
+                    }
+                    if let Some(wsb) = w_src.get(b).cloned() {
+                        let wda = w_dst.entry(a.clone()).or_default();
+                        for v in wsb {
+                            changed |= wda.insert(v);
+                        }
+                    }
+                    if let Some(wdb) = w_dst.get(b).cloned() {
+                        let wsa = w_src.entry(a.clone()).or_default();
+                        for v in wdb {
+                            changed |= wsa.insert(v);
+                        }
+                    }
+                }
             }
             for (sub, sup) in &subroles {
                 if self_roles.contains(sub) {
                     changed |= self_roles.insert(sup.clone());
                 }
+                if universal_roles.contains(sub) {
+                    changed |= universal_roles.insert(sup.clone());
+                }
+                if functional.contains(sup) {
+                    changed |= functional.insert(sub.clone());
+                }
+                if inv_functional.contains(sup) {
+                    changed |= inv_functional.insert(sub.clone());
+                }
+                if pos_existential_roles.contains(sub) {
+                    changed |= pos_existential_roles.insert(sup.clone());
+                }
+                if inv_existential_roles.contains(sub) {
+                    changed |= inv_existential_roles.insert(sup.clone());
+                }
                 if let Some(es) = edges.get(sub).cloned() {
                     let entry = edges.entry(sup.clone()).or_default();
                     for e in es {
                         changed |= entry.insert(e);
+                    }
+                }
+                if !forest_exact_for_rules {
+                    if let Some(ws) = w_src.get(sub).cloned() {
+                        let entry = w_src.entry(sup.clone()).or_default();
+                        for v in ws {
+                            changed |= entry.insert(v);
+                        }
+                    }
+                    if let Some(wd) = w_dst.get(sub).cloned() {
+                        let entry = w_dst.entry(sup.clone()).or_default();
+                        for v in wd {
+                            changed |= entry.insert(v);
+                        }
                     }
                 }
             }
@@ -793,6 +1248,33 @@ impl NamedRoleBound {
                             }
                         }
                     }
+                    if !forest_exact_for_rules {
+                        if let Some(ws) = w_src.get(r).cloned() {
+                            let ws_entry = w_src.entry(r.clone()).or_default();
+                            for b in &ws {
+                                if let Some(cs) = adj.get(b) {
+                                    for c in cs {
+                                        changed |= ws_entry.insert(c.clone());
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(wd) = w_dst.get(r).cloned() {
+                            let wd_entry = w_dst.entry(r.clone()).or_default();
+                            for (a, bs) in &adj {
+                                if bs.iter().any(|b| wd.contains(b)) {
+                                    changed |= wd_entry.insert(a.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                if !forest_exact_for_rules {
+                    if let (Some(ws), Some(wd)) = (w_src.get(r), w_dst.get(r)) {
+                        if ws.iter().any(|b| wd.contains(b)) {
+                            changed |= universal_roles.insert(r.clone());
+                        }
+                    }
                 }
             }
             for (ch, sup) in &chains {
@@ -802,8 +1284,17 @@ impl NamedRoleBound {
                 if ch.iter().all(|r| self_roles.contains(r)) {
                     changed |= self_roles.insert(sup.clone());
                 }
+                if ch.iter().any(|r| pos_existential_roles.contains(r)) {
+                    changed |= pos_existential_roles.insert(sup.clone());
+                }
+                if ch.iter().any(|r| inv_existential_roles.contains(r)) {
+                    changed |= inv_existential_roles.insert(sup.clone());
+                }
                 // Relational composition along `ch`, allowing identity step on `self_roles`.
                 let mut current: BTreeSet<(String, String)> = BTreeSet::new();
+                let mut cur_w_src: BTreeSet<String> = BTreeSet::new();
+                let mut cur_w_dst: BTreeSet<String> = BTreeSet::new();
+                let mut cur_univ = false;
                 let mut prefix_all_self = true;
                 for step in ch {
                     let step_edges = edges.get(step);
@@ -832,6 +1323,60 @@ impl NamedRoleBound {
                             }
                         }
                     }
+                    if !forest_exact_for_rules {
+                        let step_w_src = w_src.get(step);
+                        let step_w_dst = w_dst.get(step);
+                        let step_univ = universal_roles.contains(step);
+                        let mut next_w_src: BTreeSet<String> = BTreeSet::new();
+                        let mut next_w_dst: BTreeSet<String> = cur_w_dst.clone();
+                        let mut next_univ = cur_univ;
+
+                        if let Some(sws) = step_w_src {
+                            next_w_src.extend(sws.iter().cloned());
+                        }
+                        if let Some(swd) = step_w_dst {
+                            if prefix_all_self {
+                                next_w_dst.extend(swd.iter().cloned());
+                            }
+                            for (a, b) in &current {
+                                if swd.contains(b) {
+                                    next_w_dst.insert(a.clone());
+                                }
+                            }
+                            if cur_w_src.iter().any(|b| swd.contains(b)) {
+                                next_univ = true;
+                            }
+                        }
+                        if step_self {
+                            next_w_src.extend(cur_w_src.iter().cloned());
+                        }
+                        if prefix_all_self && step_univ {
+                            next_univ = true;
+                        }
+                        if step_univ {
+                            next_univ = true;
+                            for (a, _) in &current {
+                                next_w_dst.insert(a.clone());
+                            }
+                        }
+                        if let Some(se) = step_edges {
+                            if cur_univ || !cur_w_dst.is_empty() {
+                                for (_, c) in se {
+                                    next_w_src.insert(c.clone());
+                                }
+                            }
+                            if !cur_w_src.is_empty() {
+                                for (u, v) in se {
+                                    if cur_w_src.contains(u) {
+                                        next_w_src.insert(v.clone());
+                                    }
+                                }
+                            }
+                        }
+                        cur_w_src = next_w_src;
+                        cur_w_dst = next_w_dst;
+                        cur_univ = next_univ;
+                    }
                     current = next;
                     prefix_all_self &= step_self;
                 }
@@ -839,6 +1384,23 @@ impl NamedRoleBound {
                     let entry = edges.entry(sup.clone()).or_default();
                     for pair in current {
                         changed |= entry.insert(pair);
+                    }
+                }
+                if !forest_exact_for_rules {
+                    if !cur_w_src.is_empty() {
+                        let entry = w_src.entry(sup.clone()).or_default();
+                        for v in cur_w_src {
+                            changed |= entry.insert(v);
+                        }
+                    }
+                    if !cur_w_dst.is_empty() {
+                        let entry = w_dst.entry(sup.clone()).or_default();
+                        for v in cur_w_dst {
+                            changed |= entry.insert(v);
+                        }
+                    }
+                    if cur_univ {
+                        changed |= universal_roles.insert(sup.clone());
                     }
                 }
             }
@@ -878,6 +1440,211 @@ impl NamedRoleBound {
                     }
                 }
             }
+
+            // Propagate equalities from functional, inverse-functional, and max-cardinality roles.
+            for f in &functional {
+                if universal_roles.contains(f)
+                    || w_dst.get(f).is_some_and(|s| !s.is_empty())
+                    || (pos_existential_roles.contains(f)
+                        && (w_src.get(f).is_some_and(|s| !s.is_empty())
+                            || edges.get(f).is_some_and(|s| !s.is_empty())))
+                    || (inv_existential_roles.contains(f)
+                        && w_src.get(f).is_some_and(|s| !s.is_empty()))
+                {
+                    if !all_named_merged {
+                        all_named_merged = true;
+                        forest_exact_for_rules = false;
+                        changed = true;
+                    }
+                }
+                if self_roles.contains(f) {
+                    if w_src.get(f).is_some_and(|s| !s.is_empty()) && !all_named_merged {
+                        all_named_merged = true;
+                        forest_exact_for_rules = false;
+                        changed = true;
+                    }
+                    if let Some(es) = edges.get(f) {
+                        for (a, b) in es {
+                            if a != b {
+                                forest_exact_for_rules = false;
+                                changed |= equiv.union(a, b);
+                            }
+                        }
+                    }
+                }
+                if let Some(es) = edges.get(f) {
+                    let mut seen: BTreeMap<&str, &str> = BTreeMap::new();
+                    for (a, b) in es {
+                        if let Some(&prev) = seen.get(a.as_str()) {
+                            if prev != b.as_str() {
+                                forest_exact_for_rules = false;
+                                changed |= equiv.union(prev, b);
+                            }
+                        } else {
+                            seen.insert(a.as_str(), b.as_str());
+                        }
+                    }
+                }
+                if let Some(ws) = w_src.get(f) {
+                    if let Some(first_ws) = ws.iter().next() {
+                        for other in ws.iter().skip(1) {
+                            forest_exact_for_rules = false;
+                            changed |= equiv.union(first_ws, other);
+                        }
+                        if let Some(es) = edges.get(f) {
+                            for (_, b) in es {
+                                forest_exact_for_rules = false;
+                                changed |= equiv.union(first_ws, b);
+                            }
+                        }
+                    }
+                }
+            }
+            for f in &inv_functional {
+                if universal_roles.contains(f)
+                    || w_src.get(f).is_some_and(|s| !s.is_empty())
+                    || (inv_existential_roles.contains(f)
+                        && (w_dst.get(f).is_some_and(|s| !s.is_empty())
+                            || edges.get(f).is_some_and(|s| !s.is_empty())))
+                    || (pos_existential_roles.contains(f)
+                        && w_dst.get(f).is_some_and(|s| !s.is_empty()))
+                {
+                    if !all_named_merged {
+                        all_named_merged = true;
+                        forest_exact_for_rules = false;
+                        changed = true;
+                    }
+                }
+                if self_roles.contains(f) {
+                    if w_dst.get(f).is_some_and(|s| !s.is_empty()) && !all_named_merged {
+                        all_named_merged = true;
+                        forest_exact_for_rules = false;
+                        changed = true;
+                    }
+                    if let Some(es) = edges.get(f) {
+                        for (a, b) in es {
+                            if a != b {
+                                forest_exact_for_rules = false;
+                                changed |= equiv.union(a, b);
+                            }
+                        }
+                    }
+                }
+                if let Some(es) = edges.get(f) {
+                    let mut seen: BTreeMap<&str, &str> = BTreeMap::new();
+                    for (a, b) in es {
+                        if let Some(&prev) = seen.get(b.as_str()) {
+                            if prev != a.as_str() {
+                                forest_exact_for_rules = false;
+                                changed |= equiv.union(prev, a);
+                            }
+                        } else {
+                            seen.insert(b.as_str(), a.as_str());
+                        }
+                    }
+                }
+                if let Some(wd) = w_dst.get(f) {
+                    if let Some(first_wd) = wd.iter().next() {
+                        for other in wd.iter().skip(1) {
+                            forest_exact_for_rules = false;
+                            changed |= equiv.union(first_wd, other);
+                        }
+                        if let Some(es) = edges.get(f) {
+                            for (a, _) in es {
+                                forest_exact_for_rules = false;
+                                changed |= equiv.union(first_wd, a);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !forest_exact_for_rules && (!all_rules.is_empty() || !vp_classes.is_empty()) {
+                return None;
+            }
+
+            if all_named_merged {
+                for r in pos_existential_roles.iter().chain(inv_existential_roles.iter()) {
+                    changed |= universal_roles.insert(r.clone());
+                }
+                let active: Vec<String> = edges
+                    .iter()
+                    .filter(|(_, s)| !s.is_empty())
+                    .map(|(r, _)| r.clone())
+                    .chain(w_src.iter().filter(|(_, s)| !s.is_empty()).map(|(r, _)| r.clone()))
+                    .chain(w_dst.iter().filter(|(_, s)| !s.is_empty()).map(|(r, _)| r.clone()))
+                    .chain(self_roles.iter().cloned())
+                    .collect();
+                for r in active {
+                    changed |= universal_roles.insert(r);
+                }
+            } else if equiv.num_merges > 0 {
+                let members_of = equiv.multi_member_map()?;
+                if !members_of.is_empty() {
+                    for es in edges.values_mut() {
+                        let mut extra_a = Vec::new();
+                        for (a, b) in es.iter() {
+                            if let Some(ma) = members_of.get(a) {
+                                for a2 in ma {
+                                    if a2 != a {
+                                        extra_a.push((a2.clone(), b.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        for pair in extra_a {
+                            changed |= es.insert(pair);
+                        }
+                        let mut extra_b = Vec::new();
+                        for (a, b) in es.iter() {
+                            if let Some(mb) = members_of.get(b) {
+                                for b2 in mb {
+                                    if b2 != b {
+                                        extra_b.push((a.clone(), b2.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        for pair in extra_b {
+                            changed |= es.insert(pair);
+                        }
+                        if es.len() > 200_000 {
+                            return None;
+                        }
+                    }
+                    for ws in w_src.values_mut() {
+                        let mut extra = Vec::new();
+                        for b in ws.iter() {
+                            if let Some(mb) = members_of.get(b) {
+                                for b2 in mb {
+                                    if b2 != b {
+                                        extra.push(b2.clone());
+                                    }
+                                }
+                            }
+                        }
+                        for b2 in extra {
+                            changed |= ws.insert(b2);
+                        }
+                    }
+                    for wd in w_dst.values_mut() {
+                        let mut extra = Vec::new();
+                        for a in wd.iter() {
+                            if let Some(ma) = members_of.get(a) {
+                                for a2 in ma {
+                                    if a2 != a {
+                                        extra.push(a2.clone());
+                                    }
+                                }
+                            }
+                        }
+                        for a2 in extra {
+                            changed |= wd.insert(a2);
+                        }
+                    }
+                }
+            }
+
             if !changed {
                 break;
             }
@@ -914,67 +1681,70 @@ impl NamedRoleBound {
                 }
             }
         }
+        // Re-check that sink-head rules did not introduce a functional or inverse-functional merge.
+        if !sink_rules.is_empty() {
+            for f in &functional {
+                if let Some(es) = edges.get(f) {
+                    let mut seen: BTreeMap<&str, &str> = BTreeMap::new();
+                    for (a, b) in es {
+                        if self_roles.contains(f) && a != b {
+                            return None;
+                        }
+                        if let Some(&prev) = seen.get(a.as_str()) {
+                            if prev != b.as_str() {
+                                return None;
+                            }
+                        } else {
+                            seen.insert(a.as_str(), b.as_str());
+                        }
+                    }
+                }
+            }
+            for f in &inv_functional {
+                if let Some(es) = edges.get(f) {
+                    let mut seen: BTreeMap<&str, &str> = BTreeMap::new();
+                    for (a, b) in es {
+                        if self_roles.contains(f) && a != b {
+                            return None;
+                        }
+                        if let Some(&prev) = seen.get(b.as_str()) {
+                            if prev != a.as_str() {
+                                return None;
+                            }
+                        } else {
+                            seen.insert(b.as_str(), a.as_str());
+                        }
+                    }
+                }
+            }
+        }
         let rev_edges: BTreeMap<String, BTreeSet<(String, String)>> = edges
             .iter()
             .map(|(r, es)| (r.clone(), es.iter().map(|(a, b)| (b.clone(), a.clone())).collect()))
             .collect();
 
-        // Verify that no functional or inverse-functional role merges two distinct named individuals.
-        for f in &functional {
-            if let Some(es) = edges.get(f) {
-                let mut seen: BTreeMap<&str, &str> = BTreeMap::new();
-                for (a, b) in es {
-                    if self_roles.contains(f) && a != b {
-                        return None;
-                    }
-                    if let Some(&prev) = seen.get(a.as_str()) {
-                        if prev != b.as_str() {
-                            return None;
-                        }
-                    } else {
-                        seen.insert(a.as_str(), b.as_str());
-                    }
-                }
-            }
-        }
-        for f in &inv_functional {
-            if let Some(es) = edges.get(f) {
-                let mut seen: BTreeMap<&str, &str> = BTreeMap::new();
-                for (a, b) in es {
-                    if self_roles.contains(f) && a != b {
-                        return None;
-                    }
-                    if let Some(&prev) = seen.get(b.as_str()) {
-                        if prev != a.as_str() {
-                            return None;
-                        }
-                    } else {
-                        seen.insert(b.as_str(), a.as_str());
-                    }
-                }
-            }
-        }
-
         // Also compute positive entailed facts via `rule_assertions` for redundancy pruning.
         drop(all_axioms);
-        super::rule_assertions::materialize(&mut ontology);
         let mut entailed_roles = BTreeSet::new();
         let mut entailed_classes = BTreeSet::new();
-        for ax in ontology.abox() {
-            match ax {
-                Axiom::RoleAssertion(r, a, b) => {
-                    entailed_roles.insert((r.clone(), a.clone(), b.clone()));
+        if forest_exact_for_rules {
+            super::rule_assertions::materialize(&mut ontology);
+            for ax in ontology.abox() {
+                match ax {
+                    Axiom::RoleAssertion(r, a, b) => {
+                        entailed_roles.insert((r.clone(), a.clone(), b.clone()));
+                    }
+                    Axiom::ConceptAssertion(Concept::Name(c), a) => {
+                        entailed_classes.insert((c.clone(), a.clone()));
+                    }
+                    _ => {}
                 }
-                Axiom::ConceptAssertion(Concept::Name(c), a) => {
-                    entailed_classes.insert((c.clone(), a.clone()));
-                }
-                _ => {}
             }
-        }
-        if let Some(exact_dv) = &exact_data_values {
-            for ((prop, key), inds) in exact_dv {
-                for ind in inds {
-                    entailed_classes.insert((format!("__exact_dv__{prop}__{key}"), ind.clone()));
+            if let Some(exact_dv) = &exact_data_values {
+                for ((prop, key), inds) in exact_dv {
+                    for ind in inds {
+                        entailed_classes.insert((format!("__exact_dv__{prop}__{key}"), ind.clone()));
+                    }
                 }
             }
         }
@@ -985,7 +1755,11 @@ impl NamedRoleBound {
             short_of_full,
             edges,
             rev_edges,
+            w_src,
+            w_dst,
+            universal_roles,
             self_roles,
+            forest_exact_for_rules,
             has_self_in_source,
             vp_classes,
             exact_data_values,
@@ -995,20 +1769,42 @@ impl NamedRoleBound {
     }
 
     pub fn role_has_self_by_full_iri(&self, full_role: &str) -> bool {
-        self.short_of_full
-            .get(full_role)
-            .is_some_and(|short| self.self_roles.contains(short))
+        self.short_of_full.get(full_role).is_some_and(|short| {
+            self.self_roles.contains(short)
+                || self.universal_roles.contains(short)
+                || self.w_dst.get(short).is_some_and(|s| !s.is_empty())
+        })
     }
 
     pub fn reachable_targets_by_full_iri(&self, full_role: &str) -> BTreeSet<String> {
         let Some(short) = self.short_of_full.get(full_role) else {
             return BTreeSet::new();
         };
+        if self.role_has_self_by_full_iri(full_role) {
+            return self
+                .named
+                .iter()
+                .filter_map(|s| self.full_iris.get(s))
+                .filter(|iri| !iri.starts_with("_:") && !super::lenient::is_skolem_anon_iri(iri))
+                .cloned()
+                .collect();
+        }
         let mut targets = BTreeSet::new();
         if let Some(es) = self.edges.get(short) {
             for (_, b) in es {
                 if let Some(full_b) = self.full_iris.get(b) {
-                    targets.insert(full_b.clone());
+                    if !full_b.starts_with("_:") && !super::lenient::is_skolem_anon_iri(full_b) {
+                        targets.insert(full_b.clone());
+                    }
+                }
+            }
+        }
+        if let Some(ws) = self.w_src.get(short) {
+            for b in ws {
+                if let Some(full_b) = self.full_iris.get(b) {
+                    if !full_b.starts_with("_:") && !super::lenient::is_skolem_anon_iri(full_b) {
+                        targets.insert(full_b.clone());
+                    }
                 }
             }
         }
@@ -1872,5 +2668,766 @@ mod tests {
             bound.reachable_targets_by_full_iri("http://e#t"),
             BTreeSet::from(["http://e#c".to_owned()])
         );
+    }
+
+    const ADV_OFN: &str = r#"Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/adv>
+Declaration(ObjectProperty(:r1))
+Declaration(ObjectProperty(:r2))
+Declaration(ObjectProperty(:s2))
+Declaration(ObjectProperty(:r3))
+Declaration(ObjectProperty(:s3))
+Declaration(ObjectProperty(:r4))
+Declaration(ObjectProperty(:s4))
+Declaration(ObjectProperty(:t4))
+Declaration(ObjectProperty(:r5))
+Declaration(ObjectProperty(:r6))
+Declaration(ObjectProperty(:s6))
+Declaration(ObjectProperty(:r7))
+Declaration(ObjectProperty(:r8))
+Declaration(ObjectProperty(:r10))
+Declaration(ObjectProperty(:r12))
+Declaration(ObjectProperty(:s12))
+Declaration(ObjectProperty(:r14))
+Declaration(ObjectProperty(:s14))
+Declaration(ObjectProperty(:t14))
+Declaration(ObjectProperty(:q))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+Declaration(NamedIndividual(:a3))
+Declaration(NamedIndividual(:c3))
+Declaration(NamedIndividual(:a4))
+Declaration(NamedIndividual(:b4))
+Declaration(NamedIndividual(:c4))
+Declaration(NamedIndividual(:a5))
+Declaration(NamedIndividual(:c5))
+Declaration(NamedIndividual(:a6))
+Declaration(NamedIndividual(:b6))
+Declaration(NamedIndividual(:c6))
+Declaration(NamedIndividual(:d6))
+Declaration(NamedIndividual(:a7))
+Declaration(NamedIndividual(:b7))
+Declaration(NamedIndividual(:a8))
+Declaration(NamedIndividual(:b8))
+Declaration(NamedIndividual(:c8))
+Declaration(NamedIndividual(:a10))
+Declaration(NamedIndividual(:c10))
+Declaration(NamedIndividual(:a12))
+Declaration(NamedIndividual(:b12))
+Declaration(NamedIndividual(:c12))
+Declaration(NamedIndividual(:d12))
+Declaration(NamedIndividual(:a14))
+Declaration(NamedIndividual(:b14))
+Declaration(NamedIndividual(:x14))
+Declaration(NamedIndividual(:c14))
+Declaration(NamedIndividual(:d14))
+Declaration(NamedIndividual(:p1))
+Declaration(NamedIndividual(:p2))
+Declaration(NamedIndividual(:p3))
+Declaration(NamedIndividual(:z0))
+Declaration(NamedIndividual(:z1))
+Declaration(NamedIndividual(:z2))
+Declaration(NamedIndividual(:z3))
+Declaration(NamedIndividual(:z4))
+Declaration(NamedIndividual(:z5))
+Declaration(NamedIndividual(:z6))
+Declaration(NamedIndividual(:z7))
+Declaration(NamedIndividual(:z8))
+Declaration(NamedIndividual(:z9))
+Declaration(NamedIndividual(:z10))
+Declaration(NamedIndividual(:z11))
+Declaration(NamedIndividual(:z12))
+Declaration(NamedIndividual(:z13))
+Declaration(NamedIndividual(:z14))
+Declaration(NamedIndividual(:z15))
+Declaration(NamedIndividual(:z16))
+Declaration(NamedIndividual(:z17))
+Declaration(NamedIndividual(:z18))
+Declaration(NamedIndividual(:z19))
+Declaration(NamedIndividual(:z20))
+Declaration(NamedIndividual(:z21))
+Declaration(NamedIndividual(:z22))
+Declaration(NamedIndividual(:z23))
+Declaration(NamedIndividual(:z24))
+Declaration(NamedIndividual(:z25))
+Declaration(NamedIndividual(:z26))
+Declaration(NamedIndividual(:z27))
+Declaration(NamedIndividual(:z28))
+Declaration(NamedIndividual(:z29))
+Declaration(NamedIndividual(:z30))
+Declaration(NamedIndividual(:z31))
+Declaration(NamedIndividual(:z32))
+Declaration(NamedIndividual(:z33))
+Declaration(NamedIndividual(:z34))
+Declaration(NamedIndividual(:z35))
+Declaration(NamedIndividual(:z36))
+Declaration(NamedIndividual(:z37))
+Declaration(NamedIndividual(:z38))
+Declaration(NamedIndividual(:z39))
+Declaration(Class(:A2))
+Declaration(Class(:A5))
+Declaration(Class(:A6))
+Declaration(Class(:A10))
+Declaration(Class(:A12))
+SameIndividual(:p1 :p2)
+SubClassOf(ObjectHasValue(:q :p3) owl:Thing)
+ObjectPropertyAssertion(:q :p1 :p3)
+ReflexiveObjectProperty(:r1)
+SubClassOf(:A2 ObjectHasSelf(:r2))
+ClassAssertion(:A2 :a2)
+InverseObjectProperties(:r3 :s3)
+ObjectPropertyAssertion(:s3 :c3 :a3)
+SubObjectPropertyOf(ObjectPropertyChain(:r4 :s4) :t4)
+ObjectPropertyAssertion(:r4 :a4 :b4)
+ObjectPropertyAssertion(:s4 :b4 :c4)
+SubClassOf(:A5 ObjectHasValue(:r5 :c5))
+ClassAssertion(:A5 :a5)
+FunctionalObjectProperty(:r6)
+ObjectPropertyAssertion(:r6 :a6 :b6)
+SubClassOf(:A6 ObjectHasValue(:r6 :c6))
+ClassAssertion(:A6 :a6)
+ObjectPropertyAssertion(:s6 :d6 :b6)
+SymmetricObjectProperty(:r7)
+ObjectPropertyAssertion(:r7 :a7 :b7)
+ObjectPropertyAssertion(:r8 :a8 :b8)
+SameIndividual(:b8 :c8)
+SubClassOf(:A10 ObjectHasValue(ObjectInverseOf(:r10) :c10))
+ClassAssertion(:A10 :a10)
+SubClassOf(:A12 ObjectMaxCardinality(1 :r12))
+ClassAssertion(:A12 :a12)
+ObjectPropertyAssertion(:r12 :a12 :b12)
+ObjectPropertyAssertion(:r12 :a12 :c12)
+ObjectPropertyAssertion(:s12 :d12 :b12)
+InverseFunctionalObjectProperty(:r14)
+ObjectPropertyAssertion(:r14 :a14 :x14)
+ObjectPropertyAssertion(:r14 :b14 :x14)
+ObjectPropertyAssertion(:t14 :d14 :a14)
+ObjectPropertyAssertion(:s14 :a14 :c14)
+)"#;
+
+    #[test]
+    fn named_role_bound_covers_adv_ofn_and_propagates_merges_across_roles() {
+        let _test_env = crate::test_env::read();
+        let bound = NamedRoleBound::compute(ADV_OFN).expect("bound succeeds on adv.ofn");
+        assert!(!bound.forest_exact_for_rules);
+        assert!(bound.role_has_self_by_full_iri(":r1"));
+        assert!(bound.role_has_self_by_full_iri(":r2"));
+        assert!(bound.role_has_self_by_full_iri(":r10"));
+        assert_eq!(
+            bound.reachable_targets_by_full_iri(":s6"),
+            BTreeSet::from([":b6".to_owned(), ":c6".to_owned()])
+        );
+        assert_eq!(
+            bound.reachable_targets_by_full_iri(":s12"),
+            BTreeSet::from([":b12".to_owned(), ":c12".to_owned()])
+        );
+        assert_eq!(
+            bound.reachable_targets_by_full_iri(":t14"),
+            BTreeSet::from([":a14".to_owned(), ":b14".to_owned()])
+        );
+        assert_eq!(
+            bound.reachable_targets_by_full_iri(":s14"),
+            BTreeSet::from([":c14".to_owned()])
+        );
+        assert_eq!(
+            bound.reachable_targets_by_full_iri(":r8"),
+            BTreeSet::from([":b8".to_owned(), ":c8".to_owned()])
+        );
+    }
+
+    #[test]
+    fn named_role_bound_adversarial_equality_and_role_closure_cases() {
+        let _test_env = crate::test_env::read();
+        let cases: &[(&str, &str, &[&str])] = &[
+            // 1. Merges through a 3-step chain of functional roles
+            (
+                "functional_role_chain_merge",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2))
+                    Declaration(ObjectProperty(:f3)) Declaration(ObjectProperty(:other))
+                    FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2) FunctionalObjectProperty(:f3)
+                    ObjectPropertyAssertion(:f1 :a :b1) ObjectPropertyAssertion(:f1 :a :b2)
+                    ObjectPropertyAssertion(:f2 :b1 :c1) ObjectPropertyAssertion(:f2 :b2 :c2)
+                    ObjectPropertyAssertion(:f3 :c1 :d1) ObjectPropertyAssertion(:f3 :c2 :d2)
+                    ObjectPropertyAssertion(:other :x :d1)
+                )"#,
+                 &[":d1", ":d2"],
+            ),
+            // 2. Merges through a chain of functional roles seeded by ObjectHasValue
+            (
+                "functional_chain_with_has_value_merge",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:A))
+                    Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:other))
+                    FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2)
+                    ObjectPropertyAssertion(:f1 :a :b1)
+                    SubClassOf(:A ObjectHasValue(:f1 :b2)) ClassAssertion(:A :a)
+                    ObjectPropertyAssertion(:f2 :b1 :c1) ObjectPropertyAssertion(:f2 :b2 :c2)
+                    ObjectPropertyAssertion(:other :x :c1)
+                )"#,
+                &[":c1", ":c2"],
+            ),
+            // 3. Merge of an asserted target under an inverse with an ObjectHasValue target
+            (
+                "asserted_target_with_has_value_under_inverse",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:A))
+                    Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                    InverseObjectProperties(:r :s) FunctionalObjectProperty(:r)
+                    ObjectPropertyAssertion(:s :b :a)
+                    SubClassOf(:A ObjectHasValue(:r :c)) ClassAssertion(:A :a)
+                    ObjectPropertyAssertion(:other :d :b)
+                )"#,
+                &[":b", ":c"],
+            ),
+            // 4. Merge of an asserted target with ObjectHasValue(ObjectInverseOf(:s) :c)
+            (
+                "asserted_target_with_inverse_of_has_value",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:A))
+                    Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                    InverseObjectProperties(:r :s) FunctionalObjectProperty(:r)
+                    ObjectPropertyAssertion(:r :a :b)
+                    SubClassOf(:A ObjectHasValue(ObjectInverseOf(:s) :c)) ClassAssertion(:A :a)
+                    ObjectPropertyAssertion(:other :d :b)
+                )"#,
+                &[":b", ":c"],
+            ),
+            // 5. Merge of an asserted target with a HasValue target where HasValue is on the inverse role
+            (
+                "inverse_has_value_source_merge",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:A))
+                    Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                    Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                    Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:d))
+                    InverseObjectProperties(:r :s) FunctionalObjectProperty(:r)
+                    ObjectPropertyAssertion(:r :a :b)
+                    SubClassOf(:A ObjectHasValue(:s :a)) ClassAssertion(:A :c)
+                    ObjectPropertyAssertion(:other :d :b)
+                )"#,
+                &[":b", ":c"],
+            ),
+            // 6. Max cardinality 1 on an inverse role
+            (
+                "max_cardinality_1_on_inverse_role",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:A))
+                    Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                    SubClassOf(:A ObjectMaxCardinality(1 ObjectInverseOf(:r)))
+                    ClassAssertion(:A :x)
+                    ObjectPropertyAssertion(:r :a :x) ObjectPropertyAssertion(:r :b :x)
+                    ObjectPropertyAssertion(:other :d :a)
+                )"#,
+                &[":a", ":b"],
+            ),
+            // 7. Exact cardinality 1 on an inverse role combined with ObjectHasValue
+            (
+                "exact_cardinality_1_on_inverse_role_with_has_value",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:A)) Declaration(Class(:B))
+                    Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                    Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                    Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:x))
+                    SubClassOf(:A ObjectExactCardinality(1 ObjectInverseOf(:r)))
+                    ClassAssertion(:A :x)
+                    ObjectPropertyAssertion(:r :a :x)
+                    SubClassOf(:B ObjectHasValue(:r :x)) ClassAssertion(:B :b)
+                    ObjectPropertyAssertion(:other :d :a)
+                )"#,
+                &[":a", ":b"],
+            ),
+            // 8. Merge that feeds a property chain
+            (
+                "merge_feeding_property_chain",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r1))
+                    Declaration(ObjectProperty(:r2)) Declaration(ObjectProperty(:other))
+                    FunctionalObjectProperty(:f)
+                    ObjectPropertyAssertion(:f :x :b1) ObjectPropertyAssertion(:f :x :b2)
+                    SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                    ObjectPropertyAssertion(:r1 :a :b1) ObjectPropertyAssertion(:r2 :b2 :c)
+                )"#,
+                &[":c"],
+            ),
+            // 9. Two merges (functional + inverse-functional) feeding both steps of a property chain
+            (
+                "two_merges_feeding_property_chain",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2))
+                    Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                    Declaration(ObjectProperty(:other))
+                    FunctionalObjectProperty(:f1) InverseFunctionalObjectProperty(:f2)
+                    ObjectPropertyAssertion(:f1 :u :b1) ObjectPropertyAssertion(:f1 :u :b2)
+                    ObjectPropertyAssertion(:f2 :c1 :v) ObjectPropertyAssertion(:f2 :c2 :v)
+                    SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                    ObjectPropertyAssertion(:r1 :a :b1)
+                    ObjectPropertyAssertion(:r2 :b2 :c1)
+                )"#,
+                &[":c1", ":c2"],
+            ),
+            // 10. Reflexive and HasSelf roles feeding a chain and a functional merge
+            (
+                "reflexive_and_has_self_in_chain_and_merge",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:B))
+                    Declaration(ObjectProperty(:refl)) Declaration(ObjectProperty(:s))
+                    Declaration(ObjectProperty(:fself)) Declaration(ObjectProperty(:other))
+                    ReflexiveObjectProperty(:refl)
+                    SubObjectPropertyOf(ObjectPropertyChain(:refl :s) :other)
+                    ObjectPropertyAssertion(:s :a :b)
+                    FunctionalObjectProperty(:fself)
+                    SubClassOf(:B ObjectHasSelf(:fself)) ClassAssertion(:B :m1)
+                    ObjectPropertyAssertion(:fself :m1 :m2)
+                    ObjectPropertyAssertion(:other :d :m1)
+                )"#,
+                &[":b", ":m1", ":m2"],
+            ),
+            // 11. Symmetric and transitive roles combined with a functional merge
+            (
+                "symmetric_and_transitive_with_merge",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(ObjectProperty(:sym)) Declaration(ObjectProperty(:other))
+                    Declaration(ObjectProperty(:f))
+                    SymmetricObjectProperty(:sym) TransitiveObjectProperty(:other)
+                    SubObjectPropertyOf(:sym :other) FunctionalObjectProperty(:f)
+                    ObjectPropertyAssertion(:sym :b1 :a)
+                    ObjectPropertyAssertion(:f :x :b1) ObjectPropertyAssertion(:f :x :b2)
+                    ObjectPropertyAssertion(:other :b2 :c)
+                )"#,
+                &[":a", ":b1", ":b2", ":c"],
+            ),
+            // 12. Symmetric role with ObjectHasValue
+            (
+                "symmetric_with_has_value",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:A))
+                    Declaration(ObjectProperty(:other))
+                    Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                    SymmetricObjectProperty(:other)
+                    SubClassOf(:A ObjectHasValue(:other :b)) ClassAssertion(:A :a)
+                )"#,
+                &[":a", ":b"],
+            ),
+            // 13. Equivalent properties with inverse and functional merge
+            (
+                "equivalent_properties_with_inverses_and_merge",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(ObjectProperty(:p1)) Declaration(ObjectProperty(:p2))
+                    Declaration(ObjectProperty(:p3)) Declaration(ObjectProperty(:other))
+                    EquivalentObjectProperties(:p1 :p2)
+                    InverseObjectProperties(:p2 :p3)
+                    FunctionalObjectProperty(:p2)
+                    ObjectPropertyAssertion(:p1 :a :b1)
+                    ObjectPropertyAssertion(:p3 :b2 :a)
+                    ObjectPropertyAssertion(:other :d :b1)
+                )"#,
+                &[":b1", ":b2"],
+            ),
+            // 14. Role hierarchy with inverses and ObjectHasValue feeding a functional merge
+            (
+                "role_hierarchy_with_inverses_and_has_value",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:A))
+                    Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))
+                    Declaration(ObjectProperty(:t)) Declaration(ObjectProperty(:other))
+                    SubObjectPropertyOf(:r ObjectInverseOf(:s))
+                    SubObjectPropertyOf(ObjectInverseOf(:s) :t)
+                    SubClassOf(:A ObjectHasValue(:r :b)) ClassAssertion(:A :a)
+                    FunctionalObjectProperty(:t)
+                    ObjectPropertyAssertion(:t :a :c)
+                    ObjectPropertyAssertion(:other :d :b)
+                )"#,
+                &[":b", ":c"],
+            ),
+            // 15. SameIndividual chain of length 4
+            (
+                "same_individual_chain_of_length_4",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(ObjectProperty(:other))
+                    SameIndividual(:i1 :i2)
+                    SameIndividual(:i2 :i3)
+                    SameIndividual(:i3 :i4)
+                    SameIndividual(:i4 :i5)
+                    ObjectPropertyAssertion(:other :src :i1)
+                )"#,
+                &[":i1", ":i2", ":i3", ":i4", ":i5"],
+            ),
+            // 16. 3-ary property chain with ObjectHasValue, SameIndividual, and functional merge
+            (
+                "nary_chain_with_has_value_and_same_individual",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(Class(:A))
+                    Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                    Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:f))
+                    Declaration(ObjectProperty(:other))
+                    SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                    SubClassOf(:A ObjectHasValue(:r1 :b1)) ClassAssertion(:A :a)
+                    SameIndividual(:b1 :b2)
+                    ObjectPropertyAssertion(:r2 :b2 :c1)
+                    FunctionalObjectProperty(:f)
+                    ObjectPropertyAssertion(:f :u :c1) ObjectPropertyAssertion(:f :u :c2)
+                    ObjectPropertyAssertion(:r3 :c2 :d)
+                )"#,
+                &[":d"],
+            ),
+            // 17. Subproperty of a functional role merging endpoints that feed a property chain
+            (
+                "subproperty_of_functional_feeding_chain",
+                r#"Prefix(:=<http://ex.org/>) Ontology(
+                    Declaration(ObjectProperty(:subf)) Declaration(ObjectProperty(:f))
+                    Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                    Declaration(ObjectProperty(:other))
+                    SubObjectPropertyOf(:subf :f)
+                    FunctionalObjectProperty(:f)
+                    ObjectPropertyAssertion(:subf :u :b1) ObjectPropertyAssertion(:subf :u :b2)
+                    SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                    ObjectPropertyAssertion(:r1 :a :b1) ObjectPropertyAssertion(:r2 :b2 :c)
+                )"#,
+                &[":c"],
+            ),
+        ];
+
+        for (name, src, expected) in cases {
+            let bound = NamedRoleBound::compute(src)
+                .unwrap_or_else(|| panic!("NamedRoleBound::compute failed on case {name}"));
+            let targets = bound.reachable_targets_by_full_iri(":other");
+            for &exp in *expected {
+                assert!(
+                    targets.contains(exp),
+                    "case {name}: missing expected target {exp} in {targets:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn named_role_bound_covers_c4_c6_and_20_anonymous_routing_cases() {
+        let _test_env = crate::test_env::read();
+        let mut pad = String::new();
+        for i in 0..10 {
+            pad.push_str(&format!("Declaration(ObjectProperty(:pad{i}))\n"));
+        }
+        for i in 0..30 {
+            pad.push_str(&format!("Declaration(NamedIndividual(:z{i}))\n"));
+        }
+        let cases: &[(&str, &str, &str, &[&str])] = &[
+            (
+                "c4_inv_func_anon_succ_inv_has_value",
+                r#"Declaration(Class(:X4))
+                   Declaration(ObjectProperty(:r4)) Declaration(ObjectProperty(:t4)) Declaration(ObjectProperty(:u4))
+                   Declaration(NamedIndividual(:d4)) Declaration(NamedIndividual(:e4))
+                   Declaration(NamedIndividual(:k4)) Declaration(NamedIndividual(:m4))
+                   InverseFunctionalObjectProperty(:r4)
+                   ClassAssertion(ObjectSomeValuesFrom(:r4 :X4) :d4)
+                   SubClassOf(:X4 ObjectHasValue(ObjectInverseOf(:r4) :e4))
+                   ObjectPropertyAssertion(:t4 :k4 :d4)
+                   ObjectPropertyAssertion(:u4 :e4 :m4)"#,
+                ":t4",
+                &[":d4", ":e4"],
+            ),
+            (
+                "c6_complement_min_cardinality_2_merge",
+                r#"Declaration(ObjectProperty(:r6)) Declaration(ObjectProperty(:t6))
+                   Declaration(NamedIndividual(:a6)) Declaration(NamedIndividual(:b6))
+                   Declaration(NamedIndividual(:c6)) Declaration(NamedIndividual(:k6))
+                   ClassAssertion(ObjectComplementOf(ObjectMinCardinality(2 :r6)) :a6)
+                   ObjectPropertyAssertion(:r6 :a6 :b6)
+                   ObjectPropertyAssertion(:r6 :a6 :c6)
+                   ObjectPropertyAssertion(:t6 :k6 :b6)"#,
+                ":t6",
+                &[":b6", ":c6"],
+            ),
+            // M3.1: subrole existential successor into inverse-functional superrole with inverse HasValue
+            (
+                "m01_inv_func_subrole_anon_succ_inv_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:sub_r)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubObjectPropertyOf(:sub_r :r)
+                   InverseFunctionalObjectProperty(:r)
+                   ClassAssertion(ObjectSomeValuesFrom(:sub_r :X) :d)
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.2: functional role with inverse existential and forward ObjectHasValue
+            (
+                "m02_func_inv_existential_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(ObjectInverseOf(:f) :X) :d)
+                   SubClassOf(:X ObjectHasValue(:f :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.3: named inverse property existential with functional role and ObjectHasValue
+            (
+                "m03_named_inv_prop_existential_func_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:inv_f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   InverseObjectProperties(:f :inv_f)
+                   ClassAssertion(ObjectSomeValuesFrom(:inv_f :X) :d)
+                   SubClassOf(:X ObjectHasValue(:f :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.4: min cardinality 1 creating anonymous witness merged by max cardinality 1 on inverse role
+            (
+                "m04_min_card_anon_succ_max_card_inv_merge",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubClassOf(:A ObjectMaxCardinality(1 ObjectInverseOf(:r)))
+                   ClassAssertion(ObjectMinCardinality(1 :r ObjectIntersectionOf(:A ObjectHasValue(ObjectInverseOf(:r) :e))) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.5: complement of min cardinality 2 on inverse role with anonymous witness
+            (
+                "m05_neg_min_card_2_inv_anon_merge",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubClassOf(:X ObjectComplementOf(ObjectMinCardinality(2 ObjectInverseOf(:r))))
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ClassAssertion(ObjectSomeValuesFrom(:r :X) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.6: anonymous subrole witness merging with asserted functional superrole target (no ObjectHasValue)
+            (
+                "m06_subrole_anon_merge_with_asserted_superrole_target",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:other :f)
+                   ObjectPropertyAssertion(:f :a :b)
+                   ClassAssertion(ObjectSomeValuesFrom(:other owl:Thing) :a)"#,
+                ":other",
+                &[":b"],
+            ),
+            // M3.7: anonymous subrole witness merging with asserted functional superrole target, cascading to inverse-functional merge
+            (
+                "m07_subrole_anon_merge_cascading_to_inv_func",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:r :f)
+                   InverseFunctionalObjectProperty(:r)
+                   ObjectPropertyAssertion(:f :b :c)
+                   ObjectPropertyAssertion(:r :a :c)
+                   ClassAssertion(ObjectSomeValuesFrom(:r owl:Thing) :b)
+                   ObjectPropertyAssertion(:other :k :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            // M3.8: cascade through two functional roles over anonymous witness
+            (
+                "m08_cascade_two_functional_roles_over_anon_witness",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c1)) Declaration(NamedIndividual(:c2)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2)
+                   ObjectPropertyAssertion(:f1 :a :b)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectHasValue(:f2 :c1)) :a)
+                   ObjectPropertyAssertion(:f2 :b :c2)
+                   ObjectPropertyAssertion(:other :k :c1)"#,
+                ":other",
+                &[":c1", ":c2"],
+            ),
+            // M3.9: cascade through three functional roles over two-hop anonymous existential chain
+            (
+                "m09_cascade_three_level_anon_functional_chain",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2))
+                   Declaration(ObjectProperty(:f3)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))
+                   Declaration(NamedIndividual(:d1)) Declaration(NamedIndividual(:d2)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2) FunctionalObjectProperty(:f3)
+                   ObjectPropertyAssertion(:f1 :a :b)
+                   ObjectPropertyAssertion(:f2 :b :c)
+                   ObjectPropertyAssertion(:f3 :c :d2)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectSomeValuesFrom(:f2 ObjectHasValue(:f3 :d1))) :a)
+                   ObjectPropertyAssertion(:other :k :d1)"#,
+                ":other",
+                &[":d1", ":d2"],
+            ),
+            // M3.10: 3-role chain over two anonymous middle elements with nested ObjectHasValue
+            (
+                "m10_chain_over_two_anon_middle_elements_with_nested_has_value",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:c))
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectSomeValuesFrom(:r2 ObjectHasValue(:r3 :c))) :a)"#,
+                ":other",
+                &[":c"],
+            ),
+            // M3.11: chain over anonymous middle element created via named inverse existential
+            (
+                "m11_chain_over_anon_middle_via_named_inverse_existential",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   InverseObjectProperties(:r2 :s)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:s ObjectHasValue(ObjectInverseOf(:r1) :a)) :b)"#,
+                ":other",
+                &[":b"],
+            ),
+            // M3.12: chain over anonymous middle element whose anonymous leaf merges with named target via functional superrole
+            (
+                "m12_chain_into_functional_merging_anon_leaf_with_named",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   SubObjectPropertyOf(:r2 :f)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectIntersectionOf(ObjectSomeValuesFrom(:r2 owl:Thing) ObjectHasValue(:f :b))) :a)"#,
+                ":other",
+                &[":b"],
+            ),
+            // M3.13: two anonymous witnesses merged via subroles of a functional role, cascading to inverse-functional merge
+            (
+                "m13_chain_into_functional_cascading_to_inv_func_merge",
+                r#"Declaration(Class(:X1)) Declaration(Class(:X2))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:f_sub1))
+                   Declaration(ObjectProperty(:f_sub2)) Declaration(ObjectProperty(:g)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:k)) Declaration(NamedIndividual(:m))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:f_sub1 :f)
+                   SubObjectPropertyOf(:f_sub2 :f)
+                   InverseFunctionalObjectProperty(:g)
+                   SubClassOf(:X1 ObjectHasValue(ObjectInverseOf(:f_sub1) :k))
+                   SubClassOf(:X2 ObjectHasValue(ObjectInverseOf(:f_sub2) :k))
+                   ClassAssertion(ObjectSomeValuesFrom(:g :X1) :a)
+                   ClassAssertion(ObjectSomeValuesFrom(:g :X2) :b)
+                   ObjectPropertyAssertion(:other :m :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            // M3.14: anonymous witness merged with named individual by inverse-functional role, feeding a 3-step chain
+            (
+                "m14_anon_witness_merged_by_inv_func_feeds_chain_middle",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:c))
+                   Declaration(NamedIndividual(:k)) Declaration(NamedIndividual(:m))
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                   InverseFunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectSomeValuesFrom(:r2 ObjectHasValue(:f :k))) :a)
+                   ObjectPropertyAssertion(:f :m :k)
+                   ObjectPropertyAssertion(:r3 :m :c)"#,
+                ":other",
+                &[":c"],
+            ),
+            // M3.15: tree folding across two functional subroles (no ObjectHasValue)
+            (
+                "m15_tree_folding_across_two_functional_subroles",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r1))
+                   Declaration(ObjectProperty(:r2)) Declaration(ObjectProperty(:inv_r2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:r1 :f)
+                   SubObjectPropertyOf(:r2 :f)
+                   InverseObjectProperties(:r2 :inv_r2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :inv_r2) :other)
+                   ClassAssertion(ObjectIntersectionOf(ObjectSomeValuesFrom(:r1 owl:Thing) ObjectSomeValuesFrom(:r2 owl:Thing)) :a)"#,
+                ":other",
+                &[":a"],
+            ),
+            // M3.16: inverse-functional parent merge in anonymous tree producing self-loop (no ObjectHasValue)
+            (
+                "m16_inv_func_parent_merge_in_anon_tree_self_loop",
+                r#"Declaration(ObjectProperty(:g)) Declaration(ObjectProperty(:f1))
+                   Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:inv_f2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a))
+                   InverseFunctionalObjectProperty(:g)
+                   SubObjectPropertyOf(:f1 :g)
+                   SubObjectPropertyOf(:f2 :g)
+                   InverseObjectProperties(:f2 :inv_f2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:f1 :inv_f2) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectSomeValuesFrom(:inv_f2 owl:Thing)) :a)"#,
+                ":other",
+                &[":a"],
+            ),
+            // M3.17: symmetric + functional role with anonymous successor and ObjectHasValue
+            (
+                "m17_symmetric_func_anon_succ_has_value_merge",
+                r#"Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SymmetricObjectProperty(:r)
+                   FunctionalObjectProperty(:r)
+                   ClassAssertion(ObjectSomeValuesFrom(:r ObjectHasValue(:r :e)) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            // M3.18: transitive role over two anonymous steps merged with named target by functional role
+            (
+                "m18_transitive_role_over_two_anon_steps_and_func_merge",
+                r#"Declaration(ObjectProperty(:other)) Declaration(ObjectProperty(:f))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:k))
+                   TransitiveObjectProperty(:other)
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:other ObjectSomeValuesFrom(:other ObjectHasValue(ObjectInverseOf(:f) :k))) :a)
+                   ObjectPropertyAssertion(:f :k :b)
+                   ObjectPropertyAssertion(:other :b :c)"#,
+                ":other",
+                &[":b", ":c"],
+            ),
+            // M3.19: anonymous witness with ObjectHasSelf on subrole of inverse-functional role merging with named source
+            (
+                "m19_anon_has_self_on_inv_func_subrole_self_loop_and_merge",
+                r#"Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:k))
+                   InverseFunctionalObjectProperty(:r)
+                   SubObjectPropertyOf(:s :r)
+                   ClassAssertion(ObjectSomeValuesFrom(:r ObjectHasSelf(:s)) :a)
+                   ObjectPropertyAssertion(:r :b :a)
+                   ObjectPropertyAssertion(:other :k :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            // M3.20: negated ObjectAllValuesFrom creating anonymous witness with nested ObjectHasValue and inverse-functional merge
+            (
+                "m20_neg_all_values_anon_witness_with_nested_has_value_merge",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   InverseFunctionalObjectProperty(:r)
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ClassAssertion(ObjectComplementOf(ObjectAllValuesFrom(:r ObjectComplementOf(:X))) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+        ];
+
+        for (name, body, role, expected) in cases {
+            let doc = format!("Prefix(:=<http://ex.org/>)\nOntology(<http://ex.org/{name}>\n{pad}{body}\n)");
+            let bound = NamedRoleBound::compute(&doc)
+                .unwrap_or_else(|| panic!("NamedRoleBound::compute failed on case {name}"));
+            let targets = bound.reachable_targets_by_full_iri(role);
+            for &exp in *expected {
+                assert!(
+                    targets.contains(exp),
+                    "case {name}: missing expected target {exp} for {role} in {targets:?}"
+                );
+            }
+        }
     }
 }

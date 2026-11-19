@@ -106,11 +106,92 @@ impl Graph {
     }
 }
 
-pub(super) fn check(text: &str, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
+pub(crate) fn check(text: &str, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
     let mut checker = Checker::default();
     crate::frontend::parse::for_each_ontology_child(text, |node|
         checker.observe(node, prefixes).map_err(crate::frontend::parse::OutOfFragment)).map_err(|e| e.0)?;
     checker.finish()
+}
+
+/// Inspect `text` for anonymous-individual violations that HermiT accepts
+/// (`ObjectHasValue`, `ObjectOneOf`, and Section 11.2 forest conditions).
+/// Returns `None` when `check` passes, when `text` cannot be parsed, or when
+/// an anonymous individual occurs in `SameIndividual`, `DifferentIndividuals`,
+/// `NegativeObjectPropertyAssertion`, or `NegativeDataPropertyAssertion`.
+pub(crate) fn skolemizable_violation(
+    text: &str,
+    prefixes: &BTreeMap<String, String>,
+) -> Option<String> {
+    if check(text, prefixes).is_ok() {
+        return None;
+    }
+    let mut hard_forbidden = false;
+    let mut has_value_or_one_of = BTreeSet::new();
+    let mut all_anon = BTreeSet::new();
+    fn scan(
+        node: &Node<'_>,
+        hard_forbidden: &mut bool,
+        has_value_or_one_of: &mut BTreeSet<String>,
+        all_anon: &mut BTreeSet<String>,
+    ) {
+        match node {
+            Node::Atom(s) => {
+                if s.starts_with("_:") {
+                    all_anon.insert((*s).to_owned());
+                }
+            }
+            Node::List("Annotation" | "AnnotationAssertion", _) => {}
+            Node::List(
+                "SameIndividual"
+                | "DifferentIndividuals"
+                | "NegativeObjectPropertyAssertion"
+                | "NegativeDataPropertyAssertion",
+                args,
+            ) => {
+                if forbidden_occurrence(node).is_some() {
+                    *hard_forbidden = true;
+                }
+                for child in args {
+                    scan(child, hard_forbidden, has_value_or_one_of, all_anon);
+                }
+            }
+            Node::List("ObjectHasValue" | "ObjectOneOf", args) => {
+                if let Some(id) = forbidden_occurrence(node) {
+                    has_value_or_one_of.insert(id);
+                }
+                for child in args {
+                    scan(child, hard_forbidden, has_value_or_one_of, all_anon);
+                }
+            }
+            Node::List(_, args) => {
+                for child in args {
+                    scan(child, hard_forbidden, has_value_or_one_of, all_anon);
+                }
+            }
+        }
+    }
+    if crate::frontend::parse::for_each_ontology_child(text, |node| {
+        scan(node, &mut hard_forbidden, &mut has_value_or_one_of, &mut all_anon);
+        Ok(())
+    })
+    .is_err()
+    {
+        return None;
+    }
+    if hard_forbidden || all_anon.is_empty() {
+        return None;
+    }
+    let total = all_anon.len();
+    if !has_value_or_one_of.is_empty() {
+        Some(format!(
+            "skolemized {total} anonymous individual(s) (including {} in ObjectHasValue/ObjectOneOf)",
+            has_value_or_one_of.len()
+        ))
+    } else {
+        Some(format!(
+            "skolemized {total} anonymous individual(s) violating OWL 2 section 11.2 forest restrictions"
+        ))
+    }
 }
 
 /// Streaming form of [`check`]: observe each ontology child in order, then finish.
