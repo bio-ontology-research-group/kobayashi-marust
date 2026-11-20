@@ -2017,6 +2017,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         };
         let mut best_clash: Option<(Cint64, ConDescId, TrackPointId, ConDescId, TrackPointId)> =
             None;
+        // `KM_CLASH_SET_COMPARE=<file>`: also collect the explanation the
+        // function gave before engine10 and count the calls where it differs
+        // from the single minimum-level pair (docs/V1.7.0-SPEED.md 4(a)).
+        let mut old_pairs: Option<Vec<(ConDescId, TrackPointId, ConDescId, TrackPointId)>> =
+            clash_set_compare::enabled().then(Vec::new);
+        let mut settled = false;
         if direct_lookup {
             for (tag, sub_con_des, sub_tp, sub_negated) in sub_entries {
                 let (super_con_des, super_tp, super_negated) = {
@@ -2038,12 +2044,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     )
                 };
                 if super_con_des.is_some() && sub_negated != super_negated {
+                    if let Some(pairs) = old_pairs.as_mut() {
+                        // Before engine10 this branch explained the clash by
+                        // every opposite pair.
+                        pairs.push((sub_con_des, sub_tp, super_con_des, super_tp));
+                    }
+                    if settled {
+                        continue;
+                    }
                     let lvl = tp_level(sub_tp, calc_alg_context)
                         .max(tp_level(super_tp, calc_alg_context));
                     if best_clash.is_none_or(|(best_lvl, _, _, _, _)| lvl < best_lvl) {
                         best_clash = Some((lvl, sub_con_des, sub_tp, super_con_des, super_tp));
                         if lvl <= 0 {
-                            break;
+                            settled = true;
+                            if old_pairs.is_none() {
+                                break;
+                            }
                         }
                     }
                 }
@@ -2061,6 +2078,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     super_pos += 1;
                 } else {
                     if sub_negated != super_negated {
+                        if let Some(pairs) = old_pairs.as_mut() {
+                            // Before engine10 this branch explained the clash
+                            // by the first opposite pair in tag order.
+                            if pairs.is_empty() {
+                                pairs.push((sub_con_des, sub_tp, super_con_des, super_tp));
+                            }
+                        }
                         let lvl = tp_level(sub_tp, calc_alg_context)
                             .max(tp_level(super_tp, calc_alg_context));
                         if best_clash.is_none_or(|(best_lvl, _, _, _, _)| lvl < best_lvl) {
@@ -2074,6 +2098,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     super_pos += 1;
                 }
             }
+        }
+        if let Some(pairs) = old_pairs.as_ref() {
+            clash_set_compare::record(best_clash.map(|(_, a, b, c, d)| (a, b, c, d)), pairs);
         }
         if let Some((_, sub_con_des, sub_tp, super_con_des, super_tp)) = best_clash {
             *clash_descriptors = self.create_clashed_concept_descriptor(
@@ -5209,5 +5236,65 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             distinct_dep_track_point,
             calc_alg_context,
         );
+    }
+}
+
+/// Test mode for the single-pair clash explanation of
+/// `ht_label_concept_clash_set_with_descriptors`. With
+/// `KM_CLASH_SET_COMPARE=<file>` each process appends one line
+/// `clash-set-compare pid=<pid> clashes=<n> differ=<m>` at exit, where
+/// `clashes` counts calls that found a clash and `differ` those where the
+/// pre-engine10 explanation (every opposite pair on the direct-lookup branch,
+/// the first pair on the sorted walk) is not exactly the chosen pair. Both
+/// versions return the same boolean in every call.
+pub(crate) mod clash_set_compare {
+    use super::{ConDescId, TrackPointId};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::OnceLock;
+
+    static CLASHES: AtomicU64 = AtomicU64::new(0);
+    static DIFFER: AtomicU64 = AtomicU64::new(0);
+    static PATH: OnceLock<Option<std::ffi::OsString>> = OnceLock::new();
+
+    extern "C" fn dump() {
+        if let Some(Some(path)) = PATH.get() {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let _ = writeln!(
+                    file,
+                    "clash-set-compare pid={} clashes={} differ={}",
+                    std::process::id(),
+                    CLASHES.load(Ordering::Relaxed),
+                    DIFFER.load(Ordering::Relaxed)
+                );
+            }
+        }
+    }
+
+    pub(crate) fn enabled() -> bool {
+        PATH.get_or_init(|| {
+            let path = std::env::var_os("KM_CLASH_SET_COMPARE");
+            if path.is_some() {
+                // SAFETY: `dump` is a plain `extern "C" fn` without arguments.
+                unsafe {
+                    libc::atexit(dump);
+                }
+            }
+            path
+        })
+        .is_some()
+    }
+
+    pub(crate) fn record(
+        chosen: Option<(ConDescId, TrackPointId, ConDescId, TrackPointId)>,
+        old: &[(ConDescId, TrackPointId, ConDescId, TrackPointId)],
+    ) {
+        assert_eq!(chosen.is_some(), !old.is_empty(), "clash verdicts differ");
+        if let Some(chosen) = chosen {
+            CLASHES.fetch_add(1, Ordering::Relaxed);
+            if old.len() != 1 || old[0] != chosen {
+                DIFFER.fetch_add(1, Ordering::Relaxed);
+            }
+        }
     }
 }
