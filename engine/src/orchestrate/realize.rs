@@ -1470,6 +1470,17 @@ pub fn classify_extended(
     } else {
         (canonical_source(&text)?, Vec::new())
     };
+    // `⊤ ⊑ {o}`: every individual equals `o`, so the rows of `o` are the rows
+    // of every individual. Probing only `o` avoids one nominal probe per
+    // individual (review/e10/found/hang_f808_194.ofn).
+    let singleton = singleton_domain_individual(&text, &individuals);
+    let (individuals, collapsed_names) = match singleton {
+        Some(o) => {
+            let names: Vec<String> = individuals.iter().map(|t| public_name(t)).collect();
+            (vec![o.clone()], Some((public_name(&o), names)))
+        }
+        None => (individuals, None),
+    };
     let roles = if properties || values {
         super::properties::canonical_properties(&text)?
     } else {
@@ -1819,7 +1830,129 @@ pub fn classify_extended(
         realization.types.clear();
         realization.same.clear();
     }
+    if let Some((o, names)) = collapsed_names {
+        expand_singleton_domain(&o, &names, mode.is_some(), &mut realization, &mut abox);
+    }
     Ok(Extended { realization, properties: hierarchy, data_properties: data_hierarchy, abox, top: top_classes })
+}
+
+/// The individual `o` of an asserted `SubClassOf(owl:Thing ObjectOneOf(o))`
+/// or `EquivalentClasses(owl:Thing ObjectOneOf(o))` (one distinct
+/// individual), when the source has more than one named individual.
+///
+/// Such an axiom makes the domain of every model the single element `o^I`,
+/// so `O ⊨ a = o` for every individual `a` of a consistent `O`; then
+/// `O ⊨ C(a)` iff `O ⊨ C(o)`, `O ⊨ r(a, b)` iff `O ⊨ r(o, o)`, every pair
+/// is `SAME` and no pair is `DIFFERENT`. Lenient input is left alone.
+fn singleton_domain_individual(text: &str, individuals: &[String]) -> Option<String> {
+    if individuals.len() < 2
+        || crate::frontend::lenient::enabled()
+        || std::env::var_os("KM_NO_SINGLETON_DOMAIN").is_some()
+        || !text.contains("ObjectOneOf(")
+    {
+        return None;
+    }
+    let prefixes = prefix_bindings(text).ok()?;
+    let is_thing = |token: &str| {
+        if is_top_class_token(token) {
+            return true;
+        }
+        let Some((prefix, local)) = token.split_once(':') else { return false };
+        prefixes
+            .get(prefix)
+            .is_some_and(|ns| format!("{ns}{local}") == format!("{OWL_NS}Thing"))
+    };
+    let mut found: Option<String> = None;
+    let _ = crate::frontend::parse::for_each_ontology_child(text, |node| {
+        if found.is_some() {
+            return Ok(());
+        }
+        let Node::List(head @ ("SubClassOf" | "EquivalentClasses"), args) = node else {
+            return Ok(());
+        };
+        let plain = plain_args(args);
+        if plain.len() != 2 {
+            return Ok(());
+        }
+        let (thing, one_of) = match (plain[0], plain[1]) {
+            (Node::Atom(t), other) => (*t, other),
+            (other, Node::Atom(t)) if *head == "EquivalentClasses" => (*t, other),
+            _ => return Ok(()),
+        };
+        if !is_thing(thing) {
+            return Ok(());
+        }
+        let Node::List("ObjectOneOf", members) = one_of else { return Ok(()) };
+        let members: BTreeSet<&str> = plain_args(members).iter().filter_map(|m| m.as_atom()).collect();
+        if members.len() == 1 {
+            let o = *members.iter().next().unwrap();
+            if individuals.iter().any(|i| i == o) {
+                found = Some(o.to_string());
+            }
+        }
+        Ok(())
+    });
+    found
+}
+
+/// Rows of the one-element domain `{o}` for every individual in `names`
+/// (public names); see [`singleton_domain_individual`].
+fn expand_singleton_domain(
+    o: &str,
+    names: &[String],
+    realize: bool,
+    realization: &mut Realization,
+    abox: &mut super::abox_rows::AboxRows,
+) {
+    if !realization.classification.consistent {
+        return;
+    }
+    let mut names: Vec<&String> = names.iter().collect();
+    names.sort();
+    names.dedup();
+    if realize {
+        let classes: Vec<String> = realization
+            .types
+            .iter()
+            .filter(|[ind, _]| ind == o)
+            .map(|[_, class]| class.clone())
+            .collect();
+        let mut types = Vec::with_capacity(classes.len() * names.len());
+        for name in &names {
+            for class in &classes {
+                types.push([(*name).clone(), class.clone()]);
+            }
+        }
+        types.sort();
+        realization.types = types;
+        let mut same = Vec::new();
+        for (i, a) in names.iter().enumerate() {
+            for b in &names[i + 1..] {
+                same.push([(*a).clone(), (*b).clone()]);
+            }
+        }
+        realization.same = same;
+    }
+    if let Some(values) = abox.values.as_mut() {
+        let roles: BTreeSet<String> = values
+            .iter()
+            .filter(|[_, a, b]| a == o && b == o)
+            .map(|[r, _, _]| r.clone())
+            .collect();
+        let mut out = Vec::with_capacity(roles.len() * names.len() * names.len());
+        for r in &roles {
+            for a in &names {
+                for b in &names {
+                    out.push([r.clone(), (*a).clone(), (*b).clone()]);
+                }
+            }
+        }
+        out.sort();
+        *values = out;
+    }
+    if let Some(different) = abox.different.as_mut() {
+        different.clear();
+    }
 }
 
 /// Sets `KM_UNKNOWN_DATATYPES=free` for the probe run of the data property
@@ -2460,6 +2593,155 @@ mod tests {
             assert_eq!(fast, slow, "block probes differ from nominals on {name}");
             assert!(!fast.types.is_empty() || name == "g11", "{name} has types");
         }
+    }
+
+    /// review/e10/found/hang_f808_194.ofn: `⊤ ⊑ {a0}` with 36 individuals ran
+    /// past 120 s under `--realize` and `--values` (one nominal probe per
+    /// individual). Must finish in 10 s, and on a 6-individual variant the
+    /// realization must equal that of one nominal probe per individual.
+    #[test]
+    fn singleton_domain_realization_finishes_and_equals_per_individual_probes() {
+        let _test_env = crate::test_env::write();
+        let _env = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "auto");
+        std::env::set_var("KM_THREADS", "1");
+        std::env::remove_var("KM_NO_SINGLETON_DOMAIN");
+        let cfg = Config::from_env();
+        const HANG: &str = r#"Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/f>
+Declaration(ObjectProperty(:s0))
+Declaration(ObjectProperty(:s1))
+Declaration(ObjectProperty(:s2))
+Declaration(ObjectProperty(:s3))
+Declaration(ObjectProperty(:c0))
+Declaration(ObjectProperty(:c1))
+Declaration(ObjectProperty(:p0))
+Declaration(ObjectProperty(:p1))
+Declaration(ObjectProperty(:p2))
+Declaration(ObjectProperty(:p3))
+Declaration(ObjectProperty(:p4))
+Declaration(ObjectProperty(:p5))
+Declaration(ObjectProperty(:p6))
+Declaration(ObjectProperty(:p7))
+Declaration(ObjectProperty(:p8))
+Declaration(ObjectProperty(:p9))
+Declaration(NamedIndividual(:a0))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+Declaration(NamedIndividual(:a3))
+Declaration(NamedIndividual(:a4))
+Declaration(NamedIndividual(:a5))
+Declaration(NamedIndividual(:z0))
+Declaration(NamedIndividual(:z1))
+Declaration(NamedIndividual(:z2))
+Declaration(NamedIndividual(:z3))
+Declaration(NamedIndividual(:z4))
+Declaration(NamedIndividual(:z5))
+Declaration(NamedIndividual(:z6))
+Declaration(NamedIndividual(:z7))
+Declaration(NamedIndividual(:z8))
+Declaration(NamedIndividual(:z9))
+Declaration(NamedIndividual(:z10))
+Declaration(NamedIndividual(:z11))
+Declaration(NamedIndividual(:z12))
+Declaration(NamedIndividual(:z13))
+Declaration(NamedIndividual(:z14))
+Declaration(NamedIndividual(:z15))
+Declaration(NamedIndividual(:z16))
+Declaration(NamedIndividual(:z17))
+Declaration(NamedIndividual(:z18))
+Declaration(NamedIndividual(:z19))
+Declaration(NamedIndividual(:z20))
+Declaration(NamedIndividual(:z21))
+Declaration(NamedIndividual(:z22))
+Declaration(NamedIndividual(:z23))
+Declaration(NamedIndividual(:z24))
+Declaration(NamedIndividual(:z25))
+Declaration(NamedIndividual(:z26))
+Declaration(NamedIndividual(:z27))
+Declaration(NamedIndividual(:z28))
+Declaration(NamedIndividual(:z29))
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:D))
+SubClassOf(owl:Thing ObjectOneOf(:a0))
+ObjectPropertyAssertion(:s3 :a5 :a3)
+ObjectPropertyAssertion(:s1 :a2 :a2)
+SubClassOf(:B ObjectMaxCardinality(1 :s2))
+SubObjectPropertyOf(ObjectPropertyChain(:s3 :s3) :c1)
+ObjectPropertyAssertion(:c0 :a1 :a0)
+ObjectPropertyAssertion(:s2 :a1 :a5)
+ObjectPropertyAssertion(:s0 :a5 :a1)
+InverseObjectProperties(:s3 :s3)
+ObjectPropertyAssertion(:p0 :z0 :z1)
+)
+"#;
+        const SMALL: &str = r#"Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/f>
+Declaration(ObjectProperty(:s0))
+Declaration(ObjectProperty(:s1))
+Declaration(ObjectProperty(:s2))
+Declaration(ObjectProperty(:s3))
+Declaration(ObjectProperty(:c0))
+Declaration(ObjectProperty(:c1))
+Declaration(ObjectProperty(:p0))
+Declaration(ObjectProperty(:p1))
+Declaration(ObjectProperty(:p2))
+Declaration(ObjectProperty(:p3))
+Declaration(ObjectProperty(:p4))
+Declaration(ObjectProperty(:p5))
+Declaration(ObjectProperty(:p6))
+Declaration(ObjectProperty(:p7))
+Declaration(ObjectProperty(:p8))
+Declaration(ObjectProperty(:p9))
+Declaration(NamedIndividual(:a0))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+Declaration(NamedIndividual(:a3))
+Declaration(NamedIndividual(:a4))
+Declaration(NamedIndividual(:a5))
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:D))
+SubClassOf(owl:Thing ObjectOneOf(:a0))
+ObjectPropertyAssertion(:s3 :a5 :a3)
+ObjectPropertyAssertion(:s1 :a2 :a2)
+SubClassOf(:B ObjectMaxCardinality(1 :s2))
+SubObjectPropertyOf(ObjectPropertyChain(:s3 :s3) :c1)
+ObjectPropertyAssertion(:c0 :a1 :a0)
+ObjectPropertyAssertion(:s2 :a1 :a5)
+ObjectPropertyAssertion(:s0 :a5 :a1)
+InverseObjectProperties(:s3 :s3)
+)
+"#;
+        let path = super::tmpfile::TempPath::new("-singleton-domain.ofn");
+        std::fs::write(path.path(), HANG).unwrap();
+        let started = std::time::Instant::now();
+        let ext = classify_extended(&cfg, path.path(), Some(TypeMode::All), false, false, false, true, false)
+            .unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "took {:?}", started.elapsed());
+        let r = &ext.realization;
+        assert!(r.classification.consistent);
+        assert_eq!(r.same.len(), 36 * 35 / 2);
+        let values = ext.abox.values.as_ref().unwrap();
+        assert!(!values.is_empty() && values.len() % (36 * 36) == 0);
+
+        let path = super::tmpfile::TempPath::new("-singleton-domain-small.ofn");
+        std::fs::write(path.path(), SMALL).unwrap();
+        // `--values` with one probe per individual does not finish here
+        // either (over 120 s on 6 individuals); its rows are checked
+        // against HermiT in the T4 fuzz run instead.
+        let fast = classify_extended(&cfg, path.path(), Some(TypeMode::All), true, false, false, false, false)
+            .unwrap();
+        let slow = {
+            let _g = crate::test_env::EnvVar::set("KM_NO_SINGLETON_DOMAIN", "1");
+            classify_extended(&cfg, path.path(), Some(TypeMode::All), true, false, false, false, false).unwrap()
+        };
+        assert_eq!(fast.realization, slow.realization);
+        assert_eq!(fast.realization.same.len(), 6 * 5 / 2);
+        assert_eq!(fast.properties, slow.properties);
     }
 
     #[test]
