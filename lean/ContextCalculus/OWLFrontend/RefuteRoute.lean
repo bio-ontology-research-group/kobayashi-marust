@@ -4,8 +4,9 @@ import ContextCalculus.OWLFrontend.HintRoute
 /-!
 # The refutation route (`--procedure refute`, v1.7.0 task inc1)
 
-`docs/V1.7.0-INCONSISTENCY-CERT.md`. The route reads an ontology as the hint
-route does (datatype definitions unfolded, disjoint unions rewritten,
+`docs/V1.7.0-INCONSISTENCY-CERT.md`. The route first drops the axioms outside
+the chain-route fragment (`refuteWeaken`; a weaker ontology without a model
+shows that the input has none), then reads the rest as the hint route does (datatype definitions unfolded, disjoint unions rewritten,
 anonymous individuals renamed) and translates the SROIQ(D) knowledge base to
 the `SRIQN` data ontology `dosnC` of the chain route (`sroiq_consistent`:
 the ontology is consistent at the OWL 2 datatype map iff `dosnC` is
@@ -26,22 +27,28 @@ open ContextCalculus.OWL ContextCalculus.OWL.Datatypes SHIQD SHOIQ
 
 /-! ## The data oracle -/
 
+/-- The emptiness test on given cells, readings and atom evaluation. -/
+def empWith {q k : Nat} (sup : Bool) (cs : List Cell) (gs : List (Fin k → Bool))
+    (E : Fin q → Cell → (Fin k → Bool) → Bool) (L : List (Fin q × Bool)) : Bool :=
+  sup && cs.all fun c => gs.all fun g => !(L.all fun l => E l.1 c g == l.2)
+
+/-- Every atom of `spec` is supported. -/
+def supAll {q : Nat} (spec : Fin q → DataRange) : Bool :=
+  (List.finRange q).all fun p => drSupported (spec p)
+
 /-- A conjunction of literals is empty: no cell under any reading of the
 free datatypes satisfies it (and every atom is supported). -/
 def empOWL {q : Nat} (spec : Fin q → DataRange) : List (Fin q × Bool) → Bool :=
-  let sup := (List.finRange q).all fun p => drSupported (spec p)
-  let cs := cellsOf (allBases spec)
-  let gs := ContextCalculus.SRIQD.allG (allFrees spec).length
-  let E := owlE spec
-  fun L => sup && cs.all fun c => gs.all fun g => !(L.all fun l => E l.1 c g == l.2)
+  empWith (supAll spec) (cellsOf (allBases spec)) (ContextCalculus.SRIQD.allG (allFrees spec).length)
+    (owlE spec)
 
 theorem empOWL_sound (pat : String → String → Prop) {q : Nat} (spec : Fin q → DataRange)
     (V : Type) (atom : Fin q → V → Prop) (hΘ : owlTheory pat spec V atom)
     (L : List (Fin q × Bool)) (h : empOWL spec L = true) (v : V) :
     ¬ ∀ l ∈ L, ContextCalculus.SRIQD.litSem atom l v := by
   intro hl
-  simp only [empOWL, Bool.and_eq_true, List.all_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true]
-    at h
+  simp only [empOWL, empWith, supAll, Bool.and_eq_true, List.all_eq_true, Bool.not_eq_eq_eq_not,
+    Bool.not_true] at h
   obtain ⟨hsup, hc⟩ := h
   have hs : ∀ p, drSupported (spec p) = true := fun p => hsup p (List.mem_finRange p)
   obtain ⟨e, fr, hfr⟩ := (owlTheory_iff pat hs V atom).1 hΘ
@@ -55,10 +62,63 @@ theorem empOWL_sound (pat : String → String → Prop) {q : Nat} (spec : Fin q 
   cases hb : l.2 <;> cases hE : owlE spec l.1 (cellOf (allBases spec) (e v))
       (fun j => fr j (e v)) <;> simp_all
 
+/-- `owlE` is `owlEWith` on the free datatypes and the compiled data ranges.
+The route binds both before the check: through `owlEF` the compiled code
+recomputes them at every call. -/
+theorem owlEWith_eq {q : Nat} (spec : Fin q → DataRange) :
+    owlEWith (allFrees spec) (Array.ofFn fun p => compileDR (spec p)) q Array.size_ofFn =
+      owlE spec := by
+  rw [owlE_eq_F]; rfl
+
+/-- `empOWL` from the precomputed parts. -/
+theorem empC_sound (pat : String → String → Prop) {q : Nat} (spec : Fin q → DataRange)
+    (V : Type) (atom : Fin q → V → Prop) (hΘ : owlTheory pat spec V atom)
+    (L : List (Fin q × Bool))
+    (h : empWith (supAll spec) (cellsOf (allBases spec))
+      (ContextCalculus.SRIQD.allG (allFrees spec).length)
+      (owlEWith (allFrees spec) (Array.ofFn fun p => compileDR (spec p)) q Array.size_ofFn) L
+        = true)
+    (v : V) : ¬ ∀ l ∈ L, ContextCalculus.SRIQD.litSem atom l v := by
+  rw [owlEWith_eq] at h
+  exact empOWL_sound pat spec V atom hΘ L h v
+
 theorem owlTheory_nonempty (pat : String → String → Prop) {q : Nat} (spec : Fin q → DataRange)
     (V : Type) (atom : Fin q → V → Prop) (hΘ : owlTheory pat spec V atom) : Nonempty V := by
   obtain ⟨e, -, -⟩ := hΘ
   exact ⟨e.symm (.bool true)⟩
+
+/-! ## Weakening
+
+A refutation needs only one direction: if a weaker ontology (every model of
+`O` is one of it) has no model, `O` has none. The route drops the axioms the
+chain-route translation does not handle (`HasKey`, `DisjointObjectProperties`,
+`AsymmetricObjectProperty`, self axioms, ...) and keeps the rest. -/
+
+/-- The axioms the route keeps: those of the SROIQ(D) knowledge-base
+fragment, disjoint unions and datatype definitions (both rewritten by
+`refutePrep`); never a key. -/
+def keepAx : Axiom → Bool
+  | .hasKey .. => false
+  | .disjointUnion .. => true
+  | .datatypeDefinition .. => true
+  | ax => ax.isSROIQDKB
+
+/-- The kept axioms. -/
+def refuteWeaken (O : Ontology) : Ontology := ⟨O.axioms.filter keepAx⟩
+
+theorem model_refuteWeaken {DM : DatatypeMap} {Dom : Type} {O : Ontology} {I : Interp DM Dom}
+    (h : OWL.Model O I) : OWL.Model (refuteWeaken O) I := by
+  intro ax hax
+  obtain ⟨hmem, hk⟩ := List.mem_filter.1 hax
+  have hs := h ax hmem
+  cases ax with
+  | hasKey => simp [keepAx] at hk
+  | _ => exact hs
+
+theorem consistentAt_refuteWeaken {DM : DatatypeMap} {O : Ontology}
+    (h : ConsistentAt DM O) : ConsistentAt DM (refuteWeaken O) := by
+  obtain ⟨Dom, hD, I, hI⟩ := h
+  exact ⟨Dom, hD, I, model_refuteWeaken hI⟩
 
 /-! ## The route -/
 
@@ -87,7 +147,16 @@ def refuteChain (X : Ontology) (pf : SRIQN.Refute.Proof) : Bool :=
     | some T =>
       match roleCls T X with
       | none => false
-      | some E => SRIQN.Refute.refute (dosnC T (nomNames (roleOff X) []) E) (empOWL (spec T.tab)) pf
+      | some E =>
+        -- the cells are computed once, before the checker runs
+        let sp := spec T.tab
+        let sup := supAll sp
+        let cs := cellsOf (allBases sp)
+        let fr := allFrees sp
+        let gs := ContextCalculus.SRIQD.allG fr.length
+        let arr : Array CExpr := Array.ofFn fun p => compileDR (sp p)
+        let Ev := owlEWith fr arr _ Array.size_ofFn
+        SRIQN.Refute.refute (dosnC T (nomNames (roleOff X) []) E) (empWith sup cs gs Ev) pf
   else false
 
 theorem refuteChain_sound (pat : String → String → Prop) {X : Ontology} {pf : SRIQN.Refute.Proof}
@@ -102,11 +171,11 @@ theorem refuteChain_sound (pat : String → String → Prop) {X : Ontology} {pf 
     · cases h
     next E hE =>
       rw [sroiq_consistent pat hX hT hE]
-      exact SRIQN.Refute.refute_sound (owlTheory_nonempty pat _) (empOWL_sound pat _) h
+      exact SRIQN.Refute.refute_sound (owlTheory_nonempty pat _) (empC_sound pat (spec T.tab)) h
 
-/-- **The refutation route.** -/
+/-- **The refutation route**: on the kept axioms (`refuteWeaken`). -/
 def refuteP (O : Ontology) (pf : SRIQN.Refute.Proof) : Bool :=
-  match refutePrep O with
+  match refutePrep (refuteWeaken O) with
   | some X => refuteChain X pf
   | none => false
 
@@ -119,11 +188,13 @@ theorem refuteP_sound (pat : String → String → Prop) {O : Ontology} {pf : SR
   split at h
   · next X hX =>
     obtain ⟨hk, hc⟩ := refuteChain_sound pat h
-    rwa [consistentAt_refutePrep pat hX hk]
+    intro hO
+    exact hc ((consistentAt_refutePrep pat hX hk).1 (consistentAt_refuteWeaken hO))
   · cases h
 
 end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.empOWL_sound
+#print axioms ContextCalculus.OWLFrontend.model_refuteWeaken
 #print axioms ContextCalculus.OWLFrontend.refuteChain_sound
 #print axioms ContextCalculus.OWLFrontend.refuteP_sound

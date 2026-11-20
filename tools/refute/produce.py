@@ -14,6 +14,7 @@ Usage: produce.py DUMP [--out CERT] [--max-depth D] [--time-limit S]
 """
 
 import argparse
+import subprocess
 import sys
 import time
 
@@ -66,18 +67,14 @@ class Dump:
                     self.atoms[int(ws[1])] = ' '.join(ws[2:])
                 elif h == 'supported':
                     self.supported = ws[1] == 'true'
-                elif h == 'cg':
-                    self.cg.append(frozenset(int(x) for x in ws[3:]))
                 elif h in ('concepts', 'roles', 'dprops', 'atoms', 'dprop', 'cells'):
                     pass
         self.nomset = set(self.noms)
-        ncg = len(self.cg)
-        self.universe = frozenset(range(ncg))
-        sat = {}
-        for i, s in enumerate(self.cg):
-            for j in s:
-                sat.setdefault(j, set()).add(i)
-        self.sat = {j: frozenset(v) for j, v in sat.items()}
+        # the data oracle: literal sets (frozensets of (atom, bool)) -> empty?
+        # answered by `km-owl-reference --procedure refute --emp`; unknown sets
+        # count as nonempty and are queued for the next round.
+        self.emp_known = {}
+        self.queries = set()
 
     @staticmethod
     def parse_clause(ws):
@@ -115,9 +112,15 @@ class Dump:
             return ('dsub', int(ws[1]), int(ws[2]))
         return ('?',)
 
-    def litset(self, j, b):
-        s = self.sat.get(j, frozenset())
-        return s if b else self.universe - s
+    def emp(self, lits):
+        if not self.supported:
+            return False
+        lits = frozenset(lits)
+        r = self.emp_known.get(lits)
+        if r is None:
+            self.queries.add(lits)
+            return False
+        return r
 
 
 def rtkey(R, x, y):
@@ -217,7 +220,6 @@ class State:
         self.inn = {}           # y -> {k: set(x)}
         self.dvals = {}         # x -> {u: set(w)}
         self.vlits = {}         # w -> {(j, b)}
-        self.vsat = {}          # w -> frozenset of cg indices
         self.depth = {}
         self.parent = {}        # union-find for objects
         self.vparent = {}
@@ -235,7 +237,6 @@ class State:
         s.inn = {k: {r: set(ys) for r, ys in v.items()} for k, v in self.inn.items()}
         s.dvals = {k: {u: set(ws) for u, ws in v.items()} for k, v in self.dvals.items()}
         s.vlits = {k: set(v) for k, v in self.vlits.items()}
-        s.vsat = dict(self.vsat)
         s.depth = dict(self.depth)
         s.nomelem = dict(self.nomelem)
         s.pending = list(self.pending)
@@ -411,7 +412,6 @@ class State:
         w = self.L.new_id()
         outs = [('d', x, u, w)] + [('lit', w, j, True) for j in pos] + \
             [('lit', w, j, False) for j in neg]
-        self.vsat[w] = self.D.universe
         self.vlits[w] = set()
         self.step('dex', (ci, x, w), [fa], outs, fresh=[w])
 
@@ -440,8 +440,9 @@ class State:
             return True
         if not self.D.supported:
             return False
-        if self.vsat.get(w, self.D.universe) <= self.D.litset(j, b):
-            refs = self.min_lits(w, self.D.litset(j, not b))
+        cur = self.vlits.get(w, set())
+        if self.D.emp(set(cur) | {(j, not b)}):
+            refs = [self.fact[('lit', w, j2, b2)] for (j2, b2) in sorted(cur)]
             self.step('dlit', (w, j, b, refs), refs, [key])
             return True
         return False
@@ -572,28 +573,20 @@ class State:
                 if D.clauses[ci][3] == u:
                     self.apply_datmost(ci, x)
 
-    def min_lits(self, w, extra):
-        """A small set of literal facts of w whose conjunction with `extra`
-        (a set of cg indices) is empty."""
-        lits = sorted(self.vlits.get(w, ()))
-        cur = list(lits)
-        for l in lits:
-            trial = [m for m in cur if m != l]
-            s = extra
-            for (j, b) in trial:
-                s = s & self.D.litset(j, b)
-                if not s:
-                    break
-            if not s:
-                cur = trial
-        return [self.fact[('lit', w, j, b)] for (j, b) in cur]
-
     def add_lit(self, w, j, b):
         self.vlits.setdefault(w, set()).add((j, b))
-        s = self.vsat.get(w, self.D.universe) & self.D.litset(j, b)
-        self.vsat[w] = s
-        if not s and self.D.supported:
-            raise Clash(('lits', w, self.min_lits(w, self.D.universe)))
+        cur = self.vlits[w]
+        if self.D.supported and self.D.emp_known.get(frozenset(cur)):
+            raise Clash(('lits', w, [self.fact[('lit', w, j2, b2)] for (j2, b2) in sorted(cur)]))
+
+    def data_clash(self):
+        """At saturation: a value whose literal set the oracle declares
+        empty (unknown sets are queued for the next round)."""
+        for w, cur in self.vlits.items():
+            if w in self.vdead or not cur:
+                continue
+            if self.D.emp(cur):
+                raise Clash(('lits', w, [self.fact[('lit', w, j2, b2)] for (j2, b2) in sorted(cur)]))
 
     def merge(self, keep, gone, a):
         """eq keep gone from the nominal a, then rewrite the facts of `gone`."""
@@ -637,6 +630,10 @@ class State:
 
     # ---- agenda ----------------------------------------------------------
     def run(self, deadline):
+        self.run1(deadline)
+        self.data_clash()
+
+    def run1(self, deadline):
         n = 0
         while self.agenda:
             n += 1
@@ -891,23 +888,12 @@ def emit(log, tree, need):
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('dump')
-    ap.add_argument('--out')
-    ap.add_argument('--max-depth', type=int, default=3)
-    ap.add_argument('--time-limit', type=float, default=240)
-    ap.add_argument('--branches', type=int, default=2000)
-    args = ap.parse_args()
-    t0 = time.time()
-    D = Dump(args.dump)
-    index(D)
-    deadline = t0 + args.time_limit
-    tree = None
-    log = None
+def attempt(D, args, deadline):
+    """One round: iterative deepening of the anonymous successors. Returns
+    (log, tree, depth) with tree None when no refutation was found."""
+    tree, log, depth = None, None, 0
     for depth in range(0, args.max_depth + 1):
         log = Log()
-        log.next_id = 0
         st = State(D, log, 0, depth)
         try:
             for a in D.noms:
@@ -916,15 +902,69 @@ def main():
         except Clash as c:
             tree = ('close', 0, c.info)
         except GiveUp:
-            tree = None
             print(f"produce: time limit at depth {depth}", file=sys.stderr)
-            break
+            return log, None, depth, True
         except RecursionError:
-            tree = None
             print(f"produce: recursion limit at depth {depth}", file=sys.stderr)
-            break
+            return log, None, depth, True
         if tree is not None:
             break
+    return log, tree, depth, False
+
+
+def ask_oracle(D, args, qs):
+    """Decide the literal sets `qs` with `km-owl-reference --emp` (untrusted
+    use of the checker's data oracle: only the checker's verdict on the
+    final certificate counts)."""
+    qs = sorted(qs, key=lambda L: sorted(L))
+    qpath = (args.out or 'refute') + '.emp.q'
+    with open(qpath, 'w') as f:
+        for L in qs:
+            f.write(' '.join(f"{j} {1 if b else 0}" for j, b in sorted(L)) + '\n')
+    r = subprocess.run([args.oracle, '--procedure', 'refute', '--emp', qpath, args.ofn],
+                       capture_output=True, text=True, timeout=args.oracle_timeout)
+    ans = r.stdout.split()
+    if r.returncode != 0 or len(ans) != len(qs):
+        print(f"produce: oracle failed (rc {r.returncode}): {r.stderr[:200]}", file=sys.stderr)
+        return False
+    for L, a in zip(qs, ans):
+        D.emp_known[L] = (a == '1')
+    return True
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('dump')
+    ap.add_argument('--out')
+    ap.add_argument('--max-depth', type=int, default=3)
+    ap.add_argument('--time-limit', type=float, default=240)
+    ap.add_argument('--branches', type=int, default=2000)
+    ap.add_argument('--oracle', help='km-owl-reference binary for --emp queries')
+    ap.add_argument('--ofn', help='the ontology (for --emp queries)')
+    ap.add_argument('--rounds', type=int, default=4)
+    ap.add_argument('--oracle-timeout', type=float, default=280)
+    args = ap.parse_args()
+    t0 = time.time()
+    D = Dump(args.dump)
+    index(D)
+    deadline = t0 + args.time_limit
+    log, tree, depth = None, None, 0
+    for rnd in range(args.rounds):
+        D.queries = set()
+        log, tree, depth, stop = attempt(D, args, deadline)
+        if tree is not None or stop:
+            break
+        new = {L for L in D.queries if L not in D.emp_known}
+        if not new or not args.oracle or not args.ofn:
+            break
+        print(f"produce: round {rnd}: {len(new)} oracle queries", file=sys.stderr)
+        try:
+            if not ask_oracle(D, args, new):
+                break
+        except subprocess.TimeoutExpired:
+            print("produce: oracle timeout", file=sys.stderr)
+            break
+        print(f"produce: round {rnd}: {sum(1 for L in new if D.emp_known[L])} empty", file=sys.stderr)
     if tree is None:
         print("produce: no refutation found (unchecked)", file=sys.stderr)
         sys.exit(1)

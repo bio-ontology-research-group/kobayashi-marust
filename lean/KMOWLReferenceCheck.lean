@@ -1231,6 +1231,8 @@ structure Args where
   compact : Bool := false
   /-- `refute`: the refutation certificate file. -/
   cert : Option String := none
+  /-- `refute`: a file of literal sets to decide with the data oracle (producer aid). -/
+  empFile : Option String := none
 
 def parseArgs (acc : Args) : List String → Option Args
   | [] => if acc.path.isSome then some acc else none
@@ -1245,6 +1247,7 @@ def parseArgs (acc : Args) : List String → Option Args
   | "--procedure" :: "refute" :: rest =>
     parseArgs { acc with dataRoute := some "refute" } rest
   | "--cert" :: f :: rest => parseArgs { acc with cert := some f } rest
+  | "--emp" :: f :: rest => parseArgs { acc with empFile := some f } rest
   | "--print-clauses" :: rest => parseArgs { acc with printClauses := true } rest
   | "--row" :: r :: rest => parseArgs { acc with row := some r } rest
   | "--batch" :: f :: rest => parseArgs { acc with batch := some f } rest
@@ -2990,7 +2993,7 @@ partial def refuteWhy {n m p q : Nat} (B : Array (SRIQD.Clause (Fin n) (Fin m) (
 /-- Why the refutation route rejects (diagnostic). -/
 def refuteDecline (O : OWL.Ontology) (pf : ContextCalculus.SRIQN.Refute.Proof) (explain : Bool) :
     String :=
-  match refutePrep O with
+  match refutePrep (refuteWeaken O) with
   | none => "not recognised: a DatatypeDefinition of a datatype of the map, a recursive definition, or two definitions of one datatype"
   | some X =>
     if !X.isSROIQDKB then
@@ -3003,7 +3006,13 @@ def refuteDecline (O : OWL.Ontology) (pf : ContextCalculus.SRIQN.Refute.Proof) (
         | some E =>
           let D := dosnC T (OWLFrontend.SHOIQ.nomNames (roleOff X) []) E
           let why := if explain then
-              match refuteWhy (SRIQN.dbase D).toArray (SRIQN.dnoms D) (empOWL (SHIQD.spec T.tab)) ⟨#[], 0⟩ pf "root" with
+              let sp := SHIQD.spec T.tab
+              let cs := OWL.Datatypes.cellsOf (OWL.Datatypes.allBases sp)
+              let fr := OWL.Datatypes.allFrees sp
+              let gs := ContextCalculus.SRIQD.allG fr.length
+              let arr : Array OWL.Datatypes.CExpr := Array.ofFn fun p => OWL.Datatypes.compileDR (sp p)
+              let emp := empWith (supAll sp) cs gs (OWL.Datatypes.owlEWith fr arr _ Array.size_ofFn)
+              match refuteWhy (SRIQN.dbase D).toArray (SRIQN.dnoms D) emp ⟨#[], 0⟩ pf "root" with
               | some w => s!" ({w})"
               | none => ""
             else ""
@@ -3016,7 +3025,9 @@ reading of the free datatypes, the atoms that hold there (the data oracle
 of the producer). Diagnostic output, not part of a proved statement. -/
 def printRefuteClauses (O : OWL.Ontology) : IO UInt32 := do
   let out ← IO.getStdout
-  match refutePrep O with
+  let dropped := O.axioms.filter fun ax => !keepAx ax
+  out.putStrLn s!"dropped {dropped.length} {" ".intercalate (dropped.map axKind).eraseDups}"
+  match refutePrep (refuteWeaken O) with
   | none => decline "not recognised: DatatypeDefinition"
   | some X =>
     if !X.isSROIQDKB then
@@ -3046,25 +3057,54 @@ def printRefuteClauses (O : OWL.Ontology) : IO UInt32 := do
           out.putStrLn s!"supported {sup}"
           for j in List.finRange T.tab.length do
             out.putStrLn s!"atom {j.val} {(reprStr (sp j)).replace "\n" " "}"
-          let cs := OWL.Datatypes.cellsOf (OWL.Datatypes.allBases sp)
-          let gs := ContextCalculus.SRIQD.allG (OWL.Datatypes.allFrees sp).length
-          let Ev := OWL.Datatypes.owlE sp
-          out.putStrLn s!"cells {cs.length} groups {gs.length}"
-          if gs.length ≤ 64 then
-            for (c, ci) in cs.zipIdx do
-              for (g, gi) in gs.zipIdx do
-                let ts := (List.finRange T.tab.length).filter fun j => Ev j c g
-                out.putStrLn s!"cg {ci} {gi} {" ".intercalate (ts.map (toString ·.val))}"
           out.flush
           return 0
 
-/-- `--procedure refute --cert FILE [--explain]` or `--print-clauses`. -/
+/-- `--procedure refute --emp FILE`: one line `J B J B ...` (atom index, 0 or 1)
+per literal set; prints `1` when the data oracle `empOWL` of the route
+declares the set empty, `0` otherwise, `x` for a malformed line. A producer
+aid only: nothing printed here is a certified statement. -/
+def runRefuteEmp (O : OWL.Ontology) (f : String) : IO UInt32 := do
+  let out ← IO.getStdout
+  match refutePrep (refuteWeaken O) with
+  | none => decline "not recognised: DatatypeDefinition"
+  | some X =>
+    match translateSHOIQD (roleOff X) [] with
+    | none => decline "not recognised: the SHOIQ(D) translation failed"
+    | some T =>
+      let q := T.tab.length
+      let sp := SHIQD.spec T.tab
+      let cs := OWL.Datatypes.cellsOf (OWL.Datatypes.allBases sp)
+      let fr := OWL.Datatypes.allFrees sp
+      let gs := ContextCalculus.SRIQD.allG fr.length
+      let arr : Array OWL.Datatypes.CExpr := Array.ofFn fun p => OWL.Datatypes.compileDR (sp p)
+      let emp := empWith (supAll sp) cs gs (OWL.Datatypes.owlEWith fr arr _ Array.size_ofFn)
+      let text ← IO.FS.readFile f
+      for line in text.splitOn "\n" do
+        let ws := batchWords line
+        if ws.isEmpty then continue
+        let rec go : List String → Option (List (Fin q × Bool))
+          | [] => some []
+          | j :: b :: tl =>
+            match j.toNat?, b with
+            | some j, "1" => if h : j < q then (go tl).map ((⟨j, h⟩, true) :: ·) else none
+            | some j, "0" => if h : j < q then (go tl).map ((⟨j, h⟩, false) :: ·) else none
+            | _, _ => none
+          | _ => none
+        match go ws with
+        | some L => out.putStrLn (if emp L then "1" else "0")
+        | none => out.putStrLn "x"
+      out.flush
+      return 0
+
+/-- `--procedure refute --cert FILE [--explain]`, `--print-clauses` or `--emp FILE`. -/
 def runRefute (timing : Bool) (args : Args) (text : String) : IO UInt32 := do
   let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
   match parsed with
   | .error reason => decline s!"parse rejected: {reason}"
   | .ok O =>
     if args.printClauses then printRefuteClauses O
+    else if let some f := args.empFile then runRefuteEmp O f
     else match args.cert with
       | none =>
         IO.eprintln "refute: --cert FILE or --print-clauses is required"
