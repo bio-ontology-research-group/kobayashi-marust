@@ -896,7 +896,9 @@ def checkS (timing : Bool) (O : OWL.Ontology) : IO Bool := do
         (fun _ => decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN (encC T L E))))
       if !r3 then return false
       let ⟨r4, _⟩ ← timedPhase timing "data"
-        (fun _ => (List.finRange T.tab.length).all fun p => OWL.Datatypes.drSupported (OWLFrontend.SHIQD.spec T.tab p))
+        (fun _ =>
+          let spS := OWLFrontend.specS T.tab
+          OWLFrontend.allSpec spS.f OWL.Datatypes.drSupported)
       return r4
 
 /-- The fragment checks of the Self route (`owlSelfCore`), without the
@@ -946,7 +948,9 @@ def checkSelf (timing : Bool) (O : OWL.Ontology) : IO Bool := do
           (fun _ => decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN D)))
         if !r6 then return false
         let ⟨r7, _⟩ ← timedPhase timing "data"
-          (fun _ => (List.finRange T.tab.length).all fun p => OWL.Datatypes.drSupported (OWLFrontend.SHIQD.spec T.tab p))
+          (fun _ =>
+            let spS := OWLFrontend.specS T.tab
+            OWLFrontend.allSpec spS.f OWL.Datatypes.drSupported)
         return r7
 
 /-- Diagnostic for a C2a decline of the chain route (`KM_C2A_WHY=1` with
@@ -1917,7 +1921,10 @@ def emitData {n : Nat} (T : SRIQDKBTranslation)
   let sp := spS.f
   let as := OWL.Datatypes.allBases sp
   let cs := OWL.Datatypes.cellsOf as
-  let allLits := (List.finRange T.tab.length).flatMap fun j => litsInRange (sp j)
+  let allLits :=
+    if (List.finRange T.tab.length).any fun j => atomHasTimeRestr (sp j) then
+      (List.finRange T.tab.length).flatMap fun j => litsInRange (sp j)
+    else []
   for j in List.finRange T.tab.length do
     let r := sp j
     let txt := if atomHasTimeRestr r then hintRangeText allLits cs r else (reprStr r).replace "\n" " "
@@ -2485,12 +2492,18 @@ def printClausesW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 :=
     (fun T L E _ => do
       let D := encC T L E
       let c ← emitClauses D
-      emitData T D (sroiqBound T L E)
+      let spS := OWLFrontend.specS T.tab
+      let bnd := ContextCalculus.SRIQD.dbnd (SRIQN.dbase (SRIQN.Proc.encTransDN D)) *
+        (ContextCalculus.SRIQD.allG (OWL.Datatypes.allFrees spS.f).length).length
+      emitData T D bnd
       return c)
     (fun T L E SC _ _ => do
       let D := encS T L E SC
       let c ← emitClauses D
-      emitData T D (sroiqSBound T L E SC)
+      let spS := OWLFrontend.specS T.tab
+      let bnd := ContextCalculus.SRIQD.dbnd (SRIQN.dbase (SRIQN.Proc.encTransDN D)) *
+        (ContextCalculus.SRIQD.allG (OWL.Datatypes.allFrees spS.f).length).length
+      emitData T D bnd
       return c)
 
 /-- The list without repeated entries, first occurrences kept. -/

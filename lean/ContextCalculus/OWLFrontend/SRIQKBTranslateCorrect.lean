@@ -258,13 +258,44 @@ theorem length_le_maxLen : ∀ {l : List IRI} {s : IRI}, s ∈ l → s.length �
     · exact le_trans (le_max_right _ _) (le_foldl_max l _)
     · exact ih hs _
 
-theorem defName_length (base : String) (j : Nat) : (defName base j).length = base.length + j := by
-  simp [defName, String.length_pushn]
+theorem defBinD_defBinS (j : Nat) : defBinD (defBinS j) = j := by
+  induction j using Nat.strong_induction_on with
+  | _ j ih =>
+    rw [defBinS]
+    split_ifs with h0 h2
+    · simp [defBinD, h0]
+    · simp only [defBinD, ih (j / 2) (by omega)]
+      simp
+      omega
+    · simp only [defBinD, ih (j / 2) (by omega), if_true]
+      omega
+
+theorem defName_length_le (base : String) (j : Nat) : base.length ≤ (defName base j).length := by
+  unfold defName
+  rw [String.length_append]
+  omega
+
+theorem defSuffix_inj {j j' : Nat} (h : defSuffix j = defSuffix j') : j = j' := by
+  unfold defSuffix at h
+  by_cases hj : j < 2200 <;> by_cases hj' : j' < 2200 <;> simp only [hj, hj', ↓reduceIte] at h
+  · have := congrArg List.length h
+    simpa [List.length_replicate] using this
+  · cases j with
+    | zero => simp at h
+    | succ k => simp [List.replicate_succ] at h
+  · cases j' with
+    | zero => simp at h
+    | succ k => simp [List.replicate_succ] at h
+  · simp only [List.cons.injEq, true_and] at h
+    have h3 := congrArg defBinD h
+    rw [defBinD_defBinS, defBinD_defBinS] at h3
+    omega
 
 theorem defName_inj {base : String} {j j' : Nat} (h : defName base j = defName base j') : j = j' := by
-  have := congrArg String.length h
-  rw [defName_length, defName_length] at this
-  omega
+  have h1 := congrArg String.toList h
+  unfold defName at h1
+  rw [String.toList_append, String.toList_append, String.toList_ofList, String.toList_ofList] at h1
+  exact defSuffix_inj (List.append_cancel_left h1)
 
 /-- A name no longer than the padding of `base` is not a definition name. -/
 theorem ne_defName_of_length {O : Ontology} {requested : List IRI} {a : IRI}
@@ -272,8 +303,8 @@ theorem ne_defName_of_length {O : Ontology} {requested : List IRI} {a : IRI}
     a ≠ defName (defBase O requested) j := by
   intro he
   have h1 := length_le_maxLen h
-  have h2 := congrArg String.length he
-  rw [defName_length] at h2
+  have h2 := defName_length_le (defBase O requested) j
+  rw [← he] at h2
   simp only [defBase, String.length_pushn] at h2
   have : "urn:km:owl-kb:def:".length = 18 := by decide
   omega

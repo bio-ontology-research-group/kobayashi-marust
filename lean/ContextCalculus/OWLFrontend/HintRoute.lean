@@ -63,11 +63,11 @@ def sroiqHOKF (T : SRIQDKBTranslation) (L : List IRI)
   let B0 := objC T L E
   let spS := specS T.tab
   SROIQ.Proc.regularB B0 && SROIQ.Proc.condB B0 &&
-    (List.finRange T.tab.length).all fun p => drSupported (spS.f p)
+    allSpec spS.f drSupported
 
 @[csimp] theorem sroiqHOK_eq_F : @sroiqHOK = @sroiqHOKF := by
   funext T L E
-  simp [sroiqHOK, sroiqHOKF, specS_f]
+  simp [sroiqHOK, sroiqHOKF, allSpec, specS_f]
 
 /-- The data part the hint names accepts it, or, when it names none, some
 part of the data theory does (stage H2: the hint is read as a sparse hint,
@@ -196,11 +196,11 @@ def sroiqSHOKF (T : SRIQDKBTranslation) (L : List IRI)
   let spS := specS T.tab
   SROIQ.Proc.regularB B0 && SROIQ.Proc.condB B0 && SROIQ.Proc.selfSimpleB B0 SC &&
     SROIQ.Proc.lamOKBL le1 B1 sc1 lam irr &&
-    (List.finRange T.tab.length).all fun p => drSupported (spS.f p)
+    allSpec spS.f drSupported
 
 @[csimp] theorem sroiqSHOK_eq_F : @sroiqSHOK = @sroiqSHOKF := by
   funext T L E SC
-  simp [sroiqSHOK, sroiqSHOKF, specS_f]
+  simp [sroiqSHOK, sroiqSHOKF, allSpec, specS_f]
   rfl
 
 /-- `sroiqHParts` with loops at nominal core elements. -/

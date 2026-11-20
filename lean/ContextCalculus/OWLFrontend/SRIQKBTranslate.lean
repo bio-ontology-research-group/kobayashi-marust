@@ -71,8 +71,26 @@ axiom of `O` mentions and than every requested IRI. -/
 def defBase (O : Ontology) (requested : List IRI) : String :=
   "urn:km:owl-kb:def:".pushn '#' (maxLen (O.axioms.flatMap Axiom.classNames ++ requested))
 
+/-- Binary digits, least significant first (`[]` for zero). -/
+def defBinS (j : Nat) : List Char :=
+  if h : j = 0 then [] else (if j % 2 = 0 then '0' else '1') :: defBinS (j / 2)
+termination_by j
+decreasing_by omega
+
+/-- The number of a digit list. -/
+def defBinD : List Char → Nat
+  | [] => 0
+  | c :: cs => (if c = '1' then 1 else 0) + 2 * defBinD cs
+
+/-- The suffix of the definition name at position `j`: `j` copies of `#` for
+`j < 2200`, and `d` followed by the binary digits of `j - 2200` for `j ≥ 2200`. -/
+def defSuffix (j : Nat) : List Char :=
+  if j < 2200 then List.replicate j '#'
+  else 'd' :: defBinS (j - 2200)
+
 /-- The definition name of the class assertion at position `j`. -/
-def defName (base : String) (j : Nat) : IRI := base.pushn '#' j
+def defName (base : String) (j : Nat) : IRI :=
+  base ++ String.ofList (defSuffix j)
 
 /-- The class name of the class assertion `C(a)` at position `j`: `C`
 itself for a class IRI, the definition name otherwise. -/

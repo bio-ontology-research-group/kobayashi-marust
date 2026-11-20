@@ -259,6 +259,16 @@ theorem anonDec_short {base a : String} (h : a.length < base.length) : anonDec b
   rw [String.length_toList, String.length_toList] at this
   omega
 
+def anonDecF (base a : String) : Option String :=
+  if a.length < base.length then none else anonDec base a
+
+@[csimp] theorem anonDec_eq_F : @anonDec = @anonDecF := by
+  funext base a
+  unfold anonDecF
+  split_ifs with h
+  · exact anonDec_short h
+  · rfl
+
 /-- The renaming: an anonymous individual `x` and the fresh name of `x`
 change places; every other individual stays. -/
 def anonF (base : String) : Individual → Individual

@@ -61,6 +61,14 @@ theorem idxMap_getD {α : Type} [DecidableEq α] [Hashable α] (l : List α) (a 
 
 /-! ## The nominal rewriting -/
 
+def nomNameF (base : String) (j : Nat) : IRI :=
+  base ++ String.ofList ('#' :: binS j)
+
+@[csimp] theorem nomName_eq_F : @nomName = @nomNameF := by
+  funext base j
+  apply String.toList_injective
+  simp [nomName, nomNameF, String.toList_append, String.toList_ofList]
+
 def nomOntDF (O : Ontology) (requested : List IRI) : Ontology :=
   let base := nomBase O requested
   let inds := O.individualNames
@@ -193,6 +201,9 @@ def specS (tab : List DExpr) : SpecS tab.length :=
   funext j
   simp only [SHIQD.spec, specS, useSpec, List.getElem_toArray, List.getElem_map]
   rfl
+
+def allSpec {q : Nat} (sp : Fin q → DataRange) (P : DataRange → Bool) : Bool :=
+  (List.finRange q).all fun p => P (sp p)
 
 instance instHashableRat : Hashable ℚ where
   hash q := mixHash (hash q.num) (hash q.den)
@@ -519,30 +530,52 @@ def freshNamesF (base : String) (tmap : Std.HashMap DExpr Nat) (tlen : Nat) (tab
     List IRI :=
   tab.flatMap fun e => [fNameF base tmap tlen e, wNameF base tmap tlen e]
 
-def nameIxKF (T : SRIQKBTranslation) (nmap : Std.HashMap IRI Nat) (a : IRI) :
+/-- Tail-recursive `SRIQKB.collect`. -/
+def collectF {α β : Type} (f : α → Option (List β)) (xs : List α) : Option (List β) :=
+  (xs.mapM f).map List.flatten
+
+theorem collectF_eq {α β : Type} (f : α → Option (List β)) :
+    ∀ (xs : List α), collectF f xs = SRIQKB.collect f xs
+  | [] => rfl
+  | x :: xs => by
+    unfold collectF SRIQKB.collect
+    rw [← collectF_eq f xs]
+    unfold collectF
+    cases hfx : f x <;> cases hxs : xs.mapM f <;> simp [hfx, hxs]
+
+@[csimp] theorem collect_eq_F : @SRIQKB.collect = @collectF := by
+  funext α β f xs
+  exact (collectF_eq f xs).symm
+
+def nameIxKF (T : SRIQKBTranslation) (nmap : Std.HashMap IRI Nat)
+    (nlen : Nat) (hn : nlen = T.named.length) (a : IRI) :
     Option (Fin T.conceptCount) :=
-  if h : (nmap[a]?).getD T.named.length < T.named.length then
-    some ⟨_, Nat.lt_of_lt_of_le h T.hnamed⟩
+  if h : (nmap[a]?).getD nlen < nlen then
+    some ⟨_, Nat.lt_of_lt_of_le (hn ▸ h) T.hnamed⟩
   else none
 
-def dpIxF (dps : List IRI) (dmap : Std.HashMap IRI Nat) (p : IRI) : Option (Fin dps.length) :=
-  if h : (dmap[p]?).getD dps.length < dps.length then some ⟨_, h⟩ else none
+def dpIxF (dps : List IRI) (dmap : Std.HashMap IRI Nat)
+    (dlen : Nat) (hd : dlen = dps.length) (p : IRI) : Option (Fin dps.length) :=
+  if h : (dmap[p]?).getD dlen < dlen then some ⟨_, hd ▸ h⟩ else none
 
 def dataClauseOfKF (T : SRIQKBTranslation) (base : String) (tab : List DExpr) (dps : List IRI)
     (tmap : Std.HashMap DExpr Nat) (nmap : Std.HashMap IRI Nat) (dmap : Std.HashMap IRI Nat)
+    (tlen : Nat) (ht : tlen = tab.length)
+    (nlen : Nat) (hn : nlen = T.named.length)
+    (dlen : Nat) (hd : dlen = dps.length)
     (jt : DExpr × Nat) : Option (List (DClause T.conceptCount T.roleCount dps.length tab.length)) :=
-  match nameIxKF T nmap (fNameF base tmap tab.length jt.1),
-        nameIxKF T nmap (wNameF base tmap tab.length jt.1),
-        dpIxF dps dmap jt.1.p with
+  match nameIxKF T nmap nlen hn (fNameF base tmap tlen jt.1),
+        nameIxKF T nmap nlen hn (wNameF base tmap tlen jt.1),
+        dpIxF dps dmap dlen hd jt.1.p with
   | some F, some W, some u =>
-    if h : jt.2 < tab.length then some (entryClauses (m := T.roleCount) jt.1 F W u ⟨jt.2, h⟩)
+    if h : jt.2 < tlen then some (entryClauses (m := T.roleCount) jt.1 F W u ⟨jt.2, ht ▸ h⟩)
     else none
   | _, _, _ => none
 
 def subClauseOfKF (T : SRIQKBTranslation) (dps : List IRI) (tab : List DExpr)
-    (dmap : Std.HashMap IRI Nat) (pq : IRI × IRI) :
+    (dmap : Std.HashMap IRI Nat) (dlen : Nat) (hd : dlen = dps.length) (pq : IRI × IRI) :
     Option (List (DClause T.conceptCount T.roleCount dps.length tab.length)) :=
-  match dpIxF dps dmap pq.1, dpIxF dps dmap pq.2 with
+  match dpIxF dps dmap dlen hd pq.1, dpIxF dps dmap dlen hd pq.2 with
   | some u, some v => some [.dSub u v]
   | _, _ => none
 
@@ -551,16 +584,19 @@ def translateSRIQDKBF (O : OWL.Ontology) (requested : List OWL.IRI) (extra : Lis
   if O.isSHIQDKB then
     let base := SRIQKB.defBase O requested
     let tab := tableK O
+    let tlen := tab.length
     let tmap := idxMap tab
     let dps := dpropsK O
+    let dlen := dps.length
     let dmap := idxMap dps
-    let objO : Ontology := ⟨(rwAxiomsK O).map (absAxK (fNameF base tmap tab.length))⟩
-    match translateSRIQKB objO (requested ++ freshNamesF base tmap tab.length tab) extra with
+    let objO : Ontology := ⟨(rwAxiomsK O).map (absAxK (fNameF base tmap tlen))⟩
+    match translateSRIQKB objO (requested ++ freshNamesF base tmap tlen tab) extra with
     | none => none
     | some T =>
       let nmap := idxMap T.named
-      let dataCl := SRIQKB.collect (dataClauseOfKF T base tab dps tmap nmap dmap) tab.zipIdx
-      let subCl := SRIQKB.collect (subClauseOfKF T dps tab dmap) (O.axioms.flatMap subPairs)
+      let nlen := T.named.length
+      let dataCl := collectF (dataClauseOfKF T base tab dps tmap nmap dmap tlen rfl nlen rfl dlen rfl) tab.zipIdx
+      let subCl := collectF (subClauseOfKF T dps tab dmap dlen rfl) (O.axioms.flatMap subPairs)
       match dataCl, subCl with
       | some dc, some sc =>
         some { obj := T, named := eraseDupsH requested, dps := dps, tab := tab,
@@ -569,11 +605,11 @@ def translateSRIQDKBF (O : OWL.Ontology) (requested : List OWL.IRI) (extra : Lis
   else none
 
 theorem nameIxKF_eq (T : SRIQKBTranslation) (a : IRI) :
-    nameIxKF T (idxMap T.named) a = nameIxK T a := by
+    nameIxKF T (idxMap T.named) T.named.length rfl a = nameIxK T a := by
   simp only [nameIxKF, nameIxK, idxMap_getD]
 
 theorem dpIxF_eq (dps : List IRI) (p : IRI) :
-    dpIxF dps (idxMap dps) p = dpIx dps p := by
+    dpIxF dps (idxMap dps) dps.length rfl p = dpIx dps p := by
   simp only [dpIxF, dpIx, idxMap_getD]
 
 @[csimp] theorem translateSRIQDKB_eq_F : @translateSRIQDKB = @translateSRIQDKBF := by
@@ -586,18 +622,20 @@ theorem dpIxF_eq (dps : List IRI) (p : IRI) :
       freshNamesF base (idxMap tab) tab.length tab = freshNames base tab := by
     intro base tab; simp only [freshNamesF, freshNames, hf, hw]
   have hdc : ∀ T base (tab : List DExpr) dps,
-      dataClauseOfKF T base tab dps (idxMap tab) (idxMap T.named) (idxMap dps) =
+      dataClauseOfKF T base tab dps (idxMap tab) (idxMap T.named) (idxMap dps)
+        tab.length rfl T.named.length rfl dps.length rfl =
         dataClauseOfK T base tab dps := by
     intro T base tab dps; funext jt
     simp only [dataClauseOfKF, dataClauseOfK, nameIxKF_eq, dpIxF_eq, fNameF, fName, wNameF, wName,
       idxMap_getD]
     rfl
   have hsc : ∀ T (dps : List IRI) tab,
-      subClauseOfKF T dps tab (idxMap dps) = subClauseOfK T dps tab := by
+      subClauseOfKF T dps tab (idxMap dps) dps.length rfl = subClauseOfK T dps tab := by
     intro T dps tab; funext pq
     simp only [subClauseOfKF, subClauseOfK, dpIxF_eq]
     rfl
-  simp only [translateSRIQDKBF, translateSRIQDKB, eraseDupsH_eq, objOntK, hf, hfn, hdc, hsc]
+  simp only [translateSRIQDKBF, translateSRIQDKB, eraseDupsH_eq, objOntK, hf, hfn, hdc, hsc,
+    collectF_eq]
   rfl
 
 def translateSHOIQDF (O : Ontology) (requested : List IRI) : Option SRIQDKBTranslation :=
@@ -630,23 +668,6 @@ def dosnF (T : SRIQDKBTranslation) (L : List IRI) :
 @[csimp] theorem dosn_eq_F : @dosn = @dosnF := by
   funext T L
   simp only [dosnF, dosn, ← nomIxs_eq_F]
-
-/-- Tail-recursive `SRIQKB.collect`. -/
-def collectF {α β : Type} (f : α → Option (List β)) (xs : List α) : Option (List β) :=
-  (xs.mapM f).map List.flatten
-
-theorem collectF_eq {α β : Type} (f : α → Option (List β)) :
-    ∀ (xs : List α), collectF f xs = SRIQKB.collect f xs
-  | [] => rfl
-  | x :: xs => by
-    unfold collectF SRIQKB.collect
-    rw [← collectF_eq f xs]
-    unfold collectF
-    cases hfx : f x <;> cases hxs : xs.mapM f <;> simp [hfx, hxs]
-
-@[csimp] theorem collect_eq_F : @SRIQKB.collect = @collectF := by
-  funext α β f xs
-  exact (collectF_eq f xs).symm
 
 end ContextCalculus.OWLFrontend
 
