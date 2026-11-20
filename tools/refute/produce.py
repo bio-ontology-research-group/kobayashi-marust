@@ -1122,7 +1122,8 @@ def main():
     for (md, br, pb, local) in phases:
         D.pop_budget = pb
         stop = False
-        for _ in range(args.rounds):
+        # the local phase repeats only once for new oracle answers
+        for _ in range(2 if local else args.rounds):
             D.queries = set()
             D.queries_entail = set()
             log, tree, depth, stop = attempt(D, args, deadline, md, br, local)
