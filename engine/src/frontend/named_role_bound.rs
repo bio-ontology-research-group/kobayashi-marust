@@ -2745,6 +2745,13 @@ pub(crate) fn excursion_roles(rbox: &[Vec<String>], input: &ExcursionInput) -> B
             None => Vec::new(),
         }
     }
+    fn by_source(ps: &[(usize, usize, bool)]) -> HashMap<usize, Vec<(usize, bool)>> {
+        let mut out: HashMap<usize, Vec<(usize, bool)>> = HashMap::new();
+        for &(u, v, f) in ps {
+            out.entry(u).or_default().push((v, f));
+        }
+        out
+    }
     fn closure(rbox: &[Vec<String>], n_nodes: usize, facts: &mut Facts) {
         loop {
             let mut changed = false;
@@ -2781,9 +2788,10 @@ pub(crate) fn excursion_roles(rbox: &[Vec<String>], input: &ExcursionInput) -> B
                     }
                     Some("transitive") if !args.is_empty() => {
                         let ps = pairs(facts, &args[0]);
+                        let out = by_source(&ps);
                         for &(u, m, f1) in &ps {
-                            for &(m2, w, f2) in &ps {
-                                if m == m2 {
+                            if let Some(next) = out.get(&m) {
+                                for &(w, f2) in next {
                                     changed |= add(facts, &args[0], u, w, f1 || f2);
                                 }
                             }
@@ -2806,11 +2814,11 @@ pub(crate) fn excursion_roles(rbox: &[Vec<String>], input: &ExcursionInput) -> B
     fn compose(facts: &mut Facts, chain: &[String], sup: &str) -> bool {
         let mut reach: HashSet<(usize, usize, bool)> = pairs(facts, &chain[0]).into_iter().collect();
         for step in &chain[1..] {
-            let ps = pairs(facts, step);
+            let out = by_source(&pairs(facts, step));
             let mut next = HashSet::new();
             for &(u, m, f1) in &reach {
-                for &(m2, w, f2) in &ps {
-                    if m == m2 {
+                if let Some(ws) = out.get(&m) {
+                    for &(w, f2) in ws {
                         next.insert((u, w, f1 || f2));
                     }
                 }

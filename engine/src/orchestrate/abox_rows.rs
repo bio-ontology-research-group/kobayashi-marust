@@ -4377,11 +4377,15 @@ struct ExcursionSpec {
     /// tree of any named individual to any nominal individual: then all named
     /// individuals are one component.
     global: bool,
+    /// An anonymous individual occurs in an object property assertion or an
+    /// equality axiom.
+    anonymous_links: bool,
 }
 
 impl ExcursionSpec {
-    /// `None` when the source has anonymous individuals, the universal role or
-    /// a fenced role chain together with composite or merging roles: the
+    /// `None` when the source links anonymous individuals by assertions, or
+    /// has the universal role or a fenced role chain, together with composite
+    /// or merging roles: the
     /// caller then falls back to exact probes.
     fn collect(
         text: &str,
@@ -4471,8 +4475,16 @@ impl ExcursionSpec {
                     }
                 }
                 "ObjectPropertyAssertion" | "NegativeObjectPropertyAssertion" | "SameIndividual"
-                | "DifferentIndividuals" | "Declaration" | "AnnotationAssertion"
-                | "DataPropertyAssertion" | "NegativeDataPropertyAssertion" => {}
+                | "DifferentIndividuals" => {
+                    // An anonymous individual linked to others is part of
+                    // the ABox graph, which the bound does not model; one
+                    // with class assertions only is an isolated element.
+                    if plain.iter().any(|a| a.as_atom().is_some_and(|t| t.starts_with("_:"))) {
+                        spec.anonymous_links = true;
+                    }
+                }
+                "Declaration" | "AnnotationAssertion" | "DataPropertyAssertion"
+                | "NegativeDataPropertyAssertion" => {}
                 _ => {
                     for a in plain {
                         walk(a, spec, role_short);
@@ -4498,7 +4510,7 @@ impl ExcursionSpec {
         if !composite && spec.input.merging_roles.is_empty() && !fenced_chain {
             return Some(ExcursionSpec::default());
         }
-        if fenced_chain || text.contains("_:") || text.contains("topObjectProperty") {
+        if fenced_chain || spec.anonymous_links || text.contains("topObjectProperty") {
             return None;
         }
         spec.global = spec.input.merge_into_named || !spec.input.nominal_roles.is_empty();
@@ -5615,6 +5627,13 @@ mod tests {
                  SubClassOf(:D ObjectSomeValuesFrom(:r owl:Thing))\nSubClassOf(:E ObjectSomeValuesFrom(:r owl:Thing))\n\
                  SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:r)) :c)",
                 &[["c", "a", "a"]],
+            ),
+            (
+                "inverse_pair_under_transitive_role",
+                "InverseObjectProperties(:l :r)\nSubObjectPropertyOf(:l :p)\nSubObjectPropertyOf(:r :p)\n\
+                 TransitiveObjectProperty(:p)\nSubClassOf(:B ObjectSomeValuesFrom(:l owl:Thing))\nClassAssertion(:B :a)\n\
+                 ObjectPropertyAssertion(:k :b :b)",
+                &[["p", "a", "a"]],
             ),
             (
                 "fresh_individual_has_self_from_top",
