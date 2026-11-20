@@ -3062,7 +3062,8 @@ def printRefuteClauses (O : OWL.Ontology) : IO UInt32 := do
           return 0
 
 /-- `--procedure refute --emp FILE`: one line `J B J B ...` (atom index, 0 or 1)
-per literal set; prints `1` when the data oracle `empOWL` of the route
+per literal set (`--emp -`: read the lines from standard input, print `ready`
+first and flush after every answer); prints `1` when the data oracle `empOWL` of the route
 declares the set empty, `0` otherwise, `x` for a malformed line. A producer
 aid only: nothing printed here is a certified statement. -/
 def runRefuteEmp (O : OWL.Ontology) (f : String) : IO UInt32 := do
@@ -3080,10 +3081,9 @@ def runRefuteEmp (O : OWL.Ontology) (f : String) : IO UInt32 := do
       let gs := ContextCalculus.SRIQD.allG fr.length
       let arr : Array OWL.Datatypes.CExpr := Array.ofFn fun p => OWL.Datatypes.compileDR (sp p)
       let emp := empWith (supAll sp) cs gs (OWL.Datatypes.owlEWith fr arr _ Array.size_ofFn)
-      let text ← IO.FS.readFile f
-      for line in text.splitOn "\n" do
+      let answer (line : String) : IO Unit := do
         let ws := batchWords line
-        if ws.isEmpty then continue
+        if ws.isEmpty then return
         let rec go : List String → Option (List (Fin q × Bool))
           | [] => some []
           | j :: b :: tl =>
@@ -3095,6 +3095,20 @@ def runRefuteEmp (O : OWL.Ontology) (f : String) : IO UInt32 := do
         match go ws with
         | some L => out.putStrLn (if emp L then "1" else "0")
         | none => out.putStrLn "x"
+      if f == "-" then
+        -- interactive: one answer per line, flushed, until end of input
+        out.putStrLn "ready"
+        out.flush
+        let stdin ← IO.getStdin
+        repeat
+          let line ← stdin.getLine
+          if line.isEmpty then break
+          answer line
+          out.flush
+      else
+        let text ← IO.FS.readFile f
+        for line in text.splitOn "\n" do
+          answer line
       out.flush
       return 0
 

@@ -74,8 +74,11 @@ class Dump:
         # answered by `km-owl-reference --procedure refute --emp`; unknown sets
         # count as nonempty and are queued for the next round.
         self.eager_top = False
+        self.pop_budget = None
         self.emp_known = {}
+        self.oracle = None
         self.queries = set()
+        self.queries_entail = set()
 
     @staticmethod
     def parse_clause(ws):
@@ -113,13 +116,15 @@ class Dump:
             return ('dsub', int(ws[1]), int(ws[2]))
         return ('?',)
 
-    def emp(self, lits):
+    def emp(self, lits, clash=True):
+        """`clash`: the literal set of a value (a leaf if empty); otherwise an
+        entailment test (`dlit`). Unknown sets are queued separately."""
         if not self.supported:
             return False
         lits = frozenset(lits)
         r = self.emp_known.get(lits)
         if r is None:
-            self.queries.add(lits)
+            (self.queries if clash else self.queries_entail).add(lits)
             return False
         return r
 
@@ -227,6 +232,7 @@ class State:
         self.nomelem = {}
         self.pending = []       # disjunction fids
         self.agenda = []
+        self.partial = False    # the saturation stopped at the pop budget
         self.dead = set()
         self.vdead = set()
 
@@ -445,7 +451,7 @@ class State:
         if not self.D.supported:
             return False
         cur = self.vlits.get(w, set())
-        if self.D.emp(set(cur) | {(j, not b)}):
+        if self.D.emp(set(cur) | {(j, not b)}, clash=False):
             refs = [self.fact[('lit', w, j2, b2)] for (j2, b2) in sorted(cur)]
             self.step('dlit', (w, j, b, refs), refs, [key])
             return True
@@ -643,6 +649,9 @@ class State:
             n += 1
             if n % 2000 == 0 and time.time() > deadline:
                 raise GiveUp()
+            if self.D.pop_budget is not None and n > self.D.pop_budget:
+                self.partial = True
+                return
             key = self.agenda.pop()
             t = key[0]
             if t == 'c':
@@ -731,7 +740,7 @@ def search(st, deadline, budget):
         st.run(deadline)
     except Clash as c:
         return ('close', st.ctx, c.info)
-    if budget[0] <= 0:
+    if budget[0] <= 0 or st.partial:
         return None
     # pick a pending disjunction none of whose alternatives holds
     for fid in st.pending:
@@ -918,7 +927,7 @@ def attempt(D, args, deadline, max_depth, branches):
     return log, tree, depth, False
 
 
-def ask_oracle(D, args, qs):
+def ask_oracle(D, args, qs, stop_at_empty=True):
     """Decide the literal sets `qs` with `km-owl-reference --emp` (untrusted
     use of the checker's data oracle: only the checker's verdict on the
     final certificate counts). Larger sets first, in batches; stop at the
@@ -931,24 +940,48 @@ def ask_oracle(D, args, qs):
             return False
         i += len(batch)
         size *= 8
-        if any(D.emp_known[L] for L in batch):
+        if stop_at_empty and any(D.emp_known[L] for L in batch):
             break
     return True
 
 
-def ask_batch(D, args, qs):
-    qpath = (args.out or 'refute') + '.emp.q'
-    with open(qpath, 'w') as f:
+class Oracle:
+    """A running `km-owl-reference --procedure refute --emp - ONT`: parses and
+    translates the ontology once, then answers literal sets line by line."""
+
+    def __init__(self, args):
+        self.p = subprocess.Popen([args.oracle, '--procedure', 'refute', '--emp', '-', args.ofn],
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True, bufsize=1)
+        first = self.p.stdout.readline().strip()
+        if first != 'ready':
+            raise RuntimeError(f"oracle did not start: {first!r} {self.p.stderr.read()[:200]!r}")
+
+    def ask(self, qs):
         for L in qs:
-            f.write(' '.join(f"{j} {1 if b else 0}" for j, b in sorted(L)) + '\n')
-    r = subprocess.run([args.oracle, '--procedure', 'refute', '--emp', qpath, args.ofn],
-                       capture_output=True, text=True, timeout=args.oracle_timeout)
-    ans = r.stdout.split()
-    if r.returncode != 0 or len(ans) != len(qs):
-        print(f"produce: oracle failed (rc {r.returncode}): {r.stderr[:200]}", file=sys.stderr)
-        return False
-    for L, a in zip(qs, ans):
-        D.emp_known[L] = (a == '1')
+            self.p.stdin.write(' '.join(f"{j} {1 if b else 0}" for j, b in sorted(L)) + '\n')
+        self.p.stdin.flush()
+        out = []
+        for _ in qs:
+            a = self.p.stdout.readline().strip()
+            if a not in ('0', '1'):
+                raise RuntimeError(f"oracle answer {a!r}")
+            out.append(a == '1')
+        return out
+
+    def close(self):
+        try:
+            self.p.stdin.close()
+            self.p.wait(timeout=10)
+        except Exception:
+            self.p.kill()
+
+
+def ask_batch(D, args, qs):
+    if D.oracle is None:
+        D.oracle = Oracle(args)
+    for L, a in zip(qs, D.oracle.ask(qs)):
+        D.emp_known[L] = a
     return True
 
 
@@ -964,7 +997,6 @@ def main():
     ap.add_argument('--rounds', type=int, default=4)
     ap.add_argument('--eager-top', action='store_true',
                     help='apply disjunctive gcis with an empty body to every element')
-    ap.add_argument('--oracle-timeout', type=float, default=280)
     args = ap.parse_args()
     t0 = time.time()
     D = Dump(args.dump)
@@ -974,31 +1006,46 @@ def main():
     D.eager_top = args.eager_top
     # Horn rounds first (no successors, no splits) to collect the oracle
     # queries cheaply, then the full search, each with oracle rounds.
-    phases = [(0, 0), (args.max_depth, args.branches)]
+    # The Horn rounds grow a budget of agenda steps: a local clash in a large
+    # ABox shows up (with its oracle queries) long before the saturation ends.
+    phases = [(0, 0, 20000), (0, 0, 200000), (0, 0, None), (args.max_depth, args.branches, None)]
     rnd = 0
-    for (md, br) in phases:
+    for (md, br, pb) in phases:
+        D.pop_budget = pb
         stop = False
         for _ in range(args.rounds):
             D.queries = set()
+            D.queries_entail = set()
             log, tree, depth, stop = attempt(D, args, deadline, md, br)
             if tree is not None or stop:
                 break
             new = {L for L in D.queries if L not in D.emp_known}
-            if not new or not args.oracle or not args.ofn:
+            newe = {L for L in D.queries_entail if L not in D.emp_known}
+            if not (new or newe) or not args.oracle or not args.ofn:
                 break
             rnd += 1
-            print(f"produce: round {rnd}: {len(new)} oracle queries", file=sys.stderr)
+            print(f"produce: round {rnd}: {len(new)} clash and {len(newe)} entailment queries",
+                  file=sys.stderr)
             try:
-                if not ask_oracle(D, args, new):
+                # clash queries first (stop at the first empty set); the
+                # entailment queries only when no value is empty yet
+                if new and not ask_oracle(D, args, new):
                     stop = True
                     break
-            except subprocess.TimeoutExpired:
-                print("produce: oracle timeout", file=sys.stderr)
+                if not any(D.emp_known.get(L) for L in new) and newe and \
+                        not ask_oracle(D, args, newe, stop_at_empty=False):
+                    stop = True
+                    break
+            except (RuntimeError, BrokenPipeError, OSError) as e:
+                print(f"produce: oracle failed: {e}", file=sys.stderr)
                 stop = True
                 break
-            print(f"produce: round {rnd}: {sum(1 for L in new if D.emp_known.get(L))} empty", file=sys.stderr)
+            print(f"produce: round {rnd}: {sum(1 for L in new if D.emp_known.get(L))} empty, "
+                  f"{sum(1 for L in newe if D.emp_known.get(L))} entailed", file=sys.stderr)
         if tree is not None or stop:
             break
+    if D.oracle is not None:
+        D.oracle.close()
     if tree is None:
         print("produce: no refutation found (unchecked)", file=sys.stderr)
         sys.exit(1)
@@ -1015,5 +1062,7 @@ def main():
 
 
 if __name__ == '__main__':
+    import gc
+    gc.disable()  # millions of small containers, no cycles worth collecting
     sys.setrecursionlimit(100000)
     main()
