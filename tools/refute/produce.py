@@ -73,6 +73,7 @@ class Dump:
         # the data oracle: literal sets (frozensets of (atom, bool)) -> empty?
         # answered by `km-owl-reference --procedure refute --emp`; unknown sets
         # count as nonempty and are queued for the next round.
+        self.eager_top = False
         self.emp_known = {}
         self.queries = set()
 
@@ -281,7 +282,10 @@ class State:
 
     def new_element(self, x):
         self.label.setdefault(x, set())
-        for ci in self.D.gci_empty:
+        # `⊤ ⊑ A ⊔ B` (the translation's definitional splits, for example
+        # `∃u.d ⊔ ∀u.¬d`) only on request (`--eager-top`): they add one
+        # pending disjunction per element and rarely help a refutation.
+        for ci in (self.D.gci_empty if self.D.eager_top else self.D.gci_empty_unit):
             self.apply_gci(ci, x)
 
     # ---- rules -----------------------------------------------------------
@@ -677,7 +681,7 @@ class State:
 
 
 def index(D):
-    D.gci_by, D.gci_empty = {}, []
+    D.gci_by, D.gci_empty, D.gci_empty_unit = {}, [], []
     D.some_by, D.all_by, D.atmost_by = {}, {}, {}
     D.dsome_by, D.dall_by, D.datmost_by, D.dsub_by = {}, {}, {}, {}
     D.all_by_role, D.atmost_by_role, D.some_by_role = {}, {}, {}
@@ -687,6 +691,8 @@ def index(D):
         if k == 'gci':
             if not cl[1]:
                 D.gci_empty.append(ci)
+                if len(cl[2]) <= 1:
+                    D.gci_empty_unit.append(ci)
             for a in set(cl[1]):
                 D.gci_by.setdefault(a, []).append(ci)
         elif k == 'some':
@@ -888,17 +894,17 @@ def emit(log, tree, need):
     return out
 
 
-def attempt(D, args, deadline):
+def attempt(D, args, deadline, max_depth, branches):
     """One round: iterative deepening of the anonymous successors. Returns
-    (log, tree, depth) with tree None when no refutation was found."""
+    (log, tree, depth, stop) with tree None when no refutation was found."""
     tree, log, depth = None, None, 0
-    for depth in range(0, args.max_depth + 1):
+    for depth in range(0, max_depth + 1):
         log = Log()
         st = State(D, log, 0, depth)
         try:
             for a in D.noms:
                 st.nominal_element(a)
-            tree = search(st, deadline, [args.branches])
+            tree = search(st, deadline, [branches])
         except Clash as c:
             tree = ('close', 0, c.info)
         except GiveUp:
@@ -915,8 +921,22 @@ def attempt(D, args, deadline):
 def ask_oracle(D, args, qs):
     """Decide the literal sets `qs` with `km-owl-reference --emp` (untrusted
     use of the checker's data oracle: only the checker's verdict on the
-    final certificate counts)."""
-    qs = sorted(qs, key=lambda L: sorted(L))
+    final certificate counts). Larger sets first, in batches; stop at the
+    first batch with an empty set."""
+    qs = sorted(qs, key=lambda L: (-len(L), sorted(L)))
+    i, size = 0, 256
+    while i < len(qs):
+        batch = qs[i:i + size]
+        if not ask_batch(D, args, batch):
+            return False
+        i += len(batch)
+        size *= 8
+        if any(D.emp_known[L] for L in batch):
+            break
+    return True
+
+
+def ask_batch(D, args, qs):
     qpath = (args.out or 'refute') + '.emp.q'
     with open(qpath, 'w') as f:
         for L in qs:
@@ -942,6 +962,8 @@ def main():
     ap.add_argument('--oracle', help='km-owl-reference binary for --emp queries')
     ap.add_argument('--ofn', help='the ontology (for --emp queries)')
     ap.add_argument('--rounds', type=int, default=4)
+    ap.add_argument('--eager-top', action='store_true',
+                    help='apply disjunctive gcis with an empty body to every element')
     ap.add_argument('--oracle-timeout', type=float, default=280)
     args = ap.parse_args()
     t0 = time.time()
@@ -949,22 +971,34 @@ def main():
     index(D)
     deadline = t0 + args.time_limit
     log, tree, depth = None, None, 0
-    for rnd in range(args.rounds):
-        D.queries = set()
-        log, tree, depth, stop = attempt(D, args, deadline)
+    D.eager_top = args.eager_top
+    # Horn rounds first (no successors, no splits) to collect the oracle
+    # queries cheaply, then the full search, each with oracle rounds.
+    phases = [(0, 0), (args.max_depth, args.branches)]
+    rnd = 0
+    for (md, br) in phases:
+        stop = False
+        for _ in range(args.rounds):
+            D.queries = set()
+            log, tree, depth, stop = attempt(D, args, deadline, md, br)
+            if tree is not None or stop:
+                break
+            new = {L for L in D.queries if L not in D.emp_known}
+            if not new or not args.oracle or not args.ofn:
+                break
+            rnd += 1
+            print(f"produce: round {rnd}: {len(new)} oracle queries", file=sys.stderr)
+            try:
+                if not ask_oracle(D, args, new):
+                    stop = True
+                    break
+            except subprocess.TimeoutExpired:
+                print("produce: oracle timeout", file=sys.stderr)
+                stop = True
+                break
+            print(f"produce: round {rnd}: {sum(1 for L in new if D.emp_known.get(L))} empty", file=sys.stderr)
         if tree is not None or stop:
             break
-        new = {L for L in D.queries if L not in D.emp_known}
-        if not new or not args.oracle or not args.ofn:
-            break
-        print(f"produce: round {rnd}: {len(new)} oracle queries", file=sys.stderr)
-        try:
-            if not ask_oracle(D, args, new):
-                break
-        except subprocess.TimeoutExpired:
-            print("produce: oracle timeout", file=sys.stderr)
-            break
-        print(f"produce: round {rnd}: {sum(1 for L in new if D.emp_known[L])} empty", file=sys.stderr)
     if tree is None:
         print("produce: no refutation found (unchecked)", file=sys.stderr)
         sys.exit(1)

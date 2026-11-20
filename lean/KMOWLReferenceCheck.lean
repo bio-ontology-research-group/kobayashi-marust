@@ -2993,7 +2993,7 @@ partial def refuteWhy {n m p q : Nat} (B : Array (SRIQD.Clause (Fin n) (Fin m) (
 /-- Why the refutation route rejects (diagnostic). -/
 def refuteDecline (O : OWL.Ontology) (pf : ContextCalculus.SRIQN.Refute.Proof) (explain : Bool) :
     String :=
-  match refutePrep (refuteWeaken O) with
+  match refutePrep O with
   | none => "not recognised: a DatatypeDefinition of a datatype of the map, a recursive definition, or two definitions of one datatype"
   | some X =>
     if !X.isSROIQDKB then
@@ -3025,9 +3025,10 @@ reading of the free datatypes, the atoms that hold there (the data oracle
 of the producer). Diagnostic output, not part of a proved statement. -/
 def printRefuteClauses (O : OWL.Ontology) : IO UInt32 := do
   let out ← IO.getStdout
-  let dropped := O.axioms.filter fun ax => !keepAx ax
+  let dropped := (O.axioms.filter fun ax => !ax.noKey) ++
+    ((refuteStage O).map fun Y => Y.axioms.filter fun ax => !keepAx ax).getD []
   out.putStrLn s!"dropped {dropped.length} {" ".intercalate (dropped.map axKind).eraseDups}"
-  match refutePrep (refuteWeaken O) with
+  match refutePrep O with
   | none => decline "not recognised: DatatypeDefinition"
   | some X =>
     if !X.isSROIQDKB then
@@ -3066,7 +3067,7 @@ declares the set empty, `0` otherwise, `x` for a malformed line. A producer
 aid only: nothing printed here is a certified statement. -/
 def runRefuteEmp (O : OWL.Ontology) (f : String) : IO UInt32 := do
   let out ← IO.getStdout
-  match refutePrep (refuteWeaken O) with
+  match refutePrep O with
   | none => decline "not recognised: DatatypeDefinition"
   | some X =>
     match translateSHOIQD (roleOff X) [] with

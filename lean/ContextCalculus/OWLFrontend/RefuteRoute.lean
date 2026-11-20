@@ -4,10 +4,12 @@ import ContextCalculus.OWLFrontend.HintRoute
 /-!
 # The refutation route (`--procedure refute`, v1.7.0 task inc1)
 
-`docs/V1.7.0-INCONSISTENCY-CERT.md`. The route first drops the axioms outside
-the chain-route fragment (`refuteWeaken`; a weaker ontology without a model
-shows that the input has none), then reads the rest as the hint route does (datatype definitions unfolded, disjoint unions rewritten,
-anonymous individuals renamed) and translates the SROIQ(D) knowledge base to
+`docs/V1.7.0-INCONSISTENCY-CERT.md`. The route reads an ontology as the hint
+route does (datatype definitions unfolded, disjoint unions rewritten,
+anonymous individuals renamed), but drops keys before the renaming and,
+after it, every axiom outside the chain-route fragment (`refuteWeaken`): a
+weaker ontology without a model shows that the input has none. It then
+translates the SROIQ(D) knowledge base to
 the `SRIQN` data ontology `dosnC` of the chain route (`sroiq_consistent`:
 the ontology is consistent at the OWL 2 datatype map iff `dosnC` is
 consistent in the OWL 2 data theory). It then checks a refutation of `dosnC`
@@ -87,6 +89,8 @@ theorem owlTheory_nonempty (pat : String → String → Prop) {q : Nat} (spec : 
   obtain ⟨e, -, -⟩ := hΘ
   exact ⟨e.symm (.bool true)⟩
 
+/-! ## The route -/
+
 /-! ## Weakening
 
 A refutation needs only one direction: if a weaker ontology (every model of
@@ -106,6 +110,26 @@ def keepAx : Axiom → Bool
 /-- The kept axioms. -/
 def refuteWeaken (O : Ontology) : Ontology := ⟨O.axioms.filter keepAx⟩
 
+/-- The axioms without keys. -/
+def dropKeys (O : Ontology) : Ontology := ⟨O.axioms.filter Axiom.noKey⟩
+
+theorem noKey_dropKeys {O : Ontology} : (dropKeys O).noKey = true := by
+  simp [dropKeys, Ontology.noKey]
+
+theorem model_dropKeys {DM : DatatypeMap} {Dom : Type} {O : Ontology} {I : Interp DM Dom}
+    (h : OWL.Model O I) : OWL.Model (dropKeys O) I := by
+  intro ax hax
+  obtain ⟨hmem, hk⟩ := List.mem_filter.1 hax
+  have hs := h ax hmem
+  cases ax with
+  | hasKey => simp [Axiom.noKey] at hk
+  | _ => exact hs
+
+theorem consistentAt_dropKeys {DM : DatatypeMap} {O : Ontology}
+    (h : ConsistentAt DM O) : ConsistentAt DM (dropKeys O) := by
+  obtain ⟨Dom, hD, I, hI⟩ := h
+  exact ⟨Dom, hD, I, model_dropKeys hI⟩
+
 theorem model_refuteWeaken {DM : DatatypeMap} {Dom : Type} {O : Ontology} {I : Interp DM Dom}
     (h : OWL.Model O I) : OWL.Model (refuteWeaken O) I := by
   intro ax hax
@@ -120,23 +144,29 @@ theorem consistentAt_refuteWeaken {DM : DatatypeMap} {O : Ontology}
   obtain ⟨Dom, hD, I, hI⟩ := h
   exact ⟨Dom, hD, I, model_refuteWeaken hI⟩
 
-/-! ## The route -/
-
-/-- The ontology the route reads: datatype definitions unfolded (when there
-are any), disjoint unions rewritten, anonymous individuals renamed. -/
-def refutePrep (O : Ontology) : Option Ontology :=
+/-- The ontology before the weakening: datatype definitions unfolded (when
+there are any), disjoint unions rewritten, keys dropped, anonymous individuals
+renamed. -/
+def refuteStage (O : Ontology) : Option Ontology :=
   (if (splitDef O.axioms).isSome then dtLoop O.axioms.length O else some O).map
-    fun O' => anonOff [] (duOff O')
+    fun O' => anonOff [] (dropKeys (duOff O'))
+
+/-- The ontology the route reads: `refuteStage`, then the kept axioms. -/
+def refutePrep (O : Ontology) : Option Ontology :=
+  (refuteStage O).map refuteWeaken
 
 theorem consistentAt_refutePrep (pat : String → String → Prop) {O X : Ontology}
-    (h : refutePrep O = some X) (hk : X.noKey = true) :
-    ConsistentAt (owl2MapP pat) O ↔ ConsistentAt (owl2MapP pat) X := by
-  unfold refutePrep at h
-  obtain ⟨O', hO', rfl⟩ := Option.map_eq_some_iff.1 h
-  rw [consistentAt_anonOff (noKey_of_anonOffK hk), consistentAt_duOff]
-  split_ifs at hO' with hs
-  · exact consistentAt_dtLoop hO'
-  · cases hO'; exact Iff.rfl
+    (h : refutePrep O = some X) (hc : ConsistentAt (owl2MapP pat) O) :
+    ConsistentAt (owl2MapP pat) X := by
+  unfold refutePrep refuteStage at h
+  obtain ⟨Y, hY, rfl⟩ := Option.map_eq_some_iff.1 h
+  obtain ⟨O', hO', rfl⟩ := Option.map_eq_some_iff.1 hY
+  have h1 : ConsistentAt (owl2MapP pat) O' := by
+    split_ifs at hO' with hs
+    · exact (consistentAt_dtLoop hO').1 hc
+    · cases hO'; exact hc
+  have h2 := consistentAt_dropKeys ((consistentAt_duOff O').2 h1)
+  exact consistentAt_refuteWeaken ((consistentAt_anonOff (W := []) noKey_dropKeys).2 h2)
 
 /-- The refutation checked on the chain-route translation of a prepared
 ontology. -/
@@ -173,9 +203,9 @@ theorem refuteChain_sound (pat : String → String → Prop) {X : Ontology} {pf 
       rw [sroiq_consistent pat hX hT hE]
       exact SRIQN.Refute.refute_sound (owlTheory_nonempty pat _) (empC_sound pat (spec T.tab)) h
 
-/-- **The refutation route**: on the kept axioms (`refuteWeaken`). -/
+/-- **The refutation route.** -/
 def refuteP (O : Ontology) (pf : SRIQN.Refute.Proof) : Bool :=
-  match refutePrep (refuteWeaken O) with
+  match refutePrep O with
   | some X => refuteChain X pf
   | none => false
 
@@ -187,9 +217,8 @@ theorem refuteP_sound (pat : String → String → Prop) {O : Ontology} {pf : SR
   unfold refuteP at h
   split at h
   · next X hX =>
-    obtain ⟨hk, hc⟩ := refuteChain_sound pat h
     intro hO
-    exact hc ((consistentAt_refutePrep pat hX hk).1 (consistentAt_refuteWeaken hO))
+    exact (refuteChain_sound pat h).2 (consistentAt_refutePrep pat hX hO)
   · cases h
 
 end ContextCalculus.OWLFrontend
