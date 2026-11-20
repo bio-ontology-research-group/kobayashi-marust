@@ -1,0 +1,6 @@
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/dt-empty>
+  Declaration(Class(<http://ex/A>))
+  Declaration(DataProperty(<http://ex/t>))
+  SubClassOf(<http://ex/A> DataSomeValuesFrom(<http://ex/t> DatatypeRestriction(xsd:dateTime xsd:minExclusive "2004-12-27T06:00:00Z"^^xsd:dateTime xsd:maxExclusive "2004-12-27T06:00:00Z"^^xsd:dateTime)))
+)

@@ -1,0 +1,12 @@
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/repro-13077>
+  Declaration(Class(<http://www.polizei.hessen.de/CRIME/DomusAG#TWE>))
+  Declaration(DataProperty(<http://www.polizei.hessen.de/CRIME/DomusAG#tatuhrzeit_von>))
+  SubClassOf(
+    DataSomeValuesFrom(
+      <http://www.polizei.hessen.de/CRIME/DomusAG#tatuhrzeit_von>
+      DatatypeRestriction(xsd:dateTime xsd:minExclusive "2004-12-27T06:00:00"^^xsd:dateTime)
+    )
+    <http://www.polizei.hessen.de/CRIME/DomusAG#TWE>
+  )
+)

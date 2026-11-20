@@ -1,0 +1,6 @@
+Ontology(<urn:t:asym>
+Declaration(Class(<urn:t:A>))
+Declaration(ObjectProperty(<urn:t:r>))
+AsymmetricObjectProperty(<urn:t:r>)
+SubClassOf(<urn:t:A> ObjectSomeValuesFrom(<urn:t:r> ObjectSomeValuesFrom(<urn:t:r> owl:Thing)))
+)
