@@ -1,5 +1,6 @@
 import ContextCalculus.SRIQN.Refute
 import ContextCalculus.OWLFrontend.HintRoute
+import ContextCalculus.OWLFrontend.RuleGround
 
 /-!
 # The refutation route (`--procedure refute`, v1.7.0 task inc1)
@@ -221,9 +222,38 @@ theorem refuteP_sound (pat : String → String → Prop) {O : Ontology} {pf : SR
     exact (refuteChain_sound pat h).2 (consistentAt_refutePrep pat hX hO)
   · cases h
 
+/-! ## Ontologies with rules
+
+Dropping the rules (and the keys) of an ontology with DL-safe rules is a
+weakening too: a model of the ontology with its rules satisfies every other
+axiom, whatever the reading of the built-ins. -/
+
+theorem model_dropKeys_of_modelR {DM : DatatypeMap} {Dom : Type} {bi : BuiltIns DM}
+    {R : OntologyR} {I : Interp DM Dom} (h : ModelR bi R I) : OWL.Model (dropKeys R.onto) I := by
+  intro ax hax
+  obtain ⟨hmem, hk⟩ := List.mem_filter.1 hax
+  have hs := h.1 ax hmem
+  cases ax with
+  | hasKey => simp [Axiom.noKey] at hk
+  | _ => exact hs
+
+/-- The refutation route on an ontology with rules: the axioms without the
+rules and keys. -/
+def refutePR (R : OntologyR) (pf : SRIQN.Refute.Proof) : Bool :=
+  refuteP (dropKeys R.onto) pf
+
+/-- **Soundness with rules**: for every reading of `xsd:pattern` and of the
+built-ins. -/
+theorem refutePR_sound (pat : String → String → Prop) {R : OntologyR} {pf : SRIQN.Refute.Proof}
+    (h : refutePR R pf = true) (bi : BuiltIns (owl2MapP pat)) :
+    ¬ ConsistentAtR (owl2MapP pat) bi R := by
+  rintro ⟨Dom, hD, I, hI⟩
+  exact refuteP_sound pat h ⟨Dom, hD, I, model_dropKeys_of_modelR hI⟩
+
 end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.empOWL_sound
 #print axioms ContextCalculus.OWLFrontend.model_refuteWeaken
 #print axioms ContextCalculus.OWLFrontend.refuteChain_sound
 #print axioms ContextCalculus.OWLFrontend.refuteP_sound
+#print axioms ContextCalculus.OWLFrontend.refutePR_sound

@@ -903,9 +903,51 @@ def emit(log, tree, need):
     return out
 
 
-def attempt(D, args, deadline, max_depth, branches):
+def nominal_groups(D):
+    """Nominals grouped by their told classes (`gci a -> C`): one
+    representative per group, smallest groups last."""
+    told = {}
+    for ci, cl in enumerate(D.clauses):
+        if cl[0] == 'gci' and len(cl[1]) == 1 and len(cl[2]) == 1 and cl[1][0] in D.nomset:
+            told.setdefault(cl[1][0], set()).add(cl[2][0])
+    groups = {}
+    for a in D.noms:
+        groups.setdefault(frozenset(told.get(a, ())), []).append(a)
+    return [v[0] for k, v in sorted(groups.items(), key=lambda kv: (-len(kv[0]), -len(kv[1])))]
+
+
+def attempt_local(D, args, deadline, max_depth, branches):
+    """One nominal at a time (one per group of told classes): the
+    refutation of an instance of an unsatisfiable class needs only its
+    element (and the nominals the clauses reach)."""
+    reps = nominal_groups(D)
+    print(f"produce: local mode over {len(reps)} groups", file=sys.stderr)
+    for a in reps:
+        if time.time() > deadline:
+            print("produce: time limit in local mode", file=sys.stderr)
+            return None, None, 0, True
+        local_deadline = min(deadline, time.time() + args.local_time)
+        # depth 0 is the Horn phase's job; deepen per nominal
+        for depth in range(1, max_depth + 1):
+            log = Log()
+            st = State(D, log, 0, depth)
+            try:
+                st.nominal_element(a)
+                tree = search(st, local_deadline, [branches])
+            except Clash as c:
+                tree = ('close', 0, c.info)
+            except (GiveUp, RecursionError):
+                break
+            if tree is not None:
+                return log, tree, depth, False
+    return None, None, max_depth, False
+
+
+def attempt(D, args, deadline, max_depth, branches, local=False):
     """One round: iterative deepening of the anonymous successors. Returns
     (log, tree, depth, stop) with tree None when no refutation was found."""
+    if local:
+        return attempt_local(D, args, deadline, max_depth, branches)
     tree, log, depth = None, None, 0
     for depth in range(0, max_depth + 1):
         log = Log()
@@ -995,6 +1037,8 @@ def main():
     ap.add_argument('--oracle', help='km-owl-reference binary for --emp queries')
     ap.add_argument('--ofn', help='the ontology (for --emp queries)')
     ap.add_argument('--rounds', type=int, default=4)
+    ap.add_argument('--local-time', type=float, default=2,
+                    help='seconds per nominal in local mode')
     ap.add_argument('--eager-top', action='store_true',
                     help='apply disjunctive gcis with an empty body to every element')
     args = ap.parse_args()
@@ -1008,15 +1052,19 @@ def main():
     # queries cheaply, then the full search, each with oracle rounds.
     # The Horn rounds grow a budget of agenda steps: a local clash in a large
     # ABox shows up (with its oracle queries) long before the saturation ends.
-    phases = [(0, 0, 20000), (0, 0, 200000), (0, 0, None), (args.max_depth, args.branches, None)]
+    # Then one nominal at a time with successors and splits, then everything.
+    phases = [(0, 0, 20000, False), (0, 0, 200000, False),
+              (args.max_depth, args.branches, None, True),
+              (0, 0, None, False),
+              (args.max_depth, args.branches, None, False)]
     rnd = 0
-    for (md, br, pb) in phases:
+    for (md, br, pb, local) in phases:
         D.pop_budget = pb
         stop = False
         for _ in range(args.rounds):
             D.queries = set()
             D.queries_entail = set()
-            log, tree, depth, stop = attempt(D, args, deadline, md, br)
+            log, tree, depth, stop = attempt(D, args, deadline, md, br, local)
             if tree is not None or stop:
                 break
             new = {L for L in D.queries if L not in D.emp_known}

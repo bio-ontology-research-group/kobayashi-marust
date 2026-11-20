@@ -2962,6 +2962,16 @@ def publishRefuted {O : OWL.Ontology} {pf : ContextCalculus.SRIQN.Refute.Proof}
   out.flush
   return 0
 
+/-- Print a certified refutation of an ontology with rules
+(`refutePR_sound`: no model at the OWL 2 datatype map, for every reading of
+`xsd:pattern` and of the built-ins). -/
+def publishRefutedR {R : OWL.OntologyR} {pf : ContextCalculus.SRIQN.Refute.Proof}
+    (_h : refutePR R pf = true) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn "{\"format\":\"owl-refute-v1\",\"consistent\":false,\"certified\":true,\"rules\":\"dropped\"}"
+  out.flush
+  return 0
+
 open ContextCalculus.SRIQN.Refute in
 /-- The first failing step (diagnostic, `--explain`; mirrors `check`). -/
 partial def refuteWhy {n m p q : Nat} (B : Array (SRIQD.Clause (Fin n) (Fin m) (Fin p) (Fin q)))
@@ -3112,33 +3122,51 @@ def runRefuteEmp (O : OWL.Ontology) (f : String) : IO UInt32 := do
       out.flush
       return 0
 
-/-- `--procedure refute --cert FILE [--explain]`, `--print-clauses` or `--emp FILE`. -/
-def runRefute (timing : Bool) (args : Args) (text : String) : IO UInt32 := do
-  let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
-  match parsed with
-  | .error reason => decline s!"parse rejected: {reason}"
-  | .ok O =>
-    if args.printClauses then printRefuteClauses O
-    else if let some f := args.empFile then runRefuteEmp O f
-    else match args.cert with
-      | none =>
-        IO.eprintln "refute: --cert FILE or --print-clauses is required"
+/-- `--procedure refute --cert FILE [--explain]`, `--print-clauses` or `--emp FILE`
+on `O`; `R? = some R` when `O` is `dropKeys R.onto`
+for an ontology `R` with rules. -/
+def runRefuteOn (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL.OntologyR) :
+    IO UInt32 := do
+  if args.printClauses then printRefuteClauses O
+  else if let some f := args.empFile then runRefuteEmp O f
+  else match args.cert with
+    | none =>
+      IO.eprintln "refute: --cert FILE or --print-clauses is required"
+      return 2
+    | some f =>
+      match ← (IO.FS.readFile f).toBaseIO with
+      | .error err =>
+        IO.eprintln s!"failed to read certificate {f}: {err}"
         return 2
-      | some f =>
-        match ← (IO.FS.readFile f).toBaseIO with
-        | .error err =>
-          IO.eprintln s!"failed to read certificate {f}: {err}"
+      | .ok ctext =>
+        match parseRefuteCert ctext with
+        | .error e =>
+          IO.eprintln s!"bad certificate {f}: {e}"
           return 2
-        | .ok ctext =>
-          match parseRefuteCert ctext with
-          | .error e =>
-            IO.eprintln s!"bad certificate {f}: {e}"
-            return 2
-          | .ok pf =>
+        | .ok pf =>
+          match R? with
+          | some R =>
+            let ⟨res, hres⟩ ← timedPhase timing "refute" (fun _ => refutePR R pf)
+            match res, hres with
+            | true, h => publishRefutedR h.symm
+            | false, _ => decline (refuteDecline O pf args.explain)
+          | none =>
             let ⟨res, hres⟩ ← timedPhase timing "refute" (fun _ => refuteP O pf)
             match res, hres with
             | true, h => publishRefuted h.symm
             | false, _ => decline (refuteDecline O pf args.explain)
+
+/-- `--procedure refute`: an ontology with DL-safe rules is read without its
+rules (`refutePR`, `refutePR_sound`). -/
+def runRefute (timing : Bool) (args : Args) (text : String) : IO UInt32 := do
+  let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
+  match parsed with
+  | .ok O => runRefuteOn timing args O none
+  | .error reason =>
+    match parseRules? text reason with
+    | some (.ok R) => runRefuteOn timing args (dropKeys R.onto) (some R)
+    | some (.error e) => decline s!"parse rejected: {e}"
+    | none => decline s!"parse rejected: {reason}"
 
 
 /-- Read the hint file, if any. -/
