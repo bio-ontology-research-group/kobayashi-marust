@@ -145,10 +145,25 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     /** Rolled-up forest ABox of the committed revision; null when not applicable. */
     private volatile ForestABoxRollup activeRollup;
     /**
+     * The native class rows of the committed revision. They stay valid when
+     * the session that produced them is stopped later, so answers built from
+     * them (the rolled-up ABox) never read a missing session as "no rows".
+     */
+    private volatile Map<String, String[]> committedRows;
+    /** True while a classification transaction runs on the incremental session. */
+    private volatile boolean sessionBusy;
+    /**
+     * Set when the bulk object property value run of this revision was
+     * stopped by an interrupt or the time out. It only steers later value
+     * queries to the per-property route; it never answers or fails a query.
+     */
+    private volatile boolean bulkValuesStopped;
+    /**
      * The failure of the last native run of each kind on the current ontology
      * version. A later call rethrows it without a new run, until the ontology
      * changes or flush() runs (or, for realization, properties and the data
-     * model, the next classification commits).
+     * model, the next classification commits). A run stopped by interrupt()
+     * or the time out is never remembered: the next call starts a new run.
      */
     private volatile RuntimeException classificationFailure;
     private volatile RuntimeException realizeFailure;
@@ -205,7 +220,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      */
     private void runTask(String title, Runnable work) {
         if (taskDepth > 0) {
-            work.run();
+            // Translate here too, so the caller of a nested task sees a stop as
+            // a stop and does not remember it as a failure of the ontology.
+            try {
+                work.run();
+            } catch (RuntimeException failure) {
+                throw translate(failure);
+            }
             return;
         }
         ReasonerProgressMonitor monitor = getReasonerConfiguration().getProgressMonitor();
@@ -259,15 +280,55 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return failure;
     }
 
-    /** Stop the native work of the running task. Does not wait for the reasoner monitor. */
+    /**
+     * Stop the native work of the running task. Does not wait for the reasoner
+     * monitor. The incremental session is stopped only while a classification
+     * transaction runs on it: during a realization, property or reduction run
+     * it holds the committed class rows, which later answers still need.
+     */
     private void killNative() {
         Process realizing = realizeProcess;
         if (realizing != null) NativeProcessTree.terminateAndWait(realizing);
-        Classifier.Session session = incrementalSession;
-        if (session != null) {
-            session.interrupt();
-            if (incrementalSession == session) incrementalSession = null;
+        if (sessionBusy) {
+            Classifier.Session session = incrementalSession;
+            if (session != null) {
+                session.interrupt();
+                if (incrementalSession == session) incrementalSession = null;
+            }
         }
+    }
+
+    private boolean stopRequested() {
+        return interruptRequested || timedOut;
+    }
+
+    /** The exception that ends a task stopped by interrupt() or the time out. */
+    private RuntimeException stopped() {
+        if (timedOut) {
+            return new TimeOutException("Kobayashi-MaRust exceeded the time out of " + getTimeOut() + " ms");
+        }
+        return new ReasonerInterruptedException("Kobayashi-MaRust was interrupted");
+    }
+
+    private static boolean isStop(Throwable failure) {
+        return failure instanceof ReasonerInterruptedException || failure instanceof TimeOutException;
+    }
+
+    /**
+     * The start and end hook of every one-shot native run. At the start it
+     * registers the process so interrupt() can stop it, and stops it at once
+     * when the stop came first. At the end (null) it throws when the task was
+     * stopped, before the caller reads the output: a stopped process may have
+     * written part of an answer, and that must never be read as complete.
+     */
+    private java.util.function.Consumer<Process> nativeHook() {
+        return process -> {
+            realizeProcess = process;
+            if (stopRequested()) {
+                if (process != null) NativeProcessTree.terminateAndWait(process);
+                else throw stopped();
+            }
+        };
     }
 
     /**
@@ -297,11 +358,6 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return !(failure instanceof ReasonerInterruptedException || failure instanceof TimeOutException);
     }
 
-    private static boolean cacheableWholeRevision(RuntimeException failure, long elapsedMillis) {
-        if (cacheable(failure)) return true;
-        if (failure instanceof TimeOutException && elapsedMillis >= 2_000L) return true;
-        return failure instanceof ReasonerInterruptedException && elapsedMillis >= 5_000L;
-    }
 
     private void forgetFailures() {
         classificationFailure = null;
@@ -309,6 +365,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         propertiesFailure = null;
         dataFailure = null;
         valuesFailure = null;
+        bulkValuesStopped = false;
         reductions.values().removeIf(held -> held instanceof RuntimeException);
     }
 
@@ -319,6 +376,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             classified = true;
         } catch (RuntimeException | Error failure) {
             sourceSynchronized = false;
+            // A failure (or a stop) while the Java hierarchy was being rebuilt
+            // leaves it half built: the next query classifies again instead
+            // of answering from it.
+            if (!hierarchyBuilt) classified = false;
             throw failure;
         }
     }
@@ -346,6 +407,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         // Whether the native answer differs from the one the Java hierarchy was built from.
         boolean answerChanged;
         Classifier.Session session;
+        sessionBusy = true;
+        // interrupt() sets its flag before it reads sessionBusy, so a stop
+        // that missed the session is seen here.
+        if (stopRequested()) {
+            sessionBusy = false;
+            throw stopped();
+        }
         try {
             if (incrementalSession == null) {
                 // Register the session as soon as its process runs, so interrupt()
@@ -369,12 +437,16 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 incrementalSession = null;
             }
             throw new ReasonerInternalException(e);
+        } finally {
+            sessionBusy = false;
         }
         // The native transaction has succeeded. Commit the retained source
         // state now; preparation and native refusal never mutate this cache.
         serialized.commit(prepared);
         committedImports = prepared.imports;
         activeRollup = rollup;
+        committedRows = session.rows();
+        bulkValuesStopped = false;
         precomputedTypes.clear();
         // Class ids are rebuilt below and the ABox may have changed, so the
         // realization of the previous revision no longer applies.
@@ -697,12 +769,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         }
         if (!hasUniversalCandidate) return;
         try {
-            Collection<String> topIris = Classifier.topClasses(sessionSource, process -> {
-                realizeProcess = process;
-                if (process != null && (interruptRequested || timedOut)) {
-                    NativeProcessTree.terminateAndWait(process);
-                }
-            });
+            Collection<String> topIris = Classifier.topClasses(sessionSource, nativeHook());
             for (String iri : topIris) {
                 Integer id = idByIri.get(normalizeIri(iri));
                 if (id != null && findId(id) != findId(nothingId)) {
@@ -712,7 +779,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                     }
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception failure) {
+            // A stopped probe must stop the classification: committing the
+            // hierarchy without its answer would be a partial answer.
+            if (stopRequested() || isStop(failure)) throw stopped();
             // Keep syntactic top equivalences if the auxiliary --top probe fails.
         }
     }
@@ -1306,13 +1376,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (realized != null) return realized;
         if (realizeFailure != null) throw realizeFailure;
         Realized[] out = new Realized[1];
-        long t0 = System.nanoTime();
         try {
             runTask(ReasonerProgressMonitor.REALIZING, () -> out[0] = realizeNow());
         } catch (RuntimeException failure) {
-            if (cacheableWholeRevision(failure, (System.nanoTime() - t0) / 1_000_000L)) {
-                realizeFailure = failure;
-            }
+            if (cacheable(failure)) realizeFailure = failure;
             throw failure;
         }
         return out[0];
@@ -1332,16 +1399,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             if (individuals.isEmpty()) {
                 // A TBox needs no native run.
                 result = new Classifier.Realization();
-            } else if (activeRollup != null && incrementalSession != null) {
-                result = activeRollup.buildRealization(incrementalSession.rows());
+            } else if (activeRollup != null && committedRows != null) {
+                result = activeRollup.buildRealization(committedRows);
             } else {
                 result = Classifier.realize(querySource(),
-                        process -> {
-                            realizeProcess = process;
-                            if (process != null && (interruptRequested || timedOut)) {
-                                NativeProcessTree.terminateAndWait(process);
-                            }
-                        });
+                        nativeHook());
             }
             if (!result.consistent) {
                 realized = built;
@@ -1526,13 +1588,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (model != null) return model;
         if (propertiesFailure != null) throw propertiesFailure;
         ObjectPropertyModel[] out = new ObjectPropertyModel[1];
-        long t0 = System.nanoTime();
         try {
             runTask(CLASSIFYING_OBJECT_PROPERTIES, () -> out[0] = propertiesNow());
         } catch (RuntimeException failure) {
-            if (cacheableWholeRevision(failure, (System.nanoTime() - t0) / 1_000_000L)) {
-                propertiesFailure = failure;
-            }
+            if (cacheable(failure)) propertiesFailure = failure;
             throw failure;
         }
         return out[0];
@@ -1591,12 +1650,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                         String propSource = canUseTBoxQuerySource(Collections.emptyList())
                                 ? tboxQuerySource() : source;
                         Classifier.Properties rows = Classifier.properties(propSource,
-                                process -> {
-                                    realizeProcess = process;
-                                    if (process != null && (interruptRequested || timedOut)) {
-                                        NativeProcessTree.terminateAndWait(process);
-                                    }
-                                });
+                                nativeHook());
                         built = rows.consistent
                                 ? new ObjectPropertyModel(df, signature, rows, hasInverses)
                                 : new ObjectPropertyModel(df, Collections.<OWLObjectProperty>emptySet(), null, false);
@@ -2037,13 +2091,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             // Fall through to native --data-properties or pair-free probe classification.
         }
         DataPropertyModel[] out = new DataPropertyModel[1];
-        long t0 = System.nanoTime();
         try {
             runTask(CLASSIFYING_DATA_PROPERTIES, () -> out[0] = dataPropertiesNow(snapshot));
         } catch (RuntimeException failure) {
-            if (cacheableWholeRevision(failure, (System.nanoTime() - t0) / 1_000_000L)) {
-                dataFailure = failure;
-            }
+            if (cacheable(failure)) dataFailure = failure;
             throw failure;
         }
         dataModel = out[0];
@@ -2066,12 +2117,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                     String dpSource = canUseTBoxQuerySource(Collections.emptyList())
                             ? tboxQuerySource() : querySource();
                     Classifier.DataProperties rows = Classifier.dataProperties(dpSource,
-                            process -> {
-                                realizeProcess = process;
-                                if (process != null && (interruptRequested || timedOut)) {
-                                    NativeProcessTree.terminateAndWait(process);
-                                }
-                            });
+                            nativeHook());
                     return rows.consistent
                             ? DataPropertyModel.fromRows(df, signature, rows)
                             : DataPropertyModel.fromRows(df, Collections.<OWLDataProperty>emptySet(), null);
@@ -2620,12 +2666,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             baseSource = querySource();
         }
         try {
-            return ExtendedRun.run(baseSource, df, extra, realize, top, freeUnknownDatatypes, label, process -> {
-                realizeProcess = process;
-                if (process != null && (interruptRequested || timedOut)) {
-                    NativeProcessTree.terminateAndWait(process);
-                }
-            });
+            return ExtendedRun.run(baseSource, df, extra, realize, top, freeUnknownDatatypes, label, nativeHook());
         } catch (RuntimeException error) {
             throw error;
         } catch (Exception error) {
@@ -4406,13 +4447,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (valuesFailure != null) throw valuesFailure;
         @SuppressWarnings("unchecked")
         Map<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>>[] out = new Map[1];
-        long t0 = System.nanoTime();
         try {
             runTask(COMPUTING_VALUES, () -> out[0] = allObjectValuesNow());
         } catch (RuntimeException failure) {
-            if (cacheableWholeRevision(failure, (System.nanoTime() - t0) / 1_000_000L)) {
-                valuesFailure = failure;
-            }
+            if (cacheable(failure)) valuesFailure = failure;
+            else bulkValuesStopped = true;
             throw failure;
         }
         return out[0];
@@ -4433,8 +4472,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             for (OWLObjectProperty r : ops) built.put(r, new HashMap<>());
             if (!inds.isEmpty() && !ops.isEmpty()) {
                 if (activeRollup != null) {
-                    built = activeRollup.buildObjectPropertyValues(
-                            snapshot, incrementalSession != null ? incrementalSession.rows() : null);
+                    Map<String, String[]> rows = committedRows;
+                    if (rows == null) {
+                        // Never read missing rows as "no values".
+                        throw new ReasonerInternalException(
+                                "Kobayashi-MaRust has no class rows for the committed revision");
+                    }
+                    built = activeRollup.buildObjectPropertyValues(snapshot, rows);
                 } else {
                     Map<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>> fast =
                             ForestABoxRollup.tryComputePositiveRBoxValues(
@@ -4449,12 +4493,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                         if (!active.isEmpty() && !targets.isEmpty()) {
                             if ((active.size() == ops.size() && targets.size() == inds.size())
                                     || (long) active.size() * targets.size() >= 256L) {
-                                Classifier.Values rows = Classifier.values(querySource(), process -> {
-                                    realizeProcess = process;
-                                    if (process != null && (interruptRequested || timedOut)) {
-                                        NativeProcessTree.terminateAndWait(process);
-                                    }
-                                });
+                                Classifier.Values rows = Classifier.values(querySource(), nativeHook());
                                 if (rows.consistent) {
                                     for (String[] t : rows.values) {
                                         OWLObjectProperty r = df.getOWLObjectProperty(IRI.create(normalizeIri(t[0])));
@@ -4705,7 +4744,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (pm == null && mentionsTopOrBottomObjectProperty(querySnapshot())) {
             try {
                 pm = ensureProperties();
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException failure) {
+                if (isStop(failure)) throw failure;
                 // Fall back to direct value query if property classification fails.
             }
         }
@@ -4716,7 +4756,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         }
         if (!individuals.contains(ind)) return freshSubjectValues(ind, simple);
         if (precomputedTypes.contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS)
-                && allObjectValues == null && valuesFailure == null && objectValuesPrecomputable()
+                && allObjectValues == null && valuesFailure == null && !bulkValuesStopped
+                && objectValuesPrecomputable()
                 && (activeRollup != null || !hasObjectOneOf(querySnapshot()))) {
             try {
                 ensureAllObjectValues();
@@ -4794,7 +4835,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (dm == null) {
             try {
                 dm = ensureDataProperties();
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException failure) {
+                if (isStop(failure)) throw failure;
                 // Fall back to direct value query.
             }
         }
