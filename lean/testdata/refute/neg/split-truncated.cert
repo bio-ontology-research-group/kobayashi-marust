@@ -1,0 +1,12 @@
+nom 0 0
+gci 7 0 0
+gci 3 0 1
+gci 2 0 2
+split 3
+gci 4 0 4
+gci 6 0 1 5
+close empty 6
+split 4
+gci 5 0 5
+gci 6 0 1 6
+close empty 7

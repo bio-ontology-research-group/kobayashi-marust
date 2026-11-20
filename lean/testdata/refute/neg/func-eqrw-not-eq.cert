@@ -1,0 +1,14 @@
+nom 0 0
+gci 0 0
+nom 1 1
+gci 0 1
+nom 2 2
+gci 0 2
+gci 4 0 0
+gci 6 0 0
+exnom 5 0 2 7 4
+exnom 3 0 1 6 2
+atmost 2 0 1 2 1 9 3 2 8 5
+eqrw 4 10
+gci 7 1 2 11
+close empty 12
