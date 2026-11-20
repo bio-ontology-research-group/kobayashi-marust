@@ -75,6 +75,7 @@ class Dump:
         # count as nonempty and are queued for the next round.
         self.eager_top = False
         self.pop_budget = None
+        self.lookahead_max = 20000
         self.emp_known = {}
         self.oracle = None
         self.queries = set()
@@ -233,6 +234,7 @@ class State:
         self.pending = []       # disjunction fids
         self.agenda = []
         self.partial = False    # the saturation stopped at the pop budget
+        self.eager_ids = None   # elements that get the `⊤ ⊑ A ⊔ B` splits (None: all)
         self.dead = set()
         self.vdead = set()
 
@@ -248,6 +250,7 @@ class State:
         s.nomelem = dict(self.nomelem)
         s.pending = list(self.pending)
         s.dead = set(self.dead)
+        s.eager_ids = self.eager_ids
         s.vdead = set(self.vdead)
         return s
 
@@ -291,7 +294,8 @@ class State:
         # `⊤ ⊑ A ⊔ B` (the translation's definitional splits, for example
         # `∃u.d ⊔ ∀u.¬d`) only on request (`--eager-top`): they add one
         # pending disjunction per element and rarely help a refutation.
-        for ci in (self.D.gci_empty if self.D.eager_top else self.D.gci_empty_unit):
+        eager = self.D.eager_top and (self.eager_ids is None or x in self.eager_ids)
+        for ci in (self.D.gci_empty if eager else self.D.gci_empty_unit):
             self.apply_gci(ci, x)
 
     # ---- rules -----------------------------------------------------------
@@ -736,32 +740,64 @@ def disj_alts(log, fid):
 def search(st, deadline, budget):
     """Saturate; on a clash return a tree, otherwise split on a pending
     disjunction. Returns a tree or None."""
+    if time.time() > deadline:
+        raise GiveUp()
     try:
         st.run(deadline)
     except Clash as c:
         return ('close', st.ctx, c.info)
     if budget[0] <= 0 or st.partial:
         return None
-    # pick a pending disjunction none of whose alternatives holds
-    for fid in st.pending:
+    # a pending disjunction none of whose alternatives holds
+    cands = [fid for fid in st.pending
+             if not any(st.has(a) for a in disj_alts(st.L, fid))]
+    if not cands:
+        return None
+    fid = pick_split(st, cands, deadline) if len(cands) > 1 else cands[0]
+    alts = disj_alts(st.L, fid)
+    budget[0] -= 1
+    subs = []
+    for i, a in enumerate(alts):
+        ctx = len(st.L.ctx_parent)
+        st.L.ctx_parent.append(st.ctx)
+        child = st.copy(ctx)
+        child.pending = [f for f in child.pending if f != fid]
+        # the assumption line: atom a (recorded as a step of kind 'assume')
+        child.step('assume', (fid, i), [], [a])
+        sub = search(child, deadline, budget)
+        if sub is None:
+            return None
+        subs.append(sub)
+    return ('split', st.ctx, fid, subs)
+
+
+def pick_split(st, cands, deadline):
+    """Lookahead on small states: the disjunction with the most alternatives
+    that close by saturation alone (all closed first); otherwise the first."""
+    if len(st.fact) > st.D.lookahead_max:
+        return cands[0]
+    best, best_score = cands[0], (0, 0)
+    for fid in cands:
+        if time.time() > deadline:
+            raise GiveUp()
         alts = disj_alts(st.L, fid)
-        if any(st.has(a) for a in alts):
-            continue
-        budget[0] -= 1
-        subs = []
-        for i, a in enumerate(alts):
+        closed = 0
+        for a in alts:
             ctx = len(st.L.ctx_parent)
             st.L.ctx_parent.append(st.ctx)
             child = st.copy(ctx)
-            child.pending = [f for f in child.pending if f != fid]
-            # the assumption line: atom a (recorded as a step of kind 'assume')
-            child.step('assume', (fid, i), [], [a])
-            sub = search(child, deadline, budget)
-            if sub is None:
-                return None
-            subs.append(sub)
-        return ('split', st.ctx, fid, subs)
-    return None
+            child.pending = []
+            child.step('assume', (fid, -1), [], [a])
+            try:
+                child.run(deadline)
+            except Clash:
+                closed += 1
+        if closed == len(alts):
+            return fid
+        score = (closed, -len(alts))
+        if score > best_score:
+            best, best_score = fid, score
+    return best
 
 
 # ---- emission ---------------------------------------------------------------
@@ -921,23 +957,43 @@ def attempt_local(D, args, deadline, max_depth, branches):
     refutation of an instance of an unsatisfiable class needs only its
     element (and the nominals the clauses reach)."""
     reps = nominal_groups(D)
-    print(f"produce: local mode over {len(reps)} groups", file=sys.stderr)
-    for a in reps:
+    focus = []
+    if args.focus:
+        iri_to_nom = {iri: a for a, iri in D.nominal_iri.items() if a in D.nomset}
+        focus = [iri_to_nom[i] for i in args.focus if i in iri_to_nom]
+    print(f"produce: local mode over {len(focus)} focus nominals and {len(reps)} groups",
+          file=sys.stderr)
+    reps = [(a, args.focus_time) for a in focus] + [(a, None) for a in reps]
+    eager = D.eager_top
+    D.eager_top = True   # small states: the definitional splits may matter
+    try:
+        return local_loop(D, args, deadline, max_depth, branches, reps)
+    finally:
+        D.eager_top = eager
+
+
+def local_loop(D, args, deadline, max_depth, branches, reps):
+    for k, (a, secs) in enumerate(reps):
         if time.time() > deadline:
             print("produce: time limit in local mode", file=sys.stderr)
             return None, None, 0, True
-        local_deadline = min(deadline, time.time() + args.local_time)
-        # depth 0 is the Horn phase's job; deepen per nominal
-        for depth in range(1, max_depth + 1):
+        if secs is None:
+            # few groups: more time each (half of what is left, shared)
+            left = max(0.0, deadline - time.time())
+            secs = max(args.local_time, min(60.0, 0.5 * left / (len(reps) - k)))
+        for depth in range(0, max_depth + 1):
+            # each depth its own share of the time of this nominal
+            local_deadline = min(deadline, time.time() + secs / (max_depth + 1))
             log = Log()
             st = State(D, log, 0, depth)
+            st.eager_ids = {log.next_id}   # the splits only at this element
             try:
                 st.nominal_element(a)
                 tree = search(st, local_deadline, [branches])
             except Clash as c:
                 tree = ('close', 0, c.info)
             except (GiveUp, RecursionError):
-                break
+                continue
             if tree is not None:
                 return log, tree, depth, False
     return None, None, max_depth, False
@@ -1039,6 +1095,11 @@ def main():
     ap.add_argument('--rounds', type=int, default=4)
     ap.add_argument('--local-time', type=float, default=2,
                     help='seconds per nominal in local mode')
+    ap.add_argument('--focus', action='append', default=[],
+                    help='an individual IRI to try first in local mode (for example from '
+                         "KM's justification); repeatable")
+    ap.add_argument('--focus-time', type=float, default=60,
+                    help='seconds per focus individual')
     ap.add_argument('--eager-top', action='store_true',
                     help='apply disjunctive gcis with an empty body to every element')
     args = ap.parse_args()
