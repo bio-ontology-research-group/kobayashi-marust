@@ -2390,7 +2390,16 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   let propsByR : Std.HashMap (SRI.RoleT (Fin W.M)) (List (Nat × String)) :=
     W.props.zipIdx.reverse.foldl (fun mp (p, idx) =>
       mp.insert p.2 ((idx, propStr p.1) :: mp.getD p.2 [])) {}
-  let edges := elems.flatMap fun w =>
+  -- `W.adj` lists the edges only on the chain route; the Self route fills
+  -- `W.lab` alone, so it keeps the scan over pairs of individual elements
+  let edges := if !W.chainR then elems.flatMap fun w => elems.filterMap fun v =>
+    if w.val ≠ v.val then
+      let L := W.lab w v
+      if L = ∅ then none else
+        some ("[" ++ toString w.val ++ "," ++ toString v.val ++ "," ++
+          jsonList ((W.props.filter fun p => decide (p.2 ∈ L)).map fun p => propStr p.1) ++ "]")
+    else none
+  else elems.flatMap fun w =>
     let nbrs := (SRIQN.HF.merged (W.adj w)).filterMap fun (v, L) =>
       if w.val ≠ v.val && decide (L ≠ ∅) then
         (elemPos[v.val]?).map fun pos => (pos, v, L)

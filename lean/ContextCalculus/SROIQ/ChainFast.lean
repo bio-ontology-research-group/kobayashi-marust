@@ -304,14 +304,10 @@ theorem nodup_topItems (m : Nat) : (topItems m).Nodup := by
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hx hy
   rcases hx with rfl | rfl <;> rcases hy with h | h <;> simp_all
 
-def activeItems (m : Nat) (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) :
-    List (RT m × Bool) :=
-  (topItems m).filter fun it => rs.any fun p => le p.1 it.1 || decide (it.1 ∈ p.2)
-
-/-- The table of the moves of the active top items. -/
+/-- The table of the moves of the top items. -/
 def movesTab (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) :
     Std.HashMap (RT m × Bool) (List (Option (RT m) × Stack (Fin m))) :=
-  (activeItems m rs le).foldl (fun mp it => mp.insert it (succsT rs le [it])) ∅
+  Std.HashMap.ofList ((topItems m).map fun it => (it, succsT rs le [it]))
 
 /-- The moves of a stack read from the table. -/
 def succsM (tb : Std.HashMap (RT m × Bool) (List (Option (RT m) × Stack (Fin m))))
@@ -320,30 +316,13 @@ def succsM (tb : Std.HashMap (RT m × Bool) (List (Option (RT m) × Stack (Fin m
   | [] => []
   | it :: rest => ((tb[it]?).getD (succsT rs le [it])).map fun p => (p.1, p.2 ++ rest)
 
-theorem foldl_insert_map_get {α β : Type} [BEq α] [LawfulBEq α] [Hashable α]
-    (f : α → β) :
-    ∀ (l : List α) (mp : Std.HashMap α β),
-      (∀ x v, mp[x]? = some v → v = f x) →
-      ∀ x v, (l.foldl (fun m a => m.insert a (f a)) mp)[x]? = some v → v = f x
-  | [], mp, hinv, x, v, h => hinv x v h
-  | a :: l, mp, hinv, x, v, h => by
-    refine foldl_insert_map_get f l (mp.insert a (f a)) (fun y w hy => ?_) x v h
-    rw [Std.HashMap.getElem?_insert] at hy
-    by_cases hay : a == y
-    · simp only [hay, ↓reduceIte, Option.some.injEq] at hy
-      have hEq : a = y := eq_of_beq hay
-      subst hEq
-      exact hy.symm
-    · simp only [hay, Bool.false_eq_true, ↓reduceIte] at hy
-      exact hinv y w hy
-
-theorem movesTab_getD (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) (it : RT m × Bool) :
-    ((movesTab rs le)[it]?).getD (succsT rs le [it]) = succsT rs le [it] := by
-  have hinv := foldl_insert_map_get (fun x => succsT rs le [x]) (activeItems m rs le) ∅
-    (fun _ _ h => by simp at h) it
-  rcases h : (movesTab rs le)[it]? with _ | v
-  · rfl
-  · exact hinv v h
+theorem movesTab_get (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) (it : RT m × Bool) :
+    (movesTab rs le)[it]? = some (succsT rs le [it]) := by
+  unfold movesTab
+  refine Std.HashMap.getElem?_ofList_of_mem (beq_self_eq_true it) ?_
+    (List.mem_map.2 ⟨it, mem_topItems it, rfl⟩)
+  rw [List.pairwise_map]
+  exact (nodup_topItems m).imp fun h => by simpa using h
 
 theorem succsT_eq_M (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) :
     succsM (movesTab rs le) rs le = succsT rs le := by
@@ -351,7 +330,7 @@ theorem succsT_eq_M (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bo
   cases st with
   | nil => rfl
   | cons it rest =>
-    rw [succsM, movesTab_getD]
+    rw [succsM, movesTab_get, Option.getD_some]
     exact (succsT_top rs le it rest).symm
 
 /-! ## The pairs -/
