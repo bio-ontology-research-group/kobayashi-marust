@@ -17,6 +17,7 @@ import ContextCalculus.SRIQN.HintExplain
 import ContextCalculus.OWLFrontend.HintWitnessA
 import ContextCalculus.OWLFrontend.HintRows
 import ContextCalculus.OWLFrontend.HintRowsD
+import ContextCalculus.OWLFrontend.RefuteRoute
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -1224,6 +1225,8 @@ structure Args where
   dataPropertyRows : Bool := false
   /-- `sroiq-hint --witness`: classes by position in a `class_index` line. -/
   compact : Bool := false
+  /-- `refute`: the refutation certificate file. -/
+  cert : Option String := none
 
 def parseArgs (acc : Args) : List String → Option Args
   | [] => if acc.path.isSome then some acc else none
@@ -1235,6 +1238,9 @@ def parseArgs (acc : Args) : List String → Option Args
     parseArgs { acc with dataRoute := some "sroiq-c2a" } rest
   | "--procedure" :: "sroiq-hint" :: rest =>
     parseArgs { acc with dataRoute := some "sroiq-hint" } rest
+  | "--procedure" :: "refute" :: rest =>
+    parseArgs { acc with dataRoute := some "refute" } rest
+  | "--cert" :: f :: rest => parseArgs { acc with cert := some f } rest
   | "--print-clauses" :: rest => parseArgs { acc with printClauses := true } rest
   | "--row" :: r :: rest => parseArgs { acc with row := some r } rest
   | "--batch" :: f :: rest => parseArgs { acc with batch := some f } rest
@@ -2631,6 +2637,271 @@ def runHintRules (timing : Bool) (args : Args) (R : OWL.OntologyR) : IO UInt32 :
               return 0
             else decline "hint: rejected (an index outside the translation, or the check fails)"
 
+/-! ### The refutation route (`--procedure refute`, task inc1) -/
+
+open ContextCalculus.SRIQN.Refute in
+/-- One step of a certificate line. -/
+def parseStepWords (ws : List String) : Except String Step := do
+  let nums (l : List String) : Except String (List Nat) :=
+    l.mapM fun w => match w.toNat? with
+      | some k => .ok k
+      | none => .error s!"not a number: {w}"
+  match ws with
+  | "nom" :: rest =>
+    match ← nums rest with | [x, a] => return .nom x a | _ => throw "nom X A"
+  | "gci" :: rest =>
+    match ← nums rest with | ci :: x :: refs => return .gci ci x refs | _ => throw "gci CI X REFS"
+  | "ex" :: rest =>
+    match ← nums rest with | [ci, x, r, y] => return .ex ci x r y | _ => throw "ex CI X REF Y"
+  | "exnom" :: rest =>
+    match ← nums rest with
+    | [ci, x, y, r, ry] => return .exNom ci x y r ry
+    | _ => throw "exnom CI X Y REF REFY"
+  | "all" :: rest =>
+    match ← nums rest with
+    | [ci, x, y, r, rr] => return .all ci x y r rr
+    | _ => throw "all CI X Y REF REFR"
+  | "chain" :: rest =>
+    match ← nums rest with
+    | ci :: k :: more =>
+      if more.length == 2 * k + 1 then return .chain ci (more.take (k + 1)) (more.drop (k + 1))
+      else throw "chain CI K X0..XK R1..RK"
+    | _ => throw "chain CI K X0..XK R1..RK"
+  | "atmost" :: rest =>
+    match ← nums rest with
+    | ci :: x :: r :: t :: more =>
+      if more.length == 3 * t then
+        let ys := (List.range t).map fun i => (more.getD (3 * i) 0, more.getD (3 * i + 1) 0, more.getD (3 * i + 2) 0)
+        return .atMost ci x r ys
+      else throw "atmost CI X REF T (Y RR RC)*T"
+    | _ => throw "atmost CI X REF T (Y RR RC)*T"
+  | "nomeq" :: rest =>
+    match ← nums rest with
+    | [a, x, y, r1, r2] => return .nomEq a x y r1 r2
+    | _ => throw "nomeq A X Y REF1 REF2"
+  | "eqsym" :: rest =>
+    match ← nums rest with | [x, y, r] => return .eqSym x y r | _ => throw "eqsym X Y REF"
+  | "eqrw" :: rest =>
+    match ← nums rest with | [r1, r2] => return .eqRw r1 r2 | _ => throw "eqrw REFEQ REF"
+  | "dex" :: rest =>
+    match ← nums rest with | [ci, x, r, w] => return .dEx ci x r w | _ => throw "dex CI X REF W"
+  | "dall" :: rest =>
+    match ← nums rest with
+    | [ci, x, w, r, rd] => return .dAll ci x w r rd
+    | _ => throw "dall CI X W REF REFD"
+  | "datmost" :: rest =>
+    match ← nums rest with
+    | ci :: x :: r :: t :: more =>
+      -- (W RD NL L1..LNL) * T
+      let rec go : Nat → List Nat → Except String (List (Nat × Nat × List Nat))
+        | 0, [] => .ok []
+        | k + 1, w :: rd :: nl :: tl =>
+          match go k (tl.drop nl) with
+          | .ok acc => .ok ((w, rd, tl.take nl) :: acc)
+          | .error e => .error e
+        | _, _ => .error "datmost CI X REF T (W RD NL L*)*T"
+      return .dAtMost ci x r (← go t more)
+    | _ => throw "datmost CI X REF T (W RD NL L*)*T"
+  | "dsub" :: rest =>
+    match ← nums rest with | [ci, x, w, r] => return .dSub ci x w r | _ => throw "dsub CI X W REFD"
+  | "veqsym" :: rest =>
+    match ← nums rest with | [w, w', r] => return .veqSym w w' r | _ => throw "veqsym W W' REF"
+  | "veqrw" :: rest =>
+    match ← nums rest with | [r1, r2] => return .veqRw r1 r2 | _ => throw "veqrw REFEQ REF"
+  | "dlit" :: w :: j :: b :: rest =>
+    match w.toNat?, j.toNat?, (if b == "1" then some true else if b == "0" then some false else none) with
+    | some w, some j, some b => return .dLit w j b (← nums rest)
+    | _, _, _ => throw "dlit W J 0|1 REFS"
+  | "litem" :: rest =>
+    match ← nums rest with | [w, j] => return .litEM w j | _ => throw "litem W J"
+  | _ => throw s!"unknown step: {" ".intercalate ws}"
+
+open ContextCalculus.SRIQN.Refute in
+def parseCloseWords (ws : List String) : Except String Close := do
+  let nums (l : List String) : Except String (List Nat) :=
+    l.mapM fun w => match w.toNat? with
+      | some k => .ok k
+      | none => .error s!"not a number: {w}"
+  match ws with
+  | ["close", "empty", r] => match r.toNat? with | some k => return .empty k | none => throw "close empty REF"
+  | "close" :: "ne" :: rest =>
+    match ← nums rest with | [x, y, a, b] => return .ne x y a b | _ => throw "close ne X Y R1 R2"
+  | "close" :: "vne" :: rest =>
+    match ← nums rest with | [x, y, a, b] => return .vne x y a b | _ => throw "close vne W W' R1 R2"
+  | "close" :: "lits" :: rest =>
+    match ← nums rest with | w :: refs => return .lits w refs | _ => throw "close lits W REFS"
+  | _ => throw s!"bad leaf: {" ".intercalate ws}"
+
+open ContextCalculus.SRIQN.Refute in
+/-- A proof in prefix order: steps, then `close ...` or `split REF` followed
+by the left and the right proof. -/
+partial def parseProofLines : List (List String) → Except String (Proof × List (List String))
+  | [] => .error "certificate: unexpected end"
+  | lines => do
+    let mut acc : Array Step := #[]
+    let mut rest := lines
+    repeat
+      match rest with
+      | [] => throw "certificate: missing close or split"
+      | ws :: tl =>
+        match ws with
+        | "close" :: _ =>
+          let c ← parseCloseWords ws
+          return (.close acc.toList c, tl)
+        | ["split", r] =>
+          match r.toNat? with
+          | none => throw "split REF"
+          | some k =>
+            let (l, tl1) ← parseProofLines tl
+            let (rr, tl2) ← parseProofLines tl1
+            return (.split acc.toList k l rr, tl2)
+        | _ =>
+          acc := acc.push (← parseStepWords ws)
+          rest := tl
+    throw "unreachable"
+
+def parseRefuteCert (text : String) : Except String ContextCalculus.SRIQN.Refute.Proof := do
+  let lines := (text.splitOn "\n").map batchWords |>.filter (· ≠ [])
+  let lines := lines.filter fun ws => ws.head? != some "c"
+  let (pf, rest) ← parseProofLines lines
+  if rest.isEmpty then return pf else throw "certificate: text after the proof"
+
+/-- Print a certified refutation (`refuteP_sound`: the ontology has no model at
+the OWL 2 datatype map, for every reading of `xsd:pattern`). -/
+def publishRefuted {O : OWL.Ontology} {pf : ContextCalculus.SRIQN.Refute.Proof}
+    (_h : refuteP O pf = true) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn "{\"format\":\"owl-refute-v1\",\"consistent\":false,\"certified\":true}"
+  out.flush
+  return 0
+
+open ContextCalculus.SRIQN.Refute in
+/-- The first failing step (diagnostic, `--explain`; mirrors `check`). -/
+partial def refuteWhy {n m p q : Nat} (B : Array (SRIQD.Clause (Fin n) (Fin m) (Fin p) (Fin q)))
+    (N : List (Fin n)) (emp : List (Fin q × Bool) → Bool) (st : St n m p q) (pf : Proof)
+    (path : String) : Option String :=
+  let run (ss : List Step) : Except String (St n m p q) := Id.run do
+    let mut cur := st
+    for (s, i) in ss.zipIdx do
+      match applyStep B N emp cur s with
+      | some st' => cur := st'
+      | none => return .error s!"{path}: step {i} ({reprStr s}) fails at line {cur.lines.size}"
+    return .ok cur
+  match pf with
+  | .close ss c =>
+    match run ss with
+    | .error e => some e
+    | .ok st' => if closeOK emp st' c then none else some s!"{path}: the leaf {reprStr c} fails"
+  | .split ss ref l r =>
+    match run ss with
+    | .error e => some e
+    | .ok st' =>
+      match st'.lines[ref]? with
+      | some (.disj (f :: rest)) =>
+        match refuteWhy B N emp ⟨st'.lines.push (.atom f), st'.next⟩ l (path ++ "L") with
+        | some e => some e
+        | none => refuteWhy B N emp ⟨st'.lines.push (.disj rest), st'.next⟩ r (path ++ "R")
+      | _ => some s!"{path}: split on line {ref}, not a nonempty disjunction"
+
+/-- Why the refutation route rejects (diagnostic). -/
+def refuteDecline (O : OWL.Ontology) (pf : ContextCalculus.SRIQN.Refute.Proof) (explain : Bool) :
+    String :=
+  match refutePrep O with
+  | none => "not recognised: a DatatypeDefinition of a datatype of the map, a recursive definition, or two definitions of one datatype"
+  | some X =>
+    if !X.isSROIQDKB then
+      s!"not recognised: not an OWL SROIQ(D) knowledge base ({firstFailing X OWL.Axiom.isSROIQDKB})"
+    else match translateSHOIQD (roleOff X) [] with
+      | none => "not recognised: the SHOIQ(D) translation failed"
+      | some T =>
+        match roleCls T X with
+        | none => "not recognised: a property of a role chain has no role index"
+        | some E =>
+          let D := dosnC T (OWLFrontend.SHOIQ.nomNames (roleOff X) []) E
+          let why := if explain then
+              match refuteWhy (SRIQN.dbase D).toArray (SRIQN.dnoms D) (empOWL (spec T.tab)) ⟨#[], 0⟩ pf "root" with
+              | some w => s!" ({w})"
+              | none => ""
+            else ""
+          "refute: certificate rejected" ++ why
+
+/-- `--procedure refute --print-clauses`: the clauses of `dosnC`, one per
+line in the order of `dbase` (the clause indices of a certificate), the
+nominal names, the index tables, the data atoms and, for every cell and
+reading of the free datatypes, the atoms that hold there (the data oracle
+of the producer). Diagnostic output, not part of a proved statement. -/
+def printRefuteClauses (O : OWL.Ontology) : IO UInt32 := do
+  let out ← IO.getStdout
+  match refutePrep O with
+  | none => decline "not recognised: DatatypeDefinition"
+  | some X =>
+    if !X.isSROIQDKB then
+      decline s!"not recognised: not an OWL SROIQ(D) knowledge base ({firstFailing X OWL.Axiom.isSROIQDKB})"
+    else match translateSHOIQD (roleOff X) [] with
+      | none => decline "not recognised: the SHOIQ(D) translation failed"
+      | some T =>
+        match roleCls T X with
+        | none => decline "not recognised: a property of a role chain has no role index"
+        | some E =>
+          let L := OWLFrontend.SHOIQ.nomNames (roleOff X) []
+          let D := dosnC T L E
+          out.putStrLn s!"concepts {T.obj.conceptCount}"
+          out.putStrLn s!"roles {T.obj.roleCount}"
+          out.putStrLn s!"dprops {T.dps.length}"
+          out.putStrLn s!"atoms {T.tab.length}"
+          for l in indexLines T.obj do out.putStrLn l
+          for l in nomLines (nameIxMap T.obj.named) (roleOff X) [] do out.putStrLn l
+          for (dp, i) in T.dps.zipIdx do out.putStrLn s!"dprop {i} {dp}"
+          for cl in SRIQN.dbase D do
+            match cl with
+            | .obj c => out.putStrLn ("cl " ++ clauseText c)
+            | c => out.putStrLn ("cl " ++ (dclauseText c).getD "?")
+          for a in SRIQN.dnoms D do out.putStrLn s!"nom {a.val}"
+          let sp := spec T.tab
+          let sup := (List.finRange T.tab.length).all fun p => drSupported (sp p)
+          out.putStrLn s!"supported {sup}"
+          for j in List.finRange T.tab.length do
+            out.putStrLn s!"atom {j.val} {(reprStr (sp j)).replace "\n" " "}"
+          let cs := cellsOf (allBases sp)
+          let gs := ContextCalculus.SRIQD.allG (allFrees sp).length
+          let Ev := owlE sp
+          out.putStrLn s!"cells {cs.length} groups {gs.length}"
+          if gs.length ≤ 64 then
+            for (c, ci) in cs.zipIdx do
+              for (g, gi) in gs.zipIdx do
+                let ts := (List.finRange T.tab.length).filter fun j => Ev j c g
+                out.putStrLn s!"cg {ci} {gi} {" ".intercalate (ts.map (toString ·.val))}"
+          out.flush
+          return 0
+
+/-- `--procedure refute --cert FILE [--explain]` or `--print-clauses`. -/
+def runRefute (timing : Bool) (args : Args) (text : String) : IO UInt32 := do
+  let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
+  match parsed with
+  | .error reason => decline s!"parse rejected: {reason}"
+  | .ok O =>
+    if args.printClauses then printRefuteClauses O
+    else match args.cert with
+      | none =>
+        IO.eprintln "refute: --cert FILE or --print-clauses is required"
+        return 2
+      | some f =>
+        match ← (IO.FS.readFile f).toBaseIO with
+        | .error err =>
+          IO.eprintln s!"failed to read certificate {f}: {err}"
+          return 2
+        | .ok ctext =>
+          match parseRefuteCert ctext with
+          | .error e =>
+            IO.eprintln s!"bad certificate {f}: {e}"
+            return 2
+          | .ok pf =>
+            let ⟨res, hres⟩ ← timedPhase timing "refute" (fun _ => refuteP O pf)
+            match res, hres with
+            | true, h => publishRefuted h.symm
+            | false, _ => decline (refuteDecline O pf args.explain)
+
+
 /-- Read the hint file, if any. -/
 def readHint (path : Option String) : IO (Except String (Option RawHint)) := do
   match path with
@@ -2668,7 +2939,8 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
     return 2
   | .ok text =>
     reportPhase timing "read" t0
-    let run : IO UInt32 := if args.dataRoute == some "sroiq-hint" then do
+    let run : IO UInt32 := if args.dataRoute == some "refute" then runRefute timing args text
+      else if args.dataRoute == some "sroiq-hint" then do
         let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
         match parsed with
         | .error reason =>
@@ -2744,7 +3016,7 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
 end KMOWLReferenceCheck
 
 def main (args : List String) : IO UInt32 := do
-  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb|shoiq-c2a|sroiq-c2a|sroiq-hint] [--hint FILE] [--batch FILE] [--row ROW] [--check] [--type CLASS INDIVIDUAL] [--print-index] <file.ofn> (default el-then-sri; --hint, --type and --print-index with sriq-kb, sriqd-kb and shoiq-c2a only)"
+  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb|shoiq-c2a|sroiq-c2a|sroiq-hint|refute] [--hint FILE] [--cert FILE] [--batch FILE] [--row ROW] [--check] [--type CLASS INDIVIDUAL] [--print-index] <file.ofn> (default el-then-sri; --hint, --type and --print-index with sriq-kb, sriqd-kb and shoiq-c2a only)"
   match KMOWLReferenceCheck.parseArgs {} args with
   | some a =>
     match a.path with
@@ -2753,7 +3025,7 @@ def main (args : List String) : IO UInt32 := do
           a.batch.isSome || a.rowFile.isSome || a.explain || a.witness.isSome || a.witnessRoute) &&
           !((a.procedure == .sriqKB && a.dataRoute.isNone) || a.dataRoute == some "sriqd-kb" ||
             a.dataRoute == some "shoiq-c2a" || a.dataRoute == some "sroiq-c2a" ||
-            a.dataRoute == some "sroiq-hint") then
+            a.dataRoute == some "sroiq-hint" || a.dataRoute == some "refute") then
         IO.eprintln usage
         return 2
       else KMOWLReferenceCheck.runFile a path

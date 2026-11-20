@@ -1,0 +1,12 @@
+Prefix(:=<http://ex.org/r#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/r/disj>
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:C))
+Declaration(NamedIndividual(:a))
+SubClassOf(:C :A)
+DisjointClasses(:A :B)
+ClassAssertion(:C :a)
+ClassAssertion(:B :a)
+)

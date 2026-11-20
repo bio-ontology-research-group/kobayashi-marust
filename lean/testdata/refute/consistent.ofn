@@ -1,0 +1,9 @@
+Prefix(:=<http://ex.org/r#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/r/consistent>
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(NamedIndividual(:a))
+DisjointClasses(:A :B)
+ClassAssertion(:A :a)
+)
