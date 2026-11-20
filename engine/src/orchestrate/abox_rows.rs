@@ -265,6 +265,13 @@ pub(super) fn residual_extension(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Guard bound on the rounds of `saturate_horn_in_place`; reaching it
+/// declines the model plan instead of using a partly saturated model.
+const HORN_SATURATION_MAX_ROUNDS: usize = 100_000;
+/// Guard bound on the steps of one quotient-graph merge test; reaching it
+/// makes the pair `Undecided` (exact residual probe).
+const GRAPH_MERGE_MAX_STEPS: usize = 32;
+
 pub(super) fn from_exported_model(
     text: &str,
     roles: &[String],
@@ -2119,10 +2126,13 @@ pub(super) fn from_exported_model(
         has_unhandled_clause = true;
     }
 
-    let skolem_vec: Vec<(String, ExistentialGroup)> = skolem_groups
-        .into_iter()
-        .map(|((fn_name, _), grp)| (fn_name, grp))
-        .collect();
+    // Sorted so the witness materialization below (whose element numbering and
+    // witness reuse depend on this order) is the same in every run.
+    let mut skolem_vec: Vec<((String, String), ExistentialGroup)> =
+        skolem_groups.into_iter().collect();
+    skolem_vec.sort_by(|a, b| a.0.cmp(&b.0));
+    let skolem_vec: Vec<(String, ExistentialGroup)> =
+        skolem_vec.into_iter().map(|((fn_name, _), grp)| (fn_name, grp)).collect();
     for (_, grp) in &skolem_vec {
         if let Some((ref r_short, inv)) = grp.role {
             for f in &grp.fillers {
@@ -2143,17 +2153,33 @@ pub(super) fn from_exported_model(
         }
     }
 
-    // Build trigger indexes for fast rule lookup
+    // Build trigger indexes for fast rule lookup. Every saturation below pops
+    // a concept from a worklist and checks the rules indexed under it, so a
+    // rule must be indexed under EVERY body concept: indexed under `body[0]`
+    // only, the rule `A ⊓ B → C` is never re-examined when `B` is derived after
+    // `A` was popped, and whether it fires depends on the (randomly seeded)
+    // `HashSet` iteration order of the worklist. That lost the clash of
+    // `p3.ofn` in about half of all runs and made `NotDifferent` claim a
+    // model that was not one.
+    fn index_by_every_body_concept(
+        index: &mut HashMap<String, Vec<usize>>,
+        idx: usize,
+        body: &[String],
+    ) {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for b in body {
+            if seen.insert(b.as_str()) {
+                index.entry(b.clone()).or_default().push(idx);
+            }
+        }
+    }
     let mut empty_body_concept_rules: Vec<usize> = Vec::new();
     let mut concept_rules_by_trigger: HashMap<String, Vec<usize>> = HashMap::new();
     for (idx, cr) in concept_rules.iter().enumerate() {
         if cr.body.is_empty() {
             empty_body_concept_rules.push(idx);
         } else {
-            concept_rules_by_trigger
-                .entry(cr.body[0].clone())
-                .or_default()
-                .push(idx);
+            index_by_every_body_concept(&mut concept_rules_by_trigger, idx, &cr.body);
         }
     }
     let mut empty_body_hv_rules: Vec<usize> = Vec::new();
@@ -2162,10 +2188,7 @@ pub(super) fn from_exported_model(
         if hv.body.is_empty() {
             empty_body_hv_rules.push(idx);
         } else {
-            hv_rules_by_trigger
-                .entry(hv.body[0].clone())
-                .or_default()
-                .push(idx);
+            index_by_every_body_concept(&mut hv_rules_by_trigger, idx, &hv.body);
         }
     }
     let mut role_rules_by_role: HashMap<String, Vec<usize>> = HashMap::new();
@@ -2211,6 +2234,9 @@ pub(super) fn from_exported_model(
                 )
             }));
 
+    // Set when a saturation stops at its guard bound before its fixpoint; the
+    // plan is then declined so the caller runs the exact probe path.
+    let horn_saturation_cut = std::cell::Cell::new(false);
     // Saturate a `(classes, edges)` state under deterministic 1-head Horn rules
     let saturate_horn_in_place = |classes: &mut [HashSet<String>],
                                   edges: &mut HashSet<(usize, String, usize)>|
@@ -2236,7 +2262,13 @@ pub(super) fn from_exported_model(
         }
         let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, num, edges);
         close_elem_classes(classes);
-        for _round in 0..8 {
+        // Run to the fixpoint. The state (classes from rule heads, edges over
+        // `num` elements, the union-find partition) is finite and every round
+        // that sets `changed` grows it, so the loop terminates. A former cap of
+        // 8 rounds stopped the saturation of the model `M_0` early. The bound
+        // below is a guard only: hitting it marks the plan as unusable.
+        let mut reached_fixpoint = false;
+        for _round in 0..HORN_SATURATION_MAX_ROUNDS {
             let mut changed = false;
             let mut merged_any = false;
             for u in 0..num {
@@ -2485,8 +2517,12 @@ pub(super) fn from_exported_model(
                 let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, num, edges);
                 close_elem_classes(classes);
             } else {
+                reached_fixpoint = true;
                 break;
             }
+        }
+        if !reached_fixpoint {
+            horn_saturation_cut.set(true);
         }
         let mut merged_named_pairs: Vec<(usize, usize)> = Vec::new();
         if has_horn_merges && (0..num).any(|u| find_uf(&mut uf, u) != u) {
@@ -2642,6 +2678,12 @@ pub(super) fn from_exported_model(
         } else {
             break;
         }
+    }
+    if horn_saturation_cut.get() {
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!("KM_TIMING abox_rows: Horn saturation hit its guard bound; plan declined");
+        }
+        return None;
     }
     for (u_root, u_mem) in proved_merges {
         for a in &elem_inds[u_root] {
@@ -3254,7 +3296,13 @@ pub(super) fn from_exported_model(
 
             let mut merge_queue: Vec<(usize, usize)> = vec![(u_init, v_init)];
             let mut elem_has_non_refl: Vec<bool> = has_non_refl_edge.clone();
-            for _step in 0..32 {
+            // The step bound only guards against a runaway loop. A merge that
+            // has not reached its fixpoint within it proves nothing either way:
+            // falling through used to return `NotDifferent` for an unsaturated
+            // quotient, which silently dropped a `DIFFERENT` row. Such a pair
+            // is now `Undecided` and goes to the exact residual probe.
+            let mut saturated = false;
+            for _step in 0..GRAPH_MERGE_MAX_STEPS {
                 let mut any_merged = false;
                 let mut need_rbox_reclose = false;
                 while let Some((a, b)) = merge_queue.pop() {
@@ -3780,8 +3828,12 @@ pub(super) fn from_exported_model(
                     }
                     full_e_set = Some(remapped);
                 } else if !changed {
+                    saturated = true;
                     break;
                 }
+            }
+            if !saturated {
+                return PairVerdict::Undecided;
             }
 
             if !horn_only {
