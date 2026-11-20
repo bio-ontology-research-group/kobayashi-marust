@@ -300,12 +300,6 @@ fn run_ofn_in_process(
         },
         separable_abox_export: result.separable_abox_export,
     };
-    if abort_on_uncarried
-        && (meta.uncarried_data_assertions > 0
-            || (meta.named.is_empty() && result.clauses.is_empty()))
-    {
-        return Ok((meta, None, None));
-    }
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
         cb_typed_source: None,
@@ -317,6 +311,22 @@ fn run_ofn_in_process(
         rules: result.rules,
         data_roles: result.data_roles,
     };
+    if abort_on_uncarried
+        && (meta.uncarried_data_assertions > 0
+            || (meta.named.is_empty() && out.clauses.is_empty()))
+    {
+        // The subprocess frontend always emits a clauses file; the in-process
+        // fast path must do the same. Downstream code (rule consistency, CB
+        // and HT workers, the positive-EL ABox certificate) opens clauses_path
+        // unconditionally, so an early return without writing it produced
+        // "No such file or directory" on empty or data-only ontologies when
+        // the reference stage was unavailable.
+        let f = File::create(clauses_path)?;
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
+        crate::json_io::write_jinput_json(&mut w, &out)?;
+        std::io::Write::flush(&mut w)?;
+        return Ok((meta, None, None));
+    }
     if let Some(dir) = std::env::var_os("KM_KEEP_CLAUSES").filter(|d| !d.is_empty()) {
         let dir_path = Path::new(&dir);
         let out_file = dir_path.join("clauses.json");
