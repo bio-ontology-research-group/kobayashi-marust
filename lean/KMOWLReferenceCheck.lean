@@ -3003,7 +3003,7 @@ def refuteDecline (O : OWL.Ontology) (pf : ContextCalculus.SRIQN.Refute.Proof) (
         | some E =>
           let D := dosnC T (OWLFrontend.SHOIQ.nomNames (roleOff X) []) E
           let why := if explain then
-              match refuteWhy (SRIQN.dbase D).toArray (SRIQN.dnoms D) (empOWL (spec T.tab)) ⟨#[], 0⟩ pf "root" with
+              match refuteWhy (SRIQN.dbase D).toArray (SRIQN.dnoms D) (empOWL (SHIQD.spec T.tab)) ⟨#[], 0⟩ pf "root" with
               | some w => s!" ({w})"
               | none => ""
             else ""
@@ -3041,14 +3041,14 @@ def printRefuteClauses (O : OWL.Ontology) : IO UInt32 := do
             | .obj c => out.putStrLn ("cl " ++ clauseText c)
             | c => out.putStrLn ("cl " ++ (dclauseText c).getD "?")
           for a in SRIQN.dnoms D do out.putStrLn s!"nom {a.val}"
-          let sp := spec T.tab
-          let sup := (List.finRange T.tab.length).all fun p => drSupported (sp p)
+          let sp := SHIQD.spec T.tab
+          let sup := (List.finRange T.tab.length).all fun p => OWL.Datatypes.drSupported (sp p)
           out.putStrLn s!"supported {sup}"
           for j in List.finRange T.tab.length do
             out.putStrLn s!"atom {j.val} {(reprStr (sp j)).replace "\n" " "}"
-          let cs := cellsOf (allBases sp)
-          let gs := ContextCalculus.SRIQD.allG (allFrees sp).length
-          let Ev := owlE sp
+          let cs := OWL.Datatypes.cellsOf (OWL.Datatypes.allBases sp)
+          let gs := ContextCalculus.SRIQD.allG (OWL.Datatypes.allFrees sp).length
+          let Ev := OWL.Datatypes.owlE sp
           out.putStrLn s!"cells {cs.length} groups {gs.length}"
           if gs.length ≤ 64 then
             for (c, ci) in cs.zipIdx do
