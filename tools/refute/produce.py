@@ -76,6 +76,7 @@ class Dump:
         self.eager_top = False
         self.pop_budget = None
         self.lookahead_max = 20000
+        self.last_state = None
         self.emp_known = {}
         self.oracle = None
         self.queries = set()
@@ -952,7 +953,7 @@ def nominal_groups(D):
     return [v[0] for k, v in sorted(groups.items(), key=lambda kv: (-len(kv[0]), -len(kv[1])))]
 
 
-def attempt_local(D, args, deadline, max_depth, branches):
+def attempt_local(D, args, deadline, max_depth, branches, which):
     """One nominal at a time (one per group of told classes): the
     refutation of an instance of an unsatisfiable class needs only its
     element (and the nominals the clauses reach)."""
@@ -963,7 +964,10 @@ def attempt_local(D, args, deadline, max_depth, branches):
         focus = [iri_to_nom[i] for i in args.focus if i in iri_to_nom]
     print(f"produce: local mode over {len(focus)} focus nominals and {len(reps)} groups",
           file=sys.stderr)
-    reps = [(a, args.focus_time) for a in focus] + [(a, None) for a in reps]
+    reps = [(a, args.focus_time) for a in focus] if which == 'focus' else \
+        [(a, None) for a in reps if a not in focus]
+    if not reps:
+        return None, None, 0, False
     eager = D.eager_top
     D.eager_top = True   # small states: the definitional splits may matter
     try:
@@ -1002,12 +1006,14 @@ def local_loop(D, args, deadline, max_depth, branches, reps):
 def attempt(D, args, deadline, max_depth, branches, local=False):
     """One round: iterative deepening of the anonymous successors. Returns
     (log, tree, depth, stop) with tree None when no refutation was found."""
+    D.last_state = None
     if local:
-        return attempt_local(D, args, deadline, max_depth, branches)
+        return attempt_local(D, args, deadline, max_depth, branches, local)
     tree, log, depth = None, None, 0
     for depth in range(0, max_depth + 1):
         log = Log()
         st = State(D, log, 0, depth)
+        D.last_state = st
         try:
             for a in D.noms:
                 st.nominal_element(a)
@@ -1115,8 +1121,9 @@ def main():
     # ABox shows up (with its oracle queries) long before the saturation ends.
     # Then one nominal at a time with successors and splits, then everything.
     phases = [(0, 0, 20000, False), (0, 0, 200000, False),
-              (args.max_depth, args.branches, None, True),
+              (args.max_depth, args.branches, None, 'focus'),
               (0, 0, None, False),
+              (args.max_depth, args.branches, None, 'groups'),
               (args.max_depth, args.branches, None, False)]
     rnd = 0
     for (md, br, pb, local) in phases:
@@ -1152,6 +1159,14 @@ def main():
                 break
             print(f"produce: round {rnd}: {sum(1 for L in new if D.emp_known.get(L))} empty, "
                   f"{sum(1 for L in newe if D.emp_known.get(L))} entailed", file=sys.stderr)
+            # a Horn round's saturated state needs no rerun for a value clash
+            if not local and br == 0 and D.last_state is not None and \
+                    not D.last_state.partial:
+                try:
+                    D.last_state.data_clash()
+                except Clash as c:
+                    log, tree, depth = D.last_state.L, ('close', 0, c.info), 0
+                    break
         if tree is not None or stop:
             break
     if D.oracle is not None:
