@@ -165,6 +165,47 @@ entailed inequalities:
      exact probe classification (`__val_subj__` / `__val_obj__` in
      `residual_extension`). When every edge of `M_0` between named individuals
      is already in `H_0`, `residual_value_targets` is empty and `0` probes run.
+   - **Reconstructed structures are not models (anonymous excursions).** The
+     negative bound above needs `M_0` to be a model of `O`. That holds for the
+     `ht-bridge` and `cb-horn` models read from the export, but not when the
+     ABox was elided from the exported model (`abox_elided`, the usual case for
+     `--values` without `--realize`) or on `el-canonical`: then
+     `from_exported_model` rebuilds the named part from the source (ABox edges,
+     class assertions, Horn saturation, at most three rounds of Skolem
+     witnesses), and that structure is not a model. The earlier argument
+     claimed that, without `ObjectHasValue`, `ObjectOneOf` and
+     `ObjectHasSelf`, no edge between named individuals arises beyond the
+     asserted ones and their RBox closure. That condition is wrong for
+     composite roles: a path can leave a named individual into its anonymous
+     tree and come back, and a role chain or a transitive role turns the path
+     into a named edge. Example (`f9002_44`): `B(a4)`, `B ⊑ ∃s3⁻.B`,
+     `s3⁻ ⊑ s1`, `s1` symmetric and `s1 ∘ s3 ⊑ c1` entail `c1(a4, a4)` through
+     the anonymous `x` with `s3(x, a4)` and `s1(a4, x)`. KM lost the row
+     because the fast path compared two structures that both lacked it.
+     The upper bound is now `edge_set` plus `ExcursionBound`: each role that
+     `named_role_bound::excursion_roles` reports, over every pair of named
+     individuals in one component of the named edge graph (a single component
+     when the source has a nominal edge or a merge into a nominal). The fast
+     path is taken only when all those candidates are proved; otherwise every
+     unproved candidate goes to the residual probes, which decide it exactly.
+     *Argument.* A consistent `O` has a forest model `I`: the named
+     individuals with their named edges, and under each a tree of anonymous
+     elements, each created through one generating role (an existential or
+     min-cardinality restriction, a negated universal or max-cardinality),
+     with `HasSelf` loops, merges among the successors of a merging role
+     (functional, inverse-functional, cardinality) and identifications with
+     nominals. `excursion_roles` works on an abstraction with one node `N`
+     for all named individuals and one node `X_t` per generating role `t`.
+     Sending every element of `I` to its node is a homomorphism once the
+     abstraction merges the successors of every merging role, and the RBox
+     closure is monotone under homomorphisms. Each abstract fact carries a
+     flag, set when its derivation used an edge at an anonymous node, so a
+     named pair `r(a, b)` of `I` whose derivation needs an anonymous element
+     maps to a flagged fact `(N, r, N)`, and `r` is reported. Its path enters
+     and leaves anonymous trees only at named individuals joined by named
+     edges, or through nominals, so `a` and `b` lie in one component. Every
+     named edge of `I` is therefore in `edge_set` or a candidate, and a pair
+     in neither has the countermodel `I`.
 
 3. **`DIFFERENT` (`DifferentIndividuals`)**:
    - Two individuals `a` and `b` that are distinct elements in `M_0`
@@ -464,7 +505,7 @@ For a consistent ontology `O`, two named individuals `a, b`, and a named object 
 4. `ObjectPropertyDomain(r, C)`, `ObjectPropertyRange(r, C)`, and `DataPropertyDomain(p, C)` propagation into entailed individual classes, followed by class subsumption closure and re-evaluation of steps 2--4 to fixpoint; and
 5. 1-head Horn normalized DL-clauses and Skolem existential witness materialization (`saturate_horn_in_place`).
 
-Every edge in `Horn(O)` holds in all models of `O` by soundness of the Horn rules, and every edge entailed by `O` holds in the specific model `M_0`:
+Every edge in `Horn(O)` holds in all models of `O` by soundness of the Horn rules, and every edge entailed by `O` holds in the specific model `M_0`, provided `M_0` is a model. On `ht-bridge` and `cb-horn` with the ABox in the export it is. When the ABox was elided or the route is `el-canonical`, `M_0` is a structure rebuilt from the source and the right-hand side below is `{ r(a, b) | M_0 |= r(a, b) }` together with the anonymous-excursion candidates of `ExcursionBound` (see "Reconstructed structures are not models" above); without them the inequality fails for role chains and transitive roles through anonymous elements (`f9002_44`):
 
 ```text
 Horn(O)  <=  { r(a, b) | O |= r(a, b) }  <=  { r(a, b) | M_0 |= r(a, b) }
