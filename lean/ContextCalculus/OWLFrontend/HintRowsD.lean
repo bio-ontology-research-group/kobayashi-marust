@@ -587,13 +587,13 @@ theorem hintRefuteDM_sound (pat : String → String → Prop) {O : Ontology} {re
 
 /-- `K` with the value lists of the data properties `ps` computed once. -/
 def ckxMemo {k : Nat} (K : CKX k) (ps : List DataProp) : CKX k :=
-  let arr := ps.toArray.map fun p => (p, Array.ofFn fun w => Thunk.mk fun _ => K.dv p w)
+  let arr := ps.toArray.map fun p => (p, Thunk.mk fun _ => Array.ofFn fun w => Thunk.mk fun _ => K.dv p w)
   let idx : Std.HashMap DataProp Nat := ps.zipIdx.foldl (fun mp e => mp.insertIfNew e.1 e.2) {}
   { K with dv := fun p w =>
       match idx[p]? with
       | some i =>
         match arr[i]? with
-        | some e => if e.1 == p then ((e.2[w.val]?).map Thunk.get).getD (K.dv p w) else K.dv p w
+        | some e => if e.1 == p then ((e.2.get[w.val]?).map Thunk.get).getD (K.dv p w) else K.dv p w
         | none => K.dv p w
       | none => K.dv p w }
 
@@ -610,10 +610,9 @@ theorem ckxMemo_eq {k : Nat} (K : CKX k) (ps : List DataProp) : ckxMemo K ps = K
       · rw [Array.getElem?_map] at he
         obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.1 he
         rw [beq_iff_eq] at hp
-        dsimp only at hp ⊢
+        dsimp only [Thunk.get, Thunk.mk] at hp ⊢
         subst hp
-        simp
-        rfl
+        simp [Thunk.get]
       · rfl
     · rfl
   · rfl

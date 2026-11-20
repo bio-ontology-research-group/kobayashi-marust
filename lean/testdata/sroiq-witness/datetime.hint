@@ -1,0 +1,7 @@
+# km-hints global model 0
+blocks 2
+ty 0 2 3
+ty 1 0 2 3
+part
+dstar 0
+dstar 1

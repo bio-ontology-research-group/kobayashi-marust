@@ -63,11 +63,11 @@ def sroiqHOKF (T : SRIQDKBTranslation) (L : List IRI)
   let B0 := objC T L E
   let spS := specS T.tab
   SROIQ.Proc.regularB B0 && SROIQ.Proc.condB B0 &&
-    (List.finRange T.tab.length).all fun p => drSupported (spS.f p)
+    allSpec spS.f drSupported
 
 @[csimp] theorem sroiqHOK_eq_F : @sroiqHOK = @sroiqHOKF := by
   funext T L E
-  simp [sroiqHOK, sroiqHOKF, specS_f]
+  simp [sroiqHOK, sroiqHOKF, allSpec, specS_f]
 
 /-- The data part the hint names accepts it, or, when it names none, some
 part of the data theory does (stage H2: the hint is read as a sparse hint,
@@ -93,18 +93,22 @@ def sroiqHPartsF (T : SRIQDKBTranslation) (L : List IRI)
   let sz := szS.f
   let eS := owlES sp
   let oe := eS.f
+  let vS := vtcOwlS sp
   let bnd := ContextCalculus.SRIQD.dbnd (SRIQN.dbase (SRIQN.Proc.encTransDN (encC T L E))) *
     (ContextCalculus.SRIQD.allG (allFrees sp).length).length
-  let spT := SRIQN.HF.splitTab cs sz bnd oe
-  (hint.toHintS _ _).any fun h => SRIQN.HF.hintPartsP (encC T L E) cs sz
-    (SRIQN.HF.lookSplit spT (ContextCalculus.SRIQD.splitCell cs sz bnd oe)) oe h
+  let spT := SRIQN.HF.splitTabV cs sz bnd vS.f
+  (hint.toHintS _ _).any fun h => SRIQN.HF.hintPartsPV (encC T L E) cs sz
+    (SRIQN.HF.lookSplitHS spT (ContextCalculus.SRIQD.splitCell cs sz bnd oe)).f vS.f h
 
 @[csimp] theorem sroiqHParts_eq_F : @sroiqHParts = @sroiqHPartsF := by
   funext T L E hint
   unfold sroiqHPartsF sroiqHParts sroiqBound
   dsimp only
   rw [specS_f]
-  simp only [cellSizeS_f, owlES_f, SRIQN.HF.lookSplit_eq]
+  simp only [cellSizeS_f, owlES_f,
+    SRIQN.HF.hintPartsPV_eq _ _ _ _ (owlE (spec T.tab)) _ (vtcOwlS_f (spec T.tab)),
+    SRIQN.HF.splitTabV_eq _ _ _ (owlE (spec T.tab)) _ (vtcOwlS_f (spec T.tab)),
+    SRIQN.HF.lookSplitHS_eq]
 
 theorem owlTheory_eq (pat : String → String → Prop) {T : SRIQDKBTranslation}
     (h : (List.finRange T.tab.length).all (fun p => drSupported (spec T.tab p)) = true) :
@@ -192,11 +196,11 @@ def sroiqSHOKF (T : SRIQDKBTranslation) (L : List IRI)
   let spS := specS T.tab
   SROIQ.Proc.regularB B0 && SROIQ.Proc.condB B0 && SROIQ.Proc.selfSimpleB B0 SC &&
     SROIQ.Proc.lamOKBL le1 B1 sc1 lam irr &&
-    (List.finRange T.tab.length).all fun p => drSupported (spS.f p)
+    allSpec spS.f drSupported
 
 @[csimp] theorem sroiqSHOK_eq_F : @sroiqSHOK = @sroiqSHOKF := by
   funext T L E SC
-  simp [sroiqSHOK, sroiqSHOKF, specS_f]
+  simp [sroiqSHOK, sroiqSHOKF, allSpec, specS_f]
   rfl
 
 /-- `sroiqHParts` with loops at nominal core elements. -/
@@ -222,18 +226,22 @@ def sroiqSHPartsF (T : SRIQDKBTranslation) (L : List IRI)
   let sz := szS.f
   let eS := owlES sp
   let oe := eS.f
+  let vS := vtcOwlS sp
   let bnd := ContextCalculus.SRIQD.dbnd (SRIQN.dbase (SRIQN.Proc.encTransDN (encS T L E SC))) *
     (ContextCalculus.SRIQD.allG (allFrees sp).length).length
-  let spT := SRIQN.HF.splitTab cs sz bnd oe
-  (hint.toHintS _ _).any fun h => SRIQN.HF.hintPartsNLP (encS T L E SC) cs sz
-    (SRIQN.HF.lookSplit spT (ContextCalculus.SRIQD.splitCell cs sz bnd oe)) oe h
+  let spT := SRIQN.HF.splitTabV cs sz bnd vS.f
+  (hint.toHintS _ _).any fun h => SRIQN.HF.hintPartsNLPV (encS T L E SC) cs sz
+    (SRIQN.HF.lookSplitHS spT (ContextCalculus.SRIQD.splitCell cs sz bnd oe)).f vS.f h
 
 @[csimp] theorem sroiqSHParts_eq_F : @sroiqSHParts = @sroiqSHPartsF := by
   funext T L E SC hint
   unfold sroiqSHPartsF sroiqSHParts sroiqSBound
   dsimp only
   rw [specS_f]
-  simp only [cellSizeS_f, owlES_f, SRIQN.HF.lookSplit_eq]
+  simp only [cellSizeS_f, owlES_f,
+    SRIQN.HF.hintPartsNLPV_eq _ _ _ _ (owlE (spec T.tab)) _ (vtcOwlS_f (spec T.tab)),
+    SRIQN.HF.splitTabV_eq _ _ _ (owlE (spec T.tab)) _ (vtcOwlS_f (spec T.tab)),
+    SRIQN.HF.lookSplitHS_eq]
 
 theorem sroiqSHParts_sound (pat : String → String → Prop) {T : SRIQDKBTranslation} {L : List IRI}
     {E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))}

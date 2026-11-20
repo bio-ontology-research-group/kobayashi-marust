@@ -1,0 +1,8 @@
+Ontology(<urn:t:ont>
+Declaration(Class(<urn:t:A>))
+Declaration(Class(<urn:t:B>))
+Declaration(ObjectProperty(<urn:t:r1>))
+Declaration(ObjectProperty(<urn:t:r2>))
+DisjointObjectProperties(<urn:t:r1> <urn:t:r2>)
+SubClassOf(<urn:t:A> ObjectIntersectionOf(ObjectSomeValuesFrom(<urn:t:r1> owl:Thing) ObjectSomeValuesFrom(<urn:t:r2> owl:Thing)))
+)

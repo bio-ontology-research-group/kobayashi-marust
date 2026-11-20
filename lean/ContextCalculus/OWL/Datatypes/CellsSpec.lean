@@ -366,7 +366,7 @@ section CellOf
 variable {as : List BAtom}
 
 theorem others_not_num {a : BAtom} {w : ValOf ℚ} (h : w ∈ a.others) (q : ℚ) : w ≠ .num q := by
-  rcases a with k | ⟨k, bs⟩ | _ | w' | ⟨k, bs⟩
+  rcases a with k | ⟨k, bs⟩ | _ | w' | ⟨k, bs⟩ | ⟨k, bs⟩
   all_goals simp only [BAtom.others, List.not_mem_nil] at h
   · cases w' <;> simp_all
   · rintro rfl
@@ -430,6 +430,35 @@ theorem fCell_not_rest (d : Bool) (as : List BAtom) (b : Bool) (z : Int) :
     fCell d as b z ∉ restCells := by
   unfold fCell; split_ifs <;> simp [restCells]
 
+def isValidTime : Val → Bool
+  | .time t z => decQ t && offOK z
+  | _ => false
+
+theorem tCell_ne_pt (as : List BAtom) (tz : Bool) (t : ℚ) (w : ValOf ℚ) :
+    tCell as tz t ≠ .pt w := by
+  classical
+  unfold tCell; split_ifs <;> simp
+
+theorem tCell_ne_gap (as : List BAtom) (tz : Bool) (t : ℚ) (lo hi : Option ℚ) (c : Fin 4) :
+    tCell as tz t ≠ .gap lo hi c := by
+  classical
+  unfold tCell; split_ifs <;> simp
+
+theorem tCell_not_rest (as : List BAtom) (tz : Bool) (t : ℚ) :
+    tCell as tz t ∉ restCells := by
+  classical
+  unfold tCell; split_ifs <;> simp [restCells]
+
+theorem tCell_mem (tz : Bool) (t : ℚ) : tCell as tz t ∈ tCells tz as := by
+  classical
+  unfold tCell tCells
+  split_ifs with ht
+  · exact List.mem_append_left _ (List.mem_map_of_mem ht)
+  · have hx : ∀ q ∈ timePts as, (q : ℝ) ≠ (t : ℝ) := fun q hq h => ht (by
+      have : q = t := by exact_mod_cast h
+      exact this ▸ hq)
+    exact List.mem_append_right _ (List.mem_map.2 ⟨_, (gap_of_not_pt hx).2, rfl⟩)
+
 theorem cellOf_pt {w : ValOf ℚ} (hw : w ∈ allPts as) : cellOf as (toVal w) = .pt w := by
   classical
   have h : ∃ w' ∈ allPts as, toVal w' = toVal w := ⟨w, hw, rfl⟩
@@ -451,6 +480,10 @@ theorem cellOf_eq_pt_iff {v : Val} {w : ValOf ℚ} :
       | num x => cases hc
       | dbl x => exact absurd hc (fCell_ne_pt _ _ _ _ _)
       | flt x => exact absurd hc (fCell_ne_pt _ _ _ _ _)
+      | time t z =>
+        dsimp only at hc
+        split_ifs at hc
+        exact absurd hc (tCell_ne_pt _ _ _ _)
       | _ => exact absurd hc (restCell_ne_pt _ _)
   · rintro ⟨hw, rfl⟩
     exact cellOf_pt hw
@@ -464,8 +497,17 @@ theorem cellOf_num_gap {x : ℝ} (hx : ∀ q ∈ numPts as, (q : ℝ) ≠ x) :
   unfold cellOf
   rw [dif_neg h]
 
+theorem cellOf_time {t : ℚ} {z : Option Int} (hv : ¬ ∃ w ∈ allPts as, toVal w = .time t z)
+    (hok : (decQ t && offOK z) = true) :
+    cellOf as (.time t z) = tCell as z.isSome t := by
+  classical
+  unfold cellOf
+  rw [dif_neg hv]
+  dsimp only
+  rw [if_pos hok]
+
 theorem cellOf_rest {v : Val} (hv : ¬ ∃ w ∈ allPts as, toVal w = v) (hn : ∀ x, v ≠ .num x)
-    (hf : ∀ x, v ≠ .dbl x) (hg : ∀ x, v ≠ .flt x) :
+    (hf : ∀ x, v ≠ .dbl x) (hg : ∀ x, v ≠ .flt x) (ht : isValidTime v = false) :
     cellOf as v = restCell v := by
   classical
   unfold cellOf
@@ -474,6 +516,11 @@ theorem cellOf_rest {v : Val} (hv : ¬ ∃ w ∈ allPts as, toVal w = v) (hn : �
   | num x => exact absurd rfl (hn x)
   | dbl x => exact absurd rfl (hf x)
   | flt x => exact absurd rfl (hg x)
+  | time t z =>
+    simp only [isValidTime] at ht
+    dsimp only
+    rw [if_neg (by rw [ht]; decide)]
+    rfl
   | _ => rfl
 
 theorem cellOf_dbl {x : FloatV 11 52} (hv : ¬ ∃ w ∈ allPts as, toVal w = .dbl x) :
@@ -541,7 +588,7 @@ theorem cellOf_eq_f_iff {v : Val} (hv : ¬ ∃ w ∈ allPts as, toVal w = v) (d 
   · cases d <;> simp [fIdx, nanOf, toVal, ValOf.map]
   · cases d <;> simp only [fCell, fIdx, nanOf, toVal, ValOf.map] <;> split_ifs <;> simp_all
   · cases d <;> simp only [fCell, fIdx, nanOf, toVal, ValOf.map] <;> split_ifs <;> simp_all
-  all_goals cases d <;> simp only [restCell, fIdx, nanOf, toVal, ValOf.map] <;> (try split_ifs) <;>
+  all_goals cases d <;> simp only [restCell, fIdx, nanOf, toVal, ValOf.map, tCell] <;> (try split_ifs) <;>
     simp
 
 /-- Every value lies in a cell of the list. -/
@@ -564,20 +611,35 @@ theorem cellOf_mem (v : Val) : cellOf as v ∈ cellsOf as := by
       fin_cases c <;> simp
     | dbl x =>
       rw [cellOf_dbl hv]
-      refine List.mem_append_right _ (List.mem_append_left _ (List.mem_append_right _ ?_))
+      refine List.mem_append_right _ (List.mem_append_left _ (List.mem_append_left _
+        (List.mem_append_left _ (List.mem_append_right _ ?_))))
       by_cases hx : x = .nan
       · simp only [hx, decide_true, fCell, if_true, fCells]; exact List.mem_cons_self
       · exact fCell_mem true _ (fIdx_mem (v := .dbl x) (by simp [fIdx, hx]))
     | flt x =>
       rw [cellOf_flt hv]
-      refine List.mem_append_right _ (List.mem_append_right _ ?_)
+      refine List.mem_append_right _ (List.mem_append_left _ (List.mem_append_left _
+        (List.mem_append_right _ ?_)))
       by_cases hx : x = .nan
       · simp only [hx, decide_true, fCell, if_true, fCells]; exact List.mem_cons_self
       · exact fCell_mem false _ (fIdx_mem (v := .flt x) (by simp [fIdx, hx]))
+    | time t z =>
+      by_cases hok : (decQ t && offOK z) = true
+      · rw [cellOf_time hv hok]
+        cases htz : z.isSome
+        · exact List.mem_append_right _ (List.mem_append_right _ (htz ▸ tCell_mem z.isSome t))
+        · exact List.mem_append_right _ (List.mem_append_left _ (List.mem_append_right _
+            (htz ▸ tCell_mem z.isSome t)))
+      · have hht : isValidTime (.time t z) = false := Bool.eq_false_iff.2 hok
+        rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h) hht]
+        exact List.mem_append_right _ (List.mem_append_left _ (List.mem_append_left _
+          (List.mem_append_left _ (List.mem_append_left _
+            (restCell_mem (by intro x h; cases h) (by intro x h; cases h))))))
     | _ =>
-      rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h)]
+      rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h) rfl]
       exact List.mem_append_right _ (List.mem_append_left _ (List.mem_append_left _
-        (restCell_mem (by intro x h; cases h) (by intro x h; cases h))))
+        (List.mem_append_left _ (List.mem_append_left _
+          (restCell_mem (by intro x h; cases h) (by intro x h; cases h))))))
 
 /-- The values of a gap cell. -/
 theorem cellOf_eq_gap_iff {v : Val} {lo hi : Option ℚ} {c : Fin 4} (hg : (lo, hi) ∈ gapPairs (numPts as)) :
@@ -602,8 +664,15 @@ theorem cellOf_eq_gap_iff {v : Val} {lo hi : Option ℚ} {c : Fin 4} (hg : (lo, 
       | flt x =>
         rw [cellOf_flt hv] at hc
         exact absurd hc (fCell_ne_gap _ _ _ _ _ _ _)
+      | time t z =>
+        by_cases hok : (decQ t && offOK z) = true
+        · rw [cellOf_time hv hok] at hc
+          exact absurd hc (tCell_ne_gap _ _ _ _ _ _)
+        · have hht : isValidTime (.time t z) = false := Bool.eq_false_iff.2 hok
+          rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h) hht] at hc
+          exact absurd hc (restCell_ne_gap _ _ _ _)
       | _ =>
-        rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h)] at hc
+        rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h) rfl] at hc
         exact absurd hc (restCell_ne_gap _ _ _ _)
   · rintro ⟨x, rfl, hx, rfl⟩
     obtain ⟨hnp, h1, h2⟩ := of_mem_gapPairs hg hx
@@ -988,7 +1057,8 @@ theorem encard_range_float {e m : Nat} (mk : FloatV e m → Val) (hmk : Function
 /-- The values of a rest cell `c` are the values off the points whose
 `restCell` is `c`. -/
 theorem cellOf_eq_rest_iff {v : Val} {c : Cell} (hc : c ∈ restCells) :
-    cellOf as v = c ↔ (¬ ∃ w ∈ allPts as, toVal w = v) ∧ restCell v = c ∧ ∀ x, v ≠ .num x := by
+    cellOf as v = c ↔
+      (¬ ∃ w ∈ allPts as, toVal w = v) ∧ restCell v = c ∧ (∀ x, v ≠ .num x) ∧ isValidTime v = false := by
   classical
   constructor
   · intro h
@@ -1011,12 +1081,20 @@ theorem cellOf_eq_rest_iff {v : Val} {c : Cell} (hc : c ∈ restCells) :
         rw [cellOf_flt hv] at h
         subst h
         exact absurd hc (fCell_not_rest _ _ _ _)
+      | time t z =>
+        by_cases hok : (decQ t && offOK z) = true
+        · rw [cellOf_time hv hok] at h
+          subst h
+          exact absurd hc (tCell_not_rest _ _ _)
+        · have hht : isValidTime (.time t z) = false := Bool.eq_false_iff.2 hok
+          rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h) hht] at h
+          exact ⟨hv, h, (by intro x h; cases h), hht⟩
       | _ =>
-        rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h)] at h
-        exact ⟨hv, h, by intro x h; cases h⟩
-  · rintro ⟨hv, hr, hn⟩
+        rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h) rfl] at h
+        exact ⟨hv, h, (by intro x h; cases h), rfl⟩
+  · rintro ⟨hv, hr, hn, hht⟩
     obtain ⟨hf, hg⟩ := restCell_float_not_mem (hr ▸ hc)
-    rw [cellOf_rest hv hn hf hg, hr]
+    rw [cellOf_rest hv hn hf hg hht, hr]
 
 theorem dbl_pts : Set.range (ValOf.dbl : FloatV 11 52 → Val) ∩ toVal '' {w | w ∈ allPts as} =
     toVal '' {w | w ∈ (otherPts as).filter isDbl} := by
@@ -1122,40 +1200,37 @@ theorem digits_inj : Function.Injective fun n : Nat => String.ofList (List.repli
 theorem encard_rest {c : Cell} (hc : c ∈ restCells) :
     {v | cellOf as v = c}.encard = toE (cellSize as c) := by
   have key : ∀ (f : ℕ → Val), Function.Injective f → (∀ n, restCell (f n) = c) →
-      (∀ n x, f n ≠ .num x) → {v | cellOf as v = c}.encard = ⊤ := fun f hf hr hn =>
-    encard_top_of_inj f hf fun n hp => (cellOf_eq_rest_iff hc).2 ⟨hp, hr n, hn n⟩
+      (∀ n x, f n ≠ .num x) → (∀ n, isValidTime (f n) = false) → {v | cellOf as v = c}.encard = ⊤ :=
+    fun f hf hr hn ht =>
+      encard_top_of_inj f hf fun n hp => (cellOf_eq_rest_iff hc).2 ⟨hp, hr n, hn n, ht n⟩
   simp only [restCells, List.mem_cons, List.not_mem_nil, or_false] at hc
-  rcases hc with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hc with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact key (fun n => .str (String.ofList (List.replicate n '1')) none)
       (fun n n' h => digits_inj (by simpa using h))
       (fun n => by simp [restCell, xmlString_digits, String.toList_ofList, digits_not_tag])
-      (by intro n x h; cases h)
+      (by intro n x h; cases h) (fun _ => rfl)
   · exact key (fun n => .str (String.ofList (langW n)) none)
       (fun n n' h => langW_inj (String.ofList_injective (by simpa using h)))
       (fun n => by simp [restCell, xmlString_langW, String.toList_ofList, langW_tag])
-      (by intro n x h; cases h)
+      (by intro n x h; cases h) (fun _ => rfl)
   · exact key (fun n => .str (String.ofList (List.replicate n 'a')) (some "en"))
       (fun n n' h => rep_inj (by simpa using h))
       (fun n => by
         simp only [restCell, xmlString_rep, Bool.true_and]
         rw [if_pos (by decide)])
-      (by intro n x h; cases h)
+      (by intro n x h; cases h) (fun _ => rfl)
   · exact key (fun n => .uri (String.ofList (List.replicate n 'a')))
       (fun n n' h => rep_inj (by simpa using h)) (fun n => by simp [restCell, xmlString_rep])
-      (by intro n x h; cases h)
+      (by intro n x h; cases h) (fun _ => rfl)
   · exact key (fun n => .hex (List.replicate n 0)) (fun n n' h => by simpa using h)
-      (fun n => rfl) (by intro n x h; cases h)
+      (fun n => rfl) (by intro n x h; cases h) (fun _ => rfl)
   · exact key (fun n => .b64 (List.replicate n 0)) (fun n n' h => by simpa using h)
-      (fun n => rfl) (by intro n x h; cases h)
+      (fun n => rfl) (by intro n x h; cases h) (fun _ => rfl)
   · exact key (fun n => .xml (String.ofList (List.replicate n 'a')))
       (fun n n' h => rep_inj (by simpa using h)) (fun n => by simp [restCell, xmlString_rep])
-      (by intro n x h; cases h)
-  · exact key (fun n => .time (n : ℚ) (some 0)) (fun n n' h => by simpa using h)
-      (fun n => by simp [restCell, decQ_nat, offOK]) (by intro n x h; cases h)
-  · exact key (fun n => .time (n : ℚ) none) (fun n n' h => by simpa using h)
-      (fun n => by simp [restCell, decQ_nat, offOK]) (by intro n x h; cases h)
+      (by intro n x h; cases h) (fun _ => rfl)
   · exact key (fun n => .extra n) (fun n n' h => by simpa using h) (fun n => rfl)
-      (by intro n x h; cases h)
+      (by intro n x h; cases h) (fun _ => rfl)
 
 /-! ### Float cells -/
 
@@ -1307,6 +1382,154 @@ theorem encard_fCells {d : Bool} {c : Cell} (hc : c ∈ fCells d as) :
   · obtain ⟨⟨lo, hi⟩, hg, rfl⟩ := List.mem_map.1 hc
     exact encard_fI hg
 
+/-! ### Time cells -/
+
+theorem cellOf_eq_tA_iff {v : Val} (hv : ¬ ∃ w ∈ allPts as, toVal w = v) (tz : Bool) (p : ℚ) :
+    cellOf as v = .tA tz p ↔
+      p ∈ timePts as ∧ decQ p = true ∧ ∃ z, v = .time p z ∧ offOK z = true ∧ z.isSome = tz := by
+  classical
+  unfold cellOf
+  rw [dif_neg hv]
+  rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n
+  · simp
+  · simp only [fCell]; split_ifs <;> simp
+  · simp only [fCell]; split_ifs <;> simp
+  · simp only [restCell]; split_ifs <;> simp
+  · simp only [restCell]; split_ifs <;> simp
+  · simp [restCell]
+  · simp [restCell]
+  · simp [restCell]
+  · simp only [restCell]; split_ifs <;> simp
+  · simp only [tCell, Bool.and_eq_true]
+    split_ifs with h1 h2
+    · simp only [Cell.tA.injEq, ValOf.time.injEq]
+      exact ⟨fun ⟨h3, h4⟩ => ⟨h4 ▸ h2, h4 ▸ h1.1, z, ⟨h4, rfl⟩, h1.2, h3⟩,
+        fun ⟨_, _, z', ⟨h4, hz⟩, _, h3⟩ => ⟨hz.symm ▸ h3, h4⟩⟩
+    · simp only [false_iff, not_and, not_exists]
+      intro hp _ z' htz _ _
+      cases htz
+      exact h2 hp
+    · simp only [false_iff, not_and, not_exists]
+      intro _ hd z' htz ho _
+      cases htz
+      exact h1 ⟨hd, ho⟩
+  · simp only [restCell]; split_ifs <;> simp
+  · simp [restCell]
+
+theorem encard_tI {tz : Bool} {lo hi : Option ℚ} (hg : (lo, hi) ∈ gapPairs (timePts as)) :
+    {v | cellOf as v = .tI tz lo hi}.encard = toE (cellSize as (.tI tz lo hi)) := by
+  classical
+  obtain ⟨f, hf, hfin⟩ := dec_witness (gc_lt_gd (gapPairs_lt hg))
+  have hex : ∀ n, ∃ q : ℚ, f n = (q : ℝ) :=
+    fun n => rat_of_isDecimalR (numClass_one.1 (hfin n).2.2).2
+  let g : ℕ → ℚ := fun n => (hex n).choose
+  have hg_eq : ∀ n, ((g n : ℚ) : ℝ) = f n := fun n => (hex n).choose_spec.symm
+  let z : Option Int := if tz then some 0 else none
+  have hz_some : z.isSome = tz := by cases tz <;> rfl
+  have hz_ok : offOK z = true := by cases tz <;> decide
+  refine (encard_top_of_inj (fun n => .time (g n) z) ?_ ?_).trans rfl
+  · intro n n' h
+    have hq : g n = g n' := by simpa using h
+    have hr : f n = f n' := by rw [← hg_eq n, ← hg_eq n', hq]
+    exact hf hr
+  · intro n hn
+    have hdec : decQ (g n) = true :=
+      (isDecimalQ_iff (g n)).1 ((isDecimalR_cast (g n)).1 (by rw [hg_eq n]; exact (numClass_one.1 (hfin n).2.2).2))
+    have hin : InGap lo hi (g n : ℝ) := by
+      rw [hg_eq n]
+      exact inGap_of (hfin n).1 (hfin n).2.1
+    obtain ⟨hnp, h1, h2⟩ := of_mem_gapPairs hg hin
+    have hnot : g n ∉ timePts as := fun hp => hnp (g n) hp rfl
+    rw [cellOf_time hn (by simp [hdec, hz_ok])]
+    unfold tCell
+    rw [if_neg hnot, hz_some, h1, h2]
+
+theorem encard_tA {tz : Bool} {p : ℚ} (hp : p ∈ timePts as) :
+    {v | cellOf as v = .tA tz p}.encard = toE (cellSize as (.tA tz p)) := by
+  classical
+  by_cases hdec : decQ p = true
+  · let T : Set Val := {v | ∃ z, v = .time p z ∧ offOK z = true ∧ z.isSome = tz}
+    have hset : {v | cellOf as v = .tA tz p} = T \ toVal '' {w | w ∈ allPts as} := by
+      ext v
+      simp only [T, Set.mem_setOf_eq, Set.mem_diff, Set.mem_image]
+      by_cases hv : ∃ w ∈ allPts as, toVal w = v
+      · obtain ⟨w, hw, rfl⟩ := hv
+        rw [cellOf_pt hw]
+        simp only [reduceCtorEq, false_iff, not_and, not_not]
+        exact fun _ => ⟨w, hw, rfl⟩
+      · rw [cellOf_eq_tA_iff hv tz p]
+        simp only [hp, hdec, true_and]
+        exact ⟨fun h => ⟨h, hv⟩, fun h => h.1⟩
+    have hA : T.encard = ((if tz then 1681 else 1 : ℕ) : ℕ∞) := by
+      cases tz
+      · have hT0 : T = {(.time p none : Val)} := by
+          ext v
+          simp only [T, Set.mem_setOf_eq, Set.mem_singleton_iff]
+          constructor
+          · rintro ⟨_ | z, rfl, -, hs⟩
+            · rfl
+            · cases hs
+          · rintro rfl; exact ⟨none, rfl, rfl, rfl⟩
+        rw [hT0, Set.encard_singleton]; rfl
+      · have hT1 : T = (fun m : Int => (ValOf.time p (some m) : Val)) '' ↑(Finset.Icc (-840 : Int) 840) := by
+          ext v
+          simp only [T, Set.mem_setOf_eq, Set.mem_image, Finset.coe_Icc, Set.mem_Icc]
+          constructor
+          · rintro ⟨_ | m, rfl, hok, hs⟩
+            · cases hs
+            · simp only [offOK, Option.all, decide_eq_true_eq] at hok
+              exact ⟨m, hok, rfl⟩
+          · rintro ⟨m, ⟨h1, h2⟩, rfl⟩
+            refine ⟨some m, rfl, ?_, rfl⟩
+            simp only [offOK, Option.all, decide_eq_true_eq]
+            exact ⟨h1, h2⟩
+        rw [hT1, Function.Injective.encard_image (fun a b h => by simpa using h),
+          Set.encard_coe_eq_coe_finsetCard, Int.card_Icc]
+        rfl
+    have hB : (T ∩ toVal '' {w | w ∈ allPts as}).encard =
+        (((otherPts as).filter (isTimeAt tz p)).length : ℕ∞) := by
+      rw [← encard_list_image (otherPts_nodup.filter _)]
+      congr 1
+      ext v
+      simp only [T, Set.mem_inter_iff, Set.mem_setOf_eq, Set.mem_image, List.mem_filter]
+      constructor
+      · rintro ⟨⟨z, rfl, hok, hzs⟩, w, hw, he⟩
+        have hw' : w = .time p z := toVal_injective he
+        subst hw'
+        refine ⟨.time p z, ⟨?_, ?_⟩, rfl⟩
+        · rcases List.mem_append.1 hw with h' | h'
+          · obtain ⟨q, -, hq⟩ := List.mem_map.1 h'; cases hq
+          · exact h'
+        · simp [isTimeAt, hdec, hok, hzs]
+      · rintro ⟨w, ⟨hw, htw⟩, rfl⟩
+        cases w with
+        | time t z =>
+          simp only [isTimeAt, Bool.and_eq_true, beq_iff_eq] at htw
+          obtain ⟨⟨⟨rfl, hzs⟩, _⟩, hok⟩ := htw
+          exact ⟨⟨z, rfl, hok, hzs⟩, .time t z, List.mem_append_right _ hw, rfl⟩
+        | _ => cases htw
+    rw [hset, encard_diff_eq hA hB]
+    simp [cellSize, toE, hdec]
+  · have hset : {v | cellOf as v = .tA tz p} = ∅ := by
+      ext v
+      simp only [Set.mem_setOf_eq, Set.mem_empty_iff_false, iff_false]
+      by_cases hv : ∃ w ∈ allPts as, toVal w = v
+      · obtain ⟨w, hw, rfl⟩ := hv
+        rw [cellOf_pt hw]; exact fun h => by cases h
+      · rw [cellOf_eq_tA_iff hv tz p]
+        exact fun ⟨_, hd, _⟩ => hdec hd
+    rw [hset, Set.encard_empty]
+    simp [cellSize, toE, hdec]
+
+theorem encard_tCells {tz : Bool} {c : Cell} (hc : c ∈ tCells tz as) :
+    {v | cellOf as v = c}.encard = toE (cellSize as c) := by
+  unfold tCells at hc
+  rcases List.mem_append.1 hc with hc | hc
+  · obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hc
+    exact encard_tA hp
+  · obtain ⟨⟨lo, hi⟩, hg, rfl⟩ := List.mem_map.1 hc
+    exact encard_tI hg
+
 end Sizes
 
 /-- **The cells are exact.** -/
@@ -1323,9 +1546,13 @@ theorem cellSpec (as : List BAtom) : CellSpec (cellOf as) (cellsOf as) (cellSize
       exact encard_gap hg k
   · rcases List.mem_append.1 hc with hc | hc
     · rcases List.mem_append.1 hc with hc | hc
-      · exact encard_rest hc
-      · exact encard_fCells hc
-    · exact encard_fCells hc
+      · rcases List.mem_append.1 hc with hc | hc
+        · rcases List.mem_append.1 hc with hc | hc
+          · exact encard_rest hc
+          · exact encard_fCells hc
+        · exact encard_fCells hc
+      · exact encard_tCells hc
+    · exact encard_tCells hc
 
 end ContextCalculus.OWL.Datatypes
 

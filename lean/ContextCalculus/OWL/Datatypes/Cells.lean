@@ -151,6 +151,9 @@ inductive BAtom where
   /-- `xsd:double` or `xsd:float` with bound facets whose values are
   floats of the same type. -/
   | fltB (k : Kind) (bs : List ((Bool × Bool) × ValOf ℚ))
+  /-- `xsd:dateTime` or `xsd:dateTimeStamp` with bound facets whose values
+  are `dateTime` values. -/
+  | timeB (k : Kind) (bs : List ((Bool × Bool) × (ℚ × Option Int)))
 deriving DecidableEq, Repr
 
 /-- A bound facet with a float value `y` on a value. -/
@@ -166,6 +169,7 @@ def BAtom.sem : BAtom → Val → Prop
   | .empty => fun _ => False
   | .lit w => fun v => v = toVal w
   | .fltB k bs => fun v => kindSem k v ∧ ∀ b ∈ bs, fltSem b.1 b.2 v
+  | .timeB k bs => fun v => kindSem k v ∧ ∀ b ∈ bs, ∃ t' z', v = .time t' z' ∧ timeRel b.1 (t', z') b.2
 
 /-- The kinds of the supported sub-theory. -/
 def supportedKind : Kind → Bool
@@ -182,11 +186,17 @@ def fltKind : Kind → Bool
   | .double | .float => true
   | _ => false
 
+/-- The `dateTime` kinds. -/
+def timeKind : Kind → Bool
+  | .dateTime | .dateTimeStamp => true
+  | _ => false
+
 /-- The base atoms of the supported sub-theory. -/
 def BAtom.supported : BAtom → Bool
   | .kind k => supportedKind k
   | .numR k _ => numKind k
   | .fltB k _ => fltKind k
+  | .timeB k _ => timeKind k
   | _ => true
 
 /-! ## Points -/
@@ -210,6 +220,12 @@ def BAtom.nums : BAtom → List ℚ
   | .lit (.num q) => [q]
   | _ => []
 
+/-- The time instants (and `±14h` threshold points) an atom mentions. -/
+def BAtom.times : BAtom → List ℚ
+  | .lit (.time t _) => [t]
+  | .timeB _ bs => bs.flatMap fun b => [b.2.1, b.2.1 + 50400, b.2.1 - 50400]
+  | _ => []
+
 /-- The non-numeric values an atom mentions. -/
 def BAtom.others : BAtom → List (ValOf ℚ)
   | .lit (.num _) => []
@@ -219,6 +235,9 @@ def BAtom.others : BAtom → List (ValOf ℚ)
 
 /-- The numeric points. -/
 def numPts (as : List BAtom) : List ℚ := (as.flatMap BAtom.nums).dedup
+
+/-- The time points. -/
+def timePts (as : List BAtom) : List ℚ := (as.flatMap BAtom.times).dedup
 
 /-- The other points: the literal values and both booleans. -/
 def otherPts (as : List BAtom) : List (ValOf ℚ) :=
@@ -239,6 +258,10 @@ inductive Cell where
   | fA (d : Bool) (p : Int)
   /-- The floats with index strictly between `lo` and `hi`. -/
   | fI (d : Bool) (lo hi : Int)
+  /-- The valid `dateTime` values with timezone flag `tz` at point `p`, off the points. -/
+  | tA (tz : Bool) (p : ℚ)
+  /-- The valid `dateTime` values with timezone flag `tz` strictly between `lo` and `hi`. -/
+  | tI (tz : Bool) (lo hi : Option ℚ)
   | strR
   | langR
   | tagR
@@ -246,8 +269,6 @@ inductive Cell where
   | hexR
   | b64R
   | xmlR
-  | timeTz
-  | timeLoc
   | other
 deriving DecidableEq, Repr
 
@@ -276,7 +297,7 @@ def gapPairs (P : List ℚ) : List (Option ℚ × Option ℚ) :=
 
 /-- The rest cells. -/
 def restCells : List Cell :=
-  [.strR, .langR, .tagR, .uriR, .hexR, .b64R, .xmlR, .timeTz, .timeLoc, .other]
+  [.strR, .langR, .tagR, .uriR, .hexR, .b64R, .xmlR, .other]
 
 /-! ### Float cells -/
 
@@ -319,11 +340,45 @@ def fCell (d : Bool) (as : List BAtom) (isNan : Bool) (z : Int) : Cell :=
   else if z ∈ fOrds d as then .fA d z
   else .fI d (fBelow (fOrds d as) (fTop d) z) (fAbove (fOrds d as) (fTop d) z)
 
+/-! ### Time cells -/
+
+/-- The time cells with timezone flag `tz` (`true`: with offset, `false`: without). -/
+def tCells (tz : Bool) (as : List BAtom) : List Cell :=
+  (timePts as).map (Cell.tA tz) ++
+    (gapPairs (timePts as)).map fun x => Cell.tI tz x.1 x.2
+
+/-- The largest point below `x`. -/
+noncomputable def maxBelow (P : List ℚ) (x : ℝ) : Option ℚ := by
+  classical
+  exact (P.filter fun q : ℚ => decide ((q : ℝ) < x)).max?
+
+/-- The smallest point above `x`. -/
+noncomputable def minAbove (P : List ℚ) (x : ℝ) : Option ℚ := by
+  classical
+  exact (P.filter fun q : ℚ => decide (x < (q : ℝ))).min?
+
+/-- The cell of a valid `dateTime` value `(t, z)` off the points. -/
+noncomputable def tCell (as : List BAtom) (tz : Bool) (t : ℚ) : Cell := by
+  classical
+  exact if t ∈ timePts as then .tA tz t
+  else .tI tz (maxBelow (timePts as) t) (minAbove (timePts as) t)
+
+/-- A timezone offset within `±14:00` (or none). -/
+def offOK (z : Option Int) : Bool := z.all fun o => decide (-840 ≤ o ∧ o ≤ 840)
+
+theorem offOK_iff (z : Option Int) : offOK z = true ↔ ∀ o ∈ z, -840 ≤ o ∧ o ≤ 840 := by
+  cases z <;> simp [offOK]
+
+/-- Whether `w` is a valid `dateTime` value with timezone flag `tz` at point `p`. -/
+def isTimeAt (tz : Bool) (p : ℚ) : ValOf ℚ → Bool
+  | .time t z => t == p && z.isSome == tz && decQ t && offOK z
+  | _ => false
+
 /-- The cells of a list of atoms. -/
 def cellsOf (as : List BAtom) : List Cell :=
   ((allPts as).map Cell.pt ++
     (gapPairs (numPts as)).flatMap (fun x : Option ℚ × Option ℚ => [0, 1, 2, 3].map (Cell.gap x.1 x.2)) ++
-    (restCells ++ fCells true as ++ fCells false as)).dedup
+    (restCells ++ fCells true as ++ fCells false as ++ tCells true as ++ tCells false as)).dedup
 
 def isDbl : ValOf ℚ → Bool
   | .dbl _ => true
@@ -341,6 +396,7 @@ def cellSize (as : List BAtom) : Cell → Option Nat
   | .fN d => some (1 - ((otherPts as).filter fun w => w == nanOf d).length)
   | .fA d p => some ((if p = 0 then 2 else 1) - ((otherPts as).filter fun w => fpOrd d w == some p).length)
   | .fI _ lo hi => some ((hi - lo - 1).toNat + if lo < 0 ∧ 0 < hi then 1 else 0)
+  | .tA tz p => some (if decQ p then (if tz then 1681 else 1) - ((otherPts as).filter (isTimeAt tz p)).length else 0)
   | _ => none
 
 /-- `cellSize` with the non-numeric points given. -/
@@ -351,6 +407,7 @@ def cellSizeWith (opts : List (ValOf ℚ)) : Cell → Option Nat
   | .fN d => some (1 - (opts.filter fun w => w == nanOf d).length)
   | .fA d p => some ((if p = 0 then 2 else 1) - (opts.filter fun w => fpOrd d w == some p).length)
   | .fI _ lo hi => some ((hi - lo - 1).toNat + if lo < 0 ∧ 0 < hi then 1 else 0)
+  | .tA tz p => some (if decQ p then (if tz then 1681 else 1) - (opts.filter (isTimeAt tz p)).length else 0)
   | _ => none
 
 /-- `cellSize` with `otherPts as` computed once. -/
@@ -362,12 +419,6 @@ def cellSizeF (as : List BAtom) : Cell → Option Nat :=
   cases c <;> rfl
 
 /-! ## Evaluating atoms on cells -/
-
-/-- A timezone offset within `±14:00` (or none). -/
-def offOK (z : Option Int) : Bool := z.all fun o => decide (-840 ≤ o ∧ o ≤ 840)
-
-theorem offOK_iff (z : Option Int) : offOK z = true ↔ ∀ o ∈ z, -840 ≤ o ∧ o ≤ 840 := by
-  cases z <;> simp [offOK]
 
 /-- The kind check on a literal value (a computable `kindSem`). -/
 def kindPt : Kind → ValOf ℚ → Bool
@@ -412,6 +463,25 @@ def kindF : Kind → Bool → Bool
   | .literal, _ => true
   | _, _ => false
 
+/-- A kind on the `dateTime` values with timezone flag `tz`. -/
+def kindT : Kind → Bool → Bool
+  | .dateTime, _ => true
+  | .dateTimeStamp, true => true
+  | .literal, _ => true
+  | _, _ => false
+
+/-- A bound facet on `dateTime` values. -/
+def timeRelB (b : Bool × Bool) (tz' : Bool) (t' : ℚ) (y : ℚ × Option Int) : Bool :=
+  if tz' == y.2.isSome then boundB b t' y.1
+  else if b.1 then decide (y.1 + 50400 < t')
+  else decide (t' + 50400 < y.1)
+
+/-- The threshold rational for a `dateTime` bound facet when `t'` is off the time points. -/
+def timeThresh (tz' : Bool) (min? : Bool) (y : ℚ × Option Int) : ℚ :=
+  if tz' == y.2.isSome then y.1
+  else if min? then y.1 + 50400
+  else y.1 - 50400
+
 /-- A bound facet on indices. -/
 def boundI (b : Bool × Bool) (x y : Int) : Bool :=
   match b with
@@ -437,6 +507,9 @@ def evalPt : BAtom → ValOf ℚ → Bool
   | .fltB k bs, w => kindPt k w && (match w with
       | .dbl x => bs.all fun b => decide (x ≠ .nan) && (fpOrd true b.2).any fun y => boundI b.1 x.ord y
       | .flt x => bs.all fun b => decide (x ≠ .nan) && (fpOrd false b.2).any fun y => boundI b.1 x.ord y
+      | _ => false)
+  | .timeB k bs, w => kindPt k w && (match w with
+      | .time t' z' => bs.all fun b => timeRelB b.1 z'.isSome t' b.2
       | _ => false)
 
 /-- The point `p` lies below the gap whose lower end is `lo`. -/
@@ -466,6 +539,10 @@ def boundGap (b : Bool × Bool) (y : ℚ) (lo hi : Option ℚ) : Bool :=
   | (true, _) => ptBelow lo y
   | (false, _) => ptAbove hi y
 
+/-- A `dateTime` bound facet on a time gap `(lo, hi)`. -/
+def boundGapT (b : Bool × Bool) (tz' : Bool) (y : ℚ × Option Int) (lo hi : Option ℚ) : Bool :=
+  boundGap b (timeThresh tz' b.1 y) lo hi
+
 /-- A kind on one of the rest cells. -/
 def kindRest : Kind → Cell → Bool
   | .literal, _ => true
@@ -479,9 +556,6 @@ def kindRest : Kind → Cell → Bool
   | .hexBinary, .hexR => true
   | .base64Binary, .b64R => true
   | .xmlLiteral, .xmlR => true
-  | .dateTime, .timeTz => true
-  | .dateTime, .timeLoc => true
-  | .dateTimeStamp, .timeTz => true
   | _, _ => false
 
 /-- **An atom on a cell.** -/
@@ -507,6 +581,16 @@ def evalCell (a : BAtom) : Cell → Bool
     | .kind k => kindF k d
     | .fltB k bs => kindF k d && bs.all fun b => (fpOrd d b.2).any fun y => boundGapI b.1 y lo hi
     | _ => false
+  | .tA tz p =>
+    match a with
+    | .kind k => kindT k tz
+    | .timeB k bs => kindT k tz && bs.all fun b => timeRelB b.1 tz p b.2
+    | _ => false
+  | .tI tz lo hi =>
+    match a with
+    | .kind k => kindT k tz
+    | .timeB k bs => kindT k tz && bs.all fun b => boundGapT b.1 tz b.2 lo hi
+    | _ => false
   | c =>
     match a with
     | .kind k => kindRest k c
@@ -521,16 +605,6 @@ noncomputable def numClass (x : ℝ) : Fin 4 := by
   exact if ∃ z : ℤ, x = z then 0 else if IsDecimalR x then 1
     else if ∃ q : ℚ, x = q then 2 else 3
 
-/-- The largest point below `x`. -/
-noncomputable def maxBelow (P : List ℚ) (x : ℝ) : Option ℚ := by
-  classical
-  exact (P.filter fun q : ℚ => decide ((q : ℝ) < x)).max?
-
-/-- The smallest point above `x`. -/
-noncomputable def minAbove (P : List ℚ) (x : ℝ) : Option ℚ := by
-  classical
-  exact (P.filter fun q : ℚ => decide (x < (q : ℝ))).min?
-
 /-- The rest cell of a non-numeric value outside the points. -/
 def restCell : Val → Cell
   | .num _ => .other
@@ -543,7 +617,7 @@ def restCell : Val → Cell
   | .hex _ => .hexR
   | .b64 _ => .b64R
   | .uri s => if xmlString s then .uriR else .other
-  | .time t z => if decQ t && offOK z then (if z.isSome then .timeTz else .timeLoc) else .other
+  | .time _ _ => .other
   | .xml s => if xmlString s then .xmlR else .other
   | .extra _ => .other
 
@@ -555,6 +629,7 @@ noncomputable def cellOf (as : List BAtom) (v : Val) : Cell := by
     | .num x => .gap (maxBelow (numPts as) x) (minAbove (numPts as) x) (numClass x)
     | .dbl x => fCell true as (decide (x = .nan)) x.ord
     | .flt x => fCell false as (decide (x = .nan)) x.ord
+    | .time t z => if decQ t && offOK z then tCell as z.isSome t else .other
     | v => restCell v
 
 end ContextCalculus.OWL.Datatypes

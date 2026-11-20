@@ -64,9 +64,66 @@ theorem lookup_map_self (f : RT m → List (RT m)) :
       rw [this]
       exact lookup_map_self f l R ((List.mem_cons.1 h).resolve_left hx)
 
+/-- A hash for role terms. -/
+instance instHashableRT : Hashable (RoleT (Fin m)) where
+  hash | .pos r => mixHash 1 (hash r) | .inv r => mixHash 2 (hash r)
+
+/-- Adjacency map of step pairs. -/
+def mkStepMap (sp : List (RT m × RT m)) : Std.HashMap (RT m) (List (RT m)) :=
+  sp.reverse.foldl (fun mp p => mp.insert p.1 (p.2 :: (mp[p.1]?).getD [])) ∅
+
+theorem mkStepMap_get (sp : List (RT m × RT m)) (r : RT m) :
+    ((mkStepMap sp)[r]?).getD [] =
+      sp.filterMap fun p => if p.1 = r then some p.2 else none := by
+  unfold mkStepMap
+  rw [← List.foldr_eq_foldl_reverse]
+  induction sp with
+  | nil => simp
+  | cons p sp ih =>
+    simp only [List.foldr_cons, List.filterMap_cons]
+    rw [Std.HashMap.getElem?_insert]
+    by_cases h : p.1 = r
+    · subst h; simp [ih]
+    · have hb : (p.1 == r) = false := beq_eq_false_iff_ne.2 h
+      simp [hb, h, ih]
+
 /-- One inclusion step from a precomputed pair list. -/
 def upStepP (sp : List (RT m × RT m)) (L : List (RT m)) : List (RT m) :=
   (L ++ sp.filterMap fun p => if p.1 ∈ L then some p.2 else none).dedup
+
+theorem upStepP_singleton (sp : List (RT m × RT m)) (R : RT m) :
+    ([R] ++ ((mkStepMap sp)[R]?).getD []).dedup = upStepP sp [R] := by
+  unfold upStepP
+  rw [mkStepMap_get]
+  simp only [List.mem_singleton]
+
+theorem upStepP_closed {sp : List (RT m × RT m)} {L : List (RT m)}
+    (h : L.all (fun r => (((mkStepMap sp)[r]?).getD []).all (· ∈ L)) = true) :
+    (upStepP sp L).all (· ∈ L) = true := by
+  rw [List.all_eq_true] at h ⊢
+  intro s hs
+  unfold upStepP at hs
+  rw [List.mem_dedup, List.mem_append, List.mem_filterMap] at hs
+  rcases hs with hs | ⟨p, hp, hif⟩
+  · exact decide_eq_true hs
+  · split_ifs at hif with hp1
+    cases hif
+    have h1 := List.all_eq_true.1 (h p.1 hp1) p.2
+    rw [mkStepMap_get, List.mem_filterMap] at h1
+    exact h1 ⟨p, hp, by simp⟩
+
+def upStepM (mp : Std.HashMap (RT m) (List (RT m))) (sp : List (RT m × RT m))
+    (L : List (RT m)) : List (RT m) :=
+  match L with
+  | [R] => ([R] ++ (mp[R]?).getD []).dedup
+  | _ => upStepP sp L
+
+theorem upStepM_eq (sp : List (RT m × RT m)) (L : List (RT m)) :
+    upStepM (mkStepMap sp) sp L = upStepP sp L := by
+  unfold upStepM
+  split
+  · exact upStepP_singleton sp _
+  · rfl
 
 /-- `upFix` with `stepPairs C` computed once. -/
 def upFixP (sp : List (RT m × RT m)) (C : SRI.Ontology (Fin n) (Fin m)) (R : RT m) :
@@ -75,6 +132,29 @@ def upFixP (sp : List (RT m × RT m)) (C : SRI.Ontology (Fin n) (Fin m)) (R : RT
   | k + 1, L =>
     let L' := upStepP sp L
     if L'.all (· ∈ L) then L else upFixP sp C R k L'
+
+def upFixM (mp : Std.HashMap (RT m) (List (RT m))) (sp : List (RT m × RT m))
+    (C : SRI.Ontology (Fin n) (Fin m)) (R : RT m) :
+    Nat → List (RT m) → List (RT m)
+  | 0, _ => SRI.Proc.roleUp C R
+  | k + 1, L =>
+    if L.all (fun r => ((mp[r]?).getD []).all (· ∈ L)) then L
+    else
+      let L' := upStepM mp sp L
+      if L'.all (· ∈ L) then L else upFixM mp sp C R k L'
+
+theorem upFixM_eq (sp : List (RT m × RT m)) (C : SRI.Ontology (Fin n) (Fin m)) (R : RT m) :
+    ∀ (k : Nat) (L : List (RT m)), upFixM (mkStepMap sp) sp C R k L = upFixP sp C R k L
+  | 0, _ => rfl
+  | k + 1, L => by
+    unfold upFixM upFixP
+    dsimp only
+    rw [upStepM_eq, upFixM_eq sp C R k]
+    split_ifs with h1 h2
+    · rfl
+    · exact absurd (upStepP_closed h1) h2
+    · rfl
+    · rfl
 
 theorem upFixP_eq (C : SRI.Ontology (Fin n) (Fin m)) (R : RT m) :
     ∀ (k : Nat) (L : List (RT m)), upFixP (SRI.Proc.stepPairs C) C R k L = SRI.Proc.upFix C R k L
@@ -86,24 +166,21 @@ theorem upFixP_eq (C : SRI.Ontology (Fin n) (Fin m)) (R : RT m) :
 arguments, so they are computed once, not once per role term). -/
 def mkTabC (C : SRI.Ontology (Fin n) (Fin m)) : List (RT m × List (RT m)) :=
   let sp := SRI.Proc.stepPairs C
-  (allRT m).map fun R => (R, upFixP sp C R (2 * m + 2) [R])
+  let mp := mkStepMap sp
+  (allRT m).map fun R => (R, upFixM mp sp C R (2 * m + 2) [R])
 
 def mkTabF (O : Ontology (Fin n) (Fin m)) : List (RT m × List (RT m)) :=
   mkTabC (SRIQ.sriPart (chainsOnly O))
 
 @[csimp] theorem mkTab_eq_F : @mkTab = @mkTabF := by
   funext n m O
-  simp only [mkTab, mkTabF, mkTabC, upFixP_eq]
+  simp only [mkTab, mkTabF, mkTabC, upFixM_eq, upFixP_eq]
 
 theorem leF_mkTab (O : Ontology (Fin n) (Fin m)) : leF (mkTab O) = leB O := by
   rw [← leB_chainsOnly]
   funext R S
   unfold leF mkTab leB
   rw [lookup_map_self _ _ R (mem_allRT R)]
-
-/-- A hash for role terms. -/
-instance instHashableRT : Hashable (RoleT (Fin m)) where
-  hash | .pos r => mixHash 1 (hash r) | .inv r => mixHash 2 (hash r)
 
 /-- `leF` over a hash map of the table (stage C3e: `List.lookup` made every
 hierarchy test linear in the number of role terms). -/
@@ -410,6 +487,19 @@ theorem closeS_closeF (E : α → Finset α) (A : Finset α) :
 
 end Close
 
+def checkRegOne (le : RT m → RT m → Bool) (R : RT m) (A : Finset (RT m)) : Bool :=
+  decide (R ∉ A) && @decide (∀ S ∈ A, le S R = false) (Finset.decidableDforallFinset)
+
+theorem all_allRT (m : Nat) (f : RT m → Bool) :
+    (allRT m).all f = decide (∀ R : RT m, f R = true) := by
+  rw [Bool.eq_iff_iff, List.all_eq_true, decide_eq_true_iff]
+  exact ⟨fun h R => h R (mem_allRT R), fun h R _ => h R⟩
+
+theorem checkRegOne_eq (le : RT m → RT m → Bool) (R : RT m) (A : Finset (RT m)) :
+    (checkRegOne le R A = true) ↔ (R ∉ A ∧ ∀ S ∈ A, le S R = false) := by
+  unfold checkRegOne
+  rw [Bool.and_eq_true, decide_eq_true_iff, @decide_eq_true_iff _ (Finset.decidableDforallFinset)]
+
 /-- `regularB` with the forced pairs and the super-role table computed once
 and each closure stopped when it is stable. -/
 def regularBF (O : Ontology (Fin n) (Fin m)) : Bool :=
@@ -419,12 +509,11 @@ def regularBF (O : Ontology (Fin n) (Fin m)) : Bool :=
   let N := Fintype.card (RT m) + 1
   let hm := Std.HashMap.ofList (mkTab O)
   let le := leH hm
-  decide (∀ R : RT m,
-    (fun A => R ∉ A ∧ ∀ S ∈ A, le S R = false) (closeS sc N (sc R)))
+  (allRT m).all fun R => checkRegOne le R (closeS sc N (sc R))
 
 @[csimp] theorem regularB_eq_F : @regularB = @regularBF := by
   funext n m O
-  simp only [regularBF, closeS_closeF, leH_mkTab]
+  simp only [regularBF, all_allRT, checkRegOne_eq, closeS_closeF, leH_mkTab]
   rfl
 
 end ContextCalculus.SROIQ.Proc
