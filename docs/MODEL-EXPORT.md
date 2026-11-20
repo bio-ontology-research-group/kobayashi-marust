@@ -206,6 +206,17 @@ entailed inequalities:
      edges, or through nominals, so `a` and `b` lie in one component. Every
      named edge of `I` is therefore in `edge_set` or a candidate, and a pair
      in neither has the countermodel `I`.
+   - **Individuals outside the model.** The `ht-bridge` model holds only the
+     individuals the ABox mentions; `from_exported_model` gave every other
+     declared individual a stand-in element without classes or edges, so a
+     row such as `s(x, x)` from `⊤ ⊑ ∃s.Self` (or `⊤ ⊑ ≤1 s0` derived from an
+     inverse-functional `s0` with `s0⁻ ⊑ s0`) was lost for an individual `x`
+     that occurs only in its declaration. Such an `x` is interchangeable with
+     a fresh individual; without nominals or the universal role a fresh
+     individual is related to no other named individual, so its loop on every
+     role goes to the residual probes. With nominals or the universal role,
+     or when an individual that occurs in an axiom is missing from the model,
+     `from_exported_model` declines and the exact probe run answers.
 
 3. **`DIFFERENT` (`DifferentIndividuals`)**:
    - Two individuals `a` and `b` that are distinct elements in `M_0`

@@ -363,6 +363,8 @@ pub(super) fn from_exported_model(
     let mut edge_set: HashSet<(usize, String, usize)>;
     let mut elem_inds: Vec<Vec<String>>;
     let mut ind_to_elem: HashMap<String, usize> = HashMap::new();
+    // Individuals the exported model does not contain (stand-in elements).
+    let mut stand_ins: HashSet<String> = HashSet::new();
 
     if raw.abox_elided || raw.route == "el-canonical" {
         let mut init_same: Vec<(String, String)> = Vec::new();
@@ -460,6 +462,7 @@ pub(super) fn from_exported_model(
         for pub_ind in &pub_individuals {
             if !ind_to_elem.contains_key(pub_ind) {
                 let u_new = labels.len();
+                stand_ins.insert(pub_ind.clone());
                 labels.push(vec![format!("__nom__{pub_ind}")]);
                 elem_inds.push(vec![pub_ind.clone()]);
                 ind_to_elem.insert(pub_ind.clone(), u_new);
@@ -1163,6 +1166,57 @@ pub(super) fn from_exported_model(
     // (`c1(a, a)` from `s1(a, x)`, `s3(x, a)` with `s1 ∘ s3 ⊑ c1`), possibly
     // composed with ABox edges. `ExcursionBound` adds those candidates to the
     // upper bound; the residual probes decide them.
+    // Individuals that occur in no logical axiom (only in declarations or
+    // annotations) are absent from the exported model, whose stand-in
+    // elements carry no classes; their rows (for example `s(x, x)` from
+    // `⊤ ⊑ ∃s.Self`, or an excursion loop) were lost. Such an individual is
+    // interchangeable with a fresh one: without nominals or the universal
+    // role it can only be related to itself, so its loops on every role go to
+    // the residual probes; with them, the exact probe run decides everything.
+    let fresh_inds: Vec<usize> = if values_requested && !bound_disabled {
+        let mut mentioned: HashSet<String> = HashSet::new();
+        fn atoms<'a>(node: &Node<'a>, out: &mut Vec<&'a str>) {
+            match node {
+                Node::Atom(a) => out.push(a),
+                Node::List(_, args) => {
+                    for a in args {
+                        atoms(a, out);
+                    }
+                }
+            }
+        }
+        let _ = crate::frontend::parse::for_each_ontology_child(text, |node| {
+            if matches!(node.head(), Some("Declaration" | "AnnotationAssertion")) {
+                return Ok(());
+            }
+            let mut out = Vec::new();
+            atoms(node, &mut out);
+            for t in out {
+                if let Some(p) = ind_lookup.get(&expand_tok(t)).or_else(|| ind_lookup.get(&public_name(t))) {
+                    mentioned.insert(p.clone());
+                }
+            }
+            Ok(())
+        });
+        // A mentioned individual missing from the model has no reliable
+        // edges at all: let the exact probes answer.
+        if stand_ins.iter().any(|p| mentioned.contains(p)) {
+            return None;
+        }
+        pub_individuals
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| !mentioned.contains(*p))
+            .map(|(i, _)| i)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    if !fresh_inds.is_empty()
+        && (text.contains("ObjectOneOf(") || text.contains("ObjectHasValue(") || text.contains("topObjectProperty"))
+    {
+        return None;
+    }
     let reconstructed = raw.abox_elided || raw.route == "el-canonical";
     let excursion_spec = if reconstructed && values_requested && !bound_disabled {
         Some(ExcursionSpec::collect(text, &meta.rbox, &|tok: &str| resolve_role_short(tok))?)
@@ -1231,6 +1285,7 @@ pub(super) fn from_exported_model(
             .iter()
             .all(|e| e.0 >= n_elems || e.2 >= n_elems || proved_edge_set.contains(e))
         && excursion_ok
+        && fresh_inds.is_empty()
     {
         let mut same_adj: HashMap<&str, Vec<&str>> = HashMap::new();
         for (a, b) in &same_pairs {
@@ -2799,6 +2854,12 @@ pub(super) fn from_exported_model(
                         }
                     }
                 }
+            }
+        }
+        for &x in &fresh_inds {
+            plan.residual_value_sources.insert(x);
+            for r_idx in 0..roles.len() {
+                plan.residual_value_targets.insert((r_idx, x));
             }
         }
         // Anonymous-excursion candidates, recomputed on the final `edge_set`
@@ -5554,6 +5615,26 @@ mod tests {
                  SubClassOf(:D ObjectSomeValuesFrom(:r owl:Thing))\nSubClassOf(:E ObjectSomeValuesFrom(:r owl:Thing))\n\
                  SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:r)) :c)",
                 &[["c", "a", "a"]],
+            ),
+            (
+                "fresh_individual_has_self_from_top",
+                "SubClassOf(ObjectComplementOf(:E) :E)\nSubClassOf(:E ObjectHasSelf(:s))\nClassAssertion(:B :a)\n\
+                 Declaration(NamedIndividual(:e))",
+                &[["s", "a", "a"], ["s", "e", "e"]],
+            ),
+            (
+                "fresh_individual_excursion_loop",
+                "SubClassOf(owl:Thing ObjectSomeValuesFrom(:r owl:Thing))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:r)) :c)\nClassAssertion(:B :a)\n\
+                 Declaration(NamedIndividual(:e))",
+                &[["c", "a", "a"], ["c", "e", "e"]],
+            ),
+            (
+                "fresh_individual_functional_self",
+                "SubObjectPropertyOf(ObjectInverseOf(:s0) :s0)\nInverseFunctionalObjectProperty(:s0)\n\
+                 SubClassOf(ObjectMaxCardinality(1 :s0) :D)\nSubClassOf(:D ObjectHasSelf(:s1))\n\
+                 ObjectPropertyAssertion(:k :a :b)\nDeclaration(NamedIndividual(:e))",
+                &[["s1", "a", "a"], ["s1", "e", "e"]],
             ),
         ];
         let _test_env = crate::test_env::write();
