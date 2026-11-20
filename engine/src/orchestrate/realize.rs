@@ -660,10 +660,9 @@ pub fn classify_extended(
         let mut diff_cls =
             classify_probe_source(cfg, &text, &diff_ext, "-abox-diff-probes.ofn")?;
         let individual_of: BTreeMap<String, String> = ind_probes.into_iter().collect();
+        require_consistent_probe_run(&diff_cls, "DIFFERENT probes")?;
         let diff_rows = super::abox_rows::split(&mut diff_cls, &abox_pd, &individual_of)?;
-        if diff_cls.consistent {
-            abox.different = diff_rows.different;
-        }
+        abox.different = diff_rows.different;
     }
     let data_hierarchy = match data_probes {
         Some((data_ext, data_probes)) => {
@@ -771,12 +770,11 @@ pub fn classify_extended(
                 if !res_ext.is_empty() {
                     let mut abox_cls =
                         classify_probe_source(cfg, &text, &res_ext, "-abox-val-probes.ofn")?;
+                    require_consistent_probe_run(&abox_cls, "residual VALUE probes")?;
                     let individual_of: BTreeMap<String, String> = ind_probes.into_iter().collect();
                     let rows = super::abox_rows::split(&mut abox_cls, &abox_p, &individual_of)?;
-                    if abox_cls.consistent {
-                        if let Some(vs) = rows.values {
-                            val_set.extend(vs);
-                        }
+                    if let Some(vs) = rows.values {
+                        val_set.extend(vs);
                     }
                 }
             }
@@ -792,12 +790,11 @@ pub fn classify_extended(
                 if !res_ext.is_empty() {
                     let mut abox_cls =
                         classify_probe_source(cfg, &text, &res_ext, "-abox-diff-probes.ofn")?;
+                    require_consistent_probe_run(&abox_cls, "residual DIFFERENT probes")?;
                     let individual_of: BTreeMap<String, String> = ind_probes.into_iter().collect();
                     let rows = super::abox_rows::split(&mut abox_cls, &abox_p, &individual_of)?;
-                    if abox_cls.consistent {
-                        if let Some(ds) = rows.different {
-                            diff_set.extend(ds);
-                        }
+                    if let Some(ds) = rows.different {
+                        diff_set.extend(ds);
                     }
                 }
             }
@@ -814,6 +811,7 @@ pub fn classify_extended(
             val_ext.push_str(&ext_v);
             let mut val_cls =
                 classify_probe_source(cfg, &text, &val_ext, "-abox-val-probes.ofn")?;
+            require_consistent_probe_run(&val_cls, "VALUE probes")?;
             let val_rows = super::abox_rows::split(&mut val_cls, &abox_pv, &individual_of)?;
 
             let mut diff_ext = ind_ext;
@@ -822,13 +820,12 @@ pub fn classify_extended(
             diff_ext.push_str(&ext_d);
             let mut diff_cls =
                 classify_probe_source(cfg, &text, &diff_ext, "-abox-diff-probes.ofn")?;
+            require_consistent_probe_run(&diff_cls, "DIFFERENT probes")?;
             let diff_rows = super::abox_rows::split(&mut diff_cls, &abox_pd, &individual_of)?;
-            if val_cls.consistent && diff_cls.consistent {
-                abox = super::abox_rows::AboxRows {
-                    values: val_rows.values,
-                    different: diff_rows.different,
-                };
-            }
+            abox = super::abox_rows::AboxRows {
+                values: val_rows.values,
+                different: diff_rows.different,
+            };
         } else {
             let (mut abox_ext, ind_probes) = individual_extension(&text, &individuals);
             let (ext2, abox_p) =
@@ -836,11 +833,9 @@ pub fn classify_extended(
             abox_ext.push_str(&ext2);
             let mut abox_cls =
                 classify_probe_source(cfg, &text, &abox_ext, "-abox-probes.ofn")?;
+            require_consistent_probe_run(&abox_cls, "VALUE/DIFFERENT probes")?;
             let individual_of: BTreeMap<String, String> = ind_probes.into_iter().collect();
-            let rows = super::abox_rows::split(&mut abox_cls, &abox_p, &individual_of)?;
-            if abox_cls.consistent {
-                abox = rows;
-            }
+            abox = super::abox_rows::split(&mut abox_cls, &abox_p, &individual_of)?;
         }
     }
     if mode.is_none() {
@@ -849,6 +844,23 @@ pub fn classify_extended(
         realization.same.clear();
     }
     Ok(Extended { realization, properties: hierarchy, data_properties: data_hierarchy, abox, top: top_classes })
+}
+
+/// A probe run classifies the consistent source plus fresh probe classes and
+/// fresh individuals, a conservative extension, so it is consistent too. An
+/// inconsistent probe run is a bug; reporting it as an error keeps the answer
+/// from silently losing that run's rows.
+fn require_consistent_probe_run(
+    probe_run: &Classification,
+    what: &str,
+) -> Result<(), OrchestrateError> {
+    if probe_run.consistent {
+        return Ok(());
+    }
+    Err(OrchestrateError::InvalidOntology(format!(
+        "{what}: the source is consistent but its probe extension is not \
+         (a bug in the probe reduction; please report the input)"
+    )))
 }
 
 /// Sets `KM_UNKNOWN_DATATYPES=free` for the probe run of the data property
@@ -1215,5 +1227,68 @@ mod tests {
         assert_eq!(sep.data_properties, comb.data_properties);
         assert_eq!(sep.abox, comb.abox);
         assert_eq!(sep.top, comb.top);
+        // Both paths could drop the same rows and still agree: `a` is an `A`
+        // (domain of `s`, which contains `r`), `b` and `c` are `B`s, and
+        // `A ⊓ B` is empty (`A ⊓ B ⊑ C`, `B` and `C` disjoint), so `a ≠ b` and
+        // `a ≠ c` are entailed (HermiT agrees). Losing them depended on hash
+        // iteration order.
+        let local = |x: &str| x.rsplit([':', '/', '#']).next().unwrap_or(x).to_string();
+        for result in [&sep, &comb] {
+            let rows: Vec<(String, String)> = result
+                .abox
+                .different
+                .as_ref()
+                .expect("--different requested")
+                .iter()
+                .map(|[x, y]| (local(x), local(y)))
+                .collect();
+            assert_eq!(rows, vec![("a".into(), "b".into()), ("a".into(), "c".into())]);
+        }
+    }
+
+    /// The model-plan pair test once lost `a ≠ b` and `a ≠ c` on `p3` in about
+    /// half of all runs, depending on hash iteration order. Every `HashMap`
+    /// built in one process gets fresh hash keys, so repeating the call in one
+    /// process samples many orders.
+    #[test]
+    fn model_plan_different_rows_do_not_depend_on_hash_order() {
+        let _test_env = crate::test_env::write();
+        let _env = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "auto");
+        std::env::set_var("KM_THREADS", "1");
+        let text = "Prefix(:=<http://ex.org/>)\nOntology(<http://ex.org/p3d>\n\
+            Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
+            Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))\n\
+            Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))\n\
+            SubObjectPropertyOf(:r :s)\n\
+            ObjectPropertyDomain(:s :A)\n\
+            ObjectPropertyRange(:s :B)\n\
+            SubClassOf(ObjectIntersectionOf(:A :B) :C)\n\
+            DisjointClasses(:B :C)\n\
+            ObjectPropertyAssertion(:r :a :b)\n\
+            ClassAssertion(:B :c)\n\
+        )";
+        let path = super::tmpfile::TempPath::new("-p3-hash-order.ofn");
+        std::fs::write(path.path(), text).unwrap();
+        let cfg = Config::from_env();
+        let local = |x: &str| x.rsplit([':', '/', '#']).next().unwrap_or(x).to_string();
+        for run in 0..12 {
+            let result =
+                classify_extended(&cfg, path.path(), None, false, false, false, false, true)
+                    .unwrap();
+            let rows: Vec<(String, String)> = result
+                .abox
+                .different
+                .as_ref()
+                .expect("--different requested")
+                .iter()
+                .map(|[x, y]| (local(x), local(y)))
+                .collect();
+            assert_eq!(
+                rows,
+                vec![("a".into(), "b".into()), ("a".into(), "c".into())],
+                "run {run}"
+            );
+        }
     }
 }
