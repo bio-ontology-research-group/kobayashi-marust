@@ -224,6 +224,45 @@ pub(super) fn check_declarations(text: &str, prefixes: &BTreeMap<String,String>)
     types.finish()
 }
 
+/// Undeclared entity `(kind_keyword, full_iri)` pairs in `text`, or empty when
+/// `types.finish()` rejects incompatible punning or reserved-vocabulary use.
+pub(crate) fn missing_declarations(
+    text: &str,
+    prefixes: &BTreeMap<String, String>,
+) -> Result<Vec<(&'static str, String)>, String> {
+    let mut types = Types::default();
+    crate::frontend::parse::for_each_ontology_child(text, |node| {
+        types.observe(node, prefixes);
+        Ok(())
+    })
+    .map_err(|e| e.0)?;
+    if types.finish().is_err() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for id in 0..types.names.len() {
+        let name = &types.names[id];
+        let builtin = [
+            "http://www.w3.org/2002/07/owl#",
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "http://www.w3.org/2000/01/rdf-schema#",
+            "http://www.w3.org/2001/XMLSchema#",
+        ]
+        .iter()
+        .any(|ns| name.starts_with(ns));
+        if builtin {
+            continue;
+        }
+        for kind in kinds_in(types.used[id]) {
+            if kind == Kind::AnnotationProperty && types.declared[id] & bit(kind) == 0 {
+                out.push(("AnnotationProperty", name.clone()));
+            }
+        }
+    }
+    out.sort_unstable();
+    Ok(out)
+}
+
 pub(super) fn check(text: &str, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
     let mut checker = Checker::default();
     crate::frontend::parse::for_each_ontology_child(text, |node| {

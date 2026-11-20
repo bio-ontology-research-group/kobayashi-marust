@@ -1046,7 +1046,7 @@ impl<'a> SourceProfileBuilder<'a> {
     /// (declared or used), sorted; the frontend's sort encoding resolves them
     /// against the registry without assigning new names.
     /// Every class name the source mentions (declarations aside).
-    pub(super) fn class_names(&self) -> Vec<&'a str> {
+    pub(crate) fn class_names(&self) -> Vec<&'a str> {
         let mut names: Vec<_> = self.classes.iter().copied().collect();
         names.sort_unstable();
         names
@@ -1073,7 +1073,7 @@ impl<'a> SourceProfileBuilder<'a> {
     pub(super) fn rule_individual_names(&self) -> Vec<&'a str> {
         if self.stats.rule_axioms == 0 { return Vec::new(); }
         let mut names: Vec<_> = self.individuals.iter().copied()
-            .filter(|name| !name.starts_with("_:"))
+            .filter(|name| !name.starts_with("_:") && !super::lenient::is_skolem_anon_iri(name))
             .collect();
         names.sort_unstable();
         names

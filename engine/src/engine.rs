@@ -10662,8 +10662,9 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
         }
         *edges = normalized;
     }
-    if edges.len() > 250_000 {
-        return Err("RBox edge closure exceeds compact export bound (250,000 edges)".to_string());
+    const MAX_EXPORT_EDGES: usize = 500_000;
+    if edges.len() > MAX_EXPORT_EDGES {
+        return Err("RBox edge closure exceeds compact export bound (500,000 edges)".to_string());
     }
     if rbox.is_empty() {
         return Ok(());
@@ -10686,9 +10687,9 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
             let base = r.strip_prefix("__inv__").unwrap_or(r.as_str()).to_string();
             for u in 0..n_elems {
                 edges.insert((u, base.clone(), u));
-                if edges.len() > 250_000 {
+                if edges.len() > MAX_EXPORT_EDGES {
                     return Err(
-                        "RBox edge closure exceeds compact export bound (250,000 edges)".to_string(),
+                        "RBox edge closure exceeds compact export bound (500,000 edges)".to_string(),
                     );
                 }
             }
@@ -10768,9 +10769,9 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                             if let Some(ws) = adj.get(&mid) {
                                 for &w in ws {
                                     insert_role(edges, u, r, w);
-                                    if edges.len() > 250_000 {
+                                    if edges.len() > MAX_EXPORT_EDGES {
                                         return Err(
-                                            "RBox edge closure exceeds compact export bound (250,000 edges)"
+                                            "RBox edge closure exceeds compact export bound (500,000 edges)"
                                                 .to_string(),
                                         );
                                     }
@@ -10792,9 +10793,9 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                             if let Some(ws) = adj2.get(&mid) {
                                 for &w in ws {
                                     insert_role(edges, u, sup, w);
-                                    if edges.len() > 250_000 {
+                                    if edges.len() > MAX_EXPORT_EDGES {
                                         return Err(
-                                            "RBox edge closure exceeds compact export bound (250,000 edges)"
+                                            "RBox edge closure exceeds compact export bound (500,000 edges)"
                                                 .to_string(),
                                         );
                                     }
@@ -10824,9 +10825,9 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                                 if let Some(ws) = adj.get(&mid) {
                                     for &w in ws {
                                         next_reach.insert((u, w));
-                                        if next_reach.len() > 250_000 {
+                                        if next_reach.len() > MAX_EXPORT_EDGES {
                                             return Err(
-                                                "RBox edge closure exceeds compact export bound (250,000 edges)"
+                                                "RBox edge closure exceeds compact export bound (500,000 edges)"
                                                     .to_string(),
                                             );
                                         }
@@ -10840,9 +10841,9 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                         }
                         for (u, w) in reach {
                             insert_role(edges, u, sup, w);
-                            if edges.len() > 250_000 {
+                            if edges.len() > MAX_EXPORT_EDGES {
                                 return Err(
-                                    "RBox edge closure exceeds compact export bound (250,000 edges)"
+                                    "RBox edge closure exceeds compact export bound (500,000 edges)"
                                         .to_string(),
                                 );
                             }
@@ -10851,9 +10852,9 @@ pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
                 }
                 _ => {}
             }
-            if edges.len() > 250_000 {
+            if edges.len() > MAX_EXPORT_EDGES {
                 return Err(
-                    "RBox edge closure exceeds compact export bound (250,000 edges)".to_string(),
+                    "RBox edge closure exceeds compact export bound (500,000 edges)".to_string(),
                 );
             }
         }

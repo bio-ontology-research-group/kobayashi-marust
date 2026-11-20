@@ -588,6 +588,12 @@ pub fn run_source_incremental() {
         match arg.as_str() {
             "--unknown-datatypes=strict" => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
             "--unknown-datatypes=free" => std::env::set_var("KM_UNKNOWN_DATATYPES", "free"),
+            "--lenient" | "--lenient=true" | "--lenient=1" => std::env::set_var("KM_LENIENT", "1"),
+            "--lenient=false" | "--lenient=0" => std::env::remove_var("KM_LENIENT"),
+            value if value.starts_with("--lenient=") => {
+                eprintln!("--lenient takes true or false, got {value:?}");
+                exit(2);
+            }
             value if value.starts_with("--unknown-datatypes") => {
                 eprintln!("--unknown-datatypes takes strict or free, got {value:?}");
                 exit(2);

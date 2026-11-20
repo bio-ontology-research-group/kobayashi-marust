@@ -459,6 +459,7 @@ impl Model {
 #[derive(Clone)]
 pub struct Opts {
     pub loops: bool,
+    pub from_export: bool,
     pub close_budget: u64,
     pub step_budget: u64,
     pub node_budget: usize,
@@ -471,6 +472,7 @@ impl Default for Opts {
     fn default() -> Opts {
         Opts {
             loops: true,
+            from_export: false,
             close_budget: 20000,
             step_budget: 50_000_000,
             node_budget: 3_000_000,
@@ -3871,25 +3873,34 @@ impl<'a> Engine<'a> {
                 } else {
                     close_fold(self, u_full)
                 };
-                if t_new.is_none() && !(p1 && _p2 && m.elems[y1 as usize].target != tg) {
+                let can_drop_to_forced = if self.opt.from_export {
+                    !p1 && !n1 && deg1 <= 1
+                } else {
+                    !(p1 && _p2 && m.elems[y1 as usize].target != tg)
+                };
+                if t_new.is_none() && can_drop_to_forced {
                     let mut req1 = f1;
-                    let edges1 = m.elems[y1 as usize].edges.clone();
-                    for &(z, lz) in &edges1 {
-                        let tz = m.elems[z as usize].ty;
-                        let flz = self.flip(lz);
-                        let fz = self.fwd(tz, flz);
-                        req1 = self.sets.union(req1, fz);
+                    if !self.opt.from_export {
+                        let edges1 = m.elems[y1 as usize].edges.clone();
+                        for &(z, lz) in &edges1 {
+                            let tz = m.elems[z as usize].ty;
+                            let flz = self.flip(lz);
+                            let fz = self.fwd(tz, flz);
+                            req1 = self.sets.union(req1, fz);
+                        }
                     }
                     let u_f1 = self.sets.union(t2, req1);
                     t_new = close_fold(self, u_f1);
                     if t_new.is_none() {
                         let mut req2 = f2;
-                        let edges2 = m.elems[y2 as usize].edges.clone();
-                        for &(z, lz) in &edges2 {
-                            let tz = m.elems[z as usize].ty;
-                            let flz = self.flip(lz);
-                            let fz = self.fwd(tz, flz);
-                            req2 = self.sets.union(req2, fz);
+                        if !self.opt.from_export {
+                            let edges2 = m.elems[y2 as usize].edges.clone();
+                            for &(z, lz) in &edges2 {
+                                let tz = m.elems[z as usize].ty;
+                                let flz = self.flip(lz);
+                                let fz = self.fwd(tz, flz);
+                                req2 = self.sets.union(req2, fz);
+                            }
                         }
                         let u_both = self.sets.union(req2, req1);
                         t_new = close_fold(self, u_both);
@@ -3898,7 +3909,12 @@ impl<'a> Engine<'a> {
                 let Some(t_merged) = t_new else { continue };
                 let f_merged = self.sets.union(f2, f1);
                 self.stats.folds += 1;
-                if n1 || p1 || deg1 > 1 {
+                let do_merge = if self.opt.from_export {
+                    n1
+                } else {
+                    n1 || p1 || deg1 > 1
+                };
+                if do_merge {
                     self.merge(m, y1, y2);
                     let y2_cur = m.find(y2);
                     {

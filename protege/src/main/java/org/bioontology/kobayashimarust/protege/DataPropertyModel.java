@@ -786,12 +786,18 @@ final class DataPropertyModel {
 
     /** Whether a set of stated range datatypes shares a common value in the OWL 2 datatype map. */
     static boolean rangesCompatible(Set<IRI> dts) {
-        if (dts.size() <= 1) return true;
-        if (POSITIVE_INT_SHARED.containsAll(dts)) return true;
-        if (ZERO_INT_SHARED.containsAll(dts)) return true;
-        if (NEGATIVE_INT_SHARED.containsAll(dts)) return true;
-        if (DATE_TIME_SHARED.containsAll(dts)) return true;
-        if (ASCII_STRING_SHARED.containsAll(dts)) return true;
+        Set<IRI> builtIn = new HashSet<>();
+        for (IRI iri : dts) {
+            if (OWL2Datatype.isBuiltIn(iri) && !iri.equals(OWL2Datatype.RDFS_LITERAL.getIRI())) {
+                builtIn.add(iri);
+            }
+        }
+        if (builtIn.size() <= 1) return true;
+        if (POSITIVE_INT_SHARED.containsAll(builtIn)) return true;
+        if (ZERO_INT_SHARED.containsAll(builtIn)) return true;
+        if (NEGATIVE_INT_SHARED.containsAll(builtIn)) return true;
+        if (DATE_TIME_SHARED.containsAll(builtIn)) return true;
+        if (ASCII_STRING_SHARED.containsAll(builtIn)) return true;
         return false;
     }
 }
