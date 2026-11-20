@@ -150,6 +150,43 @@ fn literals(s: &str) -> Vec<(String, String)> {
     }).collect()
 }
 
+/// Decodes a string literal as Lean's `String.quote` prints it (the checker's
+/// `--print-clauses` atoms). `s` starts after the opening quote. Returns the
+/// decoded text and the rest after the closing quote. The escapes are `\\`,
+/// `\"`, `\'`, `\n`, `\t`, `\r`, `\xHH` and `\uHHHH`; every other character
+/// stands for itself.
+fn unquote_lean(s: &str) -> Option<(String, &str)> {
+    let mut out = String::new();
+    let mut it = s.char_indices();
+    while let Some((i, c)) = it.next() {
+        match c {
+            '"' => return Some((out, &s[i + 1..])),
+            '\\' => {
+                let (_, e) = it.next()?;
+                match e {
+                    '\\' => out.push('\\'),
+                    '"' => out.push('"'),
+                    '\'' => out.push('\''),
+                    'n' => out.push('\n'),
+                    't' => out.push('\t'),
+                    'r' => out.push('\r'),
+                    'x' | 'u' => {
+                        let n = if e == 'x' { 2 } else { 4 };
+                        let mut v = 0u32;
+                        for _ in 0..n {
+                            v = v * 16 + it.next()?.1.to_digit(16)?;
+                        }
+                        out.push(char::from_u32(v)?);
+                    }
+                    _ => return None,
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    None
+}
+
 /// (lexical, datatype, language tag) of each literal.
 fn literals_l(s: &str) -> Vec<(String, String, Option<String>)> {
     let mut out: Vec<(String, String, Option<String>)> = Vec::new();
@@ -160,42 +197,31 @@ fn literals_l(s: &str) -> Vec<(String, String, Option<String>)> {
             rest = &rest[i + 10..];
             continue;
         };
-        let j = match r.find('"') {
-            Some(j) => j,
-            None => break,
-        };
-        let lex = r[..j].to_string();
-        let r2 = &r[j..];
-        let dt = match r2.find("datatype :=") {
-            Some(k) => {
-                let r3 = r2[k + 11..].trim_start();
-                if let Some(r4) = r3.strip_prefix('"') {
-                    r4[..r4.find('"').unwrap_or(0)].to_string()
-                } else {
-                    String::new()
-                }
-            }
+        let Some((lex, r2)) = unquote_lean(r) else { break };
+        // the fields of this literal end at its closing brace
+        let fields = &r2[..r2.find('}').unwrap_or(r2.len())];
+        let dt = match fields.find("datatype :=") {
+            Some(k) => match fields[k + 11..].trim_start().strip_prefix('"') {
+                Some(r4) => unquote_lean(r4).map(|x| x.0).unwrap_or_default(),
+                None => String::new(),
+            },
             None => String::new(),
         };
-        let lang = r2.find("lang :=").and_then(|k| {
-            let r3 = r2[k + 7..].trim_start();
-            if let Some(r4) = r3.strip_prefix("some") {
-                let r5 = r4.trim_start().strip_prefix('"')?;
-                r5.find('"').map(|e| r5[..e].to_string())
-            } else {
-                None
-            }
+        let lang = fields.find("lang :=").and_then(|k| {
+            let r3 = fields[k + 7..].trim_start();
+            let r4 = r3.strip_prefix("some")?;
+            let r5 = r4.trim_start().strip_prefix('"')?;
+            unquote_lean(r5).map(|x| x.0)
         });
         out.push((lex, dt, lang));
-        rest = &r[j..];
+        rest = r2;
     }
     out
 }
 
 fn first_quoted(s: &str) -> Option<String> {
     let i = s.find('"')?;
-    let r = &s[i + 1..];
-    Some(r[..r.find('"')?].to_string())
+    unquote_lean(&s[i + 1..]).map(|x| x.0)
 }
 
 fn all_quoted_dts(s: &str) -> Vec<String> {
@@ -205,9 +231,9 @@ fn all_quoted_dts(s: &str) -> Vec<String> {
         while let Some(i) = rest.find(pat) {
             let r = rest[i + pat.len()..].trim_start();
             if let Some(r2) = r.strip_prefix('"') {
-                if let Some(j) = r2.find('"') {
-                    out.push(r2[..j].to_string());
-                    rest = &r2[j + 1..];
+                if let Some((d, r3)) = unquote_lean(r2) {
+                    out.push(d);
+                    rest = r3;
                     continue;
                 }
             }
@@ -234,9 +260,14 @@ fn strip_outer_parens(mut s: &str) -> &str {
         }
         let mut depth = 0i32;
         let mut in_str = false;
+        let mut esc = false;
         let mut ok = true;
         for (i, c) in s.char_indices() {
-            if c == '"' {
+            if in_str && esc {
+                esc = false;
+            } else if in_str && c == '\\' {
+                esc = true;
+            } else if c == '"' {
                 in_str = !in_str;
             } else if !in_str {
                 if c == '(' {
@@ -265,9 +296,14 @@ fn split_top_list(s: &str) -> Option<Vec<&str>> {
     let mut out = Vec::new();
     let mut depth = 0i32;
     let mut in_str = false;
+    let mut esc = false;
     let mut start = 0usize;
     for (idx, c) in s.char_indices() {
-        if c == '"' {
+        if in_str && esc {
+            esc = false;
+        } else if in_str && c == '\\' {
+            esc = true;
+        } else if c == '"' {
             in_str = !in_str;
         } else if !in_str {
             match c {
@@ -465,8 +501,8 @@ fn member(v: &Val, atom: &str) -> Option<bool> {
         // facets: ("FACET", { lexical := ... })
         let mut rest = &a[a.find('[')?..];
         while let Some(i) = rest.find("(\"") {
-            let r = &rest[i + 2..];
-            let facet = &r[..r.find('"')?];
+            let (facet, r) = unquote_lean(&rest[i + 2..])?;
+            let facet = facet.as_str();
             let lits = literals(r);
             let (lex, _) = lits.first()?.clone();
             let b: f64 = match lex.parse() {
@@ -1029,4 +1065,105 @@ pub fn star_satisfies(d: &DataNf, ents: &[Entry], a: u32) -> bool {
         }
     }
     true
+}
+
+#[cfg(test)]
+mod quote_tests {
+    use super::*;
+
+    const XS: &str = "http://www.w3.org/2001/XMLSchema#string";
+
+    /// The text `oneOf [{ lexical := "<quoted>", datatype := "<dt>", lang := none }]`
+    /// exactly as the checker prints it, with `quoted` already Lean-escaped.
+    fn atom(quoted: &str, dt: &str) -> String {
+        format!(
+            "ContextCalculus.OWL.DataRange.oneOf   [{{ lexical := \"{}\", datatype := \"{}\", lang := none }}]",
+            quoted, dt
+        )
+    }
+
+    fn one(quoted: &str) -> (String, String) {
+        let l = literals(&atom(quoted, XS));
+        assert_eq!(l.len(), 1, "one literal expected in {:?}", quoted);
+        l[0].clone()
+    }
+
+    #[test]
+    fn double_quote() {
+        assert_eq!(one(r#"Workshop \"Datenbanken\", Leipzig"#).0, "Workshop \"Datenbanken\", Leipzig");
+        assert_eq!(one(r#"Bj{\"{o}}rn Schnizler"#).0, "Bj{\"{o}}rn Schnizler");
+        assert_eq!(one(r#"\""#).0, "\"");
+    }
+
+    #[test]
+    fn backslash() {
+        assert_eq!(one(r"back\\slash").0, "back\\slash");
+        // a backslash before the closing quote must not swallow it
+        assert_eq!(one(r"end\\").0, "end\\");
+    }
+
+    #[test]
+    fn newline_tab_and_control() {
+        assert_eq!(one(r"new\nline").0, "new\nline");
+        assert_eq!(one(r"tab\there").0, "tab\there");
+        assert_eq!(one(r"cr\x0dx").0, "cr\rx");
+        assert_eq!(one(r"bell\x07y").0, "bell\x07y");
+        assert_eq!(one(r"del\x7fz").0, "del\x7fz");
+    }
+
+    #[test]
+    fn non_ascii() {
+        assert_eq!(one("caf\u{e9} \u{4e2d}\u{6587} \u{1f600}").0, "caf\u{e9} \u{4e2d}\u{6587} \u{1f600}");
+    }
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(one(""), (String::new(), XS.to_string()));
+    }
+
+    #[test]
+    fn language_tag() {
+        let a = "ContextCalculus.OWL.DataRange.oneOf   [{ lexical := \"say \\\"hi\\\"\", datatype := \"http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral\", lang := some \"en-GB\" }]";
+        let l = literals_l(a);
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0].0, "say \"hi\"");
+        assert_eq!(l[0].2.as_deref(), Some("en-GB"));
+        let m = literals(a);
+        assert_eq!(m[0].0, "say \"hi\"@en-GB");
+        assert!(m[0].1.ends_with("PlainLiteral"));
+    }
+
+    #[test]
+    fn typed_literal() {
+        let a = atom("12", "http://www.w3.org/2001/XMLSchema#integer");
+        assert_eq!(literals(&a), vec![("12".to_string(), "http://www.w3.org/2001/XMLSchema#integer".to_string())]);
+        // a datatype IRI is decoded like any string
+        assert_eq!(first_quoted("DataRange.datatype \"http://ex/d\\\\x\""), Some("http://ex/d\\x".to_string()));
+    }
+
+    #[test]
+    fn several_literals_do_not_run_together() {
+        let a = "ContextCalculus.OWL.DataRange.oneOf   [{ lexical := \"a\\\"b\", datatype := \"http://www.w3.org/2001/XMLSchema#string\", lang := none }, { lexical := \"c\\\\\", datatype := \"http://www.w3.org/2001/XMLSchema#string\", lang := none }, { lexical := \"\", datatype := \"http://www.w3.org/2001/XMLSchema#string\", lang := none }]";
+        let l: Vec<String> = literals(a).into_iter().map(|x| x.0).collect();
+        assert_eq!(l, vec!["a\"b".to_string(), "c\\".to_string(), String::new()]);
+        assert_eq!(split_top_list(&a[a.find('[').unwrap()..]).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn membership_uses_the_decoded_value() {
+        let a = atom(r#"x \"y\" ] ) , z"#, XS);
+        let v = |s: &str| Val::Str(s.to_string());
+        assert_eq!(member(&v("x \"y\" ] ) , z"), &a), Some(true));
+        assert_eq!(member(&v("x \\"), &a), Some(false));
+        let w = atom(r"p\nq", XS);
+        assert_eq!(member(&v("p\nq"), &w), Some(true));
+        assert_eq!(strip_outer_parens(&format!("({})", a)), a.as_str());
+    }
+
+    #[test]
+    fn unquote_rejects_malformed() {
+        assert!(unquote_lean("no closing quote").is_none());
+        assert!(unquote_lean(r#"bad \q escape\""#).is_none());
+        assert_eq!(unquote_lean("a\"rest").unwrap(), ("a".to_string(), "rest"));
+    }
 }

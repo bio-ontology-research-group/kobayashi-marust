@@ -1,0 +1,12 @@
+Prefix(:=<http://ex.org/r#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/r/func>
+Declaration(ObjectProperty(:p))
+Declaration(NamedIndividual(:a))
+Declaration(NamedIndividual(:b))
+Declaration(NamedIndividual(:c))
+FunctionalObjectProperty(:p)
+ObjectPropertyAssertion(:p :a :b)
+ObjectPropertyAssertion(:p :a :c)
+DifferentIndividuals(:b :c)
+)

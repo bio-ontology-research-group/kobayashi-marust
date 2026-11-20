@@ -1,0 +1,9 @@
+Prefix(:=<http://ex.org/r#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex.org/r/cons-dtype>
+Declaration(DataProperty(:age))
+Declaration(NamedIndividual(:a))
+DataPropertyRange(:age xsd:integer)
+DataPropertyAssertion(:age :a "5"^^xsd:integer)
+)
