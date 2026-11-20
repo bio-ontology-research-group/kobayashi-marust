@@ -61,6 +61,14 @@ theorem idxMap_getD {α : Type} [DecidableEq α] [Hashable α] (l : List α) (a 
 
 /-! ## The nominal rewriting -/
 
+def nomNameF (base : String) (j : Nat) : IRI :=
+  base ++ String.ofList ('#' :: binS j)
+
+@[csimp] theorem nomName_eq_F : @nomName = @nomNameF := by
+  funext base j
+  apply String.toList_injective
+  simp [nomName, nomNameF, String.toList_append, String.toList_ofList]
+
 def nomOntDF (O : Ontology) (requested : List IRI) : Ontology :=
   let base := nomBase O requested
   let inds := O.individualNames
@@ -194,6 +202,9 @@ def specS (tab : List DExpr) : SpecS tab.length :=
   simp only [SHIQD.spec, specS, useSpec, List.getElem_toArray, List.getElem_map]
   rfl
 
+def allSpec {q : Nat} (sp : Fin q → DataRange) (P : DataRange → Bool) : Bool :=
+  (List.finRange q).all fun p => P (sp p)
+
 instance instHashableRat : Hashable ℚ where
   hash q := mixHash (hash q.num) (hash q.den)
 
@@ -231,8 +242,8 @@ instance instHashableCell : Hashable Datatypes.Cell where
     | .hexR => 10
     | .b64R => 11
     | .xmlR => 12
-    | .timeTz => 13
-    | .timeLoc => 14
+    | .tA tz p => mixHash 13 (mixHash (hash tz) (hash p))
+    | .tI tz lo hi => mixHash 14 (mixHash (hash tz) (mixHash (hash lo) (hash hi)))
     | .other => 15
 
 def numPtsF (as : List Datatypes.BAtom) : List ℚ :=
@@ -247,20 +258,67 @@ def otherPtsF (as : List Datatypes.BAtom) : List (Datatypes.ValOf ℚ) :=
 @[csimp] theorem otherPts_eq_F : @Datatypes.otherPts = @otherPtsF := by
   funext as; exact (dedupHS_eq _).symm
 
+def timePtsF (as : List Datatypes.BAtom) : List ℚ :=
+  dedupHS (as.flatMap Datatypes.BAtom.times)
+
+@[csimp] theorem timePts_eq_F : @Datatypes.timePts = @timePtsF := by
+  funext as; exact (dedupHS_eq _).symm
+
+def allPtsF (as : List Datatypes.BAtom) : List (Datatypes.ValOf ℚ) :=
+  (numPtsF as).map .num ++ otherPtsF as
+
+@[csimp] theorem allPts_eq_F : @Datatypes.allPts = @allPtsF := by
+  funext as
+  simp only [Datatypes.allPts, allPtsF, ← numPts_eq_F, ← otherPts_eq_F]
+
 def fOrdsF (d : Bool) (as : List Datatypes.BAtom) : List Int :=
-  dedupHS ((Datatypes.otherPts as).filterMap (Datatypes.fpOrd d))
+  dedupHS ((otherPtsF as).filterMap (Datatypes.fpOrd d))
 
 @[csimp] theorem fOrds_eq_F : @Datatypes.fOrds = @fOrdsF := by
-  funext d as; exact (dedupHS_eq _).symm
+  funext d as
+  simp only [Datatypes.fOrds, fOrdsF, ← otherPts_eq_F, dedupHS_eq]
+
+def fCellsF (d : Bool) (as : List Datatypes.BAtom) : List Datatypes.Cell :=
+  let fo := fOrdsF d as
+  .fN d :: (fo.map (Datatypes.Cell.fA d) ++
+    (Datatypes.fPairs fo (Datatypes.fTop d)).map fun x => Datatypes.Cell.fI d x.1 x.2)
+
+@[csimp] theorem fCells_eq_F : @Datatypes.fCells = @fCellsF := by
+  funext d as
+  simp only [Datatypes.fCells, fCellsF, ← fOrds_eq_F]
+
+def tCellsF (tz : Bool) (as : List Datatypes.BAtom) : List Datatypes.Cell :=
+  let tp := timePtsF as
+  tp.map (Datatypes.Cell.tA tz) ++
+    (Datatypes.gapPairs tp).map fun x => Datatypes.Cell.tI tz x.1 x.2
+
+@[csimp] theorem tCells_eq_F : @Datatypes.tCells = @tCellsF := by
+  funext tz as
+  simp only [Datatypes.tCells, tCellsF, ← timePts_eq_F]
 
 def cellsOfF (as : List Datatypes.BAtom) : List Datatypes.Cell :=
-  dedupHS ((Datatypes.allPts as).map Datatypes.Cell.pt ++
-    (Datatypes.gapPairs (Datatypes.numPts as)).flatMap
+  let npts := numPtsF as
+  let opts := otherPtsF as
+  let tpts := timePtsF as
+  let foT := dedupHS (opts.filterMap (Datatypes.fpOrd true))
+  let foF := dedupHS (opts.filterMap (Datatypes.fpOrd false))
+  let fcT := Datatypes.Cell.fN true :: (foT.map (Datatypes.Cell.fA true) ++
+    (Datatypes.fPairs foT (Datatypes.fTop true)).map fun x => Datatypes.Cell.fI true x.1 x.2)
+  let fcF := Datatypes.Cell.fN false :: (foF.map (Datatypes.Cell.fA false) ++
+    (Datatypes.fPairs foF (Datatypes.fTop false)).map fun x => Datatypes.Cell.fI false x.1 x.2)
+  let tcT := tpts.map (Datatypes.Cell.tA true) ++
+    (Datatypes.gapPairs tpts).map fun x => Datatypes.Cell.tI true x.1 x.2
+  let tcF := tpts.map (Datatypes.Cell.tA false) ++
+    (Datatypes.gapPairs tpts).map fun x => Datatypes.Cell.tI false x.1 x.2
+  dedupHS ((npts.map Datatypes.ValOf.num ++ opts).map Datatypes.Cell.pt ++
+    (Datatypes.gapPairs npts).flatMap
       (fun x : Option ℚ × Option ℚ => [0, 1, 2, 3].map (Datatypes.Cell.gap x.1 x.2)) ++
-    (Datatypes.restCells ++ Datatypes.fCells true as ++ Datatypes.fCells false as))
+    (Datatypes.restCells ++ fcT ++ fcF ++ tcT ++ tcF))
 
 @[csimp] theorem cellsOf_eq_F : @Datatypes.cellsOf = @cellsOfF := by
-  funext as; exact (dedupHS_eq _).symm
+  funext as
+  simp only [Datatypes.cellsOf, cellsOfF, Datatypes.allPts, Datatypes.fCells, Datatypes.fOrds,
+    Datatypes.tCells, ← numPts_eq_F, ← otherPts_eq_F, ← timePts_eq_F, dedupHS_eq]
 
 def allFreesF {q : Nat} (spec : Fin q → DataRange) : List IRI :=
   dedupHS ((List.finRange q).flatMap fun p => Datatypes.drFrees (spec p))
@@ -292,6 +350,163 @@ def owlES {q : Nat} (spec : Fin q → DataRange) : OwlES spec :=
   funext p c g
   simp only [owlES, Datatypes.owlEWith, Array.getElem_ofFn, Datatypes.evalCE_compileDR, Datatypes.owlE]
 
+/-- Single-literal `.oneOf [some w]` compiled data range. -/
+def singleLit? : Datatypes.CExpr → Option (Datatypes.ValOf ℚ)
+  | .oneOf [some w] => some w
+  | _ => none
+
+theorem singleLit?_eq_some {ce : Datatypes.CExpr} {w : Datatypes.ValOf ℚ} :
+    singleLit? ce = some w ↔ ce = .oneOf [some w] := by
+  cases ce with
+  | oneOf ws =>
+    rcases ws with _ | ⟨_ | w', _ | _⟩ <;> simp [singleLit?]
+  | _ => simp [singleLit?]
+
+theorem evalCell_lit (w' : Datatypes.ValOf ℚ) (c : Datatypes.Cell) :
+    Datatypes.evalCell (.lit w') c = match c with
+      | .pt w => w == w'
+      | _ => false := by
+  cases c <;> rfl
+
+theorem evalCE_oneOf_single (c : Datatypes.Cell) (fv : IRI → Bool) (w' : Datatypes.ValOf ℚ) :
+    Datatypes.evalCE (fun a => Datatypes.evalCell a c) fv (.oneOf [some w']) =
+      match c with
+      | .pt w => w == w'
+      | _ => false := by
+  simp [Datatypes.evalCE, evalCell_lit]
+
+def ptMapStep {q : Nat} (arr : Array Datatypes.CExpr) (p : Fin q)
+    (mp : Std.HashMap (Datatypes.ValOf ℚ) (List (Fin q))) :
+    Std.HashMap (Datatypes.ValOf ℚ) (List (Fin q)) :=
+  match arr[p.val]?.bind singleLit? with
+  | some w => mp.insert w (p :: (mp[w]?).getD [])
+  | none => mp
+
+def buildPtMap {q : Nat} (arr : Array Datatypes.CExpr) :
+    Std.HashMap (Datatypes.ValOf ℚ) (List (Fin q)) :=
+  (List.finRange q).reverse.foldl (fun mp p => ptMapStep arr p mp) ∅
+
+theorem mem_foldr_ptMapStep {q : Nat} (arr : Array Datatypes.CExpr) (w : Datatypes.ValOf ℚ)
+    (p : Fin q) :
+    ∀ (l : List (Fin q)),
+      p ∈ ((l.foldr (ptMapStep arr) ∅)[w]?).getD [] ↔
+        p ∈ l ∧ arr[p.val]?.bind singleLit? = some w
+  | [] => by simp
+  | p' :: l => by
+    simp only [List.foldr_cons, ptMapStep]
+    rcases h : arr[p'.val]?.bind singleLit? with _ | w'
+    · simp only [mem_foldr_ptMapStep arr w p l, List.mem_cons]
+      constructor
+      · rintro ⟨hp, hw⟩; exact ⟨Or.inr hp, hw⟩
+      · rintro ⟨rfl | hp, hw⟩
+        · rw [h] at hw; cases hw
+        · exact ⟨hp, hw⟩
+    · rw [Std.HashMap.getElem?_insert]
+      by_cases hw : w' = w
+      · subst hw
+        simp only [beq_self_eq_true, ↓reduceIte, Option.getD_some, List.mem_cons,
+          mem_foldr_ptMapStep arr w' p l]
+        constructor
+        · rintro (rfl | ⟨hp, h2⟩)
+          · exact ⟨Or.inl rfl, h⟩
+          · exact ⟨Or.inr hp, h2⟩
+        · rintro ⟨rfl | hp, h2⟩
+          · exact Or.inl rfl
+          · exact Or.inr ⟨hp, h2⟩
+      · simp only [beq_eq_false_iff_ne.2 hw, Bool.false_eq_true, ↓reduceIte,
+          mem_foldr_ptMapStep arr w p l, List.mem_cons]
+        constructor
+        · rintro ⟨hp, h2⟩; exact ⟨Or.inr hp, h2⟩
+        · rintro ⟨rfl | hp, h2⟩
+          · rw [h, Option.some.injEq] at h2; exact absurd h2 hw
+          · exact ⟨hp, h2⟩
+
+theorem mem_buildPtMap {q : Nat} (arr : Array Datatypes.CExpr) (w : Datatypes.ValOf ℚ) (p : Fin q) :
+    p ∈ ((buildPtMap arr)[w]?).getD [] ↔ arr[p.val]?.bind singleLit? = some w := by
+  unfold buildPtMap
+  rw [← List.foldr_eq_foldl_reverse, mem_foldr_ptMapStep]
+  simp [List.mem_finRange]
+
+def buildRestAtoms {q : Nat} (arr : Array Datatypes.CExpr) : List (Fin q × Datatypes.CExpr) :=
+  (List.finRange q).filterMap fun p =>
+    match arr[p.val]? with
+    | some ce => if (singleLit? ce).isSome then none else some (p, ce)
+    | none => none
+
+def vtcOwlWith {q : Nat} (frees : List IRI)
+    (ptMap : Std.HashMap (Datatypes.ValOf ℚ) (List (Fin q)))
+    (rest : List (Fin q × Datatypes.CExpr))
+    (c : Datatypes.Cell) (g : Fin frees.length → Bool) : Finset (Fin q) :=
+  let pts : List (Fin q) := match c with
+    | .pt w => (ptMap[w]?).getD []
+    | _ => []
+  let rs : List (Fin q) := rest.filterMap fun e =>
+    if Datatypes.evalCE (fun a => Datatypes.evalCell a c) (Datatypes.freeVal frees g) e.2 then
+      some e.1
+    else none
+  ContextCalculus.SRI.Proc.ofL (pts ++ rs)
+
+structure VtcOwlS {q : Nat} (spec : Fin q → DataRange) where
+  f : Datatypes.Cell → (Fin (Datatypes.allFrees spec).length → Bool) → Finset (Fin q)
+
+def vtcOwlS {q : Nat} (spec : Fin q → DataRange) : VtcOwlS spec :=
+  let arr : Array Datatypes.CExpr := Array.ofFn fun p => Datatypes.compileDR (spec p)
+  let ptMap := buildPtMap arr
+  let rest := buildRestAtoms arr
+  ⟨vtcOwlWith (Datatypes.allFrees spec) ptMap rest⟩
+
+theorem vtcOwlS_f {q : Nat} (spec : Fin q → DataRange) (c : Datatypes.Cell)
+    (g : Fin (Datatypes.allFrees spec).length → Bool) :
+    (vtcOwlS spec).f c g = ContextCalculus.SRIQD.vtc (Datatypes.owlE spec) c g := by
+  ext p
+  unfold vtcOwlS
+  set arr : Array Datatypes.CExpr := Array.ofFn fun p => Datatypes.compileDR (spec p)
+  have harr : ∀ p' : Fin q, arr[p'.val]? = some (Datatypes.compileDR (spec p')) := fun p' => by
+    simp [arr, p'.isLt]
+  simp only [vtcOwlWith, ContextCalculus.SRI.Proc.ofL_eq, List.mem_toFinset, List.mem_append,
+    List.mem_filterMap, buildRestAtoms, List.mem_finRange, true_and, ContextCalculus.SRIQD.vtc,
+    Finset.mem_filter, Finset.mem_univ, Datatypes.owlE, ← Datatypes.evalCE_compileDR]
+  rcases hs : singleLit? (Datatypes.compileDR (spec p)) with _ | w'
+  · have hpts : p ∉ (match c with | .pt w => ((buildPtMap arr)[w]?).getD [] | _ => []) := by
+      cases c <;> simp [mem_buildPtMap, harr, hs]
+    rw [or_iff_right hpts]
+    constructor
+    · rintro ⟨⟨p', ce⟩, ⟨p'', h1⟩, h2⟩
+      rw [harr p''] at h1
+      dsimp only at h1
+      split_ifs at h1 with h3
+      simp only [Option.some.injEq, Prod.mk.injEq] at h1
+      obtain ⟨rfl, rfl⟩ := h1
+      split_ifs at h2 with h4
+      cases h2
+      exact h4
+    · intro h
+      refine ⟨(p, Datatypes.compileDR (spec p)), ⟨p, ?_⟩, by simp [h]⟩
+      rw [harr p]
+      simp [hs]
+  · have hrs : ¬ ∃ x : Fin q × Datatypes.CExpr,
+        (∃ a : Fin q, (match arr[a.val]? with
+          | some ce => if (singleLit? ce).isSome = true then none else some (a, ce)
+          | none => none) = some x) ∧
+        (if Datatypes.evalCE (fun a => Datatypes.evalCell a c)
+            (Datatypes.freeVal (Datatypes.allFrees spec) g) x.2 = true then some x.1 else none) = some p := by
+      rintro ⟨⟨p', ce⟩, ⟨p'', h1⟩, h2⟩
+      rw [harr p''] at h1
+      dsimp only at h1
+      split_ifs at h1 with h3
+      simp only [Option.some.injEq, Prod.mk.injEq] at h1
+      obtain ⟨rfl, rfl⟩ := h1
+      split_ifs at h2 with h4
+      cases h2
+      rw [hs] at h3
+      simp at h3
+    rw [or_iff_left hrs, singleLit?_eq_some.1 hs, evalCE_oneOf_single]
+    cases c with
+    | pt w =>
+      simp only [mem_buildPtMap, harr, Option.bind_some, hs, Option.some.injEq, beq_iff_eq]
+      exact ⟨Eq.symm, Eq.symm⟩
+    | _ => simp
+
 def tableKF (O : Ontology) : List DExpr := dedupHS ((rwAxiomsK O).flatMap axDexprsK)
 
 @[csimp] theorem tableK_eq_F : @tableK = @tableKF := by
@@ -311,30 +526,56 @@ def fNameF (base : String) (tmap : Std.HashMap DExpr Nat) (tlen : Nat) (e : DExp
 def wNameF (base : String) (tmap : Std.HashMap DExpr Nat) (tlen : Nat) (e : DExpr) : IRI :=
   SRIQKB.defName base (2 * (tmap[e]?).getD tlen + 1)
 
-def nameIxKF (T : SRIQKBTranslation) (nmap : Std.HashMap IRI Nat) (a : IRI) :
+def freshNamesF (base : String) (tmap : Std.HashMap DExpr Nat) (tlen : Nat) (tab : List DExpr) :
+    List IRI :=
+  tab.flatMap fun e => [fNameF base tmap tlen e, wNameF base tmap tlen e]
+
+/-- Tail-recursive `SRIQKB.collect`. -/
+def collectF {α β : Type} (f : α → Option (List β)) (xs : List α) : Option (List β) :=
+  (xs.mapM f).map List.flatten
+
+theorem collectF_eq {α β : Type} (f : α → Option (List β)) :
+    ∀ (xs : List α), collectF f xs = SRIQKB.collect f xs
+  | [] => rfl
+  | x :: xs => by
+    unfold collectF SRIQKB.collect
+    rw [← collectF_eq f xs]
+    unfold collectF
+    cases hfx : f x <;> cases hxs : xs.mapM f <;> simp [hfx, hxs]
+
+@[csimp] theorem collect_eq_F : @SRIQKB.collect = @collectF := by
+  funext α β f xs
+  exact (collectF_eq f xs).symm
+
+def nameIxKF (T : SRIQKBTranslation) (nmap : Std.HashMap IRI Nat)
+    (nlen : Nat) (hn : nlen = T.named.length) (a : IRI) :
     Option (Fin T.conceptCount) :=
-  if h : (nmap[a]?).getD T.named.length < T.named.length then
-    some ⟨_, Nat.lt_of_lt_of_le h T.hnamed⟩
+  if h : (nmap[a]?).getD nlen < nlen then
+    some ⟨_, Nat.lt_of_lt_of_le (hn ▸ h) T.hnamed⟩
   else none
 
-def dpIxF (dps : List IRI) (dmap : Std.HashMap IRI Nat) (p : IRI) : Option (Fin dps.length) :=
-  if h : (dmap[p]?).getD dps.length < dps.length then some ⟨_, h⟩ else none
+def dpIxF (dps : List IRI) (dmap : Std.HashMap IRI Nat)
+    (dlen : Nat) (hd : dlen = dps.length) (p : IRI) : Option (Fin dps.length) :=
+  if h : (dmap[p]?).getD dlen < dlen then some ⟨_, hd ▸ h⟩ else none
 
 def dataClauseOfKF (T : SRIQKBTranslation) (base : String) (tab : List DExpr) (dps : List IRI)
     (tmap : Std.HashMap DExpr Nat) (nmap : Std.HashMap IRI Nat) (dmap : Std.HashMap IRI Nat)
+    (tlen : Nat) (ht : tlen = tab.length)
+    (nlen : Nat) (hn : nlen = T.named.length)
+    (dlen : Nat) (hd : dlen = dps.length)
     (jt : DExpr × Nat) : Option (List (DClause T.conceptCount T.roleCount dps.length tab.length)) :=
-  match nameIxKF T nmap (fNameF base tmap tab.length jt.1),
-        nameIxKF T nmap (wNameF base tmap tab.length jt.1),
-        dpIxF dps dmap jt.1.p with
+  match nameIxKF T nmap nlen hn (fNameF base tmap tlen jt.1),
+        nameIxKF T nmap nlen hn (wNameF base tmap tlen jt.1),
+        dpIxF dps dmap dlen hd jt.1.p with
   | some F, some W, some u =>
-    if h : jt.2 < tab.length then some (entryClauses (m := T.roleCount) jt.1 F W u ⟨jt.2, h⟩)
+    if h : jt.2 < tlen then some (entryClauses (m := T.roleCount) jt.1 F W u ⟨jt.2, ht ▸ h⟩)
     else none
   | _, _, _ => none
 
 def subClauseOfKF (T : SRIQKBTranslation) (dps : List IRI) (tab : List DExpr)
-    (dmap : Std.HashMap IRI Nat) (pq : IRI × IRI) :
+    (dmap : Std.HashMap IRI Nat) (dlen : Nat) (hd : dlen = dps.length) (pq : IRI × IRI) :
     Option (List (DClause T.conceptCount T.roleCount dps.length tab.length)) :=
-  match dpIxF dps dmap pq.1, dpIxF dps dmap pq.2 with
+  match dpIxF dps dmap dlen hd pq.1, dpIxF dps dmap dlen hd pq.2 with
   | some u, some v => some [.dSub u v]
   | _, _ => none
 
@@ -343,16 +584,19 @@ def translateSRIQDKBF (O : OWL.Ontology) (requested : List OWL.IRI) (extra : Lis
   if O.isSHIQDKB then
     let base := SRIQKB.defBase O requested
     let tab := tableK O
+    let tlen := tab.length
     let tmap := idxMap tab
     let dps := dpropsK O
+    let dlen := dps.length
     let dmap := idxMap dps
-    let objO : Ontology := ⟨(rwAxiomsK O).map (absAxK (fNameF base tmap tab.length))⟩
-    match translateSRIQKB objO (requested ++ freshNames base tab) extra with
+    let objO : Ontology := ⟨(rwAxiomsK O).map (absAxK (fNameF base tmap tlen))⟩
+    match translateSRIQKB objO (requested ++ freshNamesF base tmap tlen tab) extra with
     | none => none
     | some T =>
       let nmap := idxMap T.named
-      let dataCl := SRIQKB.collect (dataClauseOfKF T base tab dps tmap nmap dmap) tab.zipIdx
-      let subCl := SRIQKB.collect (subClauseOfKF T dps tab dmap) (O.axioms.flatMap subPairs)
+      let nlen := T.named.length
+      let dataCl := collectF (dataClauseOfKF T base tab dps tmap nmap dmap tlen rfl nlen rfl dlen rfl) tab.zipIdx
+      let subCl := collectF (subClauseOfKF T dps tab dmap dlen rfl) (O.axioms.flatMap subPairs)
       match dataCl, subCl with
       | some dc, some sc =>
         some { obj := T, named := eraseDupsH requested, dps := dps, tab := tab,
@@ -361,30 +605,37 @@ def translateSRIQDKBF (O : OWL.Ontology) (requested : List OWL.IRI) (extra : Lis
   else none
 
 theorem nameIxKF_eq (T : SRIQKBTranslation) (a : IRI) :
-    nameIxKF T (idxMap T.named) a = nameIxK T a := by
+    nameIxKF T (idxMap T.named) T.named.length rfl a = nameIxK T a := by
   simp only [nameIxKF, nameIxK, idxMap_getD]
 
 theorem dpIxF_eq (dps : List IRI) (p : IRI) :
-    dpIxF dps (idxMap dps) p = dpIx dps p := by
+    dpIxF dps (idxMap dps) dps.length rfl p = dpIx dps p := by
   simp only [dpIxF, dpIx, idxMap_getD]
 
 @[csimp] theorem translateSRIQDKB_eq_F : @translateSRIQDKB = @translateSRIQDKBF := by
   funext O requested extra
   have hf : ∀ base (tab : List DExpr), fNameF base (idxMap tab) tab.length = fName base tab := by
     intro base tab; funext e; simp only [fNameF, fName, idxMap_getD]
+  have hw : ∀ base (tab : List DExpr), wNameF base (idxMap tab) tab.length = wName base tab := by
+    intro base tab; funext e; simp only [wNameF, wName, idxMap_getD]
+  have hfn : ∀ base (tab : List DExpr),
+      freshNamesF base (idxMap tab) tab.length tab = freshNames base tab := by
+    intro base tab; simp only [freshNamesF, freshNames, hf, hw]
   have hdc : ∀ T base (tab : List DExpr) dps,
-      dataClauseOfKF T base tab dps (idxMap tab) (idxMap T.named) (idxMap dps) =
+      dataClauseOfKF T base tab dps (idxMap tab) (idxMap T.named) (idxMap dps)
+        tab.length rfl T.named.length rfl dps.length rfl =
         dataClauseOfK T base tab dps := by
     intro T base tab dps; funext jt
     simp only [dataClauseOfKF, dataClauseOfK, nameIxKF_eq, dpIxF_eq, fNameF, fName, wNameF, wName,
       idxMap_getD]
     rfl
   have hsc : ∀ T (dps : List IRI) tab,
-      subClauseOfKF T dps tab (idxMap dps) = subClauseOfK T dps tab := by
+      subClauseOfKF T dps tab (idxMap dps) dps.length rfl = subClauseOfK T dps tab := by
     intro T dps tab; funext pq
     simp only [subClauseOfKF, subClauseOfK, dpIxF_eq]
     rfl
-  simp only [translateSRIQDKBF, translateSRIQDKB, eraseDupsH_eq, objOntK, hf, hdc, hsc]
+  simp only [translateSRIQDKBF, translateSRIQDKB, eraseDupsH_eq, objOntK, hf, hfn, hdc, hsc,
+    collectF_eq]
   rfl
 
 def translateSHOIQDF (O : Ontology) (requested : List IRI) : Option SRIQDKBTranslation :=
@@ -418,23 +669,6 @@ def dosnF (T : SRIQDKBTranslation) (L : List IRI) :
   funext T L
   simp only [dosnF, dosn, ← nomIxs_eq_F]
 
-/-- Tail-recursive `SRIQKB.collect`. -/
-def collectF {α β : Type} (f : α → Option (List β)) (xs : List α) : Option (List β) :=
-  (xs.mapM f).map List.flatten
-
-theorem collectF_eq {α β : Type} (f : α → Option (List β)) :
-    ∀ (xs : List α), collectF f xs = SRIQKB.collect f xs
-  | [] => rfl
-  | x :: xs => by
-    unfold collectF SRIQKB.collect
-    rw [← collectF_eq f xs]
-    unfold collectF
-    cases hfx : f x <;> cases hxs : xs.mapM f <;> simp [hfx, hxs]
-
-@[csimp] theorem collect_eq_F : @SRIQKB.collect = @collectF := by
-  funext α β f xs
-  exact (collectF_eq f xs).symm
-
 end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.idxFast_eq
@@ -447,3 +681,4 @@ end ContextCalculus.OWLFrontend
 #print axioms ContextCalculus.OWLFrontend.translateSHOIQD_eq_F
 #print axioms ContextCalculus.OWLFrontend.dosn_eq_F
 #print axioms ContextCalculus.OWLFrontend.collect_eq_F
+#print axioms ContextCalculus.OWLFrontend.vtcOwlS_f

@@ -302,6 +302,108 @@ edge). -/
   ix.gTop.all (fun h => h.any M) &&
   fAll t (fun a => (getL ix.gBy a.val).all fun g => !(g.1.all M) || g.2.any M)
 
+/-- `l.all M` skipping the head when it equals `a` (already known to be in `t`). -/
+def bodyAll (M : Fin n → Bool) (a : Fin n) : List (Fin n) → Bool
+  | [] => true
+  | b :: r => (if b == a then true else M b) && r.all M
+
+theorem bodyAll_eq {M : Fin n → Bool} {a : Fin n} (hMa : M a = true) :
+    ∀ (l : List (Fin n)), bodyAll M a l = l.all M
+  | [] => rfl
+  | b :: r => by
+    simp only [bodyAll, List.all_cons]
+    by_cases h : b = a
+    · subst h; simp [hMa]
+    · have hb : (b == a) = false := beq_false_of_ne h
+      simp [hb]
+
+/-- `closedB` avoiding the redundant head test on `gBy[a]`. -/
+@[nospecialize] def closedBF (ix : SIx n m) (M : Fin n → Bool) (t : Finset (Fin n)) : Bool :=
+  ix.gTop.all (fun h => h.any M) &&
+  fAll t (fun a => (getL ix.gBy a.val).all fun g => !(bodyAll M a g.1) || g.2.any M)
+
+theorem closedBF_eq (ix : SIx n m) (t : Finset (Fin n)) :
+    closedBF ix (memTS t).f t = closedB ix (memTS t).f t := by
+  unfold closedBF closedB
+  congr 1
+  apply Bool.eq_iff_iff.2
+  simp only [fAll_iff]
+  refine forall₂_congr fun a ha => ?_
+  have hMa : (memTS t).f a = true := (memT_iff t a).2 ha
+  simp only [bodyAll_eq hMa]
+
+/-- Active universal clauses of a type `t`. -/
+def allsOf (ix : SIx n m) (t : Finset (Fin n)) : List (RoleT (Fin m) × Fin n) :=
+  (SRI.Proc.toL t).flatMap fun a => getL ix.allBy a.val
+
+theorem all_allsOf (ix : SIx n m) (t : Finset (Fin n)) (P : RoleT (Fin m) × Fin n → Bool) :
+    (allsOf ix t).all P = fAll t (fun a => (getL ix.allBy a.val).all P) := by
+  apply Bool.eq_iff_iff.2
+  simp only [allsOf, List.all_flatMap, List.all_eq_true, SRI.Proc.mem_toL, fAll_iff]
+
+/-- Active lower-bound clauses of a type `t`. -/
+def lowsOf (ix : SIx n m) (t : Finset (Fin n)) : List (Nat × RoleT (Fin m) × Fin n) :=
+  (SRI.Proc.toL t).flatMap fun a => getL ix.lowBy a.val
+
+theorem all_lowsOf (ix : SIx n m) (t : Finset (Fin n)) (P : Nat × RoleT (Fin m) × Fin n → Bool) :
+    (lowsOf ix t).all P = fAll t (fun a => (getL ix.lowBy a.val).all P) := by
+  apply Bool.eq_iff_iff.2
+  simp only [lowsOf, List.all_flatMap, List.all_eq_true, SRI.Proc.mem_toL, fAll_iff]
+
+/-- Active upper-bound clauses of a type `t`. -/
+def uppsOf (ix : SIx n m) (t : Finset (Fin n)) : List (Nat × RoleT (Fin m) × Fin n) :=
+  (SRI.Proc.toL t).flatMap fun a => getL ix.uppBy a.val
+
+theorem all_uppsOf (ix : SIx n m) (t : Finset (Fin n)) (P : Nat × RoleT (Fin m) × Fin n → Bool) :
+    (uppsOf ix t).all P = fAll t (fun a => (getL ix.uppBy a.val).all P) := by
+  apply Bool.eq_iff_iff.2
+  simp only [uppsOf, List.all_flatMap, List.all_eq_true, SRI.Proc.mem_toL, fAll_iff]
+
+/-- `decide (k ≤ l.countP p)`, using `l.any p` when `k = 1`. -/
+def atLeastP {α : Type} (k : Nat) (l : List α) (p : α → Bool) : Bool :=
+  if k == 1 then l.any p else decide (k ≤ l.countP p)
+
+theorem atLeastP_eq {α : Type} (k : Nat) (l : List α) (p : α → Bool) :
+    atLeastP k l p = decide (k ≤ l.countP p) := by
+  unfold atLeastP
+  split_ifs with hk
+  · rw [beq_iff_eq] at hk
+    subst hk
+    apply Bool.eq_iff_iff.2
+    rw [List.any_eq_true, ← List.countP_pos_iff, decide_eq_true_iff]
+    omega
+  · rfl
+
+theorem cnt_map_memTS (N : List (QNbr n m)) (R : RoleT (Fin m)) (c : Fin n) :
+    (N.map fun e => (e.1, memTS e.2)).countP (fun e => e.2.f c && decide (R ∈ e.1)) =
+      cnt N R c := by
+  unfold cnt
+  rw [List.countP_map]
+  refine List.countP_congr fun e _ => ?_
+  simp only [Function.comp_apply, Bool.and_comm ((memTS e.2).f c), Bool.and_eq_true,
+    decide_eq_true_eq]
+  exact and_congr_right fun _ => memT_iff e.2 c
+
+theorem all_comm {α β : Type} (l1 : List α) (l2 : List β) (f : α → β → Bool) :
+    l1.all (fun x => l2.all fun y => f x y) = l2.all (fun y => l1.all fun x => f x y) := by
+  apply Bool.eq_iff_iff.2
+  simp only [List.all_eq_true]
+  exact ⟨fun h y hy x hx => h x hx y hy, fun h x hx y hy => h y hy x hx⟩
+
+theorem if_isEmpty_all {α β γ : Type} (l1 : List α) (l2 : List β) (l3 : List γ)
+    (p1 : α → Bool) (p2 : β → Bool) (p3 : γ → Bool) :
+    (if l1.isEmpty && l2.isEmpty && l3.isEmpty then true
+     else l1.all p1 && l2.all p2 && l3.all p3) =
+    (l1.all p1 && l2.all p2 && l3.all p3) := by
+  cases l1 <;> cases l2 <;> cases l3 <;> rfl
+
+theorem all_and_combine {α : Type} (u p1 p2 : α → Bool) :
+    ∀ (l : List α), (l.all (fun e => u e && p2 e) && l.all p1) = l.all (fun e => u e && (p1 e && p2 e))
+  | [] => rfl
+  | e :: l => by
+    simp only [List.all_cons, ← all_and_combine u p1 p2 l]
+    cases u e <;> cases p1 e <;> cases p2 e <;> simp
+
 /-- **The star condition through the index.** -/
 def starF (ix : SIx n m) (t : Finset (Fin n)) (N : List (QNbr n m)) : Bool :=
   -- the membership structure is bound first, so that the test is built once
@@ -831,7 +933,7 @@ each name, from one pass over the core types. -/
 def nomOKS0 (N : List (Fin n)) : Bool :=
   let nm := maskL n N
   let own := buildIdx n some ((List.finRange h.k).flatMap fun b =>
-    ((h.tyF b).sort (· ≤ ·)).filterMap fun a => if memM nm a then some (a.val, b) else none)
+    (SRI.Proc.toL (h.tyF b)).filterMap fun a => if memM nm a then some (a.val, b) else none)
   N.all fun a => match getL own a.val with
     | [] => false
     | b :: rest => rest.all (· = b)
@@ -840,12 +942,12 @@ theorem nomOKS0_iff (N : List (Fin n)) : nomOKS0 h N = true ↔ NomOK N h.toN.ty
   unfold nomOKS0 NomOK
   simp only [List.all_eq_true]
   have hown : ∀ a ∈ N, ∀ b, b ∈ getL (buildIdx n some ((List.finRange h.k).flatMap fun b =>
-      ((h.tyF b).sort (· ≤ ·)).filterMap fun a =>
+      (SRI.Proc.toL (h.tyF b)).filterMap fun a =>
         if memM (maskL n N) a then some (a.val, b) else none)) a.val ↔ a ∈ h.toN.ty b := by
     intro a ha b
     rw [mem_buildIdx a.isLt]
     simp only [List.mem_flatMap, List.mem_finRange, true_and, List.mem_filterMap,
-      Option.some.injEq, Finset.mem_sort, memM_maskL]
+      Option.some.injEq, SRI.Proc.mem_toL, memM_maskL]
     constructor
     · rintro ⟨_, ⟨b', a', ha', hif⟩, rfl⟩
       by_cases hm : a' ∈ N
@@ -894,6 +996,276 @@ def coreB (ix : SIx n m) (N : List (Fin n)) : Bool :=
   let kb := h.kidIdx
   decide (0 < h.k) && nomOKS h N &&
     (List.finRange h.k).all fun b => starF ix (h.tyF b) (h.starL A b ++ getL kb b.val)
+
+structure MemBox (n : Nat) where
+  f : Fin n → Bool
+  empty : Bool
+
+@[noinline] def mkMemBox (t : Finset (Fin n)) : MemBox n :=
+  ⟨(memTS t).f, false⟩
+
+def getMem (memA : Array (Option (MemBox n))) (c : Fin h.k) : MemS n :=
+  match memA[c.val]?.getD none with
+  | some mb => ⟨mb.f⟩
+  | none => memTS (h.tyF c)
+
+theorem getMem_eq (p : Fin h.k → Bool) (c : Fin h.k) :
+    getMem h (Array.ofFn fun b : Fin h.k => if p b then some (mkMemBox (h.tyF b)) else none) c =
+      memTS (h.tyF c) := by
+  unfold getMem mkMemBox
+  rw [Array.getElem?_ofFn]
+  simp only [c.isLt, dite_true, Option.getD_some]
+  split_ifs <;> rfl
+
+instance instHashableRoleTF {m : Nat} : Hashable (RoleT (Fin m)) where
+  hash
+    | .pos r => mixHash 1 (hash r.val)
+    | .inv r => mixHash 2 (hash r.val)
+
+def addAllP {n m : Nat} (p : RoleT (Fin m) × Fin n)
+    (mp : Std.HashMap (RoleT (Fin m)) (List (Fin n))) :
+    Std.HashMap (RoleT (Fin m)) (List (Fin n)) :=
+  mp.insert p.1 (p.2 :: (mp[p.1]?).getD [])
+
+def allsMapOf {n m : Nat} (ps : List (RoleT (Fin m) × Fin n)) :
+    Std.HashMap (RoleT (Fin m)) (List (Fin n)) :=
+  ps.reverse.foldl (fun mp p => addAllP p mp) ∅
+
+theorem foldr_addAllP {n m : Nat} (R : RoleT (Fin m)) (c : Fin n) :
+    ∀ (ps : List (RoleT (Fin m) × Fin n)),
+      c ∈ ((ps.foldr addAllP ∅)[R]?).getD [] ↔ (R, c) ∈ ps
+  | [] => by simp
+  | (S, d) :: ps => by
+    simp only [List.foldr_cons, addAllP, Std.HashMap.getElem?_insert, List.mem_cons, Prod.mk.injEq]
+    by_cases h : S = R
+    · subst h
+      simp [foldr_addAllP S c ps]
+    · have hRS : R ≠ S := Ne.symm h
+      simp [h, hRS, foldr_addAllP R c ps]
+
+theorem mem_allsMapOf {n m : Nat} (ps : List (RoleT (Fin m) × Fin n))
+    (R : RoleT (Fin m)) (c : Fin n) :
+    c ∈ ((allsMapOf ps)[R]?).getD [] ↔ (R, c) ∈ ps := by
+  unfold allsMapOf
+  rw [← List.foldr_eq_foldl_reverse]
+  exact foldr_addAllP R c ps
+
+def checkAllsFwd {n m : Nat} (mp : Std.HashMap (RoleT (Fin m)) (List (Fin n)))
+    (L : Finset (RoleT (Fin m))) (M : Fin n → Bool) : Bool :=
+  fAll L fun R => ((mp[R]?).getD []).all M
+
+theorem checkAllsFwd_eq {n m : Nat} (ps : List (RoleT (Fin m) × Fin n))
+    (L : Finset (RoleT (Fin m))) (M : Fin n → Bool) :
+    checkAllsFwd (allsMapOf ps) L M = ps.all (fun p => !decide (p.1 ∈ L) || M p.2) := by
+  apply Bool.eq_iff_iff.2
+  unfold checkAllsFwd
+  simp only [fAll_iff, List.all_eq_true, mem_allsMapOf, Bool.or_eq_true, Bool.not_eq_true',
+    decide_eq_false_iff_not]
+  constructor
+  · intro h ⟨R, c⟩ hp
+    by_cases hR : R ∈ L
+    · exact Or.inr (h R hR c hp)
+    · exact Or.inl hR
+  · intro h R hR c hp
+    exact (h (R, c) hp).resolve_left (not_not.2 hR)
+
+def checkAllsBwd {n m : Nat} (mp : Std.HashMap (RoleT (Fin m)) (List (Fin n)))
+    (L : Finset (RoleT (Fin m))) (M : Fin n → Bool) : Bool :=
+  fAll L fun R => ((mp[R.flip]?).getD []).all M
+
+theorem checkAllsBwd_eq {n m : Nat} (ps : List (RoleT (Fin m) × Fin n))
+    (L : Finset (RoleT (Fin m))) (M : Fin n → Bool) :
+    checkAllsBwd (allsMapOf ps) L M = ps.all (fun p => !decide (p.1.flip ∈ L) || M p.2) := by
+  apply Bool.eq_iff_iff.2
+  unfold checkAllsBwd
+  simp only [fAll_iff, List.all_eq_true, mem_allsMapOf, Bool.or_eq_true, Bool.not_eq_true',
+    decide_eq_false_iff_not]
+  constructor
+  · intro h ⟨R, c⟩ hp
+    by_cases hR : R.flip ∈ L
+    · have hp' : (R.flip.flip, c) ∈ ps := by rwa [SRI.RoleT.flip_flip]
+      exact Or.inr (h R.flip hR c hp')
+    · exact Or.inl hR
+  · intro h R hR c hp
+    have hR' : R.flip.flip ∈ L := by rwa [SRI.RoleT.flip_flip]
+    exact (h (R.flip, c) hp).resolve_left (not_not.2 hR')
+
+def getAllsM (ix : SIx n m) (allMA : Array (Option (Std.HashMap (RoleT (Fin m)) (List (Fin n))))) (c : Fin h.k) :
+    Std.HashMap (RoleT (Fin m)) (List (Fin n)) :=
+  match allMA[c.val]?.getD none with
+  | some mp => mp
+  | none => allsMapOf (allsOf ix (h.tyF c))
+
+theorem getAllsM_eq (ix : SIx n m) (p : Fin h.k → Bool) (c : Fin h.k) :
+    getAllsM h ix (Array.ofFn fun b : Fin h.k => if p b then some (allsMapOf (allsOf ix (h.tyF b))) else none) c =
+      allsMapOf (allsOf ix (h.tyF c)) := by
+  unfold getAllsM
+  rw [Array.getElem?_ofFn]
+  simp only [c.isLt, dite_true, Option.getD_some]
+  split_ifs <;> rfl
+
+def addNbrC {n m : Nat} (L : Finset (RoleT (Fin m))) (c : Fin n)
+    (mp : Std.HashMap (Fin n) (List (Finset (RoleT (Fin m))))) :
+    Std.HashMap (Fin n) (List (Finset (RoleT (Fin m)))) :=
+  mp.insert c (L :: (mp[c]?).getD [])
+
+theorem foldr_addNbrC {n m : Nat} (L : Finset (RoleT (Fin m)))
+    (mp : Std.HashMap (Fin n) (List (Finset (RoleT (Fin m))))) (c : Fin n) :
+    ∀ (l : List (Fin n)), l.Nodup →
+      (((l.foldr (addNbrC L) mp)[c]?).getD []) =
+        if c ∈ l then L :: (mp[c]?).getD [] else (mp[c]?).getD []
+  | [], _ => by simp
+  | a :: l, hnd => by
+    obtain ⟨ha, hl⟩ := List.nodup_cons.1 hnd
+    simp only [List.foldr_cons, addNbrC, Std.HashMap.getElem?_insert, List.mem_cons]
+    by_cases h : a = c
+    · subst h
+      simp [ha, foldr_addNbrC L mp a l hl]
+    · have hb : (c == a) = false := beq_false_of_ne (Ne.symm h)
+      have hca : c ≠ a := Ne.symm h
+      simp [h, hb, hca, foldr_addNbrC L mp c l hl]
+
+def addNbr {n m : Nat} (e : QNbr n m)
+    (mp : Std.HashMap (Fin n) (List (Finset (RoleT (Fin m))))) :
+    Std.HashMap (Fin n) (List (Finset (RoleT (Fin m)))) :=
+  (SRI.Proc.toL e.2).reverse.foldl (fun m c => addNbrC e.1 c m) mp
+
+theorem addNbr_getD {n m : Nat} (e : QNbr n m)
+    (mp : Std.HashMap (Fin n) (List (Finset (RoleT (Fin m))))) (c : Fin n) :
+    (((addNbr e mp)[c]?).getD []) =
+      if c ∈ e.2 then e.1 :: (mp[c]?).getD [] else (mp[c]?).getD [] := by
+  unfold addNbr
+  rw [← List.foldr_eq_foldl_reverse, foldr_addNbrC e.1 mp c (SRI.Proc.toL e.2)
+    ((SRI.Proc.toL_sorted e.2).imp ne_of_lt)]
+  simp only [SRI.Proc.mem_toL]
+
+def nbrsByC {n m : Nat} (N : List (QNbr n m)) :
+    Std.HashMap (Fin n) (List (Finset (RoleT (Fin m)))) :=
+  N.reverse.foldl (fun mp e => addNbr e mp) ∅
+
+theorem foldr_addNbr {n m : Nat} (c : Fin n) :
+    ∀ (N : List (QNbr n m)),
+      (((N.foldr addNbr ∅)[c]?).getD []) =
+        (N.filter fun e => decide (c ∈ e.2)).map (·.1)
+  | [] => by simp
+  | e :: N => by
+    simp only [List.foldr_cons, addNbr_getD, List.filter_cons, foldr_addNbr c N]
+    by_cases h : c ∈ e.2 <;> simp [h]
+
+theorem cnt_nbrsByC {n m : Nat} (N : List (QNbr n m)) (R : RoleT (Fin m)) (c : Fin n) :
+    (((nbrsByC N)[c]?).getD []).countP (fun L => decide (R ∈ L)) = cnt N R c := by
+  unfold nbrsByC
+  rw [← List.foldr_eq_foldl_reverse, foldr_addNbr, List.countP_map, List.countP_filter]
+  unfold cnt
+  refine List.countP_congr fun e _ => ?_
+  simp only [Function.comp_apply, Bool.decide_and, Bool.and_comm]
+
+def smallTy {α : Type} (s : Finset α) : Bool :=
+  Quot.liftOn s.val (fun l => (l.drop 512).isEmpty) fun l l' (h : l.Perm l') => by
+    apply Bool.eq_iff_iff.2
+    rw [List.isEmpty_iff, List.isEmpty_iff, List.drop_eq_nil_iff, List.drop_eq_nil_iff, h.length_eq]
+
+def checkLowsUpps {n m : Nat} (lows upps : List (Nat × RoleT (Fin m) × Fin n))
+    (N_M : List (Finset (RoleT (Fin m)) × MemS n)) (N : Unit → List (QNbr n m)) : Bool × Bool :=
+  if 64 < lows.length + upps.length && 64 < N_M.length && (N ()).all (fun e => smallTy e.2) then
+    let byC := nbrsByC (N ())
+    (lows.all (fun q => atLeastP q.1 ((byC[q.2.2]?).getD []) (fun L => decide (q.2.1 ∈ L))),
+     upps.all (fun q => decide ((((byC[q.2.2]?).getD []).countP fun L => decide (q.2.1 ∈ L)) ≤ q.1)))
+  else
+    (lows.all (fun q => atLeastP q.1 N_M (fun e => e.2.f q.2.2 && decide (q.2.1 ∈ e.1))),
+     upps.all (fun q => decide (N_M.countP (fun e => e.2.f q.2.2 && decide (q.2.1 ∈ e.1)) ≤ q.1)))
+
+theorem checkLowsUpps_eq {n m : Nat} (lows upps : List (Nat × RoleT (Fin m) × Fin n))
+    (N : List (QNbr n m)) :
+    checkLowsUpps lows upps (N.map fun e => (e.1, memTS e.2)) (fun _ => N) =
+      (lows.all (fun q => decide (q.1 ≤ cnt N q.2.1 q.2.2)),
+       upps.all (fun q => decide (cnt N q.2.1 q.2.2 ≤ q.1))) := by
+  unfold checkLowsUpps
+  simp only [atLeastP_eq, cnt_nbrsByC, cnt_map_memTS, ite_self]
+
+def starCoreF (ix : SIx n m) (memA : Array (Option (MemBox n)))
+    (allMA : Array (Option (Std.HashMap (RoleT (Fin m)) (List (Fin n)))))
+    (A : Array (List (Fin h.k × Finset (RoleT (Fin m)))))
+    (kb : Array (List (QNbr n m))) (b : Fin h.k) : Bool :=
+  let t := h.tyF b
+  let MS := getMem h memA b
+  let M := MS.f
+  let allsM := getAllsM h ix allMA b
+  let lows := lowsOf ix t
+  let upps := uppsOf ix t
+  let cEdges := (merged (getL A b.val)).filter fun e => decide (e.2 ≠ ∅)
+  let kEdges := getL kb b.val
+  let N_M : List (Finset (RoleT (Fin m)) × MemS n) :=
+    (cEdges.map fun e => (e.2, getMem h memA e.1)) ++ (kEdges.map fun e => (e.1, memTS e.2))
+  let lu := if lows.isEmpty && upps.isEmpty then (true, true)
+    else checkLowsUpps lows upps N_M (fun _ => (cEdges.map fun e => (e.2, h.tyF e.1)) ++ kEdges)
+  closedBF ix M t &&
+  (cEdges.all (fun e => upB ix e.2 && checkAllsBwd (getAllsM h ix allMA e.1) e.2 M) &&
+   kEdges.all (fun e => upB ix e.1 &&
+    (allsOf ix e.2).all (fun p => !decide (p.1.flip ∈ e.1) || M p.2))) &&
+  N_M.all (fun e => checkAllsFwd allsM e.1 e.2.f) && lu.1 && lu.2
+
+theorem if_isEmpty_pair {α β : Type} (l1 : List α) (l2 : List β) (p1 : α → Bool) (p2 : β → Bool) :
+    (if l1.isEmpty && l2.isEmpty then (true, true) else (l1.all p1, l2.all p2)) =
+      (l1.all p1, l2.all p2) := by
+  cases l1 <;> cases l2 <;> rfl
+
+theorem starCoreF_eq (ix : SIx n m) (p : Fin h.k → Bool)
+    (A : Array (List (Fin h.k × Finset (RoleT (Fin m)))))
+    (kb : Array (List (QNbr n m))) (b : Fin h.k) :
+    starCoreF h ix (Array.ofFn fun c : Fin h.k => if p c then some (mkMemBox (h.tyF c)) else none)
+      (Array.ofFn fun c : Fin h.k => if p c then some (allsMapOf (allsOf ix (h.tyF c))) else none) A kb b =
+    starF ix (h.tyF b) (h.starL A b ++ getL kb b.val) := by
+  unfold starCoreF starF
+  dsimp only
+  simp only [getMem_eq, getAllsM_eq, closedBF_eq, checkAllsBwd_eq, checkAllsFwd_eq]
+  set cEdges := (merged (getL A b.val)).filter fun e => decide (e.2 ≠ ∅)
+  set kEdges := getL kb b.val
+  set N := h.starL A b ++ kEdges
+  have hN0 : (fun _ : Unit => (cEdges.map fun e => (e.2, h.tyF e.1)) ++ kEdges) = (fun _ => N) := rfl
+  have hNM : (cEdges.map fun e => (e.2, memTS (h.tyF e.1))) ++ (kEdges.map fun e => (e.1, memTS e.2)) =
+      N.map fun e => (e.1, memTS e.2) := by
+    simp [N, HintS.starL, cEdges, List.map_append, List.map_map, Function.comp_def]
+  rw [hN0, hNM, checkLowsUpps_eq, if_isEmpty_pair]
+  dsimp only
+  simp only [all_lowsOf, all_uppsOf]
+  have h1 : (N.map fun e => (e.1, memTS e.2)).all (fun e =>
+        (allsOf ix (h.tyF b)).all fun p => !decide (p.1 ∈ e.1) || e.2.f p.2) =
+      N.all (fun e => edgeAll ix (memTS e.2) (h.tyF b) e) := by
+    rw [List.all_map]
+    refine List.all_congr rfl fun e => ?_
+    simp only [Function.comp_apply, all_allsOf, edgeAll]
+  rw [h1]
+  simp only [all_allsOf]
+  have h2 : (cEdges.all (fun e => upB ix e.2 &&
+        fAll (h.tyF e.1) (fun a => (getL ix.allBy a.val).all fun p => !decide (p.1.flip ∈ e.2) || (memTS (h.tyF b)).f p.2)) &&
+      kEdges.all (fun e => upB ix e.1 &&
+        fAll e.2 (fun a => (getL ix.allBy a.val).all fun p => !decide (p.1.flip ∈ e.1) || (memTS (h.tyF b)).f p.2))) =
+      N.all (fun e => upB ix e.1 &&
+        fAll e.2 (fun a => (getL ix.allBy a.val).all fun p => !decide (p.1.flip ∈ e.1) || (memTS (h.tyF b)).f p.2)) := by
+    simp [N, HintS.starL, cEdges, List.all_append, List.all_map, Function.comp_def]
+  rw [h2]
+  unfold edgeB
+  apply Bool.eq_iff_iff.2
+  simp only [Bool.and_eq_true, List.all_eq_true]
+  exact ⟨fun ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ => ⟨⟨⟨h1, fun e he => ⟨(h2 e he).1, h3 e he, (h2 e he).2⟩⟩, h4⟩, h5⟩,
+         fun ⟨⟨⟨h1, h2⟩, h4⟩, h5⟩ => ⟨⟨⟨⟨h1, fun e he => ⟨(h2 e he).1, (h2 e he).2.2⟩⟩, fun e he => (h2 e he).2.1⟩, h4⟩, h5⟩⟩
+
+def coreBF (ix : SIx n m) (N : List (Fin n)) : Bool :=
+  let A := h.adj
+  let kb := h.kidIdx
+  let cacheP := fun c : Fin h.k => decide (h.k ≤ 65536) || decide (4 < (getL A c.val).length)
+  let memA := Array.ofFn fun c : Fin h.k => if cacheP c then some (mkMemBox (h.tyF c)) else none
+  let allMA := Array.ofFn fun c : Fin h.k => if cacheP c then some (allsMapOf (allsOf ix (h.tyF c))) else none
+  decide (0 < h.k) && nomOKS h N &&
+    (List.finRange h.k).all fun b => starCoreF h ix memA allMA A kb b
+
+@[csimp] theorem coreB_eq_F : @coreB = @coreBF := by
+  funext n m h ix N
+  unfold coreB coreBF
+  dsimp only
+  congr 1
+  refine List.all_congr rfl fun b => (starCoreF_eq h ix _ h.adj h.kidIdx b).symm
 
 theorem coreB_eq (O : SRIQ.Ontology (Fin n) (Fin m)) (N : List (Fin n)) :
     coreB h (mkSIx O) N = decide (0 < h.toN.k ∧ coreOKN N h.toN.ty h.toN.lab ∧
@@ -1118,6 +1490,34 @@ def namedPart (sc : List K) (G : Nat) (l : List (Nat × Nat × Nat)) : List (K �
   sc.zipIdx.map fun p => (p.1, (List.range G).map fun g =>
     ((l.filter fun e => e.1 == p.2 && e.2.1 == g).map (·.2.2)).sum)
 
+def sumPartMap (l : List (Nat × Nat × Nat)) : Std.HashMap (Nat × Nat) Nat :=
+  l.reverse.foldl (fun (m : Std.HashMap (Nat × Nat) Nat) e =>
+    m.insert (e.1, e.2.1) (e.2.2 + (m[(e.1, e.2.1)]?).getD 0)) ∅
+
+theorem sumPartMap_foldr (i g : Nat) :
+    ∀ (l : List (Nat × Nat × Nat)),
+      ((l.foldr (fun e (m : Std.HashMap (Nat × Nat) Nat) =>
+        m.insert (e.1, e.2.1) (e.2.2 + (m[(e.1, e.2.1)]?).getD 0)) ∅)[(i, g)]?).getD 0 =
+        ((l.filter fun e => e.1 == i && e.2.1 == g).map (·.2.2)).sum
+  | [] => by simp
+  | e :: l => by
+    simp only [List.foldr_cons, Std.HashMap.getElem?_insert, List.filter_cons]
+    by_cases h1 : e.1 = i
+    · by_cases h2 : e.2.1 = g
+      · subst h1; subst h2
+        simp [sumPartMap_foldr]
+      · simp [h1, h2, sumPartMap_foldr i g l]
+    · simp [h1, sumPartMap_foldr i g l]
+
+def namedPartF (sc : List K) (G : Nat) (l : List (Nat × Nat × Nat)) : List (K × List Nat) :=
+  let mp := sumPartMap l
+  sc.zipIdx.map fun p => (p.1, (List.range G).map fun g => (mp[(p.2, g)]?).getD 0)
+
+@[csimp] theorem namedPart_eq_F : @namedPart = @namedPartF := by
+  funext K sc G l
+  unfold namedPart namedPartF sumPartMap
+  simp only [← List.foldr_eq_foldl_reverse, sumPartMap_foldr]
+
 /-- The named part is a part: one count list per split cell, of the right
 length and sum. -/
 def validPartB (size : K → Option Nat) (s : Nat) (sc : List K) (x : List (K × List Nat)) : Bool :=
@@ -1278,6 +1678,88 @@ theorem lookSplit_eq {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (si
   next b hb => exact splitTab_lookup cells size L E c b hb
   next => rfl
 
+/-- First-occurrence hash map of a key-value list. -/
+def mapOfL {K V : Type} [DecidableEq K] [Hashable K] (l : List (K × V)) : Std.HashMap K V :=
+  l.reverse.foldl (fun (m : Std.HashMap K V) e => m.insert e.1 e.2) ∅
+
+theorem foldr_insert_lookup {K V : Type} [DecidableEq K] [Hashable K] (c : K) :
+    ∀ (l : List (K × V)),
+      ((l.foldr (fun e (m : Std.HashMap K V) => m.insert e.1 e.2) ∅)[c]?) = l.lookup c
+  | [] => by simp
+  | (k, v) :: l => by
+    simp only [List.foldr_cons, Std.HashMap.getElem?_insert, List.lookup_cons]
+    by_cases h : k = c
+    · subst h; simp
+    · have hb : (c == k) = false := beq_false_of_ne (Ne.symm h)
+      simp [h, hb, foldr_insert_lookup c l]
+
+theorem mapOfL_get {K V : Type} [DecidableEq K] [Hashable K] (l : List (K × V)) (c : K) :
+    (mapOfL l)[c]? = l.lookup c := by
+  unfold mapOfL
+  rw [← List.foldr_eq_foldl_reverse]
+  exact foldr_insert_lookup c l
+
+def useLookSplitH {K : Type} [DecidableEq K] [Hashable K] (mp : Std.HashMap K Bool)
+    (sp : K → Bool) (c : K) : Bool :=
+  match mp[c]? with
+  | some b => b
+  | none => sp c
+
+structure LookSplitHS (K : Type) where
+  f : K → Bool
+
+/-- `lookSplit` backed by a `Std.HashMap`, wrapped in a structure so the compiler does not eta-expand `mapOfL` into each lookup. -/
+def lookSplitHS {K : Type} [DecidableEq K] [Hashable K] (tab : List (K × Bool)) (sp : K → Bool) :
+    LookSplitHS K :=
+  let mp := mapOfL tab
+  ⟨useLookSplitH mp sp⟩
+
+@[simp] theorem lookSplitHS_f {K : Type} [DecidableEq K] [Hashable K]
+    (tab : List (K × Bool)) (sp : K → Bool) :
+    (lookSplitHS tab sp).f = lookSplit tab sp := by
+  funext c
+  simp only [lookSplitHS, useLookSplitH, lookSplit, mapOfL_get]
+
+theorem lookSplitHS_eq {K : Type} [DecidableEq K] [Hashable K] {q s : Nat}
+    (cells : List K) (size : K → Option Nat) (L : Nat) (E : Fin q → K → (Fin s → Bool) → Bool) :
+    (lookSplitHS (splitTab cells size L E) (SRIQD.splitCell cells size L E)).f =
+      SRIQD.splitCell cells size L E := by
+  rw [lookSplitHS_f, lookSplit_eq]
+
+def useToPartH {K : Type} [DecidableEq K] [Hashable K] {s : Nat}
+    (mp : Std.HashMap K (List Nat)) (gs : List (Fin s → Bool)) (c : K) (g : Fin s → Bool) : Nat :=
+  ((mp[c]?).getD []).getD (gs.idxOf g) 0
+
+structure ToPartHS (K : Type) (s : Nat) where
+  f : K → (Fin s → Bool) → Nat
+
+/-- `toPart` backed by a `Std.HashMap`, wrapped in a structure so `mapOfL` is computed once. -/
+def toPartHS {K : Type} [DecidableEq K] [Hashable K] (s : Nat) (a : List (K × List Nat)) :
+    ToPartHS K s :=
+  let mp := mapOfL a
+  let gs := SRIQD.allG s
+  ⟨useToPartH mp gs⟩
+
+@[simp] theorem toPartHS_f {K : Type} [DecidableEq K] [Hashable K] (s : Nat) (a : List (K × List Nat)) :
+    (toPartHS s a).f = toPart s a := by
+  funext c g
+  simp only [toPartHS, useToPartH, toPart, mapOfL_get]
+
+/-- `splitTab` computed with a fast `vtcF` function. -/
+def splitTabV {K : Type} {q s : Nat} (cells : List K) (size : K → Option Nat)
+    (L : Nat) (vtcF : K → (Fin s → Bool) → Finset (Fin q)) : List (K × Bool) :=
+  let big := ((SRIQD.pairs cells s).filter fun cg => !SRIQD.small size L cg.1).map fun cg =>
+    SRI.Proc.toL (vtcF cg.1 cg.2)
+  let bigS : Std.HashSet (List (Fin q)) := Std.HashSet.ofList big
+  cells.map fun c => (c, SRIQD.small size L c &&
+    !((SRIQD.allG s).all fun g => bigS.contains (SRI.Proc.toL (vtcF c g))))
+
+theorem splitTabV_eq {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (size : K → Option Nat)
+    (L : Nat) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (vtcF : K → (Fin s → Bool) → Finset (Fin q)) (hvtc : ∀ c g, vtcF c g = SRIQD.vtc E c g) :
+    splitTabV cells size L vtcF = splitTab cells size L E := by
+  simp only [splitTabV, splitTab, hvtc]
+
 /-- The value type and the bound of every pair of a part (stage H4: the
 oracle `partCard` recomputes them for every value type it is asked). -/
 def partTab {K : Type} {q s : Nat} (cells : List K) (size : K → Option Nat) (sp : K → Bool)
@@ -1285,15 +1767,252 @@ def partTab {K : Type} {q s : Nat} (cells : List K) (size : K → Option Nat) (s
     List (Finset (Fin q) × Option Nat) :=
   (SRIQD.pairs cells s).map fun cg => (SRIQD.vtc E cg.1 cg.2, SRIQD.pairBound size sp n cg)
 
+/-- `partTab` computed with a fast `vtcF` function. -/
+def partTabV {K : Type} {q s : Nat} (cells : List K) (size : K → Option Nat) (sp : K → Bool)
+    (vtcF : K → (Fin s → Bool) → Finset (Fin q)) (n : K → (Fin s → Bool) → Nat) :
+    List (Finset (Fin q) × Option Nat) :=
+  (SRIQD.pairs cells s).map fun cg => (vtcF cg.1 cg.2, SRIQD.pairBound size sp n cg)
+
+theorem partTabV_eq {K : Type} {q s : Nat} (cells : List K) (size : K → Option Nat) (sp : K → Bool)
+    (E : Fin q → K → (Fin s → Bool) → Bool)
+    (vtcF : K → (Fin s → Bool) → Finset (Fin q)) (hvtc : ∀ c g, vtcF c g = SRIQD.vtc E c g)
+    (n : K → (Fin s → Bool) → Nat) :
+    partTabV cells size sp vtcF n = partTab cells size sp E n := by
+  simp only [partTabV, partTab, hvtc]
+
 /-- The oracle of a part read from its table. -/
 def partCardT {q : Nat} (tab : List (Finset (Fin q) × Option Nat)) (τ : Finset (Fin q)) : Option Nat :=
   SRIQD.osum (tab.map fun e => if e.1 = τ then e.2 else some 0)
+
+theorem oaddN_zero_left (x : Option Nat) : SRIQD.oaddN (some 0) x = x := by
+  cases x <;> simp [SRIQD.oaddN]
+
+def sumMap {α : Type} [DecidableEq α] [Hashable α] (l : List (α × Option Nat)) :
+    Std.HashMap α (Option Nat) :=
+  l.reverse.foldl (fun (m : Std.HashMap α (Option Nat)) e =>
+    m.insert e.1 (SRIQD.oaddN e.2 ((m[e.1]?).getD (some 0)))) ∅
+
+theorem sumMap_foldr {α : Type} [DecidableEq α] [Hashable α] (k : α) :
+    ∀ (l : List (α × Option Nat)),
+      ((l.foldr (fun e (m : Std.HashMap α (Option Nat)) =>
+        m.insert e.1 (SRIQD.oaddN e.2 ((m[e.1]?).getD (some 0)))) ∅)[k]?).getD (some 0) =
+        SRIQD.osum (l.map fun e => if e.1 = k then e.2 else some 0)
+  | [] => by simp [SRIQD.osum]
+  | e :: l => by
+    simp only [List.foldr_cons, Std.HashMap.getElem?_insert, List.map_cons, SRIQD.osum]
+    by_cases h : e.1 = k
+    · subst h
+      have ih := sumMap_foldr e.1 l
+      unfold SRIQD.osum at ih
+      simp [ih]
+    · have ih := sumMap_foldr k l
+      unfold SRIQD.osum at ih
+      simp [h, ih, oaddN_zero_left]
+
+def usePartCard {q : Nat} {α : Type} [DecidableEq α] [Hashable α] (f : Finset (Fin q) → α)
+    (mp : Std.HashMap α (Option Nat)) (τ : Finset (Fin q)) : Option Nat :=
+  (mp[f τ]?).getD (some 0)
+
+structure PartCardS (q : Nat) where
+  f : Finset (Fin q) → Option Nat
+
+def partCardTS {q : Nat} (tab : List (Finset (Fin q) × Option Nat)) : PartCardS q :=
+  let mp := sumMap (tab.map fun e => (SRI.Proc.toL e.1, e.2))
+  ⟨usePartCard SRI.Proc.toL mp⟩
+
+@[simp] theorem partCardTS_f {q : Nat} (tab : List (Finset (Fin q) × Option Nat)) :
+    (partCardTS tab).f = partCardT tab := by
+  funext τ
+  unfold partCardT partCardTS usePartCard sumMap
+  dsimp only
+  rw [← List.foldr_eq_foldl_reverse, sumMap_foldr, List.map_map]
+  congr 1
+  refine List.map_congr_left fun e _ => ?_
+  simp only [Function.comp_apply]
+  by_cases h : e.1 = τ
+  · subst h; simp
+  · have hne : SRI.Proc.toL e.1 ≠ SRI.Proc.toL τ := fun he => h (SRI.Proc.toL_inj he)
+    simp [h, hne]
 
 theorem partCardT_eq {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (size : K → Option Nat)
     (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool) (n : K → (Fin s → Bool) → Nat) :
     partCardT (partTab cells size sp E n) = SRIQD.partCard cells size sp E n := by
   funext τ
   simp only [partCardT, partTab, SRIQD.partCard, List.map_map, Function.comp_def]
+
+/-- Indexed data clauses of an ontology for fast `starGivenB` checking. -/
+structure DIx (n p q : Nat) where
+  bnd : Nat
+  dSub : List (Fin p × Fin p)
+  lowBy : Array (List (Nat × Fin p × List (Fin q) × List (Fin q)))
+  uppBy : Array (List (Nat × Fin p × List (Fin q) × List (Fin q)))
+  allBy : Array (List (Fin p × List (Fin q × Bool)))
+
+def mkDIx (O : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q)) : DIx n p q where
+  bnd := SRIQD.dbnd O
+  dSub := SRIQD.dSubL O
+  lowBy := buildIdx n (fun c => some (c.1.val, c.2)) (SRIQD.dLowerL O)
+  uppBy := buildIdx n (fun c => some (c.1.val, c.2)) (SRIQD.dUpperL O)
+  allBy := buildIdx n (fun c => some (c.1.val, c.2)) (SRIQD.dAllL O)
+
+theorem mem_dLowBy {O : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q)} {a : Fin n}
+    {c : Nat × Fin p × List (Fin q) × List (Fin q)} :
+    c ∈ getL (mkDIx O).lowBy a.val ↔ (a, c) ∈ SRIQD.dLowerL O := by
+  simp only [mkDIx]
+  rw [mem_buildIdx a.isLt]
+  constructor
+  · rintro ⟨q', hq, he⟩
+    simp only [Option.some.injEq, Prod.mk.injEq] at he
+    obtain ⟨h1, rfl⟩ := he
+    rw [show a = q'.1 from (Fin.ext h1).symm]
+    exact hq
+  · intro h
+    exact ⟨_, h, rfl⟩
+
+theorem mem_dUppBy {O : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q)} {a : Fin n}
+    {c : Nat × Fin p × List (Fin q) × List (Fin q)} :
+    c ∈ getL (mkDIx O).uppBy a.val ↔ (a, c) ∈ SRIQD.dUpperL O := by
+  simp only [mkDIx]
+  rw [mem_buildIdx a.isLt]
+  constructor
+  · rintro ⟨q', hq, he⟩
+    simp only [Option.some.injEq, Prod.mk.injEq] at he
+    obtain ⟨h1, rfl⟩ := he
+    rw [show a = q'.1 from (Fin.ext h1).symm]
+    exact hq
+  · intro h
+    exact ⟨_, h, rfl⟩
+
+theorem mem_dAllBy {O : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q)} {a : Fin n}
+    {c : Fin p × List (Fin q × Bool)} :
+    c ∈ getL (mkDIx O).allBy a.val ↔ (a, c) ∈ SRIQD.dAllL O := by
+  simp only [mkDIx]
+  rw [mem_buildIdx a.isLt]
+  constructor
+  · rintro ⟨q', hq, he⟩
+    simp only [Option.some.injEq, Prod.mk.injEq] at he
+    obtain ⟨h1, rfl⟩ := he
+    rw [show a = q'.1 from (Fin.ext h1).symm]
+    exact hq
+  · intro h
+    exact ⟨_, h, rfl⟩
+
+def countMap {α : Type} [DecidableEq α] [Hashable α] (l : List α) : Std.HashMap α Nat :=
+  l.reverse.foldl (fun (m : Std.HashMap α Nat) a => m.insert a (((m[a]?).getD 0) + 1)) ∅
+
+theorem countMap_foldr {α : Type} [DecidableEq α] [Hashable α] (k : α) :
+    ∀ (l : List α),
+      ((l.foldr (fun a (m : Std.HashMap α Nat) => m.insert a (((m[a]?).getD 0) + 1)) ∅)[k]?).getD 0 =
+        l.countP fun a => decide (a = k)
+  | [] => by simp
+  | a :: l => by
+    simp only [List.foldr_cons, Std.HashMap.getElem?_insert, List.countP_cons]
+    by_cases h : a = k
+    · subst h
+      have ih := countMap_foldr a l
+      simp [ih]
+    · have ih := countMap_foldr k l
+      simp [h, ih]
+
+theorem countMap_get {α : Type} [DecidableEq α] [Hashable α] (l : List α) (k : α) :
+    ((countMap l)[k]?).getD 0 = l.countP fun a => decide (a = k) := by
+  unfold countMap
+  rw [← List.foldr_eq_foldl_reverse]
+  exact countMap_foldr k l
+
+def cardOKF {q : Nat} {α : Type} [DecidableEq α] [Hashable α] (f : Finset (Fin q) → α)
+    (card : Finset (Fin q) → Option Nat) (tc : Std.HashMap α Nat)
+    (τ : Finset (Fin q)) : Bool :=
+  match card τ with
+  | some k => decide (((tc[f τ]?).getD 0) ≤ k)
+  | none => true
+
+theorem cardOKF_eq {p q : Nat} (card : Finset (Fin q) → Option Nat)
+    (Dn : List (ContextCalculus.SRIQD.DNbr (Fin p) (Fin q))) (τ : Finset (Fin q)) :
+    cardOKF SRI.Proc.toL card (countMap (Dn.map fun e => SRI.Proc.toL e.2)) τ =
+      SRIQD.cardOK card Dn τ := by
+  unfold cardOKF SRIQD.cardOK SRIQD.tcnt
+  rw [countMap_get, List.countP_map, Function.comp_def]
+  have h : (fun e : ContextCalculus.SRIQD.DNbr (Fin p) (Fin q) => decide (SRI.Proc.toL e.2 = SRI.Proc.toL τ)) =
+      (fun e : ContextCalculus.SRIQD.DNbr (Fin p) (Fin q) => decide (e.2 = τ)) := by
+    funext e
+    apply Bool.eq_iff_iff.2
+    simp only [decide_eq_true_eq]
+    exact ⟨SRI.Proc.toL_inj, congrArg SRI.Proc.toL⟩
+  cases card τ <;> simp [h]
+
+def starGivenBF (ix : DIx n p q) (card : Finset (Fin q) → Option Nat)
+    (t : Finset (Fin n)) (Dn : List (ContextCalculus.SRIQD.DNbr (Fin p) (Fin q))) : Bool :=
+  let lows := (SRI.Proc.toL t).flatMap fun a => getL ix.lowBy a.val
+  let tc := countMap (Dn.map fun e => SRI.Proc.toL e.2)
+  decide (Dn.length ≤ ix.bnd) &&
+  Dn.all (fun e => lows.any fun c => decide (c.2.1 ∈ e.1 ∧ SRIQD.rngOK c.2.2.1 c.2.2.2 e.2)) &&
+  (Dn.all (fun e => ix.dSub.all fun q' => !decide (q'.1 ∈ e.1) || decide (q'.2 ∈ e.1)) &&
+   Dn.all (fun e => cardOKF SRI.Proc.toL card tc e.2) &&
+   fAll t (fun a => (getL ix.allBy a.val).all fun c =>
+     Dn.all fun e => !decide (c.1 ∈ e.1) || c.2.any fun l => decide (SRIQD.litOK l e.2)) &&
+   fAll t (fun a => (getL ix.uppBy a.val).all fun c =>
+     decide (SRIQD.dcnt Dn c.2.1 c.2.2.1 c.2.2.2 ≤ c.1))) &&
+  lows.all (fun c => decide (c.1 ≤ SRIQD.dcnt Dn c.2.1 c.2.2.1 c.2.2.2))
+
+theorem starGivenBF_eq (O : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q))
+    (card : Finset (Fin q) → Option Nat) (t : Finset (Fin n))
+    (Dn : List (ContextCalculus.SRIQD.DNbr (Fin p) (Fin q))) :
+    starGivenBF (mkDIx O) card t Dn = starGivenB O card t Dn := by
+  apply Bool.eq_iff_iff.2
+  unfold starGivenBF starGivenB SRIQD.Proc.dcandOK
+  simp only [cardOKF_eq, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, List.any_eq_true,
+    List.mem_flatMap, SRI.Proc.mem_toL, fAll_iff, Bool.or_eq_true, Bool.not_eq_true',
+    decide_eq_false_iff_not, SRIQD.dok_iff, SRIQD.DDown, SRIQD.DLower, SRIQD.dcontrib,
+    show (mkDIx O).bnd = SRIQD.dbnd O from rfl,
+    show (mkDIx O).dSub = SRIQD.dSubL O from rfl,
+    show (mkDIx O).lowBy = dLowBy O from rfl,
+    show (mkDIx O).uppBy = dUppBy O from rfl,
+    show (mkDIx O).allBy = dAllBy O from rfl,
+    mem_dLowBy, mem_dUppBy, mem_dAllBy]
+  constructor
+  · rintro ⟨⟨⟨h1, h2⟩, ⟨⟨h3, h4⟩, h5⟩, h6⟩, h7⟩
+    have hd : SRIQD.DDown O card t Dn :=
+      ⟨fun e he q' hq hu => (h3 e he q' hq).resolve_left (not_not.2 hu), h4,
+       fun q' hq ht e he hu => (h5 q'.1 ht q'.2 hq e he).resolve_left (not_not.2 hu),
+       fun q' hq ht => h6 q'.1 ht q'.2 hq⟩
+    refine ⟨⟨h1, fun e he => ⟨SRIQD.dDown_sublist (List.singleton_sublist.2 he) hd, ?_⟩⟩, hd,
+      fun q' hq ht => h7 q'.2 ⟨q'.1, ht, hq⟩⟩
+    obtain ⟨c, ⟨a, ha, hc⟩, hok⟩ := h2 e he
+    exact ⟨(a, c), hc, ha, hok⟩
+  · rintro ⟨⟨h1, h2⟩, ⟨h3, h4, h5, h6⟩, h7⟩
+    refine ⟨⟨⟨h1, fun e he => ?_⟩, ⟨⟨fun e he q' hq => ?_, h4⟩, fun a ha c hc e he => ?_⟩,
+      fun a ha c hc => h6 (a, c) hc ha⟩, ?_⟩
+    · obtain ⟨q', hq, ht, hok⟩ := (h2 e he).2
+      exact ⟨q'.2, ⟨q'.1, ht, hq⟩, hok⟩
+    · by_cases hu : q'.1 ∈ e.1
+      · exact Or.inr (h3 e he q' hq hu)
+      · exact Or.inl hu
+    · by_cases hu : c.1 ∈ e.1
+      · exact Or.inr (h5 (a, c) hc ha e he hu)
+      · exact Or.inl hu
+    · rintro c ⟨a, ha, hc⟩
+      exact h7 (a, c) hc ha
+
+def okOfF {p q : Nat} (ix : DIx n p q) (Db : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q))
+    (card : Finset (Fin q) → Option Nat) (h : HintS n m)
+    (stars : Array (Option (List (Option (ContextCalculus.SRIQD.DNbr (Fin p) (Fin q))))))
+    (b : Fin h.k) : Bool :=
+  match (stars[b.val]?).getD none with
+  | some l => if l.all Option.isSome then starGivenBF ix card (h.tyF b) (l.filterMap id) else false
+  | none => SRIQD.Proc.dataSatB Db card (h.tyF b)
+
+theorem okOfF_eq {p q : Nat} (Db : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q))
+    (card : Finset (Fin q) → Option Nat) (h : HintS n m)
+    (stars : Array (Option (List (Option (ContextCalculus.SRIQD.DNbr (Fin p) (Fin q))))))
+    (b : Fin h.k) :
+    okOfF (mkDIx Db) Db card h stars b = okOf Db card h stars b := by
+  unfold okOfF okOf
+  split
+  · split_ifs
+    · exact starGivenBF_eq Db card (h.tyF b) _
+    · rfl
+  · rfl
 
 /-- The value types of the given data stars. -/
 def starTaus {p q : Nat} (stars : Array (Option (List (Option (ContextCalculus.SRIQD.DNbr (Fin p) (Fin q)))))) :
@@ -1326,6 +2045,71 @@ def hintPartsP (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
     let x := namedPart sc (ContextCalculus.SRIQD.allG s).length h.part
     validPartB size s sc x && okAll (partCardT (partTab cells size sp E (toPart s x)))
   else (partsOf size s sc).any fun x => okAll (partCardT (partTab cells size sp E (toPart s x)))
+
+/-- `hintPartsP` with indexed data clauses (`mkDIx`) and direct hash-table oracle (`partCardTF`). -/
+def hintPartsPF (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (h : HintS (n + Proc.encKD O) m) : Bool :=
+  let D := Proc.encTransDN O
+  let Db := dbase D
+  let Dd := dataOnly Db
+  let ixD := mkDIx Dd
+  let A := SRIQD.objPart Db
+  let N := dnoms D
+  let ix := mkSIx A
+  let noKids := h.kids.isEmpty
+  let sc := cells.filter sp
+  let stars := starsOf (p := p) (q := q) h
+  let okAll := fun (card : Finset (Fin q) → Option Nat) =>
+    (List.finRange h.k).all (fun b => okOfF ixD Dd card h stars b) &&
+      (noKids || h.recs.all (fun e => SRIQD.Proc.dataSatB Dd card e.ty))
+  (coreB h ix N && (noKids || certB h ix N)) &&
+  if h.partNamed then
+    let x := namedPart sc (ContextCalculus.SRIQD.allG s).length h.part
+    validPartB size s sc x && okAll (partCardTS (partTab cells size sp E (toPart s x))).f
+  else (partsOf size s sc).any fun x => okAll (partCardTS (partTab cells size sp E (toPart s x))).f
+
+@[simp] theorem lookCard_memoTab {q : Nat} (c : Finset (Fin q) → Option Nat) (L : List (Finset (Fin q))) :
+    lookCard c (memoTab c L) = c :=
+  memoCard_eq c L
+
+@[csimp] theorem hintPartsP_eq_F : @hintPartsP = @hintPartsPF := by
+  funext n m K _ q s p O cells size sp E h
+  unfold hintPartsP hintPartsPF
+  dsimp only
+  simp only [lookCard_memoTab, partCardTS_f, okOfF_eq]
+
+/-- `hintPartsPF` using `partTabV` and `toPartHS`. -/
+def hintPartsPV [Hashable K] (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (vtcF : K → (Fin s → Bool) → Finset (Fin q))
+    (h : HintS (n + Proc.encKD O) m) : Bool :=
+  let D := Proc.encTransDN O
+  let Db := dbase D
+  let Dd := dataOnly Db
+  let ixD := mkDIx Dd
+  let A := SRIQD.objPart Db
+  let N := dnoms D
+  let ix := mkSIx A
+  let noKids := h.kids.isEmpty
+  let sc := cells.filter sp
+  let stars := starsOf (p := p) (q := q) h
+  let okAll := fun (card : Finset (Fin q) → Option Nat) =>
+    (List.finRange h.k).all (fun b => okOfF ixD Dd card h stars b) &&
+      (noKids || h.recs.all (fun e => SRIQD.Proc.dataSatB Dd card e.ty))
+  (coreB h ix N && (noKids || certB h ix N)) &&
+  if h.partNamed then
+    let x := namedPart sc (ContextCalculus.SRIQD.allG s).length h.part
+    validPartB size s sc x && okAll (partCardTS (partTabV cells size sp vtcF (toPartHS s x).f)).f
+  else (partsOf size s sc).any fun x => okAll (partCardTS (partTabV cells size sp vtcF (toPartHS s x).f)).f
+
+theorem hintPartsPV_eq [Hashable K] (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (vtcF : K → (Fin s → Bool) → Finset (Fin q)) (hvtc : ∀ c g, vtcF c g = SRIQD.vtc E c g)
+    (h : HintS (n + Proc.encKD O) m) :
+    hintPartsPV O cells size sp vtcF h = hintPartsP O cells size sp E h := by
+  rw [hintPartsP_eq_F]
+  unfold hintPartsPV hintPartsPF
+  simp only [partTabV_eq cells size sp E vtcF hvtc, toPartHS_f]
 
 theorem hintPartsP_imp (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
     (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
@@ -1399,6 +2183,34 @@ theorem hintPartsPB_eq (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : 
     hintPartsPB O cells size sp E true hs = hs.map (fun h => h.any (hintPartsNLP O cells size sp E)) :=
   ⟨rfl, rfl⟩
 
+def hintPartsNLPV [Hashable K] (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (vtcF : K → (Fin s → Bool) → Finset (Fin q))
+    (h : HintS (n + Proc.encKD O) m) : Bool :=
+  loopOKS h (dnoms (Proc.encTransDN O)) && hintPartsPV O cells size sp vtcF h
+
+theorem hintPartsNLPV_eq [Hashable K] (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (vtcF : K → (Fin s → Bool) → Finset (Fin q)) (hvtc : ∀ c g, vtcF c g = SRIQD.vtc E c g)
+    (h : HintS (n + Proc.encKD O) m) :
+    hintPartsNLPV O cells size sp vtcF h = hintPartsNLP O cells size sp E h := by
+  unfold hintPartsNLPV hintPartsNLP
+  rw [hintPartsPV_eq O cells size sp E vtcF hvtc h]
+
+def hintPartsPBV [Hashable K] (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (vtcF : K → (Fin s → Bool) → Finset (Fin q))
+    (loops : Bool) (hs : List (Option (HintS (n + Proc.encKD O) m))) : List Bool :=
+  hs.map fun h => h.any fun h =>
+    if loops then hintPartsNLPV O cells size sp vtcF h else hintPartsPV O cells size sp vtcF h
+
+theorem hintPartsPBV_eq [Hashable K] (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (vtcF : K → (Fin s → Bool) → Finset (Fin q)) (hvtc : ∀ c g, vtcF c g = SRIQD.vtc E c g)
+    (loops : Bool) (hs : List (Option (HintS (n + Proc.encKD O) m))) :
+    hintPartsPBV O cells size sp vtcF loops hs = hintPartsPB O cells size sp E loops hs := by
+  unfold hintPartsPBV hintPartsPB
+  simp only [hintPartsNLPV_eq O cells size sp E vtcF hvtc,
+    hintPartsPV_eq O cells size sp E vtcF hvtc]
+
 /-- `hintPartsS` over a list of hints, the encodings and the index computed once. -/
 def hintPartsSB (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
     (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
@@ -1444,3 +2256,7 @@ end ContextCalculus.SRIQN.HF
 #print axioms ContextCalculus.SRIQN.HF.hintPartsPB_eq
 #print axioms ContextCalculus.SRIQN.HF.lookSplit_eq
 #print axioms ContextCalculus.SRIQN.HF.toN_eq_F
+#print axioms ContextCalculus.SRIQN.HF.coreB_eq_F
+#print axioms ContextCalculus.SRIQN.HF.namedPart_eq_F
+#print axioms ContextCalculus.SRIQN.HF.partCardTS_f
+#print axioms ContextCalculus.SRIQN.HF.hintPartsP_eq_F

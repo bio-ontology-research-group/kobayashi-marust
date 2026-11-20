@@ -77,6 +77,74 @@ def wTabSCore (X : Ontology) (P : List (IRI × ObjProp)) (req : List IRI) (hint 
       | _, _, _ => none
   else none
 
+def wTabSCoreF (X : Ontology) (P : List (IRI × ObjProp)) (req : List IRI) (hint : RawHint) :
+    Option WTab :=
+  if X.isSROIQDSKB then
+    let rq := req ++ pairNames P
+    match translateSHOIQD (roleOff (selfOff X)) rq with
+    | none => none
+    | some T =>
+      match roleCls T (selfOff X), selfCls T X, pairCls T P with
+      | some E, some SC, some PC =>
+        let L := nomNames (roleOff (selfOff X)) rq
+        if sroiqSHOK T L E (SC ++ PC) then
+          let spS := specS T.tab
+          let sp := spS.f
+          let as := allBases sp
+          let cs := cellsOf as
+          let szS := cellSizeS as
+          let sz := szS.f
+          let eS := owlES sp
+          let oe := eS.f
+          let vS := vtcOwlS sp
+          let D := encS T L E (SC ++ PC)
+          let bnd := ContextCalculus.SRIQD.dbnd (SRIQN.dbase (SRIQN.Proc.encTransDN D)) *
+            (ContextCalculus.SRIQD.allG (allFrees sp).length).length
+          let spT := SRIQN.HF.splitTabV cs sz bnd vS.f
+          match hint.toHintS _ _ with
+          | none => none
+          | some h =>
+            if SRIQN.HF.hintPartsNLPV D cs sz
+                (SRIQN.HF.lookSplitHS spT (ContextCalculus.SRIQD.splitCell cs sz bnd oe)).f
+                vS.f h then
+              let mp := namedMap T.obj.named
+              let arr := T.obj.named.toArray
+              let emb := fun x : Fin T.obj.conceptCount =>
+                Fin.castAdd (SRIQN.Proc.encKD D) (Fin.castAdd _ (Fin.castAdd (SROIQ.Proc.kCD (dosnC T L E)) x))
+              let base := nomBase (roleOff (selfOff X)) rq
+              let ob := objC T L E
+              let hm := Std.HashMap.ofList (SROIQ.Proc.mkTab ob)
+              let le := SROIQ.Proc.leH hm
+              let rs := SROIQ.rules ob
+              some { N := _, k := h.k, ty := h.tyF
+                     cls := req.filterMap fun s => (ixOfA T arr rfl mp s).map fun x => (s, emb x)
+                     inds := (roleOff (selfOff X)).individualNames.zipIdx.filterMap fun p =>
+                       (ixOfA T arr rfl mp (nomName base p.2)).map fun x => (p.1, emb x)
+                     M := T.obj.roleCount, lab := h.toN.lab
+                     props := propsOf T fun R =>
+                       SROIQ.Proc.selfSimpleBL (n := T.obj.conceptCount) le rs [.selfL R []] }
+            else none
+        else none
+      | _, _, _ => none
+  else none
+
+@[csimp] theorem wTabSCore_eq_F : @wTabSCore = @wTabSCoreF := by
+  funext X P req hint
+  unfold wTabSCoreF wTabSCore sroiqSBound
+  dsimp only
+  split_ifs with hX
+  · cases translateSHOIQD (roleOff (selfOff X)) (req ++ pairNames P) with
+    | none => rfl
+    | some T =>
+      dsimp only
+      rw [specS_f]
+      have hv : ∀ c g, (vtcOwlS (spec T.tab)).f c g = ContextCalculus.SRIQD.vtc (owlES (spec T.tab)).f c g := by
+        intro c g; rw [owlES_f]; exact vtcOwlS_f _ c g
+      simp only [SRIQN.HF.hintPartsNLPV_eq _ _ _ _ _ _ hv,
+        SRIQN.HF.splitTabV_eq _ _ _ _ _ hv,
+        SRIQN.HF.lookSplitHS_f]
+  · rfl
+
 theorem classCorr_of {T : SRIQDKBTranslation} {rq : List IRI} {Dom : Type}
     {K : SRI.Interp Dom (Fin T.obj.conceptCount) (Fin T.obj.roleCount)} {I : Interp DM Dom}
     (hcl : ∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ rq → ∀ y,

@@ -305,6 +305,78 @@ def wTabCore (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
         else none
   else none
 
+def wTabCoreF (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
+  if X.isSROIQDKB then
+    match translateSHOIQD (roleOff X) req with
+    | none => none
+    | some T =>
+      match roleCls T X with
+      | none => none
+      | some E =>
+        let L := nomNames (roleOff X) req
+        if sroiqHOK T L E then
+          let spS := specS T.tab
+          let sp := spS.f
+          let as := allBases sp
+          let cs := cellsOf as
+          let szS := cellSizeS as
+          let sz := szS.f
+          let eS := owlES sp
+          let oe := eS.f
+          let vS := vtcOwlS sp
+          let D := encC T L E
+          let bnd := ContextCalculus.SRIQD.dbnd (SRIQN.dbase (SRIQN.Proc.encTransDN D)) *
+            (ContextCalculus.SRIQD.allG (allFrees sp).length).length
+          let spT := SRIQN.HF.splitTabV cs sz bnd vS.f
+          match hint.toHintS _ _ with
+          | none => none
+          | some h =>
+            if SRIQN.HF.hintPartsPV D cs sz
+                (SRIQN.HF.lookSplitHS spT (ContextCalculus.SRIQD.splitCell cs sz bnd oe)).f
+                vS.f h then
+              let mp := namedMap T.obj.named
+              let arr := T.obj.named.toArray
+              let emb := fun x : Fin T.obj.conceptCount =>
+                Fin.castAdd (SRIQN.Proc.encKD D) (Fin.castAdd (SROIQ.Proc.kCD (dosnC T L E)) x)
+              let base := nomBase (roleOff X) req
+              let ob := objC T L E
+              let hm := Std.HashMap.ofList (SROIQ.Proc.mkTab ob)
+              let le := SROIQ.Proc.leH hm
+              let rs := SROIQ.rules ob
+              some { N := _, k := h.k, ty := h.tyF
+                     cls := req.filterMap fun s => (ixOfA T arr rfl mp s).map fun x => (s, emb x)
+                     inds := (roleOff X).individualNames.zipIdx.filterMap fun p =>
+                       (ixOfA T arr rfl mp (nomName base p.2)).map fun x => (p.1, emb x)
+                     M := T.obj.roleCount, lab := h.toN.lab
+                     props := propsOf T fun R =>
+                       SROIQ.Proc.selfSimpleBL (n := T.obj.conceptCount) le rs [.selfL R []]
+                     n2 := T.obj.conceptCount, ob := ob
+                     adj := SRIQN.HF.adjFrom h.adj
+                     rprops := rpropsOf T, flat := h.kids.isEmpty, chainR := true
+                     p := T.dps.length, q := T.tab.length, dpsA := T.dps.toArray
+                     dspA := (T.tab.map (·.R)).toArray
+                     dsA := SRIQN.HF.starsOf (p := T.dps.length) (q := T.tab.length) h }
+            else none
+        else none
+  else none
+
+@[csimp] theorem wTabCore_eq_F : @wTabCore = @wTabCoreF := by
+  funext X req hint
+  unfold wTabCoreF wTabCore sroiqBound
+  dsimp only
+  split_ifs with hX
+  · cases translateSHOIQD (roleOff X) req with
+    | none => rfl
+    | some T =>
+      dsimp only
+      rw [specS_f]
+      have hv : ∀ c g, (vtcOwlS (spec T.tab)).f c g = ContextCalculus.SRIQD.vtc (owlES (spec T.tab)).f c g := by
+        intro c g; rw [owlES_f]; exact vtcOwlS_f _ c g
+      simp only [SRIQN.HF.hintPartsPV_eq _ _ _ _ _ _ hv,
+        SRIQN.HF.splitTabV_eq _ _ _ _ _ hv,
+        SRIQN.HF.lookSplitHS_f]
+  · rfl
+
 /-- The facts the witness rows read. -/
 structure WFacts (pat : String → String → Prop) (X : Ontology) (W : WTab) : Prop where
   model : ∃ (Dom : Type) (_ : Nonempty Dom) (I : Interp (owl2MapP pat) Dom) (f : Fin W.k → Dom),
