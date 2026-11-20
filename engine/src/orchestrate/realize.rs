@@ -36,7 +36,7 @@
 //! exactly. Rows that mention a probe class are then removed from the
 //! taxonomy, which leaves the classification of `O` itself.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Write;
 use std::path::Path;
 
@@ -319,51 +319,33 @@ struct NominalFreeIndividualProbes {
     extension: String,
     probes: Vec<(String, String)>,
     precomputed_same: Vec<[String; 2]>,
+    /// Which argument applies: `false` for case A, `true` for case B.
+    #[cfg_attr(not(test), allow(dead_code))]
+    case_b: bool,
 }
+
+const OWL_NS: &str = "http://www.w3.org/2002/07/owl#";
 
 fn is_top_class_token(token: &str) -> bool {
     matches!(token, "owl:Thing" | "<http://www.w3.org/2002/07/owl#Thing>")
 }
 
-fn is_top_object_property_token(token: &str) -> bool {
-    matches!(
-        token,
-        "owl:topObjectProperty" | "<http://www.w3.org/2002/07/owl#topObjectProperty>"
-    )
+/// What an OFN token names when it lies in the OWL namespace.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OwlToken {
+    NotOwl,
+    Thing,
+    Nothing,
+    TopObjectProperty,
+    TopDataProperty,
+    /// Any other `owl:` name (bottom properties, `owl:real`, ...).
+    Other,
 }
 
-fn is_top_data_property_token(token: &str) -> bool {
-    matches!(
-        token,
-        "owl:topDataProperty" | "<http://www.w3.org/2002/07/owl#topDataProperty>"
-    )
-}
-
-fn node_has_literal(node: &Node<'_>) -> bool {
-    match node {
-        Node::Atom(token) => token.starts_with('"'),
-        Node::List("Annotation", _) => false,
-        Node::List(_, args) => args.iter().any(node_has_literal),
-    }
-}
-
-fn node_mentions_atom(node: &Node<'_>, target: &str) -> bool {
-    match node {
-        Node::Atom(token) => *token == target,
-        Node::List("Annotation", _) => false,
-        Node::List(_, args) => args.iter().any(|arg| node_mentions_atom(arg, target)),
-    }
-}
-
-fn node_mentions_nominal_or_top_role(node: &Node<'_>) -> bool {
-    match node {
-        Node::Atom(token) => {
-            is_top_object_property_token(token) || is_top_data_property_token(token)
-        }
-        Node::List("Annotation", _) => false,
-        Node::List("ObjectOneOf" | "ObjectHasValue", _) => true,
-        Node::List(_, args) => args.iter().any(node_mentions_nominal_or_top_role),
-    }
+fn plain_args<'n, 'a>(args: &'n [Node<'a>]) -> Vec<&'n Node<'a>> {
+    args.iter()
+        .filter(|arg| arg.head() != Some("Annotation"))
+        .collect()
 }
 
 fn render_node_into(node: &Node<'_>, out: &mut String) {
@@ -394,584 +376,540 @@ fn render_node(node: &Node<'_>) -> String {
     out
 }
 
-fn collect_object_roles_in_node<'a>(node: &Node<'a>, out: &mut HashSet<&'a str>) {
-    let Node::List(head, args) = node else { return };
-    if *head == "Annotation" {
-        return;
+/// One pass over the source for [`nominal_free_individual_extension`].
+///
+/// The scan accepts an explicit list of axiom and class-expression kinds and
+/// declines (returns `false` from [`NominalFreeScan::axiom`]) on everything
+/// else. `docs/V1.7.0-SPEED.md` section 4(c) lists every OWL 2 kind with the
+/// treatment it gets here and the argument for it.
+struct NominalFreeScan<'a> {
+    prefixes: BTreeMap<String, String>,
+    /// Object properties that some axiom other than an
+    /// `ObjectPropertyAssertion`, the outer role of a
+    /// `ClassAssertion(ObjectSomeValuesFrom(r F) x)`, or a tautology
+    /// `SubObjectPropertyOf(R owl:topObjectProperty)` mentions. A property
+    /// outside this set is *free*: no axiom constrains it except its own
+    /// assertions.
+    mentioned: HashSet<&'a str>,
+    /// Every axiom seen so far lies in the Horn fragment of case B (EL class
+    /// expressions, named properties, no data class expressions, no
+    /// functionality, symmetry, inverses, reflexivity or disjunction).
+    horn: bool,
+    /// Named properties under an existential in a premise position
+    /// (the left side of `SubClassOf`, any side of `EquivalentClasses` and
+    /// `DisjointClasses`) and properties with a domain axiom.
+    premise_roles: HashSet<&'a str>,
+    sub_roles: HashMap<&'a str, Vec<&'a str>>,
+    /// `SubObjectPropertyOf(ObjectPropertyChain(links) sup)`; a transitive
+    /// property `t` is recorded as the chain `t t -> t`.
+    chains: Vec<(Vec<&'a str>, &'a str)>,
+    /// Range class expressions of named properties, rendered.
+    ranges: HashMap<&'a str, Vec<String>>,
+    /// `(individual token, rendered class, outer role of an existential)`.
+    class_assertions: Vec<(&'a str, String, Option<&'a str>)>,
+    /// `(role, subject, object)`, with `ObjectInverseOf` assertions flipped.
+    role_assertions: Vec<(&'a str, &'a str, &'a str)>,
+    same_groups: Vec<Vec<&'a str>>,
+    diff_groups: Vec<Vec<&'a str>>,
+    /// The first axiom kind that made the scan decline, for `KM_REALIZE_TRACE`.
+    declined_at: Option<String>,
+}
+
+impl<'a> NominalFreeScan<'a> {
+    fn owl_token(&self, token: &str) -> OwlToken {
+        let local: String = if let Some(inner) = token.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
+            match inner.strip_prefix(OWL_NS) {
+                Some(local) => local.to_string(),
+                None => return OwlToken::NotOwl,
+            }
+        } else if let Some((prefix, local)) = token.split_once(':') {
+            let ns = match self.prefixes.get(prefix) {
+                Some(ns) => ns.as_str(),
+                None if prefix == "owl" => OWL_NS,
+                None => return OwlToken::NotOwl,
+            };
+            let full = format!("{ns}{local}");
+            match full.strip_prefix(OWL_NS) {
+                Some(local) => local.to_string(),
+                None => return OwlToken::NotOwl,
+            }
+        } else {
+            return OwlToken::NotOwl;
+        };
+        match local.as_str() {
+            "Thing" => OwlToken::Thing,
+            "Nothing" => OwlToken::Nothing,
+            "topObjectProperty" => OwlToken::TopObjectProperty,
+            "topDataProperty" => OwlToken::TopDataProperty,
+            _ => OwlToken::Other,
+        }
     }
-    let plain: Vec<&Node<'a>> = args
-        .iter()
-        .filter(|arg| arg.head() != Some("Annotation"))
-        .collect();
-    match *head {
-        "ObjectSomeValuesFrom"
-        | "ObjectAllValuesFrom"
-        | "ObjectHasValue"
-        | "ObjectHasSelf"
-        | "ObjectPropertyDomain"
-        | "ObjectPropertyRange" => {
-            if let Some(Node::Atom(role)) = plain.first().copied() {
-                out.insert(role);
+
+    /// A token that names an ordinary (non-OWL, non-literal, non-anonymous)
+    /// entity.
+    fn plain_entity(&self, token: &str) -> bool {
+        !token.is_empty()
+            && !token.starts_with('"')
+            && !token.starts_with("_:")
+            && !token.starts_with('^')
+            && !token.starts_with('@')
+            && self.owl_token(token) == OwlToken::NotOwl
+    }
+
+    /// The shape of an object property expression without recording it:
+    /// `(name, inverse)`.
+    fn role_shape(&self, node: &Node<'a>) -> Option<(&'a str, bool)> {
+        let (token, inverse) = match node {
+            Node::Atom(token) => (*token, false),
+            Node::List("ObjectInverseOf", args) => {
+                let plain = plain_args(args);
+                if plain.len() != 1 {
+                    return None;
+                }
+                (plain[0].as_atom()?, true)
             }
-            for arg in plain.iter().skip(1) {
-                collect_object_roles_in_node(arg, out);
+            _ => return None,
+        };
+        self.plain_entity(token).then_some((token, inverse))
+    }
+
+    /// An object property expression in a constraining position: recorded as
+    /// mentioned; an inverse leaves the Horn fragment.
+    fn object_role(&mut self, node: &Node<'a>) -> Option<(&'a str, bool)> {
+        let (token, inverse) = self.role_shape(node)?;
+        if inverse {
+            self.horn = false;
+        }
+        self.mentioned.insert(token);
+        Some((token, inverse))
+    }
+
+    fn data_role(&self, node: &Node<'a>) -> bool {
+        node.as_atom().is_some_and(|token| self.plain_entity(token))
+    }
+
+    /// A data range. Data ranges never mention individuals or object
+    /// properties; any datatype, facet or literal token is accepted.
+    fn data_range(node: &Node<'a>) -> bool {
+        match node {
+            Node::Atom(token) => !token.starts_with("_:"),
+            Node::List(head, args) => {
+                matches!(
+                    *head,
+                    "DataIntersectionOf"
+                        | "DataUnionOf"
+                        | "DataComplementOf"
+                        | "DataOneOf"
+                        | "DatatypeRestriction"
+                ) && plain_args(args).into_iter().all(Self::data_range)
             }
         }
-        "ObjectMinCardinality" | "ObjectMaxCardinality" | "ObjectExactCardinality" => {
-            if let Some(Node::Atom(role)) = plain.get(1).copied() {
-                out.insert(role);
+    }
+
+    fn cardinality(node: &Node<'_>) -> bool {
+        node.as_atom().is_some_and(|token| token.parse::<u64>().is_ok())
+    }
+
+    /// A class expression. `premise`: the expression sits where an
+    /// existential matches an existing edge (left side of an inclusion).
+    fn class(&mut self, node: &Node<'a>, premise: bool) -> bool {
+        match node {
+            Node::Atom(token) => {
+                if token.starts_with('"') || token.starts_with("_:") {
+                    return false;
+                }
+                matches!(
+                    self.owl_token(token),
+                    OwlToken::NotOwl | OwlToken::Thing | OwlToken::Nothing
+                )
             }
-            for arg in plain.iter().skip(2) {
-                collect_object_roles_in_node(arg, out);
+            Node::List(head, args) => {
+                let plain = plain_args(args);
+                match *head {
+                    "ObjectIntersectionOf" => {
+                        !plain.is_empty() && plain.iter().all(|arg| self.class(arg, premise))
+                    }
+                    "ObjectUnionOf" => {
+                        self.horn = false;
+                        !plain.is_empty() && plain.iter().all(|arg| self.class(arg, premise))
+                    }
+                    "ObjectComplementOf" => {
+                        self.horn = false;
+                        plain.len() == 1 && self.class(plain[0], !premise)
+                    }
+                    "ObjectSomeValuesFrom" => {
+                        if plain.len() != 2 {
+                            return false;
+                        }
+                        let Some((role, inverse)) = self.object_role(plain[0]) else {
+                            return false;
+                        };
+                        if premise && !inverse {
+                            self.premise_roles.insert(role);
+                        }
+                        self.class(plain[1], premise)
+                    }
+                    "ObjectAllValuesFrom" => {
+                        self.horn = false;
+                        plain.len() == 2
+                            && self.object_role(plain[0]).is_some()
+                            && self.class(plain[1], premise)
+                    }
+                    "ObjectMinCardinality" | "ObjectMaxCardinality" | "ObjectExactCardinality" => {
+                        self.horn = false;
+                        (plain.len() == 2 || plain.len() == 3)
+                            && Self::cardinality(plain[0])
+                            && self.object_role(plain[1]).is_some()
+                            && (plain.len() == 2 || self.class(plain[2], premise))
+                    }
+                    "ObjectHasSelf" => {
+                        self.horn = false;
+                        plain.len() == 1 && self.object_role(plain[0]).is_some()
+                    }
+                    "DataSomeValuesFrom" | "DataAllValuesFrom" => {
+                        self.horn = false;
+                        plain.len() >= 2
+                            && plain[..plain.len() - 1].iter().all(|p| self.data_role(p))
+                            && Self::data_range(plain[plain.len() - 1])
+                    }
+                    "DataHasValue" => {
+                        self.horn = false;
+                        plain.len() >= 2
+                            && self.data_role(plain[0])
+                            && plain[1..].iter().all(|arg| arg.as_atom().is_some())
+                    }
+                    "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality" => {
+                        self.horn = false;
+                        (plain.len() == 2 || plain.len() == 3)
+                            && Self::cardinality(plain[0])
+                            && self.data_role(plain[1])
+                            && (plain.len() == 2 || Self::data_range(plain[2]))
+                    }
+                    // ObjectOneOf, ObjectHasValue and every unknown kind.
+                    _ => false,
+                }
             }
         }
-        "ObjectInverseOf" => {
-            if let Some(Node::Atom(role)) = plain.first().copied() {
-                out.insert(role);
+    }
+
+    fn individual(token: &str) -> bool {
+        !token.is_empty() && !token.starts_with('"') && !token.starts_with('^') && !token.starts_with('@')
+    }
+
+    /// One ontology child. `false` means decline.
+    fn axiom(&mut self, node: &Node<'a>) -> bool {
+        // The ontology and version IRIs are bare atoms.
+        let Node::List(head, args) = node else { return true };
+        let plain = plain_args(args);
+        match *head {
+            "Annotation"
+            | "AnnotationAssertion"
+            | "SubAnnotationPropertyOf"
+            | "AnnotationPropertyDomain"
+            | "AnnotationPropertyRange"
+            | "Declaration" => true,
+            "SubClassOf" => {
+                plain.len() == 2 && self.class(plain[0], true) && self.class(plain[1], false)
             }
-        }
-        _ => {
-            for arg in &plain {
-                collect_object_roles_in_node(arg, out);
+            "EquivalentClasses" | "DisjointClasses" => {
+                plain.len() >= 2 && plain.iter().all(|c| self.class(c, true))
             }
+            "DisjointUnion" => {
+                self.horn = false;
+                plain.len() >= 2 && plain.iter().all(|c| self.class(c, true))
+            }
+            "SubObjectPropertyOf" => {
+                if plain.len() != 2 {
+                    return false;
+                }
+                if plain[1]
+                    .as_atom()
+                    .is_some_and(|sup| self.owl_token(sup) == OwlToken::TopObjectProperty)
+                {
+                    // `R ⊑ U` and `R1 ... Rn ⊑ U` hold in every interpretation.
+                    return match plain[0] {
+                        Node::List("ObjectPropertyChain", links) => {
+                            let links = plain_args(links);
+                            !links.is_empty() && links.iter().all(|l| self.role_shape(l).is_some())
+                        }
+                        sub => self.role_shape(sub).is_some(),
+                    };
+                }
+                let Some((sup, sup_inverse)) = self.object_role(plain[1]) else {
+                    return false;
+                };
+                match plain[0] {
+                    Node::List("ObjectPropertyChain", links) => {
+                        let links = plain_args(links);
+                        if links.is_empty() {
+                            return false;
+                        }
+                        let mut named = Vec::with_capacity(links.len());
+                        for link in links {
+                            match self.object_role(link) {
+                                Some((role, false)) => named.push(role),
+                                Some((_, true)) => {}
+                                None => return false,
+                            }
+                        }
+                        if !sup_inverse && self.horn {
+                            self.chains.push((named, sup));
+                        }
+                        true
+                    }
+                    sub => match self.object_role(sub) {
+                        Some((role, false)) => {
+                            if !sup_inverse {
+                                self.sub_roles.entry(role).or_default().push(sup);
+                            }
+                            true
+                        }
+                        Some((_, true)) => true,
+                        None => false,
+                    },
+                }
+            }
+            "EquivalentObjectProperties" => {
+                let mut named = Vec::with_capacity(plain.len());
+                for arg in &plain {
+                    match self.object_role(arg) {
+                        Some((role, false)) => named.push(role),
+                        Some((_, true)) => {}
+                        None => return false,
+                    }
+                }
+                for &a in &named {
+                    for &b in &named {
+                        if a != b {
+                            self.sub_roles.entry(a).or_default().push(b);
+                        }
+                    }
+                }
+                plain.len() >= 2
+            }
+            "DisjointObjectProperties" => {
+                plain.len() >= 2 && plain.iter().all(|r| self.object_role(r).is_some())
+            }
+            "InverseObjectProperties" => {
+                self.horn = false;
+                plain.len() == 2 && plain.iter().all(|r| self.object_role(r).is_some())
+            }
+            "ObjectPropertyDomain" => {
+                if plain.len() != 2 {
+                    return false;
+                }
+                let Some((role, inverse)) = self.object_role(plain[0]) else {
+                    return false;
+                };
+                if !inverse {
+                    self.premise_roles.insert(role);
+                }
+                self.class(plain[1], false)
+            }
+            "ObjectPropertyRange" => {
+                if plain.len() != 2 {
+                    return false;
+                }
+                let Some((role, inverse)) = self.object_role(plain[0]) else {
+                    return false;
+                };
+                if !self.class(plain[1], false) {
+                    return false;
+                }
+                let is_top = plain[1]
+                    .as_atom()
+                    .is_some_and(|c| self.owl_token(c) == OwlToken::Thing);
+                if !inverse && !is_top {
+                    self.ranges.entry(role).or_default().push(render_node(plain[1]));
+                }
+                true
+            }
+            "FunctionalObjectProperty"
+            | "InverseFunctionalObjectProperty"
+            | "ReflexiveObjectProperty"
+            | "SymmetricObjectProperty" => {
+                self.horn = false;
+                plain.len() == 1 && self.object_role(plain[0]).is_some()
+            }
+            "IrreflexiveObjectProperty" | "AsymmetricObjectProperty" => {
+                plain.len() == 1 && self.object_role(plain[0]).is_some()
+            }
+            "TransitiveObjectProperty" => {
+                if plain.len() != 1 {
+                    return false;
+                }
+                match self.object_role(plain[0]) {
+                    Some((role, false)) => {
+                        self.chains.push((vec![role, role], role));
+                        true
+                    }
+                    Some((_, true)) => true,
+                    None => false,
+                }
+            }
+            "SubDataPropertyOf" => {
+                plain.len() == 2
+                    && self.data_role(plain[0])
+                    && (self.data_role(plain[1])
+                        || plain[1]
+                            .as_atom()
+                            .is_some_and(|t| self.owl_token(t) == OwlToken::TopDataProperty))
+            }
+            "EquivalentDataProperties" | "DisjointDataProperties" => {
+                plain.len() >= 2 && plain.iter().all(|p| self.data_role(p))
+            }
+            "FunctionalDataProperty" => plain.len() == 1 && self.data_role(plain[0]),
+            "DataPropertyDomain" => {
+                plain.len() == 2 && self.data_role(plain[0]) && self.class(plain[1], false)
+            }
+            "DataPropertyRange" => {
+                plain.len() == 2 && self.data_role(plain[0]) && Self::data_range(plain[1])
+            }
+            "DatatypeDefinition" => {
+                plain.len() == 2 && plain[0].as_atom().is_some() && Self::data_range(plain[1])
+            }
+            "ClassAssertion" => {
+                if plain.len() != 2 {
+                    return false;
+                }
+                let Some(ind) = plain[1].as_atom().filter(|t| Self::individual(t)) else {
+                    return false;
+                };
+                if let Node::List("ObjectSomeValuesFrom", ex) = plain[0] {
+                    let ex = plain_args(ex);
+                    if ex.len() == 2 {
+                        if let Some((role, false)) = self.role_shape(ex[0]) {
+                            // The outer role is not recorded as mentioned.
+                            if !self.class(ex[1], false) {
+                                return false;
+                            }
+                            self.class_assertions.push((ind, render_node(plain[0]), Some(role)));
+                            return true;
+                        }
+                    }
+                }
+                if !self.class(plain[0], false) {
+                    return false;
+                }
+                self.class_assertions.push((ind, render_node(plain[0]), None));
+                true
+            }
+            "ObjectPropertyAssertion" => {
+                if plain.len() != 3 {
+                    return false;
+                }
+                let Some((role, inverse)) = self.role_shape(plain[0]) else {
+                    return false;
+                };
+                let (Some(s), Some(o)) = (
+                    plain[1].as_atom().filter(|t| Self::individual(t)),
+                    plain[2].as_atom().filter(|t| Self::individual(t)),
+                ) else {
+                    return false;
+                };
+                if inverse {
+                    self.role_assertions.push((role, o, s));
+                } else {
+                    self.role_assertions.push((role, s, o));
+                }
+                true
+            }
+            "SameIndividual" | "DifferentIndividuals" => {
+                let mut group = Vec::with_capacity(plain.len());
+                for arg in &plain {
+                    match arg.as_atom().filter(|t| Self::individual(t)) {
+                        Some(token) => group.push(token),
+                        None => return false,
+                    }
+                }
+                if *head == "SameIndividual" {
+                    self.same_groups.push(group);
+                } else {
+                    self.diff_groups.push(group);
+                }
+                true
+            }
+            // Import, HasKey, DLSafeRule, NegativeObjectPropertyAssertion,
+            // NegativeDataPropertyAssertion, DataPropertyAssertion and every
+            // unknown kind.
+            _ => false,
         }
     }
 }
 
-fn collect_bad_case_b_roles_in_concept<'a>(
-    node: &Node<'a>,
-    in_complement: bool,
-    bad_roles: &mut HashSet<&'a str>,
-    has_equality_generators: &mut bool,
-) {
-    let Node::List(head, args) = node else { return };
-    if *head == "Annotation" {
-        return;
+fn super_roles<'a>(role: &'a str, sub_roles: &HashMap<&'a str, Vec<&'a str>>) -> HashSet<&'a str> {
+    let mut out = HashSet::new();
+    let mut stack = vec![role];
+    while let Some(r) = stack.pop() {
+        if out.insert(r) {
+            if let Some(sups) = sub_roles.get(r) {
+                stack.extend(sups.iter().copied());
+            }
+        }
     }
-    let plain: Vec<&Node<'a>> = args
-        .iter()
-        .filter(|arg| arg.head() != Some("Annotation"))
-        .collect();
-    match *head {
-        "ObjectComplementOf" => {
-            for arg in &plain {
-                collect_object_roles_in_node(arg, bad_roles);
-                collect_bad_case_b_roles_in_concept(
-                    arg,
-                    !in_complement,
-                    bad_roles,
-                    has_equality_generators,
-                );
-            }
-        }
-        "ObjectAllValuesFrom" | "ObjectHasSelf" | "ObjectInverseOf" => {
-            collect_object_roles_in_node(node, bad_roles);
-            for arg in &plain {
-                collect_bad_case_b_roles_in_concept(
-                    arg,
-                    in_complement,
-                    bad_roles,
-                    has_equality_generators,
-                );
-            }
-        }
-        "ObjectMinCardinality" => {
-            collect_object_roles_in_node(node, bad_roles);
-            if in_complement {
-                *has_equality_generators = true;
-            }
-            for arg in plain.iter().skip(2) {
-                collect_bad_case_b_roles_in_concept(
-                    arg,
-                    in_complement,
-                    bad_roles,
-                    has_equality_generators,
-                );
-            }
-        }
-        "ObjectMaxCardinality" | "ObjectExactCardinality" => {
-            collect_object_roles_in_node(node, bad_roles);
-            *has_equality_generators = true;
-            for arg in plain.iter().skip(2) {
-                collect_bad_case_b_roles_in_concept(
-                    arg,
-                    in_complement,
-                    bad_roles,
-                    has_equality_generators,
-                );
-            }
-        }
-        "DataMaxCardinality" | "DataExactCardinality" => {
-            *has_equality_generators = true;
-        }
-        "DataMinCardinality" if in_complement => {
-            *has_equality_generators = true;
-        }
-        _ => {
-            for arg in &plain {
-                collect_bad_case_b_roles_in_concept(
-                    arg,
-                    in_complement,
-                    bad_roles,
-                    has_equality_generators,
-                );
-            }
-        }
+    out
+}
+
+fn nominal_free_trace(message: &str) {
+    if std::env::var_os("KM_REALIZE_TRACE").is_some() {
+        eprintln!("km: nominal-free realization: {message}");
     }
 }
 
-fn lhs_can_match_untyped(node: &Node<'_>) -> bool {
-    match node {
-        Node::Atom(token) => is_top_class_token(token),
-        Node::List("ObjectIntersectionOf", args) => args
-            .iter()
-            .filter(|arg| arg.head() != Some("Annotation"))
-            .all(lhs_can_match_untyped),
-        _ => true,
-    }
-}
-
-/// Exact nominal-free block-probe realization extension for ontologies whose
-/// TBox+RBox is closed under disjoint unions (no TBox nominals, keys, rules, or
-/// non-tautological universal roles) and whose ABox is a positive object ABox
-/// (with optional `SameIndividual`, `DifferentIndividuals`, and inert
-/// existential-witness assertions).
-fn nominal_free_individual_extension(
-    text: &str,
+/// Block probes for realization without one nominal `P_a ≡ {a}` per named
+/// individual, or `None` when no exactness argument covers the ontology.
+///
+/// Case A (any nominal-free OWL 2 DL TBox): every `ObjectPropertyAssertion`
+/// uses a *free* property (one no other axiom mentions). Then
+/// `O ⊨ C(a)` iff `T ⊨ ⊓S(a) ⊑ C`, where `S(a)` are the class assertions of
+/// `a`'s `SameIndividual` group, so one probe `P ⊑ ⊓S` per distinct `S`
+/// gives the types of all individuals with that `S`.
+///
+/// Case B (Horn EL TBox with role inclusions, chains, transitivity,
+/// domains and ranges): the ABox graph is quotiented by the coarsest forward
+/// bisimulation over its labels and over the edges of *relevant* properties;
+/// each block gets `P_b ⊑ label` and `P_b ⊑ ∃r.P_b'` per edge.
+///
+/// The arguments and the treatment of every OWL 2 kind are in
+/// `docs/V1.7.0-SPEED.md` section 4(c).
+fn nominal_free_individual_extension<'a>(
+    text: &'a str,
     individuals: &[String],
 ) -> Option<NominalFreeIndividualProbes> {
     if individuals.is_empty() || std::env::var_os("KM_NO_NOMINAL_FREE_REALIZE").is_some() {
         return None;
     }
-    let mut aborted = false;
-    let mut has_anon_abox = false;
-    let mut all_ca_atomic = true;
-    let mut has_equality_generators = false;
-    let mut untyped_can_fire_tbox = false;
-
-    let mut ind_assertions: std::collections::HashMap<&str, Vec<(Option<&str>, String)>> =
-        std::collections::HashMap::with_capacity(individuals.len());
-    let mut existential_ca_roles: HashSet<&str> = HashSet::new();
-    let mut opa_edges: Vec<(&str, &str, &str)> = Vec::new();
-    let mut opa_roles: HashSet<&str> = HashSet::new();
-    let mut same_groups: Vec<Vec<&str>> = Vec::new();
-    let mut diff_groups: Vec<Vec<&str>> = Vec::new();
-
-    let mut tbox_or_rbox_roles: HashSet<&str> = HashSet::new();
-    let mut non_inert_existential_roles: HashSet<&str> = HashSet::new();
-    let mut neg_tbox_roles: HashSet<&str> = HashSet::new();
-    let mut bad_case_b_roles: HashSet<&str> = HashSet::new();
-    let mut bad_case_b = false;
-
-    let mut sub_roles: std::collections::HashMap<&str, Vec<&str>> =
-        std::collections::HashMap::new();
-    let mut inv_roles: std::collections::HashMap<&str, Vec<&str>> =
-        std::collections::HashMap::new();
-    let mut sym_roles: HashSet<&str> = HashSet::new();
-    let mut trans_roles: HashSet<&str> = HashSet::new();
-    let mut role_chains: Vec<(Vec<&str>, &str)> = Vec::new();
-    let mut domains: std::collections::HashMap<&str, Vec<&str>> =
-        std::collections::HashMap::new();
-    let mut ranges: std::collections::HashMap<&str, Vec<&str>> =
-        std::collections::HashMap::new();
-
-    let scan_ok = crate::frontend::parse::for_each_ontology_child(text, |node| {
-        if aborted {
-            return Ok(());
-        }
-        let Node::List(head, args) = node else {
-            return Ok(());
-        };
-        if matches!(
-            *head,
-            "Prefix"
-                | "Annotation"
-                | "AnnotationAssertion"
-                | "SubAnnotationPropertyOf"
-                | "AnnotationPropertyDomain"
-                | "AnnotationPropertyRange"
-                | "Declaration"
-        ) {
-            return Ok(());
-        }
-        if matches!(
-            *head,
-            "Import"
-                | "DLSafeRule"
-                | "HasKey"
-                | "NegativeObjectPropertyAssertion"
-                | "DataPropertyAssertion"
-                | "NegativeDataPropertyAssertion"
-        ) {
-            aborted = true;
-            return Ok(());
-        }
-        let plain: Vec<&Node<'_>> = args
-            .iter()
-            .filter(|arg| arg.head() != Some("Annotation"))
-            .collect();
-        if *head == "SubObjectPropertyOf" && plain.len() == 2 {
-            if plain[1].as_atom().is_some_and(is_top_object_property_token)
-                && !node_mentions_nominal_or_top_role(plain[0])
-            {
-                return Ok(());
-            }
-        }
-        if *head == "SubDataPropertyOf" && plain.len() == 2 {
-            if plain[1].as_atom().is_some_and(is_top_data_property_token)
-                && !node_mentions_nominal_or_top_role(plain[0])
-            {
-                return Ok(());
-            }
-        }
-        if node_mentions_nominal_or_top_role(node) {
-            aborted = true;
-            return Ok(());
-        }
-
-        match *head {
-            "ClassAssertion" => {
-                if plain.len() != 2 || node_has_literal(plain[0]) {
-                    aborted = true;
-                    return Ok(());
-                }
-                let Some(ind_tok) = plain[1].as_atom() else {
-                    aborted = true;
-                    return Ok(());
-                };
-                if let Node::List("ObjectSomeValuesFrom", ex_args) = plain[0] {
-                    let ex_plain: Vec<&Node<'_>> = ex_args
-                        .iter()
-                        .filter(|arg| arg.head() != Some("Annotation"))
-                        .collect();
-                    if ex_plain.len() == 2 {
-                        if let Some(r_tok) = ex_plain[0].as_atom() {
-                            if !node_mentions_atom(ex_plain[1], r_tok) {
-                                collect_object_roles_in_node(ex_plain[1], &mut tbox_or_rbox_roles);
-                                collect_object_roles_in_node(
-                                    ex_plain[1],
-                                    &mut non_inert_existential_roles,
-                                );
-                                collect_object_roles_in_node(ex_plain[1], &mut neg_tbox_roles);
-                                existential_ca_roles.insert(r_tok);
-                                if ind_tok.starts_with("_:") {
-                                    has_anon_abox = true;
-                                } else {
-                                    all_ca_atomic = false;
-                                    ind_assertions
-                                        .entry(ind_tok)
-                                        .or_default()
-                                        .push((Some(r_tok), render_node(plain[0])));
-                                }
-                                return Ok(());
-                            }
-                        }
-                    }
-                }
-                collect_object_roles_in_node(plain[0], &mut tbox_or_rbox_roles);
-                collect_object_roles_in_node(plain[0], &mut non_inert_existential_roles);
-                collect_object_roles_in_node(plain[0], &mut neg_tbox_roles);
-                if ind_tok.starts_with("_:") {
-                    has_anon_abox = true;
-                } else {
-                    if plain[0].as_atom().is_none() {
-                        all_ca_atomic = false;
-                    }
-                    ind_assertions
-                        .entry(ind_tok)
-                        .or_default()
-                        .push((None, render_node(plain[0])));
-                }
-            }
-            "ObjectPropertyAssertion" => {
-                if plain.len() != 3 {
-                    aborted = true;
-                    return Ok(());
-                }
-                let (Some(r_tok), Some(a_tok), Some(b_tok)) = (
-                    plain[0].as_atom(),
-                    plain[1].as_atom(),
-                    plain[2].as_atom(),
-                ) else {
-                    aborted = true;
-                    return Ok(());
-                };
-                if a_tok.starts_with("_:") || b_tok.starts_with("_:") {
-                    aborted = true;
-                    return Ok(());
-                }
-                opa_edges.push((r_tok, a_tok, b_tok));
-                opa_roles.insert(r_tok);
-                non_inert_existential_roles.insert(r_tok);
-            }
-            "SameIndividual" => {
-                let mut group = Vec::with_capacity(plain.len());
-                for arg in &plain {
-                    let Some(tok) = arg.as_atom() else {
-                        aborted = true;
-                        return Ok(());
-                    };
-                    if tok.starts_with("_:") {
-                        aborted = true;
-                        return Ok(());
-                    }
-                    group.push(tok);
-                }
-                if group.len() >= 2 {
-                    same_groups.push(group);
-                }
-            }
-            "DifferentIndividuals" => {
-                let mut group = Vec::with_capacity(plain.len());
-                for arg in &plain {
-                    let Some(tok) = arg.as_atom() else {
-                        aborted = true;
-                        return Ok(());
-                    };
-                    if tok.starts_with("_:") {
-                        aborted = true;
-                        return Ok(());
-                    }
-                    group.push(tok);
-                }
-                if group.len() >= 2 {
-                    diff_groups.push(group);
-                }
-            }
-            "SubObjectPropertyOf" => {
-                if plain.len() == 2 {
-                    if let (Some(r1), Some(r2)) = (plain[0].as_atom(), plain[1].as_atom()) {
-                        tbox_or_rbox_roles.insert(r1);
-                        tbox_or_rbox_roles.insert(r2);
-                        non_inert_existential_roles.insert(r1);
-                        non_inert_existential_roles.insert(r2);
-                        sub_roles.entry(r1).or_default().push(r2);
-                    } else if let (Node::List("ObjectPropertyChain", ch), Some(sup)) =
-                        (plain[0], plain[1].as_atom())
-                    {
-                        let mut chain_atoms = Vec::new();
-                        for item in ch {
-                            if item.head() == Some("Annotation") {
-                                continue;
-                            }
-                            if let Some(r) = item.as_atom() {
-                                chain_atoms.push(r);
-                                tbox_or_rbox_roles.insert(r);
-                            } else {
-                                bad_case_b = true;
-                            }
-                        }
-                        tbox_or_rbox_roles.insert(sup);
-                        let is_inert_witness_chain = chain_atoms.len() >= 2
-                            && chain_atoms[0] == sup
-                            && chain_atoms[1..].iter().all(|&r| r != sup);
-                        if !is_inert_witness_chain {
-                            non_inert_existential_roles.extend(chain_atoms.iter().copied());
-                            non_inert_existential_roles.insert(sup);
-                        }
-                        role_chains.push((chain_atoms, sup));
-                    } else {
-                        collect_object_roles_in_node(node, &mut tbox_or_rbox_roles);
-                        collect_object_roles_in_node(node, &mut non_inert_existential_roles);
-                        bad_case_b = true;
-                    }
-                } else {
-                    collect_object_roles_in_node(node, &mut tbox_or_rbox_roles);
-                    collect_object_roles_in_node(node, &mut non_inert_existential_roles);
-                    bad_case_b = true;
-                }
-            }
-            "EquivalentObjectProperties" => {
-                let mut rs = Vec::new();
-                for arg in &plain {
-                    if let Some(r) = arg.as_atom() {
-                        rs.push(r);
-                        tbox_or_rbox_roles.insert(r);
-                        non_inert_existential_roles.insert(r);
-                    } else {
-                        bad_case_b = true;
-                    }
-                }
-                for i in 0..rs.len() {
-                    for j in 0..rs.len() {
-                        if i != j {
-                            sub_roles.entry(rs[i]).or_default().push(rs[j]);
-                        }
-                    }
-                }
-            }
-            "InverseObjectProperties" => {
-                if let [Node::Atom(r1), Node::Atom(r2)] = plain.as_slice() {
-                    tbox_or_rbox_roles.insert(*r1);
-                    tbox_or_rbox_roles.insert(*r2);
-                    non_inert_existential_roles.insert(*r1);
-                    non_inert_existential_roles.insert(*r2);
-                    inv_roles.entry(*r1).or_default().push(*r2);
-                    inv_roles.entry(*r2).or_default().push(*r1);
-                } else {
-                    collect_object_roles_in_node(node, &mut tbox_or_rbox_roles);
-                    collect_object_roles_in_node(node, &mut non_inert_existential_roles);
-                    bad_case_b = true;
-                }
-            }
-            "SymmetricObjectProperty" => {
-                if let [Node::Atom(r)] = plain.as_slice() {
-                    tbox_or_rbox_roles.insert(*r);
-                    non_inert_existential_roles.insert(*r);
-                    sym_roles.insert(*r);
-                } else {
-                    collect_object_roles_in_node(node, &mut tbox_or_rbox_roles);
-                    collect_object_roles_in_node(node, &mut non_inert_existential_roles);
-                    bad_case_b = true;
-                }
-            }
-            "TransitiveObjectProperty" => {
-                if let [Node::Atom(r)] = plain.as_slice() {
-                    tbox_or_rbox_roles.insert(*r);
-                    non_inert_existential_roles.insert(*r);
-                    trans_roles.insert(*r);
-                } else {
-                    collect_object_roles_in_node(node, &mut tbox_or_rbox_roles);
-                    collect_object_roles_in_node(node, &mut non_inert_existential_roles);
-                    bad_case_b = true;
-                }
-            }
-            "ObjectPropertyDomain" => {
-                collect_object_roles_in_node(node, &mut tbox_or_rbox_roles);
-                collect_object_roles_in_node(node, &mut non_inert_existential_roles);
-                if let [Node::Atom(r), Node::Atom(c)] = plain.as_slice() {
-                    if !is_top_class_token(c) {
-                        domains.entry(*r).or_default().push(*c);
-                    }
-                } else {
-                    collect_object_roles_in_node(node, &mut bad_case_b_roles);
-                }
-            }
-            "ObjectPropertyRange" => {
-                collect_object_roles_in_node(node, &mut tbox_or_rbox_roles);
-                collect_object_roles_in_node(node, &mut non_inert_existential_roles);
-                if let [Node::Atom(r), Node::Atom(c)] = plain.as_slice() {
-                    if !is_top_class_token(c) {
-                        ranges.entry(*r).or_default().push(*c);
-                    }
-                } else {
-                    collect_object_roles_in_node(node, &mut bad_case_b_roles);
-                }
-            }
-            "FunctionalObjectProperty"
-            | "InverseFunctionalObjectProperty"
-            | "ReflexiveObjectProperty"
-            | "IrreflexiveObjectProperty"
-            | "AsymmetricObjectProperty"
-            | "DisjointObjectProperties" => {
-                for arg in &plain {
-                    if let Some(r) = arg.as_atom() {
-                        tbox_or_rbox_roles.insert(r);
-                        non_inert_existential_roles.insert(r);
-                        bad_case_b_roles.insert(r);
-                    } else {
-                        collect_object_roles_in_node(arg, &mut tbox_or_rbox_roles);
-                        collect_object_roles_in_node(arg, &mut non_inert_existential_roles);
-                        collect_object_roles_in_node(arg, &mut bad_case_b_roles);
-                    }
-                }
-                if matches!(
-                    *head,
-                    "FunctionalObjectProperty" | "InverseFunctionalObjectProperty"
-                ) {
-                    has_equality_generators = true;
-                }
-                if *head == "ReflexiveObjectProperty" {
-                    untyped_can_fire_tbox = true;
-                }
-            }
-            "FunctionalDataProperty" => {
-                has_equality_generators = true;
-            }
-            "SubClassOf" => {
-                for arg in &plain {
-                    collect_object_roles_in_node(arg, &mut tbox_or_rbox_roles);
-                    collect_object_roles_in_node(arg, &mut non_inert_existential_roles);
-                }
-                if let Some(lhs) = plain.first() {
-                    collect_object_roles_in_node(lhs, &mut neg_tbox_roles);
-                    if lhs_can_match_untyped(lhs) {
-                        untyped_can_fire_tbox = true;
-                    }
-                    collect_bad_case_b_roles_in_concept(
-                        lhs,
-                        true,
-                        &mut bad_case_b_roles,
-                        &mut has_equality_generators,
-                    );
-                }
-                for rhs in plain.iter().skip(1) {
-                    collect_bad_case_b_roles_in_concept(
-                        rhs,
-                        false,
-                        &mut bad_case_b_roles,
-                        &mut has_equality_generators,
-                    );
-                }
-            }
-            "EquivalentClasses" | "DisjointClasses" => {
-                for arg in &plain {
-                    collect_object_roles_in_node(arg, &mut tbox_or_rbox_roles);
-                    collect_object_roles_in_node(arg, &mut non_inert_existential_roles);
-                    collect_object_roles_in_node(arg, &mut neg_tbox_roles);
-                    if lhs_can_match_untyped(arg) {
-                        untyped_can_fire_tbox = true;
-                    }
-                    collect_bad_case_b_roles_in_concept(
-                        arg,
-                        true,
-                        &mut bad_case_b_roles,
-                        &mut has_equality_generators,
-                    );
-                    collect_bad_case_b_roles_in_concept(
-                        arg,
-                        false,
-                        &mut bad_case_b_roles,
-                        &mut has_equality_generators,
-                    );
-                }
-            }
-            "DisjointUnion" => {
-                untyped_can_fire_tbox = true;
-                for arg in &plain {
-                    collect_object_roles_in_node(arg, &mut tbox_or_rbox_roles);
-                    collect_object_roles_in_node(arg, &mut non_inert_existential_roles);
-                    collect_object_roles_in_node(arg, &mut neg_tbox_roles);
-                    collect_bad_case_b_roles_in_concept(
-                        arg,
-                        true,
-                        &mut bad_case_b_roles,
-                        &mut has_equality_generators,
-                    );
-                    collect_bad_case_b_roles_in_concept(
-                        arg,
-                        false,
-                        &mut bad_case_b_roles,
-                        &mut has_equality_generators,
-                    );
-                }
-            }
-            _ => {
-                for arg in &plain {
-                    collect_object_roles_in_node(arg, &mut tbox_or_rbox_roles);
-                    collect_object_roles_in_node(arg, &mut non_inert_existential_roles);
-                }
-            }
+    let mut scan = NominalFreeScan {
+        prefixes: prefix_bindings(text).ok()?,
+        mentioned: HashSet::new(),
+        horn: true,
+        premise_roles: HashSet::new(),
+        sub_roles: HashMap::new(),
+        chains: Vec::new(),
+        ranges: HashMap::new(),
+        class_assertions: Vec::new(),
+        role_assertions: Vec::new(),
+        same_groups: Vec::new(),
+        diff_groups: Vec::new(),
+        declined_at: None,
+    };
+    let walked = crate::frontend::parse::for_each_ontology_child(text, |node| {
+        if scan.declined_at.is_none() && !scan.axiom(node) {
+            scan.declined_at = Some(node.head().unwrap_or("?").to_string());
         }
         Ok(())
     });
-
-    if scan_ok.is_err() || aborted {
+    if walked.is_err() {
+        nominal_free_trace("declined: parse error");
+        return None;
+    }
+    if let Some(kind) = &scan.declined_at {
+        nominal_free_trace(&format!("declined: unsupported {kind}"));
         return None;
     }
 
-    // Build SameIndividual union-find over `individuals`.
-    let ind_index: std::collections::HashMap<&str, usize> = individuals
+    // `SameIndividual` groups by union-find over the named individuals.
+    let ind_index: HashMap<&str, usize> = individuals
         .iter()
         .enumerate()
         .map(|(idx, tok)| (tok.as_str(), idx))
@@ -989,505 +927,304 @@ fn nominal_free_individual_extension(
         }
         root
     }
-    for group in &same_groups {
-        let first = *ind_index.get(group[0])?;
-        let r0 = find(&mut parent, first);
-        for &member in &group[1..] {
-            let idx = *ind_index.get(member)?;
-            let r = find(&mut parent, idx);
-            if r != r0 {
-                parent[r.max(r0)] = r.min(r0);
+    for group in &scan.same_groups {
+        let mut members = Vec::with_capacity(group.len());
+        for token in group {
+            let Some(&idx) = ind_index.get(token) else {
+                nominal_free_trace("declined: SameIndividual on an unnamed individual");
+                return None;
+            };
+            members.push(idx);
+        }
+        for pair in members.windows(2) {
+            let (a, b) = (find(&mut parent, pair[0]), find(&mut parent, pair[1]));
+            if a != b {
+                parent[a.max(b)] = a.min(b);
             }
         }
     }
-    for group in &diff_groups {
-        let mut seen_roots = HashSet::with_capacity(group.len());
-        for &member in group {
-            let idx = *ind_index.get(member)?;
-            let r = find(&mut parent, idx);
-            if !seen_roots.insert(r) {
+    for group in &scan.diff_groups {
+        let mut roots = HashSet::with_capacity(group.len());
+        for token in group {
+            let Some(&idx) = ind_index.get(token) else {
+                nominal_free_trace("declined: DifferentIndividuals on an unnamed individual");
+                return None;
+            };
+            if !roots.insert(find(&mut parent, idx)) {
+                // An asserted equality contradicts an asserted difference.
+                nominal_free_trace("declined: SameIndividual meets DifferentIndividuals");
                 return None;
             }
         }
     }
-
-    let mut comp_members: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    let mut comp_of = vec![usize::MAX; individuals.len()];
+    let mut comp_members: Vec<Vec<usize>> = Vec::new();
     for i in 0..individuals.len() {
-        let r = find(&mut parent, i);
-        comp_members.entry(r).or_default().push(i);
+        let root = find(&mut parent, i);
+        if comp_of[root] == usize::MAX {
+            comp_of[root] = comp_members.len();
+            comp_members.push(Vec::new());
+        }
+        let comp = comp_of[root];
+        comp_of[i] = comp;
+        comp_members[comp].push(i);
     }
-    let mut precomputed_same_set: BTreeSet<[String; 2]> = BTreeSet::new();
-    if !same_groups.is_empty() {
-        for members in comp_members.values() {
-            if members.len() >= 2 {
-                let pub_names: Vec<String> = members
-                    .iter()
-                    .map(|&i| public_name(&individuals[i]))
-                    .collect();
-                for i in 0..pub_names.len() {
-                    for j in (i + 1)..pub_names.len() {
-                        if pub_names[i] != pub_names[j] {
-                            let (low, high) = if pub_names[i] < pub_names[j] {
-                                (pub_names[i].clone(), pub_names[j].clone())
-                            } else {
-                                (pub_names[j].clone(), pub_names[i].clone())
-                            };
-                            precomputed_same_set.insert([low, high]);
-                        }
-                    }
+    let n_comps = comp_members.len();
+
+    let mut precomputed_same: BTreeSet<[String; 2]> = BTreeSet::new();
+    for members in &comp_members {
+        if members.len() < 2 {
+            continue;
+        }
+        let names: Vec<String> = members.iter().map(|&i| public_name(&individuals[i])).collect();
+        for i in 0..names.len() {
+            for j in (i + 1)..names.len() {
+                if names[i] != names[j] {
+                    let (low, high) = if names[i] < names[j] { (i, j) } else { (j, i) };
+                    precomputed_same.insert([names[low].clone(), names[high].clone()]);
                 }
             }
         }
     }
-    let precomputed_same: Vec<[String; 2]> = precomputed_same_set.into_iter().collect();
+    let precomputed_same: Vec<[String; 2]> = precomputed_same.into_iter().collect();
 
-    let has_active_opa = opa_roles.iter().any(|r| tbox_or_rbox_roles.contains(r));
+    let free = |role: &str| !scan.mentioned.contains(role);
+    let active: Vec<(&str, &str, &str)> = scan
+        .role_assertions
+        .iter()
+        .copied()
+        .filter(|&(role, _, _)| !free(role))
+        .collect();
 
-    // Case A: No active role assertions in the ABox and no DifferentIndividuals.
-    if !has_active_opa
-        && diff_groups.is_empty()
-        && (same_groups.is_empty() || (opa_edges.is_empty() && !has_equality_generators))
-    {
-        // An existential-witness role R is inert when all existential ClassAssertions
-        // use that single role R and R never occurs in non_inert_existential_roles.
-        let inert_existential_role: Option<&str> = if existential_ca_roles.len() == 1 {
-            let r = *existential_ca_roles.iter().next().unwrap();
-            (!non_inert_existential_roles.contains(r)).then_some(r)
-        } else {
-            None
+    // Class labels of each group. `owl:Thing` is dropped, and so is an
+    // existential `∃r.F` over a free property `r` (argued in the docs).
+    let is_thing = |rendered: &str| {
+        is_top_class_token(rendered)
+            || (!rendered.contains('(') && scan.owl_token(rendered) == OwlToken::Thing)
+    };
+    let mut labels: Vec<Vec<String>> = vec![Vec::new(); n_comps];
+    let mut unnamed_assertion = false;
+    for (ind, rendered, outer) in &scan.class_assertions {
+        let Some(&idx) = ind_index.get(ind) else {
+            unnamed_assertion = true;
+            continue;
         };
+        if is_thing(rendered) || outer.is_some_and(|role| free(role)) {
+            continue;
+        }
+        labels[comp_of[idx]].push(rendered.clone());
+    }
 
-        let namespace = fresh_namespace(text);
-        let mut sig_to_probe: std::collections::HashMap<Vec<String>, String> =
-            std::collections::HashMap::new();
-        let mut ordered_sigs: Vec<(String, Vec<String>)> = Vec::new();
-        let mut probes: Vec<(String, String)> = Vec::with_capacity(individuals.len());
-
-        for members in comp_members.values() {
-            let mut classes: Vec<String> = Vec::new();
-            for &idx in members {
-                if let Some(asserted) = ind_assertions.get(individuals[idx].as_str()) {
-                    for (ex_role, rendered) in asserted {
-                        if is_top_class_token(rendered) {
-                            continue;
-                        }
-                        if ex_role.is_some() && *ex_role == inert_existential_role {
-                            continue;
-                        }
-                        classes.push(rendered.clone());
-                    }
-                }
-            }
-            classes.sort_unstable();
-            classes.dedup();
-            let probe = if let Some(existing) = sig_to_probe.get(&classes) {
-                existing.clone()
-            } else {
-                let id = ordered_sigs.len();
-                let p = format!("{namespace}individual{id}");
-                sig_to_probe.insert(classes.clone(), p.clone());
-                ordered_sigs.push((p.clone(), classes));
-                p
-            };
+    let namespace = fresh_namespace(text);
+    if active.is_empty() {
+        // Case A.
+        for set in &mut labels {
+            set.sort_unstable();
+            set.dedup();
+        }
+        let mut probe_of_labels: HashMap<&[String], usize> = HashMap::new();
+        let mut ordered: Vec<usize> = Vec::new();
+        let mut comp_probe = vec![0usize; n_comps];
+        for comp in 0..n_comps {
+            let next = ordered.len();
+            let id = *probe_of_labels.entry(labels[comp].as_slice()).or_insert_with(|| {
+                ordered.push(comp);
+                next
+            });
+            comp_probe[comp] = id;
+        }
+        let mut probes = Vec::with_capacity(individuals.len());
+        for (comp, members) in comp_members.iter().enumerate() {
+            let probe = format!("{namespace}individual{}", comp_probe[comp]);
             for &idx in members {
                 probes.push((probe.clone(), public_name(&individuals[idx])));
             }
         }
-
-        let mut extension = String::with_capacity(ordered_sigs.len() * 128 + 2);
+        let mut extension = String::with_capacity(ordered.len() * 128 + 2);
         extension.push('\n');
-        for (probe, classes) in &ordered_sigs {
+        for (id, &comp) in ordered.iter().enumerate() {
+            let probe = format!("{namespace}individual{id}");
             extension.push_str(&format!("Declaration(Class(<{probe}>))\n"));
-            if classes.is_empty() {
+            if labels[comp].is_empty() {
                 extension.push_str(&format!("SubClassOf(<{probe}> owl:Thing)\n"));
-            } else {
-                for class_expr in classes {
-                    extension.push_str(&format!("SubClassOf(<{probe}> {class_expr})\n"));
-                }
+            }
+            for class in &labels[comp] {
+                extension.push_str(&format!("SubClassOf(<{probe}> {class})\n"));
             }
         }
-        return Some(NominalFreeIndividualProbes {
-            extension,
-            probes,
-            precomputed_same,
-        });
+        nominal_free_trace(&format!(
+            "case A: {} individuals, {} groups, {} probes",
+            individuals.len(),
+            n_comps,
+            ordered.len()
+        ));
+        return Some(NominalFreeIndividualProbes { extension, probes, precomputed_same, case_b: false });
     }
 
-    // Case B: Positive active role-assertion ABox (with optional DifferentIndividuals).
-    if bad_case_b
-        || has_anon_abox
-        || !all_ca_atomic
-        || (!diff_groups.is_empty() && has_equality_generators)
-        || (!same_groups.is_empty() && has_equality_generators)
-    {
+    // Case B.
+    if !scan.horn {
+        nominal_free_trace("declined: a constrained property assertion outside the Horn EL fragment");
         return None;
     }
-
-    // Compute forward super-roles and inverse super-roles for every role in opa_roles.
-    let mut fwd_supers: std::collections::HashMap<&str, HashSet<&str>> =
-        std::collections::HashMap::new();
-    let mut inv_supers: std::collections::HashMap<&str, HashSet<&str>> =
-        std::collections::HashMap::new();
-    for &r in &opa_roles {
-        let mut f_set: HashSet<&str> = HashSet::new();
-        let mut i_set: HashSet<&str> = HashSet::new();
-        f_set.insert(r);
-        if sym_roles.contains(r) {
-            i_set.insert(r);
-        }
-        let mut changed = true;
-        while changed {
-            changed = false;
-            let f_cur: Vec<&str> = f_set.iter().copied().collect();
-            for s in f_cur {
-                if let Some(sups) = sub_roles.get(s) {
-                    for &sup in sups {
-                        if f_set.insert(sup) {
-                            changed = true;
-                        }
-                    }
-                }
-                if sym_roles.contains(s) && i_set.insert(s) {
-                    changed = true;
-                }
-                if let Some(invs) = inv_roles.get(s) {
-                    for &inv in invs {
-                        if i_set.insert(inv) {
-                            changed = true;
-                        }
-                    }
-                }
-            }
-            let i_cur: Vec<&str> = i_set.iter().copied().collect();
-            for s in i_cur {
-                if let Some(sups) = sub_roles.get(s) {
-                    for &sup in sups {
-                        if i_set.insert(sup) {
-                            changed = true;
-                        }
-                    }
-                }
-                if sym_roles.contains(s) && f_set.insert(s) {
-                    changed = true;
-                }
-                if let Some(invs) = inv_roles.get(s) {
-                    for &inv in invs {
-                        if f_set.insert(inv) {
-                            changed = true;
-                        }
-                    }
-                }
-            }
-        }
-        fwd_supers.insert(r, f_set);
-        inv_supers.insert(r, i_set);
-    }
-
-    let mut active_opa_closure: HashSet<&str> = HashSet::new();
-    for &r in &opa_roles {
-        if let Some(f) = fwd_supers.get(r) {
-            active_opa_closure.extend(f.iter().copied());
-        }
-        if let Some(i) = inv_supers.get(r) {
-            active_opa_closure.extend(i.iter().copied());
-        }
-    }
-    if active_opa_closure
-        .iter()
-        .any(|r| bad_case_b_roles.contains(r))
-    {
+    if unnamed_assertion {
+        nominal_free_trace("declined: case B with an assertion on an unnamed individual");
         return None;
     }
-    for (chain_atoms, _) in &role_chains {
-        if chain_atoms.iter().all(|r| active_opa_closure.contains(r)) {
-            return None;
-        }
-    }
+    // Reflexive-transitive super-properties, memoized per property.
+    let mut supers_memo: HashMap<&'a str, std::rc::Rc<HashSet<&'a str>>> = HashMap::new();
+    let mut supers_of = |role: &'a str| -> std::rc::Rc<HashSet<&'a str>> {
+        supers_memo
+            .entry(role)
+            .or_insert_with(|| std::rc::Rc::new(super_roles(role, &scan.sub_roles)))
+            .clone()
+    };
 
-    // Close neg_tbox_roles downward under sub_roles.
-    let mut neg_closed = neg_tbox_roles.clone();
-    loop {
-        let mut added = false;
-        for (&sub, sups) in &sub_roles {
-            if !neg_closed.contains(sub) && sups.iter().any(|sup| neg_closed.contains(sup)) {
-                neg_closed.insert(sub);
-                added = true;
-            }
-        }
-        if !added {
-            break;
-        }
-    }
-    // Check that no non-symmetric inverse super-role of an OPA role is in neg_closed.
-    for &r in &opa_roles {
-        let f_set = &fwd_supers[r];
-        let i_set = &inv_supers[r];
-        for &inv_r in i_set {
-            if !f_set.contains(inv_r) && neg_closed.contains(inv_r) {
+    // A range of a super-property of a chain must also be a range of a
+    // super-property of the chain's last link, or the range labels below miss
+    // chain-derived edges (the OWL 2 EL restriction on ranges and chains).
+    for (links, sup) in &scan.chains {
+        let last = supers_of(links[links.len() - 1]);
+        for &q in supers_of(sup).iter() {
+            if scan.ranges.contains_key(q) && !last.contains(q) {
+                nominal_free_trace("declined: a range on a property chain's super-property");
                 return None;
             }
         }
     }
 
-    let comp_roots: Vec<usize> = comp_members.keys().copied().collect();
-    let root_to_cid: std::collections::HashMap<usize, usize> = comp_roots
-        .iter()
-        .enumerate()
-        .map(|(cid, &root)| (root, cid))
-        .collect();
-    let n_comps = comp_roots.len();
-    let mut comp_ca: Vec<Vec<String>> = vec![Vec::new(); n_comps];
-    for (cid, &root) in comp_roots.iter().enumerate() {
-        for &idx in &comp_members[&root] {
-            if let Some(asserted) = ind_assertions.get(individuals[idx].as_str()) {
-                for (_, rendered) in asserted {
-                    if !is_top_class_token(rendered) {
-                        comp_ca[cid].push(rendered.clone());
-                    }
+    // Relevant properties: those with a super-property in a premise position,
+    // closed under the links of chains whose super-property is relevant.
+    let mut premise: HashSet<&str> = scan.premise_roles.clone();
+    loop {
+        let mut grew = false;
+        for (links, sup) in &scan.chains {
+            let relevant = supers_of(sup).iter().any(|q| premise.contains(q));
+            if relevant {
+                for &link in links {
+                    grew |= premise.insert(link);
                 }
             }
         }
-    }
-
-    // Expand OPA edges across SameIndividual components, symmetry, and forward super-roles,
-    // and propagate ObjectPropertyDomain / ObjectPropertyRange onto endpoint components.
-    let mut active_edges_by_role: std::collections::HashMap<&str, Vec<(usize, usize)>> =
-        std::collections::HashMap::new();
-    for &(r, a_tok, b_tok) in &opa_edges {
-        let u = root_to_cid[&find(&mut parent, *ind_index.get(a_tok)?)];
-        let v = root_to_cid[&find(&mut parent, *ind_index.get(b_tok)?)];
-        for &s in &fwd_supers[r] {
-            if let Some(doms) = domains.get(s) {
-                for &d in doms {
-                    comp_ca[u].push(d.to_string());
-                }
-            }
-            if let Some(rngs) = ranges.get(s) {
-                for &e in rngs {
-                    comp_ca[v].push(e.to_string());
-                }
-            }
-            if neg_closed.contains(s) {
-                active_edges_by_role.entry(s).or_default().push((u, v));
-                if sym_roles.contains(s) {
-                    active_edges_by_role.entry(s).or_default().push((v, u));
-                }
-            }
-        }
-        for &s in &inv_supers[r] {
-            if let Some(doms) = domains.get(s) {
-                for &d in doms {
-                    comp_ca[v].push(d.to_string());
-                }
-            }
-            if let Some(rngs) = ranges.get(s) {
-                for &e in rngs {
-                    comp_ca[u].push(e.to_string());
-                }
-            }
-        }
-    }
-    for ca_vec in &mut comp_ca {
-        ca_vec.sort_unstable();
-        ca_vec.dedup();
-    }
-    for edges in active_edges_by_role.values_mut() {
-        edges.sort_unstable();
-        edges.dedup();
-    }
-
-    // Build adjacency list for partition refinement.
-    let mut active_participants = vec![true; n_comps];
-    let mut adj: Vec<Vec<(&str, usize)>> = vec![Vec::new(); n_comps];
-    if !untyped_can_fire_tbox {
-        // Only typed components (!comp_ca[u].is_empty()) can ever satisfy any TBox
-        // premise. Contract transitive paths through untyped components so untyped
-        // components collapse to a single owl:Thing probe.
-        for u in 0..n_comps {
-            active_participants[u] = !comp_ca[u].is_empty();
-        }
-        let mut active_roles_sorted: Vec<&str> = active_edges_by_role.keys().copied().collect();
-        active_roles_sorted.sort_unstable();
-        for r in active_roles_sorted {
-            let edges = &active_edges_by_role[r];
-            if trans_roles.contains(r) {
-                let mut r_adj: Vec<Vec<usize>> = vec![Vec::new(); n_comps];
-                for &(u, v) in edges {
-                    r_adj[u].push(v);
-                }
-                let mut memo: Vec<Option<Vec<usize>>> = vec![None; n_comps];
-                let mut state: Vec<u8> = vec![0; n_comps];
-                fn collect_typed(
-                    u: usize,
-                    r_adj: &[Vec<usize>],
-                    typed: &[bool],
-                    memo: &mut [Option<Vec<usize>>],
-                    state: &mut [u8],
-                ) -> Vec<usize> {
-                    if let Some(cached) = &memo[u] {
-                        return cached.clone();
-                    }
-                    state[u] = 1;
-                    let mut out = Vec::new();
-                    for &v in &r_adj[u] {
-                        if typed[v] {
-                            out.push(v);
-                        }
-                        if state[v] != 1 {
-                            out.extend(collect_typed(v, r_adj, typed, memo, state));
-                        }
-                    }
-                    out.sort_unstable();
-                    out.dedup();
-                    state[u] = 2;
-                    memo[u] = Some(out.clone());
-                    out
-                }
-                for u in 0..n_comps {
-                    if active_participants[u] && !r_adj[u].is_empty() {
-                        let targets =
-                            collect_typed(u, &r_adj, &active_participants, &mut memo, &mut state);
-                        for v in targets {
-                            adj[u].push((r, v));
-                        }
-                    }
-                }
-            } else {
-                for &(u, v) in edges {
-                    if active_participants[u] && active_participants[v] {
-                        adj[u].push((r, v));
-                    }
-                }
-            }
-        }
-    } else {
-        let mut active_roles_sorted: Vec<&str> = active_edges_by_role.keys().copied().collect();
-        active_roles_sorted.sort_unstable();
-        for r in active_roles_sorted {
-            for &(u, v) in &active_edges_by_role[r] {
-                adj[u].push((r, v));
-            }
-        }
-    }
-    for edges in &mut adj {
-        edges.sort_unstable();
-        edges.dedup();
-    }
-
-    let participant_ids: Vec<usize> = (0..n_comps)
-        .filter(|&u| active_participants[u])
-        .collect();
-    let mut color = vec![usize::MAX; n_comps];
-    let mut init_palette: std::collections::HashMap<&[String], usize> =
-        std::collections::HashMap::new();
-    for &u in &participant_ids {
-        let next_id = init_palette.len();
-        let c = *init_palette
-            .entry(comp_ca[u].as_slice())
-            .or_insert(next_id);
-        color[u] = c;
-    }
-    let init_color = color.clone();
-    let mut n_colors = init_palette.len();
-    let mut converged = participant_ids.is_empty();
-    let mut block_succs: Vec<Vec<(&str, usize)>> = vec![Vec::new(); n_colors];
-    let mut block_init_ca: Vec<usize> = (0..n_colors).collect();
-
-    for _round in 0..32 {
-        if converged {
+        if !grew {
             break;
         }
-        let mut new_palette: std::collections::HashMap<(usize, Vec<(&str, usize)>), usize> =
-            std::collections::HashMap::with_capacity(n_colors);
-        let mut new_color = vec![usize::MAX; n_comps];
-        let mut new_block_succs: Vec<Vec<(&str, usize)>> = Vec::with_capacity(n_colors);
-        let mut new_block_init_ca: Vec<usize> = Vec::with_capacity(n_colors);
+    }
 
-        for &u in &participant_ids {
-            let mut succ: Vec<(&str, usize)> = adj[u]
-                .iter()
-                .map(|&(r, v)| (r, color[v]))
-                .collect();
-            succ.sort_unstable();
-            succ.dedup();
-            let key = (init_color[u], succ);
-            let next_id = new_palette.len();
-            let c = match new_palette.entry(key) {
+    let mut relevant_memo: HashMap<&str, bool> = HashMap::new();
+    let mut edges: Vec<Vec<(&str, usize)>> = vec![Vec::new(); n_comps];
+    for &(role, s, o) in &active {
+        let (Some(&si), Some(&oi)) = (ind_index.get(s), ind_index.get(o)) else {
+            nominal_free_trace("declined: case B with a property assertion on an unnamed individual");
+            return None;
+        };
+        let (u, v) = (comp_of[si], comp_of[oi]);
+        let sups = supers_of(role);
+        for &q in sups.iter() {
+            if let Some(range) = scan.ranges.get(q) {
+                labels[v].extend(range.iter().cloned());
+            }
+        }
+        let relevant = *relevant_memo
+            .entry(role)
+            .or_insert_with(|| sups.iter().any(|q| premise.contains(q)));
+        if relevant {
+            edges[u].push((role, v));
+        }
+    }
+    for set in &mut labels {
+        set.sort_unstable();
+        set.dedup();
+    }
+    for out in &mut edges {
+        out.sort_unstable();
+        out.dedup();
+    }
+
+    // Coarsest partition that refines equal labels and is stable under
+    // successors along relevant edges (forward bisimulation).
+    let mut color = vec![0usize; n_comps];
+    let mut n_colors;
+    {
+        let mut palette: HashMap<&[String], usize> = HashMap::new();
+        for comp in 0..n_comps {
+            let next = palette.len();
+            color[comp] = *palette.entry(labels[comp].as_slice()).or_insert(next);
+        }
+        n_colors = palette.len();
+    }
+    let mut block_rep: Vec<usize> = Vec::new();
+    let mut stable = false;
+    for _round in 0..64 {
+        let mut palette: HashMap<(usize, Vec<(&str, usize)>), usize> = HashMap::with_capacity(n_colors);
+        let mut next_color = vec![0usize; n_comps];
+        let mut reps = Vec::with_capacity(n_colors);
+        for comp in 0..n_comps {
+            let mut signature: Vec<(&str, usize)> =
+                edges[comp].iter().map(|&(role, v)| (role, color[v])).collect();
+            signature.sort_unstable();
+            signature.dedup();
+            let next = palette.len();
+            next_color[comp] = match palette.entry((color[comp], signature)) {
                 std::collections::hash_map::Entry::Occupied(e) => *e.get(),
                 std::collections::hash_map::Entry::Vacant(e) => {
-                    new_block_init_ca.push(u);
-                    new_block_succs.push(e.key().1.clone());
-                    *e.insert(next_id)
+                    reps.push(comp);
+                    *e.insert(next)
                 }
             };
-            new_color[u] = c;
         }
-        let new_n_colors = new_palette.len();
-        color = new_color;
-        block_succs = new_block_succs;
-        block_init_ca = new_block_init_ca;
-        if new_n_colors == n_colors {
-            converged = true;
+        let grew = palette.len() != n_colors;
+        n_colors = palette.len();
+        color = next_color;
+        block_rep = reps;
+        if !grew {
+            stable = true;
             break;
         }
-        n_colors = new_n_colors;
     }
-    if !converged {
+    if !stable {
+        nominal_free_trace("declined: bisimulation refinement did not settle in 64 rounds");
         return None;
     }
-
-    let namespace = fresh_namespace(text);
-    let untyped_probe = if participant_ids.len() < n_comps {
-        Some(format!("{namespace}individual{n_colors}"))
-    } else {
-        None
-    };
-    let mut probes: Vec<(String, String)> = Vec::with_capacity(individuals.len());
-    for (cid, &root) in comp_roots.iter().enumerate() {
-        let probe = if active_participants[cid] {
-            format!("{namespace}individual{}", color[cid])
-        } else {
-            untyped_probe.as_ref().unwrap().clone()
-        };
-        for &idx in &comp_members[&root] {
+    // Once stable, every member of a block has the same successor blocks as
+    // the block's representative `block_rep[block]`.
+    let mut probes = Vec::with_capacity(individuals.len());
+    for (comp, members) in comp_members.iter().enumerate() {
+        let probe = format!("{namespace}individual{}", color[comp]);
+        for &idx in members {
             probes.push((probe.clone(), public_name(&individuals[idx])));
         }
     }
-
-    let mut extension = String::with_capacity((n_colors + 1) * 160 + 2);
+    let mut extension = String::with_capacity(n_colors * 160 + 2);
     extension.push('\n');
-    for b in 0..n_colors {
-        let probe = format!("{namespace}individual{b}");
-        extension.push_str(&format!("Declaration(Class(<{probe}>))\n"));
+    for block in 0..n_colors {
+        extension.push_str(&format!("Declaration(Class(<{namespace}individual{block}>))\n"));
     }
-    if let Some(ref up) = untyped_probe {
-        extension.push_str(&format!(
-            "Declaration(Class(<{up}>))\nSubClassOf(<{up}> owl:Thing)\n"
-        ));
-    }
-    for b in 0..n_colors {
-        let probe = format!("{namespace}individual{b}");
-        let rep_u = block_init_ca[b];
-        if comp_ca[rep_u].is_empty() && block_succs[b].is_empty() {
+    for block in 0..n_colors {
+        let probe = format!("{namespace}individual{block}");
+        let rep = block_rep[block];
+        if labels[rep].is_empty() && edges[rep].is_empty() {
             extension.push_str(&format!("SubClassOf(<{probe}> owl:Thing)\n"));
-        } else {
-            for c in &comp_ca[rep_u] {
-                extension.push_str(&format!("SubClassOf(<{probe}> {c})\n"));
-            }
-            for &(r, target_b) in &block_succs[b] {
-                let target_probe = format!("{namespace}individual{target_b}");
-                extension.push_str(&format!(
-                    "SubClassOf(<{probe}> ObjectSomeValuesFrom({r} <{target_probe}>))\n"
-                ));
-            }
+        }
+        for class in &labels[rep] {
+            extension.push_str(&format!("SubClassOf(<{probe}> {class})\n"));
+        }
+        let mut targets: Vec<(&str, usize)> =
+            edges[rep].iter().map(|&(role, v)| (role, color[v])).collect();
+        targets.sort_unstable();
+        targets.dedup();
+        for (role, target) in targets {
+            extension.push_str(&format!(
+                "SubClassOf(<{probe}> ObjectSomeValuesFrom({role} <{namespace}individual{target}>))\n"
+            ));
         }
     }
-
-    Some(NominalFreeIndividualProbes {
-        extension,
-        probes,
-        precomputed_same,
-    })
+    nominal_free_trace(&format!(
+        "case B: {} individuals, {} groups, {} blocks",
+        individuals.len(),
+        n_comps,
+        n_colors
+    ));
+    Some(NominalFreeIndividualProbes { extension, probes, precomputed_same, case_b: true })
 }
 
 /// `text` with `extension` inserted before the `)` that closes its
@@ -2545,6 +2282,183 @@ mod tests {
                 nominal_free_individual_extension(&c2, &inds2).is_none(),
                 "Case B must decline when {extra} is present"
             );
+        }
+    }
+
+    /// The decision table of `docs/V1.7.0-SPEED.md` section 4(c): which
+    /// case each axiom kind leaves the scan in. `'A'`, `'B'` or `'-'`
+    /// (decline).
+    fn nominal_free_decision(src: &str) -> char {
+        let (canon, individuals) = match canonical_individuals(src) {
+            Ok(found) => found,
+            Err(_) => return '-',
+        };
+        match nominal_free_individual_extension(&canon, &individuals) {
+            None => '-',
+            Some(nf) if nf.case_b => 'B',
+            Some(_) => 'A',
+        }
+    }
+
+    fn nominal_free_doc(body: &str) -> String {
+        format!(
+            "Prefix(:=<http://ex.org/>)\nPrefix(owl:=<http://www.w3.org/2002/07/owl#>)\n\
+             Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(<http://ex.org/t>\n\
+             Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D))\n\
+             Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:t))\n\
+             Declaration(ObjectProperty(:f)) Declaration(DataProperty(:d)) Declaration(DataProperty(:e))\n\
+             Declaration(NamedIndividual(:x1)) Declaration(NamedIndividual(:x2))\n\
+             Declaration(NamedIndividual(:y1)) Declaration(NamedIndividual(:y2))\n\
+             {body}\n)"
+        )
+    }
+
+    #[test]
+    fn nominal_free_scan_decision_table_covers_every_axiom_kind() {
+        let _test_env = crate::test_env::write();
+        let _env = crate::routing::EnvironmentGuard::capture();
+        std::env::remove_var("KM_NO_NOMINAL_FREE_REALIZE");
+        // Base B: `r` is constrained by an EL axiom and asserted.
+        let base_b = "SubClassOf(ObjectSomeValuesFrom(:r :A) :B)\nClassAssertion(:A :y1)\n\
+                      ObjectPropertyAssertion(:r :x1 :y1)\nObjectPropertyAssertion(:r :x2 :y2)";
+        // Base A: `f` is asserted and mentioned nowhere else.
+        let base_a = "SubClassOf(:A :B)\nClassAssertion(:A :y1)\nObjectPropertyAssertion(:f :x1 :y1)";
+        assert_eq!(nominal_free_decision(&nominal_free_doc(base_b)), 'B');
+        assert_eq!(nominal_free_decision(&nominal_free_doc(base_a)), 'A');
+        let table: &[(&str, char, char)] = &[
+            // (extra axiom, decision with base A, decision with base B)
+            ("SubClassOf(:A :B)", 'A', 'B'),
+            ("SubClassOf(owl:Thing ObjectSomeValuesFrom(:s :C))", 'A', 'B'),
+            ("EquivalentClasses(:C ObjectIntersectionOf(:A ObjectSomeValuesFrom(:s :B)))", 'A', 'B'),
+            ("DisjointClasses(:A :D)", 'A', 'B'),
+            ("SubClassOf(:A owl:Nothing)", 'A', 'B'),
+            ("SubObjectPropertyOf(:r :s)", 'A', 'B'),
+            ("SubObjectPropertyOf(ObjectPropertyChain(:r :s) :t)", 'A', 'B'),
+            ("EquivalentObjectProperties(:r :t)", 'A', 'B'),
+            ("TransitiveObjectProperty(:r)", 'A', 'B'),
+            ("ObjectPropertyDomain(:r :C)", 'A', 'B'),
+            ("ObjectPropertyRange(:r :C)", 'A', 'B'),
+            ("DisjointObjectProperties(:r :t)", 'A', 'B'),
+            ("IrreflexiveObjectProperty(:r)", 'A', 'B'),
+            ("AsymmetricObjectProperty(:r)", 'A', 'B'),
+            ("SubObjectPropertyOf(:f owl:topObjectProperty)", 'A', 'B'),
+            ("SubDataPropertyOf(:d :e)", 'A', 'B'),
+            ("EquivalentDataProperties(:d :e)", 'A', 'B'),
+            ("DisjointDataProperties(:d :e)", 'A', 'B'),
+            ("FunctionalDataProperty(:d)", 'A', 'B'),
+            ("DataPropertyDomain(:d :C)", 'A', 'B'),
+            ("DataPropertyRange(:d xsd:integer)", 'A', 'B'),
+            ("SameIndividual(:x1 :x2)", 'A', 'B'),
+            ("DifferentIndividuals(:x1 :y2)", 'A', 'B'),
+            ("ClassAssertion(ObjectSomeValuesFrom(:f :A) :x2)", 'A', 'B'),
+            ("AnnotationAssertion(<http://www.w3.org/2000/01/rdf-schema#comment> :A \"c\")", 'A', 'B'),
+            // Outside the Horn fragment: case A only.
+            ("SubClassOf(:A ObjectUnionOf(:C :D))", 'A', '-'),
+            ("SubClassOf(ObjectComplementOf(:A) :C)", 'A', '-'),
+            ("SubClassOf(:A ObjectAllValuesFrom(:s :C))", 'A', '-'),
+            ("SubClassOf(:A ObjectMinCardinality(2 :s :C))", 'A', '-'),
+            ("SubClassOf(:A ObjectMaxCardinality(1 :s))", 'A', '-'),
+            ("SubClassOf(:A ObjectExactCardinality(1 :s :C))", 'A', '-'),
+            ("SubClassOf(:A ObjectHasSelf(:s))", 'A', '-'),
+            ("SubClassOf(ObjectSomeValuesFrom(ObjectInverseOf(:s) owl:Thing) :C)", 'A', '-'),
+            ("InverseObjectProperties(:s :t)", 'A', '-'),
+            ("SymmetricObjectProperty(:s)", 'A', '-'),
+            ("FunctionalObjectProperty(:s)", 'A', '-'),
+            ("InverseFunctionalObjectProperty(:s)", 'A', '-'),
+            ("ReflexiveObjectProperty(:s)", 'A', '-'),
+            ("DisjointUnion(:A :C :D)", 'A', '-'),
+            ("SubClassOf(:A DataSomeValuesFrom(:d xsd:integer))", 'A', '-'),
+            ("SubClassOf(:A DataAllValuesFrom(:d xsd:integer))", 'A', '-'),
+            ("SubClassOf(:A DataHasValue(:d \"1\"^^xsd:integer))", 'A', '-'),
+            ("SubClassOf(:A DataMaxCardinality(1 :d))", 'A', '-'),
+            ("ClassAssertion(ObjectAllValuesFrom(ObjectInverseOf(:s) :B) :y1)", 'A', '-'),
+            // A free property loses its freedom once another axiom mentions it.
+            ("SubClassOf(ObjectSomeValuesFrom(ObjectInverseOf(:f) owl:Thing) :C)", '-', '-'),
+            ("ClassAssertion(ObjectAllValuesFrom(ObjectInverseOf(:f) :B) :y1)", '-', '-'),
+            ("ObjectPropertyRange(:f :C)", 'B', 'B'),
+            // A range on a chain's super-property that the last link lacks.
+            ("SubObjectPropertyOf(ObjectPropertyChain(:r :s) :t)\nObjectPropertyRange(:t :C)", 'A', '-'),
+            // Always declined.
+            ("SubClassOf(:A ObjectOneOf(:x1))", '-', '-'),
+            ("SubClassOf(:A ObjectHasValue(:s :x1))", '-', '-'),
+            ("SubClassOf(:A ObjectSomeValuesFrom(owl:topObjectProperty :C))", '-', '-'),
+            ("SubObjectPropertyOf(:s owl:bottomObjectProperty)", '-', '-'),
+            ("HasKey(:A (:s) ())", '-', '-'),
+            ("NegativeObjectPropertyAssertion(:s :x1 :y1)", '-', '-'),
+            ("DataPropertyAssertion(:d :x1 \"1\"^^xsd:integer)", '-', '-'),
+            ("NegativeDataPropertyAssertion(:d :x1 \"1\"^^xsd:integer)", '-', '-'),
+            ("DLSafeRule(Body(ClassAtom(:A Variable(<urn:v>))) Head(ClassAtom(:B Variable(<urn:v>))))", '-', '-'),
+            ("Import(<http://ex.org/other>)", '-', '-'),
+            ("SameIndividual(:x1 :x2)\nDifferentIndividuals(:x1 :x2)", '-', '-'),
+        ];
+        for &(extra, with_a, with_b) in table {
+            let a = nominal_free_decision(&nominal_free_doc(&format!("{base_a}\n{extra}")));
+            let b = nominal_free_decision(&nominal_free_doc(&format!("{base_b}\n{extra}")));
+            assert_eq!((a, b), (with_a, with_b), "decision for {extra}");
+        }
+    }
+
+    /// Each ontology here is one step of the case A or case B argument (or a
+    /// past counterexample); the block probes must give exactly the rows of
+    /// one nominal per individual.
+    #[test]
+    fn nominal_free_block_probes_match_one_nominal_per_individual() {
+        let _test_env = crate::test_env::write();
+        let _env = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "auto");
+        std::env::set_var("KM_THREADS", "1");
+        std::env::remove_var("KM_NO_NOMINAL_FREE_REALIZE");
+        let cases: &[(&str, char, &str)] = &[
+            // review/e10/found/g22_496.ofn: a universal over an inverse in an assertion.
+            ("g22", '-', "SubClassOf(:A :D)\nClassAssertion(ObjectAllValuesFrom(ObjectInverseOf(:r) :B) :y1)\n\
+              ObjectPropertyAssertion(:r :x1 :y1)\nClassAssertion(:A :x2)"),
+            // review/e10/found/g11_210.ofn: an inverse existential in a premise.
+            ("g11", '-', "SubClassOf(ObjectSomeValuesFrom(ObjectInverseOf(:r) owl:Thing) ObjectIntersectionOf(:B :D))\n\
+              ObjectPropertyAssertion(:r :x1 :y1)"),
+            // Disjunction over a shared successor (bisimulation is not exact here).
+            ("diamond", '-', "SubClassOf(:C ObjectUnionOf(:A :D))\nSubClassOf(ObjectSomeValuesFrom(:r :A) :B)\n\
+              SubClassOf(ObjectSomeValuesFrom(:s :D) :B)\nClassAssertion(:C :y1)\n\
+              ObjectPropertyAssertion(:r :x1 :y1)\nObjectPropertyAssertion(:s :x1 :y1)"),
+            // Case A with a non-Horn TBox; `f` is free and its existential is dropped.
+            ("case-a", 'A', "SubClassOf(:A ObjectUnionOf(:B :C))\nSubClassOf(:B :D)\nSubClassOf(:C :D)\n\
+              SubClassOf(:D ObjectAllValuesFrom(:r ObjectComplementOf(:A)))\nClassAssertion(:A :x1)\n\
+              ClassAssertion(ObjectSomeValuesFrom(:f :B) :x2)\nClassAssertion(:A :x2)\n\
+              ObjectPropertyAssertion(:f :x1 :y1)\nSameIndividual(:y1 :y2)"),
+            // Case B: an untyped successor still fires `∃r.⊤`.
+            ("untyped", 'B', "SubClassOf(ObjectIntersectionOf(:A ObjectSomeValuesFrom(:r owl:Thing)) :B)\n\
+              ClassAssertion(:A :x1)\nClassAssertion(:A :x2)\nObjectPropertyAssertion(:r :x1 :y1)"),
+            // Case B: a range of an asserted edge feeds a premise on another edge.
+            ("range", 'B', "ObjectPropertyRange(:s :A)\nSubClassOf(ObjectSomeValuesFrom(:r :A) :B)\n\
+              ObjectPropertyAssertion(:s :x2 :y1)\nObjectPropertyAssertion(:r :x1 :y1)\n\
+              ObjectPropertyAssertion(:r :x2 :y2)"),
+            // Case B: a chain and a domain on a super-property.
+            ("chain", 'B', "SubObjectPropertyOf(ObjectPropertyChain(:r :s) :t)\nSubClassOf(ObjectSomeValuesFrom(:t :B) :C)\n\
+              SubObjectPropertyOf(:s :f)\nObjectPropertyDomain(:f :D)\nClassAssertion(:B :y2)\n\
+              ObjectPropertyAssertion(:r :x1 :y1)\nObjectPropertyAssertion(:s :y1 :y2)\n\
+              ObjectPropertyAssertion(:r :x2 :y1)"),
+            // Case B: transitivity over a bisimilar cycle and a tail.
+            ("cycle", 'B', "TransitiveObjectProperty(:r)\nSubClassOf(ObjectSomeValuesFrom(:r :A) :B)\n\
+              SubClassOf(ObjectIntersectionOf(:B :C) :D)\nClassAssertion(:C :x1)\n\
+              ObjectPropertyAssertion(:r :x1 :x2)\nObjectPropertyAssertion(:r :x2 :x1)\n\
+              ObjectPropertyAssertion(:r :x2 :y1)\nObjectPropertyAssertion(:r :y1 :y2)\nClassAssertion(:A :y2)"),
+            // Case B: an edge of an irrelevant property is dropped; SAME rows.
+            ("irrelevant", 'B', "SubClassOf(:A ObjectSomeValuesFrom(:s :B))\nSubClassOf(ObjectSomeValuesFrom(:r :B) :C)\n\
+              DisjointClasses(:C :D)\nClassAssertion(:A :x1)\nObjectPropertyAssertion(:s :x1 :y1)\n\
+              ObjectPropertyAssertion(:r :x2 :x1)\nSameIndividual(:y1 :y2)"),
+        ];
+        let cfg = Config::from_env();
+        for &(name, case, body) in cases {
+            let src = nominal_free_doc(body);
+            assert_eq!(nominal_free_decision(&src), case, "case of {name}");
+            let path = super::tmpfile::TempPath::new(&format!("-nf-{name}.ofn"));
+            std::fs::write(path.path(), &src).unwrap();
+            let fast = realize(&cfg, path.path(), TypeMode::All).unwrap();
+            let slow = {
+                let _g = crate::test_env::EnvVar::set("KM_NO_NOMINAL_FREE_REALIZE", "1");
+                realize(&cfg, path.path(), TypeMode::All).unwrap()
+            };
+            assert_eq!(fast, slow, "block probes differ from nominals on {name}");
+            assert!(!fast.types.is_empty() || name == "g11", "{name} has types");
         }
     }
 
