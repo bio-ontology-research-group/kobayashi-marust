@@ -2,7 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use super::{expand, expands_to, Node};
 
-pub(super) fn builtin(name: &str) -> bool {
+pub(crate) fn builtin(name: &str) -> bool {
     if let Some(local) = name.strip_prefix("http://www.w3.org/2001/XMLSchema#") {
         return matches!(local, "decimal" | "integer" | "nonNegativeInteger" | "nonPositiveInteger"
             | "positiveInteger" | "negativeInteger" | "long" | "int" | "short" | "byte"
@@ -120,6 +120,27 @@ pub(super) fn check(text: &str, prefixes: &BTreeMap<String, String>) -> Result<(
         checker.observe(node, prefixes).map_err(crate::frontend::parse::OutOfFragment)
     }).map_err(|e| e.0)?;
     checker.finish()
+}
+
+/// Number of distinct unknown data ranges (outside the OWL 2 datatype map and
+/// without a `DatatypeDefinition`) referenced in `text`.
+pub(crate) fn count_unknown_data_ranges(
+    text: &str,
+    prefixes: &BTreeMap<String, String>,
+) -> usize {
+    let mut defs = Definitions::default();
+    if crate::frontend::parse::for_each_ontology_child(text, |node| {
+        defs.observe(node, prefixes);
+        Ok(())
+    })
+    .is_err()
+    {
+        return 0;
+    }
+    defs.used
+        .iter()
+        .filter(|name| !builtin(name) && !defs.definitions.contains_key(*name))
+        .count()
 }
 
 /// Streaming form of [`check`]: observe each ontology child in order, then finish.

@@ -1581,6 +1581,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                         ForestABoxRollup.tryBuildPositiveRBoxProperties(snapshot, unsatisfiable.isEmpty());
                 if (fastRows != null) {
                     built = new ObjectPropertyModel(df, signature, fastRows, hasInverses);
+                } else if (!snapshot.getAxioms(AxiomType.SWRL_RULE).isEmpty()
+                        && hasObjectOneOf(snapshot)
+                        && snapshot.getAxioms(AxiomType.REFLEXIVE_OBJECT_PROPERTY).isEmpty()) {
+                    built = propertiesByExistentialProbes(snapshot, signature, hasInverses);
                 } else {
                     propertyRuns++;
                     try {
@@ -4443,7 +4447,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                         List<OWLObjectProperty> active = activeObjectProperties(snapshot);
                         List<OWLNamedIndividual> targets = activeTargetIndividuals(snapshot);
                         if (!active.isEmpty() && !targets.isEmpty()) {
-                            if (active.size() == ops.size() && targets.size() == inds.size()) {
+                            if ((active.size() == ops.size() && targets.size() == inds.size())
+                                    || (long) active.size() * targets.size() >= 256L) {
                                 Classifier.Values rows = Classifier.values(querySource(), process -> {
                                     realizeProcess = process;
                                     if (process != null && (interruptRequested || timedOut)) {
@@ -4992,10 +4997,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         }
         List<OWLNamedIndividual> different = reduce(Arrays.asList("different", ind), CHECKING_ENTAILMENT, () -> {
             recordReduction("R14_different_individuals_nominal_probes");
+            Set<OWLNamedIndividual> collapsible = collapsibleIndividuals();
+            boolean indCollapsible = collapsible.contains(ind);
             List<OWLAxiom> defs = new ArrayList<>();
             Map<String, OWLNamedIndividual> meaning = new HashMap<>();
             for (OWLNamedIndividual b : signatureIndividuals()) {
                 if (b.equals(ind)) continue;
+                if (indCollapsible && collapsible.contains(b)) continue;
                 OWLClass x = df.getOWLClass(fresh().next("X"));
                 defs.add(df.getOWLSubClassOfAxiom(x,
                         and(df.getOWLObjectOneOf(ind), df.getOWLObjectOneOf(b))));
@@ -5013,6 +5021,40 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             return found;
         });
         return individualNodes(different);
+    }
+
+    /**
+     * Subset of named individuals certified to be simultaneously mergeable in a
+     * single model of the ontology via {@code SameIndividual(collapsible)}. If
+     * {@code O ∪ {SameIndividual(collapsible)}} is consistent, then for every
+     * pair {@code a, b ∈ collapsible}, {@code O ⊭ a ≠ b}.
+     */
+    private Set<OWLNamedIndividual> collapsibleIndividuals() {
+        Set<OWLNamedIndividual> all = signatureIndividuals();
+        if (all.size() < 32) return Collections.emptySet();
+        return reduce(Arrays.asList("collapsible-individuals"), CHECKING_ENTAILMENT, () -> {
+            OWLOntology snapshot = querySnapshot();
+            Set<OWLNamedIndividual> excluded = new HashSet<>();
+            for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
+                if (ax instanceof OWLDataPropertyAssertionAxiom) {
+                    OWLIndividual s = ((OWLDataPropertyAssertionAxiom) ax).getSubject();
+                    if (s.isNamed()) excluded.add(s.asOWLNamedIndividual());
+                } else if (ax instanceof OWLDifferentIndividualsAxiom
+                        || ax instanceof OWLNegativeObjectPropertyAssertionAxiom
+                        || ax instanceof OWLNegativeDataPropertyAssertionAxiom) {
+                    excluded.addAll(ax.getIndividualsInSignature());
+                }
+            }
+            Set<OWLNamedIndividual> candidates = new LinkedHashSet<>();
+            for (OWLNamedIndividual ind : all) {
+                if (!excluded.contains(ind)) candidates.add(ind);
+            }
+            if (candidates.size() < 16) return Collections.emptySet();
+            if (consistentWith(Collections.<OWLAxiom>singletonList(df.getOWLSameIndividualAxiom(candidates)))) {
+                return candidates;
+            }
+            return Collections.emptySet();
+        });
     }
 
     /**

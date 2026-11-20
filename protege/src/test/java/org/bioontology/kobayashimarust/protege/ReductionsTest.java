@@ -496,16 +496,24 @@ public class ReductionsTest {
 
     @Test
     public void refusedRunsAreRememberedUntilFlush() throws Exception {
-        // owl:real has no literal for most of its values; km refuses the
-        // fresh-datatype-free expression only when the engine declines, so use a
-        // query km rejects: an undeclared custom datatype in the expression.
+        // Under unknown_datatypes=free, an undeclared custom datatype is accepted;
+        // a pattern facet restriction is outside the decided datatype fragment
+        // (dropped > 0), so km refuses the reduction and remembers the failure.
         OWLOntology o = load(DATA);
         KMReasoner k = km(o);
-        OWLClassExpression ce = df().getOWLDataSomeValuesFrom(d("age"), df().getOWLDatatype(IRI.create(NS + "Custom")));
+        OWLClassExpression freeCustom = df().getOWLDataSomeValuesFrom(
+                d("age"), df().getOWLDatatype(IRI.create(NS + "Custom")));
+        assertNotNull(k.getSuperClasses(freeCustom, false));
+        OWLClassExpression ce = df().getOWLDataSomeValuesFrom(
+                d("age"),
+                df().getOWLDatatypeRestriction(
+                        df().getOWLDatatype(org.semanticweb.owlapi.vocab.OWL2Datatype.XSD_STRING.getIRI()),
+                        org.semanticweb.owlapi.vocab.OWLFacet.PATTERN,
+                        df().getOWLLiteral("a*")));
         RuntimeException first = null;
         try {
             k.getSuperClasses(ce, false);
-            fail("km refuses a data range outside the datatype map");
+            fail("km refuses a pattern facet restriction outside the decided datatype fragment");
         } catch (RuntimeException e) {
             first = e;
         }

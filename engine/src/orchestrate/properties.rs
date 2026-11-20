@@ -843,6 +843,8 @@ impl super::realize::Extended {
             #[serde(skip_serializing_if = "Option::is_none")]
             approximate: Option<&'a str>,
             #[serde(skip_serializing_if = "Option::is_none")]
+            lenient: Option<&'a [String]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
             top: Option<&'a [String]>,
             #[serde(skip_serializing_if = "Option::is_none")]
             types: Option<&'a [[String; 2]]>,
@@ -875,12 +877,14 @@ impl super::realize::Extended {
         }
         let c = &self.realization.classification;
         let p = self.properties.as_ref();
+        let notes = crate::frontend::lenient::published_notes();
         let encoded = Encoded {
             consistent: c.consistent,
             subsumptions: &c.subsumptions,
             unsatisfiable: &c.unsatisfiable,
             dropped: c.dropped,
             approximate: c.approximate.as_deref(),
+            lenient: (!notes.is_empty()).then_some(notes.as_slice()),
             top: self.top.as_deref(),
             types: realized.then_some(self.realization.types.as_slice()),
             same: realized.then_some(self.realization.same.as_slice()),

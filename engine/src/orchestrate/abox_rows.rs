@@ -77,8 +77,8 @@ pub(super) fn extension(
             let pub_role = public_name(role);
             if let Some(bound) = &role_bound {
                 let has_self = bound.role_has_self_by_full_iri(&pub_role);
-                let targets = bound.reachable_targets_by_full_iri(&pub_role);
                 if !has_self {
+                    let targets = bound.reachable_targets_by_full_iri(&pub_role);
                     for (b, individual) in individuals.iter().enumerate() {
                         if !targets.contains(&public_name(individual)) {
                             continue;
@@ -193,7 +193,27 @@ pub(super) fn residual_extension(
     let ns = fresh_namespace_for(text, "aboxrows");
     let mut need_ind_probes: BTreeSet<usize> = BTreeSet::new();
     let mut need_not_probes: BTreeSet<usize> = BTreeSet::new();
-    if values {
+    let mut kept_value_targets: Vec<(usize, usize)> = Vec::new();
+    if values && !plan.residual_value_targets.is_empty() {
+        let role_bound = (roles.len().saturating_mul(individuals.len()) >= 256)
+            .then(|| crate::frontend::named_role_bound::NamedRoleBound::compute(text))
+            .flatten();
+        for &(r, b) in &plan.residual_value_targets {
+            if let (Some(role), Some(ind)) = (roles.get(r), individuals.get(b)) {
+                if let Some(bound) = &role_bound {
+                    let pub_role = public_name(role);
+                    if !bound.role_has_self_by_full_iri(&pub_role) {
+                        let targets = bound.reachable_targets_by_full_iri(&pub_role);
+                        if !targets.contains(&public_name(ind)) {
+                            continue;
+                        }
+                    }
+                }
+                kept_value_targets.push((r, b));
+            }
+        }
+    }
+    if !kept_value_targets.is_empty() {
         need_ind_probes.extend(plan.residual_value_sources.iter().copied());
     }
     if different {
@@ -214,15 +234,13 @@ pub(super) fn residual_extension(
         }
     }
     let mut probes = BTreeMap::new();
-    if values {
-        for &(r, b) in &plan.residual_value_targets {
-            if let (Some(role), Some(ind)) = (roles.get(r), individuals.get(b)) {
-                let probe = format!("{ns}value{r}_{b}");
-                out.push_str(&format!(
-                    "Declaration(Class(<{probe}>))\nEquivalentClasses(<{probe}> ObjectSomeValuesFrom({role} ObjectOneOf({ind})))\n"
-                ));
-                probes.insert(probe, Probe::Value(r, b));
-            }
+    for (r, b) in kept_value_targets {
+        if let (Some(role), Some(ind)) = (roles.get(r), individuals.get(b)) {
+            let probe = format!("{ns}value{r}_{b}");
+            out.push_str(&format!(
+                "Declaration(Class(<{probe}>))\nEquivalentClasses(<{probe}> ObjectSomeValuesFrom({role} ObjectOneOf({ind})))\n"
+            ));
+            probes.insert(probe, Probe::Value(r, b));
         }
     }
     if different {
@@ -260,6 +278,10 @@ pub(super) fn from_exported_model(
 ) -> Option<ModelAboxPlan> {
     if !classification.consistent {
         return Some(ModelAboxPlan::default());
+    }
+    let bound_disabled = crate::frontend::named_role_bound::NamedRoleBound::bound_disabled();
+    if bound_disabled && !different_requested {
+        return None;
     }
     if !matches!(raw.route, "el-canonical" | "cb-horn" | "ht-bridge") {
         return None;
@@ -1137,7 +1159,50 @@ pub(super) fn from_exported_model(
     // derive new role edges between named individuals during clause saturation,
     // and every named-individual edge in `edge_set` is already in `proved_edge_set`,
     // `proved_edge_set` and `edge_set` are already final on `0..n_elems`.
+    let has_elided_func_hazard = raw.abox_elided && {
+        if text.contains("ObjectMaxCardinality(")
+            || text.contains("ObjectExactCardinality(")
+            || text.contains("ObjectMinCardinality(")
+        {
+            true
+        } else if func_obj_roles.is_empty() && inv_func_obj_roles.is_empty() {
+            false
+        } else if n_elems <= 256 {
+            true
+        } else {
+            let mut seen_src: HashMap<(usize, &str), usize> = HashMap::new();
+            let mut seen_dst: HashMap<(&str, usize), usize> = HashMap::new();
+            let mut collision = false;
+            for (u, r, v) in &edge_set {
+                if *u >= n_elems || *v >= n_elems {
+                    continue;
+                }
+                if func_obj_roles.contains(r.as_str()) {
+                    if let Some(&prev_v) = seen_src.get(&(*u, r.as_str())) {
+                        if prev_v != *v {
+                            collision = true;
+                            break;
+                        }
+                    } else {
+                        seen_src.insert((*u, r.as_str()), *v);
+                    }
+                }
+                if inv_func_obj_roles.contains(r.as_str()) {
+                    if let Some(&prev_u) = seen_dst.get(&(r.as_str(), *v)) {
+                        if prev_u != *u {
+                            collision = true;
+                            break;
+                        }
+                    } else {
+                        seen_dst.insert((r.as_str(), *v), *u);
+                    }
+                }
+            }
+            collision
+        }
+    };
     if !different_requested
+        && !has_elided_func_hazard
         && !text.contains("ObjectHasValue(")
         && !text.contains("ObjectOneOf(")
         && !text.contains("ObjectHasSelf(")
@@ -2130,14 +2195,50 @@ pub(super) fn from_exported_model(
             .push(idx);
     }
 
+    let has_horn_merges = raw.abox_elided
+        && (!func_obj_roles.is_empty()
+            || !inv_func_obj_roles.is_empty()
+            || qual_func_rules.iter().any(|qf| qf.max_n == 1)
+            || concept_rules
+                .iter()
+                .any(|cr| cr.nom_merge.is_some() && cr.heads.len() <= 1)
+            || role_rules.iter().any(|rr| {
+                matches!(
+                    rr.action,
+                    RoleHeadAction::MergeXElem(_)
+                        | RoleHeadAction::MergeYElem(_)
+                        | RoleHeadAction::MergeXY
+                )
+            }));
+
     // Saturate a `(classes, edges)` state under deterministic 1-head Horn rules
     let saturate_horn_in_place = |classes: &mut [HashSet<String>],
-                                  edges: &mut HashSet<(usize, String, usize)>| {
+                                  edges: &mut HashSet<(usize, String, usize)>|
+     -> Vec<(usize, usize)> {
         let num = classes.len();
+        let mut uf: Vec<usize> = (0..num).collect();
+        fn find_uf(uf: &mut [usize], mut x: usize) -> usize {
+            while uf[x] != x {
+                uf[x] = uf[uf[x]];
+                x = uf[x];
+            }
+            x
+        }
+        fn union_uf(uf: &mut [usize], a: usize, b: usize) -> bool {
+            let ra = find_uf(uf, a);
+            let rb = find_uf(uf, b);
+            if ra == rb {
+                return false;
+            }
+            let (keep, drop_el) = (ra.min(rb), ra.max(rb));
+            uf[drop_el] = keep;
+            true
+        }
         let _ = crate::engine::close_edges_under_rbox_rows(&meta.rbox, num, edges);
         close_elem_classes(classes);
         for _round in 0..8 {
             let mut changed = false;
+            let mut merged_any = false;
             for u in 0..num {
                 let mut work: Vec<String> = classes[u].iter().cloned().collect();
                 for &idx in &empty_body_concept_rules {
@@ -2147,6 +2248,12 @@ pub(super) fn from_exported_model(
                         if classes[u].insert(h.clone()) {
                             work.push(h.clone());
                             changed = true;
+                        }
+                    } else if has_horn_merges && cr.heads.is_empty() {
+                        if let Some(u_o) = cr.nom_merge {
+                            if u_o < num && union_uf(&mut uf, u, u_o) {
+                                merged_any = true;
+                            }
                         }
                     }
                 }
@@ -2171,8 +2278,22 @@ pub(super) fn from_exported_model(
                                     work.push(h.clone());
                                     changed = true;
                                 }
+                            } else if has_horn_merges
+                                && cr.heads.is_empty()
+                                && cr.body.iter().all(|b| classes[u].contains(b))
+                            {
+                                if let Some(u_o) = cr.nom_merge {
+                                    if u_o < num && union_uf(&mut uf, u, u_o) {
+                                        merged_any = true;
+                                    }
+                                }
                             }
                         }
+                    }
+                }
+                for (c_iri, r_short) in &class_has_self {
+                    if classes[u].contains(c_iri) && edges.insert((u, r_short.clone(), u)) {
+                        changed = true;
                     }
                 }
                 for &idx in &empty_body_hv_rules {
@@ -2245,7 +2366,118 @@ pub(super) fn from_exported_model(
                                 changed = true;
                             }
                         }
+                        RoleHeadAction::MergeXElem(u_o) if *u_o < num => {
+                            if union_uf(&mut uf, u, *u_o) {
+                                merged_any = true;
+                            }
+                        }
+                        RoleHeadAction::MergeYElem(u_o) if *u_o < num => {
+                            if union_uf(&mut uf, v, *u_o) {
+                                merged_any = true;
+                            }
+                        }
+                        RoleHeadAction::MergeXY => {
+                            if union_uf(&mut uf, u, v) {
+                                merged_any = true;
+                            }
+                        }
                         _ => {}
+                    }
+                }
+            }
+            if has_horn_merges {
+                if !func_obj_roles.is_empty() || !inv_func_obj_roles.is_empty() {
+                    let mut func_seen: HashMap<(usize, &str), usize> = HashMap::new();
+                    let mut inv_func_seen: HashMap<(usize, &str), usize> = HashMap::new();
+                    for &(u, ref r, v) in &edge_snap {
+                        let ru = find_uf(&mut uf, u);
+                        let rv = find_uf(&mut uf, v);
+                        if func_obj_roles.contains(r.as_str()) {
+                            if let Some(&v0) = func_seen.get(&(ru, r.as_str())) {
+                                if union_uf(&mut uf, v0, rv) {
+                                    merged_any = true;
+                                }
+                            } else {
+                                func_seen.insert((ru, r.as_str()), rv);
+                            }
+                        }
+                        if inv_func_obj_roles.contains(r.as_str()) {
+                            if let Some(&u0) = inv_func_seen.get(&(rv, r.as_str())) {
+                                if union_uf(&mut uf, u0, ru) {
+                                    merged_any = true;
+                                }
+                            } else {
+                                inv_func_seen.insert((rv, r.as_str()), ru);
+                            }
+                        }
+                    }
+                }
+                for qf in &qual_func_rules {
+                    if qf.max_n != 1 {
+                        continue;
+                    }
+                    let mut seen_target: HashMap<usize, usize> = HashMap::new();
+                    for &(s, ref r, t) in &edge_snap {
+                        if r != &qf.role {
+                            continue;
+                        }
+                        let (center, target) = if qf.inv { (t, s) } else { (s, t) };
+                        let rc = find_uf(&mut uf, center);
+                        let rt = find_uf(&mut uf, target);
+                        if !qf
+                            .body_x
+                            .iter()
+                            .all(|b| classes[rc].contains(b) || classes[center].contains(b))
+                            || !qf
+                                .body_y
+                                .iter()
+                                .all(|b| classes[rt].contains(b) || classes[target].contains(b))
+                        {
+                            continue;
+                        }
+                        if let Some(&t0) = seen_target.get(&rc) {
+                            if union_uf(&mut uf, t0, rt) {
+                                merged_any = true;
+                            }
+                        } else {
+                            seen_target.insert(rc, rt);
+                        }
+                    }
+                }
+                let any_non_root = (0..num).any(|u| find_uf(&mut uf, u) != u);
+                if merged_any || (changed && any_non_root) {
+                    for u in 0..num {
+                        let r = find_uf(&mut uf, u);
+                        if r != u {
+                            let cu: Vec<String> = classes[u].iter().cloned().collect();
+                            for c in cu {
+                                if classes[r].insert(c) {
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                    for u in 0..num {
+                        let r = find_uf(&mut uf, u);
+                        if r != u {
+                            let cr: Vec<String> = classes[r].iter().cloned().collect();
+                            for c in cr {
+                                if classes[u].insert(c) {
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                    let cur_edges: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
+                    for (s, role, t) in cur_edges {
+                        let rs = find_uf(&mut uf, s);
+                        let rt = find_uf(&mut uf, t);
+                        if (rs != s || rt != t) && edges.insert((rs, role, rt)) {
+                            changed = true;
+                        }
+                    }
+                    if merged_any {
+                        changed = true;
                     }
                 }
             }
@@ -2256,18 +2488,52 @@ pub(super) fn from_exported_model(
                 break;
             }
         }
+        let mut merged_named_pairs: Vec<(usize, usize)> = Vec::new();
+        if has_horn_merges && (0..num).any(|u| find_uf(&mut uf, u) != u) {
+            let mut members_by_root: HashMap<usize, Vec<usize>> = HashMap::new();
+            for u in 0..num.min(n_elems) {
+                let r = find_uf(&mut uf, u);
+                if r != u && r < n_elems {
+                    merged_named_pairs.push((r, u));
+                }
+                if r < n_elems {
+                    members_by_root.entry(r).or_default().push(u);
+                }
+            }
+            let cur_edges: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
+            for (s, role, t) in cur_edges {
+                let rs = find_uf(&mut uf, s);
+                let rt = find_uf(&mut uf, t);
+                edges.insert((rs, role.clone(), rt));
+                if rs < n_elems && rt < n_elems {
+                    if let (Some(ms), Some(mt)) =
+                        (members_by_root.get(&rs), members_by_root.get(&rt))
+                    {
+                        if ms.len() > 1 || mt.len() > 1 {
+                            for &us in ms {
+                                for &ut in mt {
+                                    edges.insert((us, role.clone(), ut));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        merged_named_pairs
     };
 
     // First saturate initial element classes/edges so normalizer definers (`Q_0`, ...) hold
-    saturate_horn_in_place(&mut entailed_elem_classes, &mut proved_edge_set);
-    saturate_horn_in_place(&mut elem_classes, &mut edge_set);
+    let mut proved_merges = saturate_horn_in_place(&mut entailed_elem_classes, &mut proved_edge_set);
+    let _ = saturate_horn_in_place(&mut elem_classes, &mut edge_set);
 
     // Materialize Skolem existential witnesses on `elem_classes`/`edge_set`
     // and `entailed_elem_classes`/`proved_edge_set` so universal restrictions and
     // existential checks see asserted existential successors (`d2.ofn`, `adv4`, `13700`).
     let mut n_total_elems = n_elems;
     let mut skolem_witness_of: HashMap<(usize, String), usize> = HashMap::new();
-    for _sk_round in 0..2 {
+    let sk_rounds = if has_horn_merges { 3 } else { 2 };
+    for _sk_round in 0..sk_rounds {
         let cur_limit = n_total_elems;
         let mut added_sk = false;
         let mut proved_out: HashMap<(usize, String), Vec<usize>> = HashMap::new();
@@ -2368,10 +2634,20 @@ pub(super) fn from_exported_model(
             }
         }
         if added_sk {
-            saturate_horn_in_place(&mut entailed_elem_classes, &mut proved_edge_set);
-            saturate_horn_in_place(&mut elem_classes, &mut edge_set);
+            proved_merges.extend(saturate_horn_in_place(
+                &mut entailed_elem_classes,
+                &mut proved_edge_set,
+            ));
+            let _ = saturate_horn_in_place(&mut elem_classes, &mut edge_set);
         } else {
             break;
+        }
+    }
+    for (u_root, u_mem) in proved_merges {
+        for a in &elem_inds[u_root] {
+            for b in &elem_inds[u_mem] {
+                same_pairs.push((a.clone(), b.clone()));
+            }
         }
     }
 
@@ -2399,7 +2675,16 @@ pub(super) fn from_exported_model(
 
     let mut plan = ModelAboxPlan::default();
 
-    if values_requested {
+    if values_requested && bound_disabled {
+        for r_idx in 0..roles.len() {
+            for b_idx in 0..individuals.len() {
+                plan.residual_value_targets.insert((r_idx, b_idx));
+            }
+        }
+        for a_idx in 0..individuals.len() {
+            plan.residual_value_sources.insert(a_idx);
+        }
+    } else if values_requested {
         let has_non_horn_elem_merge = !raw.abox_elided
             && raw.route != "el-canonical"
             && (0..n_elems).any(|u| {
@@ -3957,6 +4242,7 @@ mod tests {
     use super::super::config::Config;
     use super::super::realize::{classify_extended, TypeMode};
     use super::super::tmpfile::TempPath;
+    use super::*;
 
     fn assert_model_abox_matches_probe_oracle(name: &str, ofn: &str) {
         let _test_env = crate::test_env::write();
@@ -4030,6 +4316,583 @@ mod tests {
                 ht_ext.abox.different, probe_ext.abox.different,
                 "DIFFERENT mismatch on {name} (ht_bridge)"
             );
+        }
+    }
+
+    #[test]
+    fn abox_rows_extension_retains_merged_targets_on_adv_ofn() {
+        let _test_env = crate::test_env::read();
+        let adv = std::fs::read_to_string(
+            "/mnt/data1/leechuck/km-work/v170/scratch/review/e9/adv.ofn",
+        )
+        .unwrap_or_else(|_| {
+            include_str!("../../src/frontend/named_role_bound.rs")
+                .split("const ADV_OFN: &str = r#\"")
+                .nth(1)
+                .unwrap()
+                .split("\"#;")
+                .next()
+                .unwrap()
+                .to_owned()
+        });
+        let (canon, individuals) = super::super::realize::canonical_individuals(&adv).unwrap();
+        let roles = super::super::properties::canonical_properties(&canon).unwrap();
+        let (_ext, abox_probes) = extension(&canon, &roles, &individuals, true, false);
+        let has_probe_for = |role_iri: &str, ind_iri: &str| -> bool {
+            let r_idx = abox_probes.roles.iter().position(|r| r == role_iri).unwrap();
+            let b_idx = abox_probes
+                .individuals
+                .iter()
+                .position(|i| i == ind_iri)
+                .unwrap();
+            abox_probes
+                .probes
+                .values()
+                .any(|&p| p == Probe::Value(r_idx, b_idx))
+        };
+        assert!(has_probe_for(":s6", ":c6"));
+        assert!(has_probe_for(":s12", ":c12"));
+        assert!(has_probe_for(":t14", ":b14"));
+        assert!(has_probe_for(":r10", ":a10"));
+        assert!(!has_probe_for(":s6", ":z0"));
+    }
+
+    #[test]
+    fn abox_rows_extension_retains_targets_across_16_adversarial_cases() {
+        let _test_env = crate::test_env::read();
+        let mut pad = String::new();
+        for i in 0..8 {
+            pad.push_str(&format!("Declaration(ObjectProperty(:pad{i}))\n"));
+        }
+        for i in 0..40 {
+            pad.push_str(&format!("Declaration(NamedIndividual(:z{i}))\n"));
+        }
+        let cases: &[(&str, &str, &[&str])] = &[
+            (
+                "functional_role_chain_merge",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2))
+                   Declaration(ObjectProperty(:f3)) Declaration(ObjectProperty(:other))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2) FunctionalObjectProperty(:f3)
+                   ObjectPropertyAssertion(:f1 :a :b1) ObjectPropertyAssertion(:f1 :a :b2)
+                   ObjectPropertyAssertion(:f2 :b1 :c1) ObjectPropertyAssertion(:f2 :b2 :c2)
+                   ObjectPropertyAssertion(:f3 :c1 :d1) ObjectPropertyAssertion(:f3 :c2 :d2)
+                   ObjectPropertyAssertion(:other :x :d1)"#,
+                &[":d1", ":d2"],
+            ),
+            (
+                "functional_chain_with_has_value_merge",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:other))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2)
+                   ObjectPropertyAssertion(:f1 :a :b1)
+                   SubClassOf(:A ObjectHasValue(:f1 :b2)) ClassAssertion(:A :a)
+                   ObjectPropertyAssertion(:f2 :b1 :c1) ObjectPropertyAssertion(:f2 :b2 :c2)
+                   ObjectPropertyAssertion(:other :x :c1)"#,
+                &[":c1", ":c2"],
+            ),
+            (
+                "asserted_target_with_has_value_under_inverse",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   InverseObjectProperties(:r :s) FunctionalObjectProperty(:r)
+                   ObjectPropertyAssertion(:s :b :a)
+                   SubClassOf(:A ObjectHasValue(:r :c)) ClassAssertion(:A :a)
+                   ObjectPropertyAssertion(:other :d :b)"#,
+                &[":b", ":c"],
+            ),
+            (
+                "asserted_target_with_inverse_of_has_value",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   InverseObjectProperties(:r :s) FunctionalObjectProperty(:r)
+                   ObjectPropertyAssertion(:r :a :b)
+                   SubClassOf(:A ObjectHasValue(ObjectInverseOf(:s) :c)) ClassAssertion(:A :a)
+                   ObjectPropertyAssertion(:other :d :b)"#,
+                &[":b", ":c"],
+            ),
+            (
+                "inverse_has_value_source_merge",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:d))
+                   InverseObjectProperties(:r :s) FunctionalObjectProperty(:r)
+                   ObjectPropertyAssertion(:r :a :b)
+                   SubClassOf(:A ObjectHasValue(:s :a)) ClassAssertion(:A :c)
+                   ObjectPropertyAssertion(:other :d :b)"#,
+                &[":b", ":c"],
+            ),
+            (
+                "max_cardinality_1_on_inverse_role",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   SubClassOf(:A ObjectMaxCardinality(1 ObjectInverseOf(:r)))
+                   ClassAssertion(:A :x)
+                   ObjectPropertyAssertion(:r :a :x) ObjectPropertyAssertion(:r :b :x)
+                   ObjectPropertyAssertion(:other :d :a)"#,
+                &[":a", ":b"],
+            ),
+            (
+                "exact_cardinality_1_on_inverse_role_with_has_value",
+                r#"Declaration(Class(:A)) Declaration(Class(:B))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:x))
+                   SubClassOf(:A ObjectExactCardinality(1 ObjectInverseOf(:r)))
+                   ClassAssertion(:A :x)
+                   ObjectPropertyAssertion(:r :a :x)
+                   SubClassOf(:B ObjectHasValue(:r :x)) ClassAssertion(:B :b)
+                   ObjectPropertyAssertion(:other :d :a)"#,
+                &[":a", ":b"],
+            ),
+            (
+                "merge_feeding_property_chain",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r1))
+                   Declaration(ObjectProperty(:r2)) Declaration(ObjectProperty(:other))
+                   FunctionalObjectProperty(:f)
+                   ObjectPropertyAssertion(:f :x :b1) ObjectPropertyAssertion(:f :x :b2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   ObjectPropertyAssertion(:r1 :a :b1) ObjectPropertyAssertion(:r2 :b2 :c)"#,
+                &[":c"],
+            ),
+            (
+                "two_merges_feeding_property_chain",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2))
+                   Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:other))
+                   FunctionalObjectProperty(:f1) InverseFunctionalObjectProperty(:f2)
+                   ObjectPropertyAssertion(:f1 :u :b1) ObjectPropertyAssertion(:f1 :u :b2)
+                   ObjectPropertyAssertion(:f2 :c1 :v) ObjectPropertyAssertion(:f2 :c2 :v)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   ObjectPropertyAssertion(:r1 :a :b1)
+                   ObjectPropertyAssertion(:r2 :b2 :c1)"#,
+                &[":c1", ":c2"],
+            ),
+            (
+                "reflexive_and_has_self_in_chain_and_merge",
+                r#"Declaration(Class(:B))
+                   Declaration(ObjectProperty(:refl)) Declaration(ObjectProperty(:s))
+                   Declaration(ObjectProperty(:fself)) Declaration(ObjectProperty(:other))
+                   ReflexiveObjectProperty(:refl)
+                   SubObjectPropertyOf(ObjectPropertyChain(:refl :s) :other)
+                   ObjectPropertyAssertion(:s :a :b)
+                   FunctionalObjectProperty(:fself)
+                   SubClassOf(:B ObjectHasSelf(:fself)) ClassAssertion(:B :m1)
+                   ObjectPropertyAssertion(:fself :m1 :m2)
+                   ObjectPropertyAssertion(:other :d :m1)"#,
+                &[":b", ":m1", ":m2"],
+            ),
+            (
+                "symmetric_and_transitive_with_merge",
+                r#"Declaration(ObjectProperty(:sym)) Declaration(ObjectProperty(:other))
+                   Declaration(ObjectProperty(:f))
+                   SymmetricObjectProperty(:sym) TransitiveObjectProperty(:other)
+                   SubObjectPropertyOf(:sym :other) FunctionalObjectProperty(:f)
+                   ObjectPropertyAssertion(:sym :b1 :a)
+                   ObjectPropertyAssertion(:f :x :b1) ObjectPropertyAssertion(:f :x :b2)
+                   ObjectPropertyAssertion(:other :b2 :c)"#,
+                &[":a", ":b1", ":b2", ":c"],
+            ),
+            (
+                "symmetric_with_has_value",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   SymmetricObjectProperty(:other)
+                   SubClassOf(:A ObjectHasValue(:other :b)) ClassAssertion(:A :a)"#,
+                &[":a", ":b"],
+            ),
+            (
+                "equivalent_properties_with_inverses_and_merge",
+                r#"Declaration(ObjectProperty(:p1)) Declaration(ObjectProperty(:p2))
+                   Declaration(ObjectProperty(:p3)) Declaration(ObjectProperty(:other))
+                   EquivalentObjectProperties(:p1 :p2)
+                   InverseObjectProperties(:p2 :p3)
+                   FunctionalObjectProperty(:p2)
+                   ObjectPropertyAssertion(:p1 :a :b1)
+                   ObjectPropertyAssertion(:p3 :b2 :a)
+                   ObjectPropertyAssertion(:other :d :b1)"#,
+                &[":b1", ":b2"],
+            ),
+            (
+                "role_hierarchy_with_inverses_and_has_value",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))
+                   Declaration(ObjectProperty(:t)) Declaration(ObjectProperty(:other))
+                   SubObjectPropertyOf(:r ObjectInverseOf(:s))
+                   SubObjectPropertyOf(ObjectInverseOf(:s) :t)
+                   SubClassOf(:A ObjectHasValue(:r :b)) ClassAssertion(:A :a)
+                   FunctionalObjectProperty(:t)
+                   ObjectPropertyAssertion(:t :a :c)
+                   ObjectPropertyAssertion(:other :d :b)"#,
+                &[":b", ":c"],
+            ),
+            (
+                "same_individual_chain_of_length_4",
+                r#"Declaration(ObjectProperty(:other))
+                   SameIndividual(:i1 :i2)
+                   SameIndividual(:i2 :i3)
+                   SameIndividual(:i3 :i4)
+                   SameIndividual(:i4 :i5)
+                   ObjectPropertyAssertion(:other :src :i1)"#,
+                &[":i1", ":i2", ":i3", ":i4", ":i5"],
+            ),
+            (
+                "nary_chain_with_has_value_and_same_individual",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:f))
+                   Declaration(ObjectProperty(:other))
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                   SubClassOf(:A ObjectHasValue(:r1 :b1)) ClassAssertion(:A :a)
+                   SameIndividual(:b1 :b2)
+                   ObjectPropertyAssertion(:r2 :b2 :c1)
+                   FunctionalObjectProperty(:f)
+                   ObjectPropertyAssertion(:f :u :c1) ObjectPropertyAssertion(:f :u :c2)
+                   ObjectPropertyAssertion(:r3 :c2 :d)"#,
+                &[":d"],
+            ),
+            (
+                "subproperty_of_functional_feeding_chain",
+                r#"Declaration(ObjectProperty(:subf)) Declaration(ObjectProperty(:f))
+                   Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:other))
+                   SubObjectPropertyOf(:subf :f)
+                   FunctionalObjectProperty(:f)
+                   ObjectPropertyAssertion(:subf :u :b1) ObjectPropertyAssertion(:subf :u :b2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   ObjectPropertyAssertion(:r1 :a :b1) ObjectPropertyAssertion(:r2 :b2 :c)"#,
+                &[":c"],
+            ),
+        ];
+
+        for (name, body, expected) in cases {
+            let doc = format!("Prefix(:=<http://ex.org/>)\nOntology(<http://ex.org/{name}>\n{pad}{body}\n)");
+            let (canon, individuals) = super::super::realize::canonical_individuals(&doc).unwrap();
+            let roles = super::super::properties::canonical_properties(&canon).unwrap();
+            assert!(roles.len() * individuals.len() >= 256);
+            let (_ext, abox_probes) = extension(&canon, &roles, &individuals, true, false);
+            let r_idx = abox_probes.roles.iter().position(|r| r == ":other").unwrap();
+            for &exp in *expected {
+                let b_idx = abox_probes.individuals.iter().position(|i| i == exp).unwrap();
+                assert!(
+                    abox_probes.probes.values().any(|&p| p == Probe::Value(r_idx, b_idx)),
+                    "case {name}: missing probe for (:other, {exp})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn abox_rows_extension_retains_targets_on_c4_c6_and_20_anonymous_routing_cases() {
+        let _test_env = crate::test_env::read();
+        let mut pad = String::new();
+        for i in 0..10 {
+            pad.push_str(&format!("Declaration(ObjectProperty(:pad{i}))\n"));
+        }
+        for i in 0..30 {
+            pad.push_str(&format!("Declaration(NamedIndividual(:z{i}))\n"));
+        }
+        let cases: &[(&str, &str, &str, &[&str])] = &[
+            (
+                "c4_inv_func_anon_succ_inv_has_value",
+                r#"Declaration(Class(:X4))
+                   Declaration(ObjectProperty(:r4)) Declaration(ObjectProperty(:t4)) Declaration(ObjectProperty(:u4))
+                   Declaration(NamedIndividual(:d4)) Declaration(NamedIndividual(:e4))
+                   Declaration(NamedIndividual(:k4)) Declaration(NamedIndividual(:m4))
+                   InverseFunctionalObjectProperty(:r4)
+                   ClassAssertion(ObjectSomeValuesFrom(:r4 :X4) :d4)
+                   SubClassOf(:X4 ObjectHasValue(ObjectInverseOf(:r4) :e4))
+                   ObjectPropertyAssertion(:t4 :k4 :d4)
+                   ObjectPropertyAssertion(:u4 :e4 :m4)"#,
+                ":t4",
+                &[":d4", ":e4"],
+            ),
+            (
+                "c6_complement_min_cardinality_2_merge",
+                r#"Declaration(ObjectProperty(:r6)) Declaration(ObjectProperty(:t6))
+                   Declaration(NamedIndividual(:a6)) Declaration(NamedIndividual(:b6))
+                   Declaration(NamedIndividual(:c6)) Declaration(NamedIndividual(:k6))
+                   ClassAssertion(ObjectComplementOf(ObjectMinCardinality(2 :r6)) :a6)
+                   ObjectPropertyAssertion(:r6 :a6 :b6)
+                   ObjectPropertyAssertion(:r6 :a6 :c6)
+                   ObjectPropertyAssertion(:t6 :k6 :b6)"#,
+                ":t6",
+                &[":b6", ":c6"],
+            ),
+            (
+                "m01_inv_func_subrole_anon_succ_inv_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:sub_r)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubObjectPropertyOf(:sub_r :r)
+                   InverseFunctionalObjectProperty(:r)
+                   ClassAssertion(ObjectSomeValuesFrom(:sub_r :X) :d)
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m02_func_inv_existential_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(ObjectInverseOf(:f) :X) :d)
+                   SubClassOf(:X ObjectHasValue(:f :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m03_named_inv_prop_existential_func_has_value",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:inv_f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   InverseObjectProperties(:f :inv_f)
+                   ClassAssertion(ObjectSomeValuesFrom(:inv_f :X) :d)
+                   SubClassOf(:X ObjectHasValue(:f :e))
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m04_min_card_anon_succ_max_card_inv_merge",
+                r#"Declaration(Class(:A))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubClassOf(:A ObjectMaxCardinality(1 ObjectInverseOf(:r)))
+                   ClassAssertion(ObjectMinCardinality(1 :r ObjectIntersectionOf(:A ObjectHasValue(ObjectInverseOf(:r) :e))) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m05_neg_min_card_2_inv_anon_merge",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SubClassOf(:X ObjectComplementOf(ObjectMinCardinality(2 ObjectInverseOf(:r))))
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ClassAssertion(ObjectSomeValuesFrom(:r :X) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m06_subrole_anon_merge_with_asserted_superrole_target",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:other :f)
+                   ObjectPropertyAssertion(:f :a :b)
+                   ClassAssertion(ObjectSomeValuesFrom(:other owl:Thing) :a)"#,
+                ":other",
+                &[":b"],
+            ),
+            (
+                "m07_subrole_anon_merge_cascading_to_inv_func",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:r :f)
+                   InverseFunctionalObjectProperty(:r)
+                   ObjectPropertyAssertion(:f :b :c)
+                   ObjectPropertyAssertion(:r :a :c)
+                   ClassAssertion(ObjectSomeValuesFrom(:r owl:Thing) :b)
+                   ObjectPropertyAssertion(:other :k :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            (
+                "m08_cascade_two_functional_roles_over_anon_witness",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c1)) Declaration(NamedIndividual(:c2)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2)
+                   ObjectPropertyAssertion(:f1 :a :b)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectHasValue(:f2 :c1)) :a)
+                   ObjectPropertyAssertion(:f2 :b :c2)
+                   ObjectPropertyAssertion(:other :k :c1)"#,
+                ":other",
+                &[":c1", ":c2"],
+            ),
+            (
+                "m09_cascade_three_level_anon_functional_chain",
+                r#"Declaration(ObjectProperty(:f1)) Declaration(ObjectProperty(:f2))
+                   Declaration(ObjectProperty(:f3)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))
+                   Declaration(NamedIndividual(:d1)) Declaration(NamedIndividual(:d2)) Declaration(NamedIndividual(:k))
+                   FunctionalObjectProperty(:f1) FunctionalObjectProperty(:f2) FunctionalObjectProperty(:f3)
+                   ObjectPropertyAssertion(:f1 :a :b)
+                   ObjectPropertyAssertion(:f2 :b :c)
+                   ObjectPropertyAssertion(:f3 :c :d2)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectSomeValuesFrom(:f2 ObjectHasValue(:f3 :d1))) :a)
+                   ObjectPropertyAssertion(:other :k :d1)"#,
+                ":other",
+                &[":d1", ":d2"],
+            ),
+            (
+                "m10_chain_over_two_anon_middle_elements_with_nested_has_value",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:c))
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectSomeValuesFrom(:r2 ObjectHasValue(:r3 :c))) :a)"#,
+                ":other",
+                &[":c"],
+            ),
+            (
+                "m11_chain_over_anon_middle_via_named_inverse_existential",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   InverseObjectProperties(:r2 :s)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:s ObjectHasValue(ObjectInverseOf(:r1) :a)) :b)"#,
+                ":other",
+                &[":b"],
+            ),
+            (
+                "m12_chain_into_functional_merging_anon_leaf_with_named",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   SubObjectPropertyOf(:r2 :f)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2) :other)
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectIntersectionOf(ObjectSomeValuesFrom(:r2 owl:Thing) ObjectHasValue(:f :b))) :a)"#,
+                ":other",
+                &[":b"],
+            ),
+            (
+                "m13_chain_into_functional_cascading_to_inv_func_merge",
+                r#"Declaration(Class(:X1)) Declaration(Class(:X2))
+                   Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:f_sub1))
+                   Declaration(ObjectProperty(:f_sub2)) Declaration(ObjectProperty(:g)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:k)) Declaration(NamedIndividual(:m))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:f_sub1 :f)
+                   SubObjectPropertyOf(:f_sub2 :f)
+                   InverseFunctionalObjectProperty(:g)
+                   SubClassOf(:X1 ObjectHasValue(ObjectInverseOf(:f_sub1) :k))
+                   SubClassOf(:X2 ObjectHasValue(ObjectInverseOf(:f_sub2) :k))
+                   ClassAssertion(ObjectSomeValuesFrom(:g :X1) :a)
+                   ClassAssertion(ObjectSomeValuesFrom(:g :X2) :b)
+                   ObjectPropertyAssertion(:other :m :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            (
+                "m14_anon_witness_merged_by_inv_func_feeds_chain_middle",
+                r#"Declaration(ObjectProperty(:r1)) Declaration(ObjectProperty(:r2))
+                   Declaration(ObjectProperty(:r3)) Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:c))
+                   Declaration(NamedIndividual(:k)) Declaration(NamedIndividual(:m))
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :r2 :r3) :other)
+                   InverseFunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:r1 ObjectSomeValuesFrom(:r2 ObjectHasValue(:f :k))) :a)
+                   ObjectPropertyAssertion(:f :m :k)
+                   ObjectPropertyAssertion(:r3 :m :c)"#,
+                ":other",
+                &[":c"],
+            ),
+            (
+                "m15_tree_folding_across_two_functional_subroles",
+                r#"Declaration(ObjectProperty(:f)) Declaration(ObjectProperty(:r1))
+                   Declaration(ObjectProperty(:r2)) Declaration(ObjectProperty(:inv_r2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a))
+                   FunctionalObjectProperty(:f)
+                   SubObjectPropertyOf(:r1 :f)
+                   SubObjectPropertyOf(:r2 :f)
+                   InverseObjectProperties(:r2 :inv_r2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:r1 :inv_r2) :other)
+                   ClassAssertion(ObjectIntersectionOf(ObjectSomeValuesFrom(:r1 owl:Thing) ObjectSomeValuesFrom(:r2 owl:Thing)) :a)"#,
+                ":other",
+                &[":a"],
+            ),
+            (
+                "m16_inv_func_parent_merge_in_anon_tree_self_loop",
+                r#"Declaration(ObjectProperty(:g)) Declaration(ObjectProperty(:f1))
+                   Declaration(ObjectProperty(:f2)) Declaration(ObjectProperty(:inv_f2)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a))
+                   InverseFunctionalObjectProperty(:g)
+                   SubObjectPropertyOf(:f1 :g)
+                   SubObjectPropertyOf(:f2 :g)
+                   InverseObjectProperties(:f2 :inv_f2)
+                   SubObjectPropertyOf(ObjectPropertyChain(:f1 :inv_f2) :other)
+                   ClassAssertion(ObjectSomeValuesFrom(:f1 ObjectSomeValuesFrom(:inv_f2 owl:Thing)) :a)"#,
+                ":other",
+                &[":a"],
+            ),
+            (
+                "m17_symmetric_func_anon_succ_has_value_merge",
+                r#"Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   SymmetricObjectProperty(:r)
+                   FunctionalObjectProperty(:r)
+                   ClassAssertion(ObjectSomeValuesFrom(:r ObjectHasValue(:r :e)) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+            (
+                "m18_transitive_role_over_two_anon_steps_and_func_merge",
+                r#"Declaration(ObjectProperty(:other)) Declaration(ObjectProperty(:f))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+                   Declaration(NamedIndividual(:c)) Declaration(NamedIndividual(:k))
+                   TransitiveObjectProperty(:other)
+                   FunctionalObjectProperty(:f)
+                   ClassAssertion(ObjectSomeValuesFrom(:other ObjectSomeValuesFrom(:other ObjectHasValue(ObjectInverseOf(:f) :k))) :a)
+                   ObjectPropertyAssertion(:f :k :b)
+                   ObjectPropertyAssertion(:other :b :c)"#,
+                ":other",
+                &[":b", ":c"],
+            ),
+            (
+                "m19_anon_has_self_on_inv_func_subrole_self_loop_and_merge",
+                r#"Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:k))
+                   InverseFunctionalObjectProperty(:r)
+                   SubObjectPropertyOf(:s :r)
+                   ClassAssertion(ObjectSomeValuesFrom(:r ObjectHasSelf(:s)) :a)
+                   ObjectPropertyAssertion(:r :b :a)
+                   ObjectPropertyAssertion(:other :k :a)"#,
+                ":other",
+                &[":a", ":b"],
+            ),
+            (
+                "m20_neg_all_values_anon_witness_with_nested_has_value_merge",
+                r#"Declaration(Class(:X))
+                   Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:other))
+                   Declaration(NamedIndividual(:d)) Declaration(NamedIndividual(:e)) Declaration(NamedIndividual(:k))
+                   InverseFunctionalObjectProperty(:r)
+                   SubClassOf(:X ObjectHasValue(ObjectInverseOf(:r) :e))
+                   ClassAssertion(ObjectComplementOf(ObjectAllValuesFrom(:r ObjectComplementOf(:X))) :d)
+                   ObjectPropertyAssertion(:other :k :d)"#,
+                ":other",
+                &[":d", ":e"],
+            ),
+        ];
+
+        for (name, body, role, expected) in cases {
+            let doc = format!("Prefix(:=<http://ex.org/>)\nOntology(<http://ex.org/{name}>\n{pad}{body}\n)");
+            let (canon, individuals) = super::super::realize::canonical_individuals(&doc).unwrap();
+            let roles = super::super::properties::canonical_properties(&canon).unwrap();
+            assert!(roles.len() * individuals.len() >= 256);
+            let (_ext, abox_probes) = extension(&canon, &roles, &individuals, true, false);
+            let r_idx = abox_probes.roles.iter().position(|r| r == role).unwrap();
+            for &exp in *expected {
+                let b_idx = abox_probes.individuals.iter().position(|i| i == exp).unwrap();
+                assert!(
+                    abox_probes.probes.values().any(|&p| p == Probe::Value(r_idx, b_idx)),
+                    "case {name}: missing probe for ({role}, {exp})"
+                );
+            }
         }
     }
 

@@ -7,11 +7,11 @@ use std::sync::{Arc, Mutex};
 use super::sexpr::{tokens, Node, Parser};
 
 mod roles;
-mod anonymous;
-mod datatypes;
+pub(crate) mod anonymous;
+pub(crate) mod datatypes;
 mod facets;
 mod pattern;
-mod entities;
+pub(crate) mod entities;
 mod lexical;
 mod xml_literal;
 
@@ -124,7 +124,7 @@ fn expands_to(datatype: &str, prefixes: &BTreeMap<String, String>, target: &str)
     } else { datatype == target }
 }
 
-fn expand(datatype: &str, prefixes: &BTreeMap<String, String>) -> String {
+pub(crate) fn expand(datatype: &str, prefixes: &BTreeMap<String, String>) -> String {
     if let Some(iri) = datatype.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
         iri.to_owned()
     } else if let Some((prefix, local)) = datatype.split_once(':') {
@@ -384,6 +384,7 @@ fn check_source_uncached(text: &str) -> Result<(), String> {
 /// input as OWL 2 DL requires.
 pub fn unknown_datatypes_free() -> bool {
     std::env::var("KM_UNKNOWN_DATATYPES").is_ok_and(|mode| mode == "free")
+        || super::lenient::enabled()
 }
 
 /// Reject use of the top data range as a literal datatype. OWL 2 Direct

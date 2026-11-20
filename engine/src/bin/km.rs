@@ -520,11 +520,14 @@ fn classify_help() {
     println!("                      strict (default): reject a datatype outside the OWL 2 datatype map;");
     println!("                      free: read it as a fresh datatype and its literals as opaque values");
     println!("                      (see docs/DATATYPES.md, \"Unknown datatypes\")");
+    println!("  --lenient           accept inputs OWL API and HermiT load in Protege by a source-level");
+    println!("                      rewrite to valid OWL 2 DL (see docs/V1.7.0-LENIENT-INPUT.md)");
     println!();
     println!("line output (--lines):");
     println!("  CONSISTENT 0|1      ontology consistency");
     println!("  DROPPED N           clauses outside the handled fragment (N > 0: incomplete answer)");
     println!("  APPROXIMATE<TAB>R   (forced route, KM_ALLOW_APPROXIMATE=1) the answer is approximate: R");
+    println!("  LENIENT<TAB>W       (--lenient) source rewrite applied before the certified pipeline: W");
     println!("  SUB<TAB>C<TAB>D     C is subsumed by D");
     println!("  UNSAT<TAB>C         C is unsatisfiable");
     println!("  TYPE<TAB>a<TAB>C    (--realize) O entails C(a); owl:Thing is never listed");
@@ -654,6 +657,12 @@ fn classify_cmd(rest: &[String]) {
             // `frontend::conformance::unknown_datatypes_free`).
             "--unknown-datatypes=strict" => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
             "--unknown-datatypes=free" => std::env::set_var("KM_UNKNOWN_DATATYPES", "free"),
+            "--lenient" | "--lenient=true" | "--lenient=1" => std::env::set_var("KM_LENIENT", "1"),
+            "--lenient=false" | "--lenient=0" => std::env::remove_var("KM_LENIENT"),
+            value if value.starts_with("--lenient=") => {
+                eprintln!("--lenient takes true or false, got {value:?}");
+                exit(2);
+            }
             value if value.starts_with("--unknown-datatypes") => {
                 eprintln!("--unknown-datatypes takes strict or free, got {value:?}");
                 exit(2);

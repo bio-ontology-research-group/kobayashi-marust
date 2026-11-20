@@ -1997,6 +1997,8 @@ enum SourceCommand {
         functional_syntax: String,
         #[serde(default)]
         unknown_datatypes: Option<String>,
+        #[serde(default)]
+        lenient: Option<bool>,
     },
     // `base_revision` (row-delta request) is accepted and ignored: this session always
     // publishes the complete answer.
@@ -2006,6 +2008,8 @@ enum SourceCommand {
         base_revision: Option<u64>,
         #[serde(default)]
         unknown_datatypes: Option<String>,
+        #[serde(default)]
+        lenient: Option<bool>,
     },
     Classify,
     Stats,
@@ -2026,6 +2030,16 @@ fn apply_session_unknown_datatypes(mode: Option<&str>) -> Result<(), String> {
     }
 }
 
+fn apply_session_lenient(lenient: Option<bool>) {
+    if let Some(flag) = lenient {
+        if flag {
+            std::env::set_var("KM_LENIENT", "1");
+        } else {
+            std::env::remove_var("KM_LENIENT");
+        }
+    }
+}
+
 pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std::io::Result<()> {
     let mut session: Option<SourceIncrementalClassifier> = None;
     for line in reader.lines() {
@@ -2034,9 +2048,18 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
             continue;
         }
         let response = match serde_json::from_str::<SourceCommand>(&line) {
-            Ok(SourceCommand::Init { functional_syntax, unknown_datatypes }) => {
+            Ok(SourceCommand::Init { functional_syntax, unknown_datatypes, lenient }) => {
+                apply_session_lenient(lenient);
                 match apply_session_unknown_datatypes(unknown_datatypes.as_deref())
-                    .and_then(|()| SourceIncrementalClassifier::new(&functional_syntax))
+                    .and_then(|()| {
+                        let (rewritten, notes) = if crate::frontend::lenient::enabled() {
+                            crate::frontend::lenient::rewrite_source(&functional_syntax)?
+                        } else {
+                            (std::borrow::Cow::Borrowed(functional_syntax.as_str()), Vec::new())
+                        };
+                        crate::frontend::lenient::set_published_notes(notes);
+                        SourceIncrementalClassifier::new(&rewritten)
+                    })
                 {
                     Ok(classifier) => {
                         let response = session_response("init", &classifier, None);
@@ -2046,13 +2069,24 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
                     Err(error) => error_response("init", error),
                 }
             }
-            Ok(SourceCommand::Replace { functional_syntax, unknown_datatypes, .. }) => match session.as_mut() {
-                Some(classifier) => match apply_session_unknown_datatypes(unknown_datatypes.as_deref())
-                    .and_then(|()| classifier.replace_source(&functional_syntax))
-                {
-                    Ok(receipt) => session_response("replace", classifier, Some(receipt)),
-                    Err(error) => error_response("replace", error),
-                },
+            Ok(SourceCommand::Replace { functional_syntax, unknown_datatypes, lenient, .. }) => match session.as_mut() {
+                Some(classifier) => {
+                    apply_session_lenient(lenient);
+                    match apply_session_unknown_datatypes(unknown_datatypes.as_deref())
+                        .and_then(|()| {
+                            let (rewritten, notes) = if crate::frontend::lenient::enabled() {
+                                crate::frontend::lenient::rewrite_source(&functional_syntax)?
+                            } else {
+                                (std::borrow::Cow::Borrowed(functional_syntax.as_str()), Vec::new())
+                            };
+                            crate::frontend::lenient::set_published_notes(notes);
+                            classifier.replace_source(&rewritten)
+                        })
+                    {
+                        Ok(receipt) => session_response("replace", classifier, Some(receipt)),
+                        Err(error) => error_response("replace", error),
+                    }
+                }
                 None => error_response("replace", "session is not initialised"),
             },
             Ok(SourceCommand::Classify) => match session.as_ref() {
@@ -2084,6 +2118,13 @@ fn session_response(
     classifier: &SourceIncrementalClassifier,
     receipt: Option<SourceIncrementalReceipt>,
 ) -> Value {
+    let mut result = serde_json::to_value(classifier.classification()).unwrap_or(Value::Null);
+    let notes = crate::frontend::lenient::published_notes();
+    if !notes.is_empty() {
+        if let Value::Object(ref mut map) = result {
+            map.insert("lenient".to_string(), serde_json::to_value(notes).unwrap_or(Value::Null));
+        }
+    }
     json!({
         "status": "ok",
         "op": op,
@@ -2091,7 +2132,7 @@ fn session_response(
         "route": classifier.route(),
         "retained_backend": classifier.retained_backend(),
         "receipt": receipt,
-        "result": classifier.classification(),
+        "result": result,
     })
 }
 

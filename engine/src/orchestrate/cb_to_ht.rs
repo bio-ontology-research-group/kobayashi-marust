@@ -4408,6 +4408,9 @@ fn convert_with_rule_abox(
         }
         // Mark every named node with the O-guard: __nom__a(x) → __O__(x).
         for a in &individuals {
+            if crate::frontend::lenient::is_skolem_anon_short(a) {
+                continue;
+            }
             let na = ids.cid(&nom_of(a));
             ht.push(HtClause {
                 body: vec![HAtom::Concept {
