@@ -1308,6 +1308,18 @@ fn split_with_options(
             same: Vec::new(),
         });
     }
+    // An unsatisfiable class is below every class, and its `UNSAT` row says
+    // so. Which `SUB` rows a route also prints for it depends on the route
+    // the probe-extended ontology takes, so the rows would depend on the
+    // probe extension (docs/V1.7.0-SPEED.md 4(c3)). Print none.
+    if !extended.unsatisfiable.is_empty() && std::env::var_os("KM_REALIZE_KEEP_UNSAT_SUB").is_none() {
+        let unsat: HashSet<&str> = extended.unsatisfiable.iter().map(String::as_str).collect();
+        let kept: Vec<[String; 2]> = std::mem::take(&mut extended.subsumptions)
+            .into_iter()
+            .filter(|[sub, _]| !unsat.contains(sub.as_str()))
+            .collect();
+        extended.subsumptions = kept;
+    }
     if unsatisfiable_probe {
         // `{a}` is unsatisfiable only in an inconsistent ontology.
         return Err(OrchestrateError::InvalidOntology(
@@ -2168,6 +2180,26 @@ mod tests {
 
     fn row(a: &str, b: &str) -> [String; 2] {
         [a.to_string(), b.to_string()]
+    }
+
+    /// U2 (round 4): the rows of an unsatisfiable class must not depend on
+    /// the probe extension, so a consistent split prints no `SUB` row whose
+    /// subclass is unsatisfiable.
+    #[test]
+    fn split_prints_no_sub_row_of_an_unsatisfiable_class() {
+        let _test_env = crate::test_env::write();
+        let probes = vec![("P0".to_string(), "a".to_string())];
+        let extended = Classification {
+            approximate: None,
+            consistent: true,
+            subsumptions: vec![row("A", "B"), row("U", "A"), row("U", "V"), row("V", "U"), row("P0", "A")],
+            unsatisfiable: vec!["U".to_string(), "V".to_string()],
+            dropped: 0,
+        };
+        let r = split(extended, &probes, TypeMode::All).unwrap();
+        assert_eq!(r.classification.subsumptions, [row("A", "B")]);
+        assert_eq!(r.classification.unsatisfiable, ["U", "V"]);
+        assert_eq!(r.types, [row("a", "A")]);
     }
 
     #[test]
