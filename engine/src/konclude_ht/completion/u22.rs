@@ -1043,10 +1043,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             } else {
                 0
             };
+            // The validation walk advances `last_sat_cach_possible_con_des` to the
+            // label head even when it finds a concept the saturation node lacks,
+            // and a declined establishment (uncovered concept, nominal
+            // connection, clashed or insufficient saturation node) would record
+            // that head. The retest (`is_node_satisfiable_cached`) reads "last
+            // confirmed == label head" as "the label is still covered", so it
+            // re-confirmed such a node as saturation cached after any link
+            // change: a nominal whose label held two values of a functional
+            // data property was then never expanded, and the clash of its merged
+            // value successor never arose. Only a successful establishment
+            // confirms a label prefix.
+            let confirmed_con_des = if caching_establishment_possible {
+                *last_sat_cach_possible_con_des
+            } else {
+                ConDescId::NONE
+            };
             let mut sat_blocking_data = IndividualNodeSaturationBlockingData::new();
             sat_blocking_data.init_saturation_blocking_data(
                 succ_indi_con_count,
-                *last_sat_cach_possible_con_des,
+                confirmed_con_des,
                 saturation_indi_node,
             );
             let sat_blocking_data_id = calc_alg_context

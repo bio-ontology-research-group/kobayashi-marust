@@ -110,6 +110,26 @@ fn shared_data_values_keep_nominal_intersections_unsatisfiable() {
     }
 }
 
+/// A functional data property `d0` has two different values on one
+/// individual, so both inputs are inconsistent (HermiT). Object merges made
+/// that individual a node the bridge reuses as its own successor; the
+/// saturation-caching attempt on it failed, but the stored blocking data
+/// marked the whole label as confirmed, so the next retest re-confirmed the
+/// node as saturation cached and its merged value successor never met the
+/// clash. The automatic route reaches the bridge through the ground-rule
+/// data-source path; the forced bridge must agree.
+#[test]
+fn declined_saturation_cache_keeps_functional_value_clash() {
+    for case in ["declined-saturation-cache-merged-values", "declined-saturation-cache-nominal-values"] {
+        for env in [&[][..], &[("KM_ROUTE", "ht_bridge")][..]] {
+            let output = km_env(&fixture(&format!("{case}.ofn")), &[], env);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "{case} {env:?}: {}", String::from_utf8_lossy(&output.stderr));
+            assert_eq!(stdout.lines().next(), Some("CONSISTENT 0"), "{case} {env:?}: {stdout}");
+        }
+    }
+}
+
 /// `c` has the `k`-value 2 and `k` is functional, so `c` is in
 /// `=1 k.xsd:integer`, hence in `C`, against `{c} ⊑ ¬C`: inconsistent
 /// (HermiT). The native bridge made `C` a lazily unfolded definition
@@ -122,3 +142,4 @@ fn nominal_excluded_from_untriggerable_definition_is_inconsistent() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.lines().next(), Some("CONSISTENT 0"), "{stdout}");
 }
+
