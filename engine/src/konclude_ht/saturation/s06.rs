@@ -916,6 +916,28 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         merging_succ_data_linker,
                         calc_alg_context,
                     );
+                    // The extension map holds one polarity per concept tag. Two
+                    // merged successors with `C` and `¬C` (neither in the copy
+                    // base) kept only one of them, so the resolved node lost the
+                    // clash: for `A ⊑ ∃s.B ⊓ ∃s.C ⊓ ∃r.A`, `B ⊓ C ⊑ ⊥`,
+                    // `s ⊑ r`, functional `r`, the base `A` was extended with
+                    // `¬B, C` only and `A` came out satisfiable. The saturation
+                    // cannot express this merge; the node is insufficient, so
+                    // the completion graph decides it.
+                    if con_ext_map.is_some()
+                        && calc_alg_context
+                            .process_context()
+                            .sat_concept_extension_map(con_ext_map)
+                            .polarity_conflict
+                    {
+                        self.update_direct_adding_individual_status_flags(
+                            *indi_proc_sat_node,
+                            super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                            calc_alg_context,
+                        );
+                        self.set_insufficient_node_occured(calc_alg_context);
+                        copy_indi_proc_sat_node = SatNodeId::NONE;
+                    }
                     if copy_indi_proc_sat_node.is_some() {
                         let succ_ext = calc_alg_context
                             .process_context_mut()

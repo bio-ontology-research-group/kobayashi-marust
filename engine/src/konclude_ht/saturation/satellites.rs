@@ -2293,12 +2293,18 @@ impl ConceptNegationPair {
 #[derive(Clone)]
 pub struct SaturationConceptExtensionMap {
     pub concept_extension_map: HashMap<Cint64, ConceptNegationPair>,
+    /// The map is keyed by concept tag, so it holds one polarity per concept.
+    /// Set when an insertion met the opposite polarity of a concept already in
+    /// the map: the extended node would carry `C` and `¬C`, which the map
+    /// cannot express (the first entry is kept).
+    pub polarity_conflict: bool,
 }
 
 impl Default for SaturationConceptExtensionMap {
     fn default() -> Self {
         Self {
             concept_extension_map: HashMap::default(),
+            polarity_conflict: false,
         }
     }
 }
@@ -2308,7 +2314,13 @@ impl SaturationConceptExtensionMap {
         Self::default()
     }
     pub fn insert(&mut self, concept_tag: Cint64, pair: ConceptNegationPair) -> &mut Self {
-        self.concept_extension_map.insert(concept_tag, pair);
+        match self.concept_extension_map.get(&concept_tag) {
+            Some(existing) if existing.negation != pair.negation => self.polarity_conflict = true,
+            Some(_) => {}
+            None => {
+                self.concept_extension_map.insert(concept_tag, pair);
+            }
+        }
         self
     }
     pub fn iter(&self) -> impl Iterator<Item = (&Cint64, &ConceptNegationPair)> {
@@ -4349,5 +4361,23 @@ mod layered_label_tests {
         original[0].negated = true;
         assert!(original[0].negated);
         assert!(!copied[0].negated);
+    }
+}
+
+#[cfg(test)]
+mod concept_extension_map_tests {
+    use super::*;
+
+    #[test]
+    fn opposite_polarity_of_one_tag_is_a_conflict_not_an_overwrite() {
+        let concept = ConceptId::new(7);
+        let mut map = SaturationConceptExtensionMap::new();
+        map.insert(11, ConceptNegationPair::new(concept, false));
+        map.insert(11, ConceptNegationPair::new(concept, false));
+        assert!(!map.polarity_conflict);
+        map.insert(11, ConceptNegationPair::new(concept, true));
+        assert!(map.polarity_conflict);
+        let kept: Vec<_> = map.iter().map(|(tag, pair)| (*tag, pair.negation)).collect();
+        assert_eq!(kept, [(11, false)]);
     }
 }
