@@ -8741,6 +8741,16 @@ fn bridge_tinput_with_trigger_absorption(
     }
     bridge_phase!("terminology-stamp");
 
+    // Konclude runs `CCoreBlockingConceptMarkerPreProcess` after the role
+    // automata and propagation-direction passes. The linked candidate-hash
+    // blocker search reads these marks; without them every label set lacks a
+    // core descriptor and the search falls back to the linear candidate scan.
+    let core_blocking_marked = mark_core_blocking_concepts(ctx);
+    bridge_phase!("core-blocking-marker");
+    if std::env::var_os("KM_HT_STATS").is_some() {
+        eprintln!("bridge [core-blocking] marked={core_blocking_marked}");
+    }
+
     // Konclude's preprocessors may add assertions after the source ABox was
     // materialized. In particular, nominal trigger absorption asserts a fresh
     // CCIMPLTRIG on the corresponding named individual. Saturation reads the
@@ -13324,6 +13334,88 @@ fn extract_propagation_into_creation_direction(ctx: &mut CalculationAlgorithmCon
                 .propagation_into_creation_direction = true;
         }
     }
+}
+
+/// Port of `CCoreBlockingConceptMarkerPreProcess::preprocess`
+/// (Reasoner/Preprocess, cpp 39-90, on by default via
+/// `Konclude.Calculation.Preprocessing.CoreBlockingConceptMarking`).
+///
+/// For every SOME/ALL/ATLEAST/AQSOME/ATMOST concept the C++ walks the operand
+/// list and marks the QUANTIFIER concept itself (`opConcept = concept`) as a
+/// core blocking concept with polarity `opNegated ^ opNegate`, where
+/// `opNegated = (opCode == CCALL)` and `opNegate = opNegated ^ linker.isNegated()`;
+/// the polarity is therefore the operand linker's negation flag. This is
+/// ported literally, including that polarity.
+///
+/// KONCLUDE-PORT-NOTE[data]: Konclude's `CDataExtenderPreProcess` gives every
+/// concept a `CConceptProcessData` before this pass; the port allocates it
+/// lazily, so a missing record is allocated here (the C++ `if (conProDes)`
+/// is always true at this point in Konclude).
+/// KONCLUDE-PORT-NOTE[el-skip]: the C++ skips the pass when
+/// `SkipForELFragment` (default true) holds and the expression builder saw no
+/// non-EL construct. The port has no builder construct flags; it treats the
+/// arena as EL when no concept has an operator outside atom, TOP, BOTTOM,
+/// AND, SOME, nominal, EQ and SUB. Marks only steer which blocker candidate
+/// the linked hash search tests first; every candidate still passes the full
+/// blocking test, so this approximation affects speed, not answers.
+fn mark_core_blocking_concepts(ctx: &mut CalculationAlgorithmContextBase) -> usize {
+    use super::model::concept_process::{ConceptProcessData, ConceptProcessDataId};
+    let n = ctx.ontology_arenas().concept_count();
+    let non_el_constructs_used = (0..n).any(|i| {
+        !matches!(
+            ctx.ontology_arenas()
+                .concept(ConceptId::new(i as Cint64))
+                .get_operator_code(),
+            op::CCATOM
+                | op::CCTOP
+                | op::CCBOTTOM
+                | op::CCAND
+                | op::CCSOME
+                | op::CCNOMINAL
+                | op::CCEQ
+                | op::CCSUB
+        )
+    });
+    if !non_el_constructs_used {
+        return 0;
+    }
+    let mut marked = 0usize;
+    for i in 0..n {
+        let cid = ConceptId::new(i as Cint64);
+        let (op_code, polarities): (Cint64, Vec<bool>) = {
+            let c = ctx.ontology_arenas().concept(cid);
+            (
+                c.get_operator_code(),
+                c.get_operand_list().iter().map(|l| l.negated).collect(),
+            )
+        };
+        if !matches!(
+            op_code,
+            op::CCSOME | op::CCALL | op::CCATLEAST | op::CCAQSOME | op::CCATMOST
+        ) {
+            continue;
+        }
+        let op_negated = op_code == op::CCALL;
+        for linker_negated in polarities {
+            let op_negate = op_negated ^ linker_negated;
+            let negated = op_negated ^ op_negate;
+            let arenas = ctx.ontology_arenas_mut();
+            let concept_data = arenas.concept(cid).get_concept_data();
+            let con_pro_data = if concept_data == super::model::substrate::INVALID {
+                let fresh = arenas.alloc_concept_process_data(ConceptProcessData::new());
+                arenas.concept_mut(cid).set_concept_data(fresh.raw);
+                fresh
+            } else {
+                ConceptProcessDataId::new(concept_data)
+            };
+            let data = arenas.concept_process_data_mut(con_pro_data);
+            if !data.is_core_blocking_concept(negated) {
+                marked += 1;
+                data.set_core_blocking_concept(negated, true);
+            }
+        }
+    }
+    marked
 }
 
 /// Port of the CONSTRUCTION half of
