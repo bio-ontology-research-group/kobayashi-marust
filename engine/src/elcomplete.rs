@@ -3586,6 +3586,17 @@ fn fire_nf2(cands: &[[u32; 2]], st: &mut State, scratch: &mut Vec<u32>, prof: &m
 /// Scheduling only: nothing derived depends on when memory is returned, the
 /// value is unreachable either way, and a failed spawn drops the closure (and
 /// so the value) inline exactly as without the flag.
+/// `release`, or, in the worker process about to exit with a small compact
+/// answer, leave the dead saturation state to process exit: freeing millions
+/// of small allocations cost seconds and returns nothing the answer needs.
+fn release_or_leak<T: Send + 'static>(value: T, background: bool, leak: bool) {
+    if leak {
+        std::mem::forget(value);
+    } else {
+        release(value, background);
+    }
+}
+
 fn release<T: Send + 'static>(value: T, background: bool) {
     if !background {
         drop(value);
@@ -12468,8 +12479,23 @@ pub(crate) fn classify_worker(clauses: Vec<JClause>) -> Option<ElResult> {
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
     let compact_nf1_output = std::env::var_os("KM_ELC_OUTPUT_BINARY").is_some()
         && std::env::var_os("KM_NO_ELC_OUTPUT_BINARY").is_none();
-    classify_inner_mode(clauses, cert, debug, compact_nf1_output, false)
+    let dense = compact_nf1_output.then(elc_output_binary_min_relations);
+    classify_inner_mode_dense(clauses, cert, debug, compact_nf1_output, false, dense)
 }
+
+/// The relation count from which the worker hands a complete taxonomy over in
+/// the compact binary form (`KM_ELC_OUTPUT_BINARY_MIN_RELATIONS`, default two
+/// million). Sparser taxonomies keep the JSON contract.
+pub(crate) fn elc_output_binary_min_relations() -> usize {
+    std::env::var("KM_ELC_OUTPUT_BINARY_MIN_RELATIONS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(2_000_000)
+}
+
+/// Set by the `elc` worker process, which exits right after writing its
+/// answer: state that is dead once the answer is built need not be freed.
+pub(crate) static ELC_WORKER_PROCESS: AtomicBool = AtomicBool::new(false);
 
 /// Orchestrator entry point for the exact in-process EL leaf: the complete
 /// fixpoint is returned dictionary-coded (`ElResult::compact`) instead of as
@@ -13289,6 +13315,22 @@ fn classify_inner_mode(
     compact_nf1_output: bool,
     compact_fixpoint_output: bool,
 ) -> Option<ElResult> {
+    classify_inner_mode_dense(clauses, cert, debug, compact_nf1_output, compact_fixpoint_output, None)
+}
+
+/// `classify_inner_mode`, where `dense_fixpoint_min_relations = Some(n)` also
+/// returns a complete, unrooted fixpoint dictionary-coded when it has at least
+/// 1,000 subject rows and `n` relations: exactly the answers the worker would
+/// otherwise turn into strings and then re-encode into the same binary
+/// handoff (`cli::run_elc`).
+fn classify_inner_mode_dense(
+    clauses: Vec<JClause>,
+    cert: CertMode,
+    debug: bool,
+    compact_nf1_output: bool,
+    compact_fixpoint_output: bool,
+    dense_fixpoint_min_relations: Option<usize>,
+) -> Option<ElResult> {
     let elc_timing = std::env::var_os("KM_ELC_TIMING").is_some();
     let mut elc_lap = std::time::Instant::now();
     let lean_cert_path = std::env::var_os("KM_ELC_LEAN_CERT_OUT").map(std::path::PathBuf::from);
@@ -13840,7 +13882,32 @@ fn classify_inner_mode(
         sub_journal,
         edge_epoch: _,
     } = res;
-    release(
+    // The worker's dense handoff: the same rows and relations the string map
+    // below would hold (subjects other than TOP and BOTTOM with a concept
+    // node, each superclass other than itself and TOP).
+    let compact_fixpoint_output = compact_fixpoint_output
+        || (unresolved.is_empty()
+            && rooted_output_names.is_none()
+            && dense_fixpoint_min_relations.is_some_and(|min_relations| {
+                let (mut rows, mut relations) = (0usize, 0usize);
+                for (c, sups) in sub_super.iter().enumerate() {
+                    let cid = c as u32;
+                    if cid == TOP || cid == BOTTOM || sups.is_empty() {
+                        continue;
+                    }
+                    let out = sups.len()
+                        - usize::from(sups.contains(&cid))
+                        - usize::from(sups.contains(&TOP));
+                    if out > 0 || !crate::calc::is_internal_concept(it.name(cid)) {
+                        rows += 1;
+                    }
+                    relations += out;
+                }
+                rows >= 1_000 && relations >= min_relations
+            }));
+    let leak_dead_state =
+        compact_fixpoint_output && unresolved.is_empty() && ELC_WORKER_PROCESS.load(Ordering::Relaxed);
+    release_or_leak(
         (
             idx,
             nfs,
@@ -13855,6 +13922,7 @@ fn classify_inner_mode(
             sub_journal,
         ),
         background_release,
+        leak_dead_state,
     );
     elc_timing_lap(elc_timing, &mut elc_lap, "release");
 
@@ -14171,6 +14239,62 @@ mod tests {
         assert!(expected["A"].contains("E"));
         assert!(expected["A"].contains("owl:Nothing"));
         assert!(expected["B"].contains("E"));
+    }
+
+    /// The worker's dense handoff returns the same rows as the string map, and
+    /// a fixpoint under the relation threshold keeps the string map.
+    #[test]
+    fn dense_worker_fixpoint_output_matches_the_string_map() {
+        let _test_env = crate::test_env::write();
+        use std::collections::{BTreeMap, BTreeSet};
+        let mut parts = vec![
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("B", "x"), c("C", "x")], &[c("D", "x")]),
+            cl(&[c("A", "x")], &[c("C", "x")]),
+            cl(&[c("B", "x")], &[cf("F", "f", "x")]),
+            cl(&[c("B", "x")], &[rf("r", "x", "f")]),
+            cl(&[r("r", "x", "y"), c("F", "y")], &[c("E", "x")]),
+            cl(&[c("G", "x"), c("B", "x")], &[]),
+            cl(&[c("H", "x")], &[c("G", "x")]),
+            cl(&[c("A", "x")], &[c("G", "x")]),
+        ];
+        for i in 0..1_200 {
+            parts.push(cl(&[c(&format!("X{i}"), "x")], &[c(if i % 2 == 0 { "B" } else { "H" }, "x")]));
+        }
+        let cs = clauses(&format!("[{}]", parts.join(",")));
+        let expected = classify_inner_mode(cs.clone(), CertMode::Off, false, false, false)
+            .expect("pure EL input");
+        assert!(expected.compact.is_none());
+        let sparse = classify_inner_mode_dense(cs.clone(), CertMode::Off, false, true, false, Some(usize::MAX))
+            .expect("pure EL input");
+        assert!(sparse.compact.is_none(), "under the relation threshold");
+        assert_eq!(sparse.subsumptions, expected.subsumptions);
+        let dense = classify_inner_mode_dense(cs, CertMode::Off, false, true, false, Some(1))
+            .expect("pure EL input");
+        assert!(dense.subsumptions.is_empty());
+        let dense = dense.compact.expect("dense fixpoint is dictionary-coded");
+        assert_eq!(dense.inconsistent, expected.inconsistent);
+        let mut rebuilt: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for (subject, supers) in &dense.rows {
+            let supers = supers
+                .iter()
+                .map(|&d| {
+                    if d == BOTTOM {
+                        "owl:Nothing".to_string()
+                    } else {
+                        dense.names[d as usize].to_string()
+                    }
+                })
+                .collect();
+            assert!(rebuilt
+                .insert(dense.names[*subject as usize].to_string(), supers)
+                .is_none());
+        }
+        assert_eq!(rebuilt, expected.subsumptions, "same rows, same superclass order");
+        assert!(expected.subsumptions.len() >= 1_000);
+        let x0: BTreeSet<&str> = expected.subsumptions["X0"].iter().map(String::as_str).collect();
+        assert!(x0.contains("E"));
+        assert!(expected.subsumptions["A"].iter().any(|sup| sup == "owl:Nothing"));
     }
 
     fn positive_abox_consistency(ofn: &str) -> Option<bool> {
