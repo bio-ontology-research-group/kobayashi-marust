@@ -232,6 +232,23 @@ entailed inequalities:
      (`[B(x)] -> [x = o]`, with or without the head `{o}`) to its union-find,
      and when two named elements end in one class without `has_horn_merges`,
      `from_exported_model` declines and the exact probe run answers.
+   - **Bare individuals (2026-11-22).** An individual `a` that occurs only in
+     its declaration, annotations and `ClassAssertion(A, a)` with named `A`
+     (the set `S_a`) needs no value probe when every `SubClassOf`,
+     `EquivalentClasses` and `DisjointClasses` axiom holds at a *bare*
+     element: atomic classes exactly `S_a`, no successors, no data values
+     (`∃`, `HasValue`, `HasSelf`, `OneOf` and `≥ n` with `n ≥ 1` are false
+     there; `∀` and `≤ n` are true), all other axioms are property axioms or
+     assertions about other individuals, and the source has no universal
+     role, reflexive role, key or rule. Argument: take any model `I` of `O`,
+     add a new bare element `x` and interpret `a` as `x`. No element has an
+     edge to `x` and no nominal names `a`, so every other element keeps its
+     truth values, `x` satisfies the TBox by the check, and `a`'s assertions
+     hold; the result is a model of `O` in which `a` has no edge. So no row
+     `r(a, y)` or `r(y, a)` is entailed, and `from_exported_model` drops the
+     residual targets and sources of `a`. This removes the 112 excursion
+     targets of `ore_ont_14012` (16 `oboInOwl#Subset` individuals, 7
+     transitive or inverse roles), whose probe run had timed out.
 
 3. **`DIFFERENT` (`DifferentIndividuals`)**:
    - Two individuals `a` and `b` that are distinct elements in `M_0`

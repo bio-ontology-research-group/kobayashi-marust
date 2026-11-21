@@ -2933,6 +2933,14 @@ pub(super) fn from_exported_model(
                 }
             }
         }
+        let value_trace = std::env::var_os("KM_DIFF_TRACE").is_some();
+        if value_trace {
+            eprintln!(
+                "KM_DIFF_TRACE values: n_elems={n_elems} individuals={} targets after model edges={}",
+                individuals.len(),
+                plan.residual_value_targets.len()
+            );
+        }
         if let Some(spec) = &fresh_spec {
             let mut input = spec.input.clone();
             input.flag_named_self_and_nominal = true;
@@ -3014,6 +3022,50 @@ pub(super) fn from_exported_model(
                     }
                 }
             }
+        }
+        // Isolated, unconstrained individuals have no VALUE rows at all. An
+        // individual `a` that occurs only in its declaration, annotations and
+        // `ClassAssertion(A, a)` with named `A` (the set `S_a`) is isolated.
+        // If the TBox holds at an element whose atomic classes are exactly
+        // `S_a` and that has no successors (checked by `holds_at_bare`, see
+        // MODEL-EXPORT.md), take any model `I` of `O` and re-point `a` to a new
+        // such element: nothing else changes (no element has an edge to it, no
+        // nominal names `a`, no universal role), so the result is a model of
+        // `O` in which `a` has no edge. No row `r(a, x)` or `r(x, a)` is then
+        // entailed, and its excursion candidates need no probe
+        // (ore_ont_14012: 112 probe targets, 300 s timeout before).
+        if !plan.residual_value_targets.is_empty() || !plan.residual_value_sources.is_empty() {
+            let bare = bare_unconstrained_individuals(text, &|t: &str| {
+                ind_lookup.get(&expand_tok(t)).or_else(|| ind_lookup.get(&public_name(t))).cloned()
+            }, &expand_tok);
+            if !bare.is_empty() {
+                let is_bare = |i: usize| bare.contains(pub_individuals[i].as_str());
+                let before = plan.residual_value_targets.len();
+                plan.residual_value_targets.retain(|&(_, b)| !is_bare(b));
+                plan.residual_value_sources.retain(|&a| !is_bare(a));
+                if std::env::var_os("KM_TIMING").is_some() {
+                    eprintln!(
+                        "KM_TIMING abox_rows: {} bare individuals; value targets {} -> {}",
+                        bare.len(),
+                        before,
+                        plan.residual_value_targets.len()
+                    );
+                }
+            }
+        }
+        if value_trace {
+            let roles_used: BTreeSet<usize> = plan.residual_value_targets.iter().map(|t| t.0).collect();
+            let inds_used: BTreeSet<usize> = plan.residual_value_targets.iter().map(|t| t.1).collect();
+            eprintln!(
+                "KM_DIFF_TRACE values: fresh_inds={} excursion={} targets={} roles={:?} target_inds={} sources={} sample={:?}",
+                fresh_inds.len(),
+                excursion_spec.is_some(),
+                plan.residual_value_targets.len(),
+                roles_used.iter().map(|&r| roles[r].as_str()).collect::<Vec<_>>(),
+                inds_used.len(),
+                plan.residual_value_sources.len(),
+                inds_used.iter().take(5).map(|&b| individuals[b].as_str()).collect::<Vec<_>>()
+            );
         }
     }
 
@@ -4767,6 +4819,187 @@ impl ExcursionBound {
 }
 
 
+/// Public names of the individuals that occur only in declarations,
+/// annotations and `ClassAssertion(A, a)` with a named `A`, and at which every
+/// logical axiom holds for a bare element: atomic classes exactly the asserted
+/// `A`s, no successors, no data values. Empty when the source uses the
+/// universal role, reflexive roles, or a construct `holds_at_bare` does not
+/// evaluate.
+fn bare_unconstrained_individuals(
+    text: &str,
+    ind_of: &dyn Fn(&str) -> Option<String>,
+    expand: &dyn Fn(&str) -> String,
+) -> HashSet<String> {
+    if text.contains("topObjectProperty") || text.contains("topDataProperty") {
+        return HashSet::new();
+    }
+    fn atoms<'a>(node: &Node<'a>, out: &mut Vec<&'a str>) {
+        match node {
+            Node::Atom(a) => out.push(a),
+            Node::List(_, args) => {
+                for a in args {
+                    atoms(a, out);
+                }
+            }
+        }
+    }
+    let logical = |n: &Node| !matches!(n, Node::List("Annotation", _));
+    let mut asserted: HashMap<String, BTreeSet<String>> = HashMap::new();
+    let mut constrained: HashSet<String> = HashSet::new();
+    let mut tbox: Vec<String> = Vec::new();
+    let mut ok = true;
+    let parsed = crate::frontend::parse::for_each_ontology_child(text, |node| {
+        let Some(head) = node.head() else { return Ok(()) };
+        let args: Vec<&Node> = match node {
+            Node::List(_, a) => a.iter().filter(|n| logical(n)).collect(),
+            _ => Vec::new(),
+        };
+        match head {
+            "Declaration" | "AnnotationAssertion" | "Import" | "Annotation" | "SubAnnotationPropertyOf"
+            | "AnnotationPropertyDomain" | "AnnotationPropertyRange" => return Ok(()),
+            "ClassAssertion" if args.len() == 2 => {
+                if let (Some(c), Some(i)) = (args[0].as_atom(), args[1].as_atom()) {
+                    if let Some(p) = ind_of(i) {
+                        asserted.entry(p).or_default().insert(expand(c));
+                        return Ok(());
+                    }
+                }
+            }
+            "ReflexiveObjectProperty" | "HasKey" | "DLSafeRule" | "DisjointUnion" => {
+                ok = false;
+                return Ok(());
+            }
+            _ => {}
+        }
+        let mut toks = Vec::new();
+        for a in &args {
+            atoms(a, &mut toks);
+        }
+        for t in toks {
+            if let Some(p) = ind_of(t) {
+                constrained.insert(p);
+            }
+        }
+        tbox.push(head.to_string());
+        Ok(())
+    });
+    if parsed.is_err() || !ok {
+        return HashSet::new();
+    }
+    // Axiom kinds that hold at a bare element whatever their arguments:
+    // property axioms (it has no edges) and assertions about other individuals.
+    let edge_only = |h: &str| {
+        matches!(
+            h,
+            "SubObjectPropertyOf" | "EquivalentObjectProperties" | "DisjointObjectProperties"
+                | "InverseObjectProperties" | "ObjectPropertyDomain" | "ObjectPropertyRange"
+                | "FunctionalObjectProperty" | "InverseFunctionalObjectProperty"
+                | "SymmetricObjectProperty" | "AsymmetricObjectProperty"
+                | "IrreflexiveObjectProperty" | "TransitiveObjectProperty"
+                | "SubDataPropertyOf" | "EquivalentDataProperties" | "DisjointDataProperties"
+                | "DataPropertyDomain" | "DataPropertyRange" | "FunctionalDataProperty"
+                | "DatatypeDefinition" | "ClassAssertion" | "ObjectPropertyAssertion"
+                | "DataPropertyAssertion" | "NegativeObjectPropertyAssertion"
+                | "NegativeDataPropertyAssertion" | "SameIndividual" | "DifferentIndividuals"
+        )
+    };
+    if tbox.iter().any(|h| !edge_only(h) && !matches!(h.as_str(), "SubClassOf" | "EquivalentClasses" | "DisjointClasses")) {
+        return HashSet::new();
+    }
+    let candidates: Vec<(String, BTreeSet<String>)> = asserted
+        .into_iter()
+        .filter(|(p, _)| !constrained.contains(p))
+        .collect();
+    if candidates.is_empty() {
+        return HashSet::new();
+    }
+    let mut verdict: HashMap<BTreeSet<String>, bool> = HashMap::new();
+    let mut out = HashSet::new();
+    for (p, s_a) in candidates {
+        let holds = *verdict.entry(s_a.clone()).or_insert_with(|| holds_at_bare(text, &s_a, expand));
+        if holds {
+            out.insert(p);
+        }
+    }
+    out
+}
+
+/// Whether every `SubClassOf`, `EquivalentClasses` and `DisjointClasses`
+/// axiom of `text` holds at a bare element with atomic classes `s_a` (full
+/// IRIs). `false` when some class expression cannot be evaluated.
+fn holds_at_bare(text: &str, s_a: &BTreeSet<String>, expand: &dyn Fn(&str) -> String) -> bool {
+    fn eval(n: &Node, s_a: &BTreeSet<String>, expand: &dyn Fn(&str) -> String) -> Option<bool> {
+        match n {
+            Node::Atom(t) => {
+                let iri = expand(t);
+                if iri.ends_with("#Thing") && iri.contains("2002/07/owl") || *t == "owl:Thing" {
+                    Some(true)
+                } else if iri.ends_with("#Nothing") && iri.contains("2002/07/owl") || *t == "owl:Nothing" {
+                    Some(false)
+                } else {
+                    Some(s_a.contains(&iri))
+                }
+            }
+            Node::List(h, args) => {
+                let args: Vec<&Node> = args.iter().filter(|a| !matches!(a, Node::List("Annotation", _))).collect();
+                let num = |i: usize| args.get(i).and_then(|a| a.as_atom()).and_then(|a| a.parse::<u64>().ok());
+                match *h {
+                    "ObjectIntersectionOf" => {
+                        let mut all = true;
+                        for a in &args {
+                            all &= eval(a, s_a, expand)?;
+                        }
+                        Some(all)
+                    }
+                    "ObjectUnionOf" => {
+                        let mut any = false;
+                        for a in &args {
+                            any |= eval(a, s_a, expand)?;
+                        }
+                        Some(any)
+                    }
+                    "ObjectComplementOf" if args.len() == 1 => eval(args[0], s_a, expand).map(|b| !b),
+                    "ObjectSomeValuesFrom" | "DataSomeValuesFrom" | "ObjectHasValue" | "DataHasValue"
+                    | "ObjectHasSelf" | "ObjectOneOf" => Some(false),
+                    "ObjectAllValuesFrom" | "DataAllValuesFrom" | "ObjectMaxCardinality"
+                    | "DataMaxCardinality" => Some(true),
+                    "ObjectMinCardinality" | "DataMinCardinality" | "ObjectExactCardinality"
+                    | "DataExactCardinality" => num(0).map(|n| n == 0),
+                    _ => None,
+                }
+            }
+        }
+    }
+    let mut ok = true;
+    let parsed = crate::frontend::parse::for_each_ontology_child(text, |node| {
+        if !ok {
+            return Ok(());
+        }
+        let (h, args) = match node {
+            Node::List(h, a) => (*h, a.iter().filter(|n| !matches!(n, Node::List("Annotation", _))).collect::<Vec<_>>()),
+            _ => return Ok(()),
+        };
+        let vals = || -> Option<Vec<bool>> { args.iter().map(|a| eval(a, s_a, expand)).collect() };
+        ok = match h {
+            "SubClassOf" => match vals() {
+                Some(v) if v.len() == 2 => !v[0] || v[1],
+                _ => false,
+            },
+            "EquivalentClasses" => match vals() {
+                Some(v) => v.windows(2).all(|w| w[0] == w[1]),
+                None => false,
+            },
+            "DisjointClasses" => match vals() {
+                Some(v) => v.iter().filter(|b| **b).count() <= 1,
+                None => false,
+            },
+            _ => true,
+        };
+        Ok(())
+    });
+    parsed.is_ok() && ok
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::config::Config;
@@ -5839,6 +6072,8 @@ mod tests {
             ("g7001_0022", G7001_0022),
             ("g7002_0026", G7002_0026),
             ("f4104_41", F4104_41),
+            ("bare_individual", BARE_INDIVIDUAL),
+            ("bare_but_constrained", BARE_BUT_CONSTRAINED),
         ];
         let _test_env = crate::test_env::write();
         let _env = crate::routing::EnvironmentGuard::capture();
@@ -5866,12 +6101,31 @@ mod tests {
                     "g7002_0026" => assert!(values
                         .iter()
                         .any(|[r, a, b]| short(r) == "t0" && short(a) == "a1" && short(b) == "a0")),
-                    _ => assert_eq!(values.len(), 6480, "{name}"),
+                    "f4104_41" => assert_eq!(values.len(), 6480, "{name}"),
+                    "bare_individual" => {
+                        assert!(values.iter().any(|[r, a, b]| short(r) == "p" && short(a) == "a" && short(b) == "a"));
+                        assert!(values.iter().all(|[_, a, b]| short(a) != "x" && short(b) != "x"), "{values:?}");
+                    }
+                    _ => assert!(values.iter().any(|[r, a, b]| short(r) == "p" && short(a) == "x" && short(b) == "x")),
                 }
             }
         }
     }
 
+    /// `x` is bare (only `S(x)`, and `S` constrains nothing): no rows, no
+    /// probes. `p(a, a)` comes from an excursion through `l` and `r = l⁻`.
+    const BARE_INDIVIDUAL: &str = "Prefix(:=<http://ex.org/>)\nPrefix(owl:=<http://www.w3.org/2002/07/owl#>)\nOntology(<http://ex.org/bare>\n\
+        Declaration(Class(:B)) Declaration(Class(:S)) Declaration(ObjectProperty(:l)) Declaration(ObjectProperty(:r))\n\
+        Declaration(ObjectProperty(:p)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:x))\n\
+        InverseObjectProperties(:l :r) SubObjectPropertyOf(:l :p) SubObjectPropertyOf(:r :p) TransitiveObjectProperty(:p)\n\
+        SubClassOf(:B ObjectSomeValuesFrom(:l owl:Thing)) ClassAssertion(:B :a) ClassAssertion(:S :x)\n)";
+    /// Same, but `S ⊑ ∃l.⊤` makes `x` not bare, so `p(x, x)` must be found.
+    const BARE_BUT_CONSTRAINED: &str = "Prefix(:=<http://ex.org/>)\nPrefix(owl:=<http://www.w3.org/2002/07/owl#>)\nOntology(<http://ex.org/bare2>\n\
+        Declaration(Class(:B)) Declaration(Class(:S)) Declaration(ObjectProperty(:l)) Declaration(ObjectProperty(:r))\n\
+        Declaration(ObjectProperty(:p)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:x))\n\
+        InverseObjectProperties(:l :r) SubObjectPropertyOf(:l :p) SubObjectPropertyOf(:r :p) TransitiveObjectProperty(:p)\n\
+        SubClassOf(:B ObjectSomeValuesFrom(:l owl:Thing)) SubClassOf(:S ObjectSomeValuesFrom(:l owl:Thing))\n\
+        ClassAssertion(:B :a) ClassAssertion(:S :x)\n)";
     const G7001_0022: &str = r#"Prefix(:=<http://ex.org/>)
 Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
 Ontology(<http://ex.org/g>
