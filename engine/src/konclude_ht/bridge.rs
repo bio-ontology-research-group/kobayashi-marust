@@ -7022,39 +7022,11 @@ fn bridge_tinput_with_trigger_absorption(
         let mut seen_inclusions = crate::fxhash::FxHashSet::default();
         let mut forced_subclass_names = crate::fxhash::FxHashSet::default();
         let mut equivalence_name_counts: HashMap<&str, usize> = HashMap::default();
-        let mut unique_equivalence_defs: HashMap<&str, &SourceConcept> = HashMap::default();
-        for axiom in &tin.source_axioms {
-            if axiom.kind == crate::json_io::SourceAxiomKind::Equivalent {
-                for (named_side, def_side) in
-                    [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
-                {
-                    if let SourceConcept::Name(name) = named_side {
-                        let count = equivalence_name_counts.entry(name.as_str()).or_default();
-                        *count += 1;
-                        if *count == 1 {
-                            unique_equivalence_defs.insert(name.as_str(), def_side);
-                        } else {
-                            unique_equivalence_defs.remove(name.as_str());
-                        }
-                    }
-                }
-            }
-        }
-        let is_redundant_equiv_conjunct_subclass =
-            |name: &str, right: &SourceConcept| -> bool {
-                let Some(&def) = unique_equivalence_defs.get(name) else {
-                    return false;
-                };
-                right == def
-                    || matches!(def, SourceConcept::And(conjuncts) if conjuncts.contains(right))
-            };
         for axiom in &tin.source_axioms {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
                     if let SourceConcept::Name(name) = &axiom.left {
-                        if !is_redundant_equiv_conjunct_subclass(name.as_str(), &axiom.right) {
-                            forced_subclass_names.insert(name.as_str());
-                        }
+                        forced_subclass_names.insert(name.as_str());
                     }
                 }
                 crate::json_io::SourceAxiomKind::Disjoint => {
@@ -7064,7 +7036,13 @@ fn bridge_tinput_with_trigger_absorption(
                         }
                     }
                 }
-                crate::json_io::SourceAxiomKind::Equivalent => {}
+                crate::json_io::SourceAxiomKind::Equivalent => {
+                    for side in [&axiom.left, &axiom.right] {
+                        if let SourceConcept::Name(name) = side {
+                            *equivalence_name_counts.entry(name.as_str()).or_default() += 1;
+                        }
+                    }
+                }
             }
         }
         fn collect_source_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
@@ -7312,13 +7290,6 @@ fn bridge_tinput_with_trigger_absorption(
         for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
-                    if let SourceConcept::Name(name) = &axiom.left {
-                        if !forced_subclass_names.contains(name.as_str())
-                            && is_redundant_equiv_conjunct_subclass(name.as_str(), &axiom.right)
-                        {
-                            continue;
-                        }
-                    }
                     encode!(&axiom.left, &axiom.right);
                 }
                 crate::json_io::SourceAxiomKind::Equivalent => {
