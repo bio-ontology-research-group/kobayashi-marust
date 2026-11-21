@@ -2035,6 +2035,11 @@ fn classify_with_evidence_mode(
     // KM_ROUTE. Only the outermost call can be forced.
     let forced_route = if depth == 0 { forced_route_request() } else { None };
     let mut result = classify_with_evidence_inner(initial_cfg, ont, retain_grouped_output);
+    // Any race inside the completed (or declined) inner classification has
+    // already joined its worker threads. Clear the global cancel flag so an
+    // outer classification that falls through after a declined probe can spawn
+    // its own workers.
+    engine_run::reset_cancel();
     CLASSIFY_DEPTH.with(|d| d.set(depth));
     if depth == 0
         && forced_route.is_none()
@@ -3844,6 +3849,7 @@ fn classify_with_evidence_inner(
     // let the faster incomplete certify win). On a CB-timeout ont (7581) CB never
     // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
     let ht_mode: &str = cfg.ht_mode.as_str();
+    engine_run::reset_cancel();
     let atomic_attempt = if matches!(cfg.mechanism, Mechanism::Elc) && !reference_force_enabled() {
         certified_el_out
             .take()
@@ -3914,6 +3920,7 @@ fn classify_with_evidence_inner(
             out
         }
         None => {
+            engine_run::reset_cancel();
             if reference_force_enabled() {
                 return Err(OrchestrateError::OutOfFragment(
                     "KM_REFERENCE_FORCE=1".into(),
@@ -5473,7 +5480,6 @@ fn rules_consistency(
     }
     let timing = std::env::var_os("KM_TIMING").is_some();
     let started = std::time::Instant::now();
-    let mut input: JInput = serde_json::from_reader(BufReader::new(File::open(clauses_path)?))?;
     // Finite grounding can erase every executable rule when no source data
     // value matches its body. The original-rule/model check is still needed
     // before publishing the class projection in that case.
@@ -5481,6 +5487,16 @@ fn rules_consistency(
     // empty executable rule list must not bypass their named-ABox clash check.
     let normalized_rules = meta.profile.normalized_unary_rules > 0
         || meta.profile.normalized_constant_data_rules > 0;
+    if meta.profile.source.rule_axioms == 0
+        && meta.profile.normalized_finite_data_rules == 0
+        && !normalized_rules
+        && !require_source_model
+    {
+        return Ok(None);
+    }
+    let bytes = std::fs::read(clauses_path)?;
+    let mut input: JInput = serde_json::from_slice(&bytes)?;
+    drop(bytes);
     if input.rules.is_empty() && !normalized_rules && !require_source_model {
         return Ok(None);
     }
