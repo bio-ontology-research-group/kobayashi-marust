@@ -1150,7 +1150,9 @@ pub(crate) fn classify_cover(text: &str) -> Result<CoverAnswer, Decline> {
         // proves `A(d) → B(d)` in this partition.
         for a in 0..nclass {
             for d in 0..m {
-                if cand[a].is_none() {
+                // Instance check first: a class empty at `d` (a nominal probe
+                // at another element) needs no candidate checks there.
+                {
                     solves += 1;
                     match solver.solve(&[lits[a][d]], &mut budget) {
                         Outcome::Budget => return decline("conflict budget"),
