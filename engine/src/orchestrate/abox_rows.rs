@@ -370,6 +370,8 @@ pub(super) fn from_exported_model(
     let mut edge_set: HashSet<(usize, String, usize)>;
     let mut elem_inds: Vec<Vec<String>>;
     let mut ind_to_elem: HashMap<String, usize> = HashMap::new();
+    // Individuals the exported model does not contain (stand-in elements).
+    let mut stand_ins: HashSet<String> = HashSet::new();
 
     if raw.abox_elided || raw.route == "el-canonical" {
         let mut init_same: Vec<(String, String)> = Vec::new();
@@ -467,6 +469,7 @@ pub(super) fn from_exported_model(
         for pub_ind in &pub_individuals {
             if !ind_to_elem.contains_key(pub_ind) {
                 let u_new = labels.len();
+                stand_ins.insert(pub_ind.clone());
                 labels.push(vec![format!("__nom__{pub_ind}")]);
                 elem_inds.push(vec![pub_ind.clone()]);
                 ind_to_elem.insert(pub_ind.clone(), u_new);
@@ -1161,11 +1164,87 @@ pub(super) fn from_exported_model(
         }
     }
 
+    // A reconstructed structure (elided ABox, or the EL canonical model whose
+    // named part is rebuilt from the source) holds only the named individuals
+    // and, later, a bounded number of Skolem witnesses. It is not a model, so
+    // its named edges do not bound the entailed ones: composite roles (chains,
+    // transitivity) also hold between named individuals through anonymous
+    // elements, on a path that leaves `a` into its anonymous tree and returns
+    // (`c1(a, a)` from `s1(a, x)`, `s3(x, a)` with `s1 ∘ s3 ⊑ c1`), possibly
+    // composed with ABox edges. `ExcursionBound` adds those candidates to the
+    // upper bound; the residual probes decide them.
+    // Individuals that occur in no logical axiom (only in declarations or
+    // annotations) are absent from the exported model, whose stand-in
+    // elements carry no classes; their rows (for example `s(x, x)` from
+    // `⊤ ⊑ ∃s.Self`, or an excursion loop) were lost. Such an individual is
+    // interchangeable with a fresh one: without nominals or the universal
+    // role it can only be related to itself, so its loops on every role go to
+    // the residual probes; with them, the exact probe run decides everything.
+    let fresh_inds: Vec<usize> = if values_requested && !bound_disabled {
+        let mut mentioned: HashSet<String> = HashSet::new();
+        fn atoms<'a>(node: &Node<'a>, out: &mut Vec<&'a str>) {
+            match node {
+                Node::Atom(a) => out.push(a),
+                Node::List(_, args) => {
+                    for a in args {
+                        atoms(a, out);
+                    }
+                }
+            }
+        }
+        let _ = crate::frontend::parse::for_each_ontology_child(text, |node| {
+            if matches!(node.head(), Some("Declaration" | "AnnotationAssertion")) {
+                return Ok(());
+            }
+            let mut out = Vec::new();
+            atoms(node, &mut out);
+            for t in out {
+                if let Some(p) = ind_lookup.get(&expand_tok(t)).or_else(|| ind_lookup.get(&public_name(t))) {
+                    mentioned.insert(p.clone());
+                }
+            }
+            Ok(())
+        });
+        // A mentioned individual missing from the model has no reliable
+        // edges at all: let the exact probes answer.
+        if stand_ins.iter().any(|p| mentioned.contains(p)) {
+            return None;
+        }
+        pub_individuals
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| !mentioned.contains(*p))
+            .map(|(i, _)| i)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    // The TBox facts a fresh individual can have: loops on `HasSelf`,
+    // reflexive and excursion roles, and with nominals edges to and from any
+    // individual. `None` (anonymous individuals in assertions, the universal
+    // role, a fenced chain) falls back to the exact probe run.
+    let fresh_spec = if fresh_inds.is_empty() {
+        None
+    } else {
+        Some(ExcursionSpec::collect(text, &meta.rbox, &|tok: &str| resolve_role_short(tok))?)
+    };
+    let reconstructed = raw.abox_elided || raw.route == "el-canonical";
+    let excursion_spec = if reconstructed && values_requested && !bound_disabled {
+        Some(ExcursionSpec::collect(text, &meta.rbox, &|tok: &str| resolve_role_short(tok))?)
+    } else {
+        None
+    };
+    let excursion_ok = match &excursion_spec {
+        Some(spec) => ExcursionBound::compute(spec, &meta.rbox, n_elems, &edge_set).all_proved(&proved_edge_set),
+        None => true,
+    };
+
     // Fast path for `--values` without `--different`: when the ontology has no
     // `ObjectHasValue`, `ObjectOneOf`, or `ObjectHasSelf` constructs that could
     // derive new role edges between named individuals during clause saturation,
-    // and every named-individual edge in `edge_set` is already in `proved_edge_set`,
-    // `proved_edge_set` and `edge_set` are already final on `0..n_elems`.
+    // and every named-individual edge in `edge_set` and every anonymous-excursion
+    // candidate is already in `proved_edge_set`, `proved_edge_set` and
+    // `edge_set` are already final on `0..n_elems`.
     let has_elided_func_hazard = raw.abox_elided && {
         if text.contains("ObjectMaxCardinality(")
             || text.contains("ObjectExactCardinality(")
@@ -1216,6 +1295,8 @@ pub(super) fn from_exported_model(
         && edge_set
             .iter()
             .all(|e| e.0 >= n_elems || e.2 >= n_elems || proved_edge_set.contains(e))
+        && excursion_ok
+        && fresh_inds.is_empty()
     {
         let mut same_adj: HashMap<&str, Vec<&str>> = HashMap::new();
         for (a, b) in &same_pairs {
@@ -2821,6 +2902,88 @@ pub(super) fn from_exported_model(
                 }
             }
         }
+        if let Some(spec) = &fresh_spec {
+            let mut input = spec.input.clone();
+            input.flag_named_self_and_nominal = true;
+            for (u, r, v) in &edge_set {
+                if *u < n_elems && *v < n_elems {
+                    input.named_roles.insert(r.clone());
+                }
+            }
+            let nominal = spec.input.merge_into_named || !spec.input.nominal_roles.is_empty();
+            let fresh_roles = crate::frontend::named_role_bound::excursion_roles(&meta.rbox, &input);
+            for r in &fresh_roles {
+                let full_r = meta.iri_map.get(r).map(String::as_str).unwrap_or(r.as_str());
+                let Some(pub_r) = role_lookup.get(full_r).or_else(|| role_lookup.get(r)) else {
+                    continue;
+                };
+                let Some(&r_idx) = pub_role_to_idx.get(pub_r) else {
+                    continue;
+                };
+                for &x in &fresh_inds {
+                    let px = &pub_individuals[x];
+                    let others: Vec<usize> = if nominal { (0..pub_individuals.len()).collect() } else { vec![x] };
+                    for y in others {
+                        let py = &pub_individuals[y];
+                        if !plan.proved_values.contains(&[pub_r.clone(), px.clone(), py.clone()]) {
+                            plan.residual_value_targets.insert((r_idx, y));
+                            plan.residual_value_sources.insert(x);
+                        }
+                        if y != x && !plan.proved_values.contains(&[pub_r.clone(), py.clone(), px.clone()]) {
+                            plan.residual_value_targets.insert((r_idx, x));
+                            plan.residual_value_sources.insert(y);
+                        }
+                    }
+                }
+            }
+        }
+        // Anonymous-excursion candidates, recomputed on the final `edge_set`
+        // (Horn merges may have joined components): every unproved row of an
+        // excursion role inside one component goes to the residual probes.
+        if let Some(spec) = &excursion_spec {
+            let bound = ExcursionBound::compute(spec, &meta.rbox, n_elems, &edge_set);
+            let mut comp_inds: HashMap<usize, Vec<&String>> = HashMap::new();
+            for u in 0..n_elems {
+                comp_inds.entry(bound.comp[u]).or_default().extend(elem_inds[u].iter());
+            }
+            let comp_of_ind: HashMap<&str, usize> = (0..n_elems)
+                .flat_map(|u| elem_inds[u].iter().map(move |a| (a.as_str(), u)))
+                .map(|(a, u)| (a, bound.comp[u]))
+                .collect();
+            for r in &bound.roles {
+                let full_r = meta.iri_map.get(r).map(String::as_str).unwrap_or(r.as_str());
+                let Some(pub_r) = role_lookup.get(full_r).or_else(|| role_lookup.get(r)) else {
+                    continue;
+                };
+                let Some(&r_idx) = pub_role_to_idx.get(pub_r) else {
+                    continue;
+                };
+                let mut proved_into: HashMap<&str, usize> = HashMap::new();
+                for [pr, a, b] in &plan.proved_values {
+                    if pr == pub_r && comp_of_ind.get(a.as_str()) == comp_of_ind.get(b.as_str()) {
+                        *proved_into.entry(b.as_str()).or_default() += 1;
+                    }
+                }
+                for inds in comp_inds.values() {
+                    let mut open = false;
+                    for b in inds {
+                        if proved_into.get(b.as_str()).copied().unwrap_or(0) < inds.len() {
+                            if let Some(&b_idx) = pub_ind_to_idx.get(b.as_str()) {
+                                plan.residual_value_targets.insert((r_idx, b_idx));
+                                open = true;
+                            }
+                        }
+                    }
+                    if open {
+                        for a in inds {
+                            if let Some(&a_idx) = pub_ind_to_idx.get(a.as_str()) {
+                                plan.residual_value_sources.insert(a_idx);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if different_requested {
@@ -4289,6 +4452,242 @@ pub(super) fn from_exported_model(
     Some(plan)
 }
 
+/// What the TBox lets an anonymous element do, read from the source for
+/// `ExcursionBound`. Role names are the short names of `meta.rbox`; an inverse
+/// role is `__inv__r`.
+#[derive(Debug, Default)]
+struct ExcursionSpec {
+    input: crate::frontend::named_role_bound::ExcursionInput,
+    /// A nominal edge or a merge into a nominal can lead from the anonymous
+    /// tree of any named individual to any nominal individual: then all named
+    /// individuals are one component.
+    global: bool,
+    /// An anonymous individual occurs in an object property assertion or an
+    /// equality axiom.
+    anonymous_links: bool,
+}
+
+impl ExcursionSpec {
+    /// `None` when the source links anonymous individuals by assertions, or
+    /// has the universal role or a fenced role chain, together with composite
+    /// or merging roles: the
+    /// caller then falls back to exact probes.
+    fn collect(
+        text: &str,
+        rbox: &[Vec<String>],
+        role_short: &dyn Fn(&str) -> String,
+    ) -> Option<ExcursionSpec> {
+        fn signed(node: &Node<'_>, role_short: &dyn Fn(&str) -> String) -> Option<String> {
+            match node {
+                Node::Atom(r) => Some(role_short(r)),
+                Node::List("ObjectInverseOf", args) => {
+                    args.first().and_then(Node::as_atom).map(|r| format!("__inv__{}", role_short(r)))
+                }
+                _ => None,
+            }
+        }
+        fn walk(
+            node: &Node<'_>,
+            spec: &mut ExcursionSpec,
+            role_short: &dyn Fn(&str) -> String,
+        ) {
+            let Node::List(head, args) = node else { return };
+            let plain: Vec<&Node<'_>> = args.iter().filter(|a| a.head() != Some("Annotation")).collect();
+            let input = &mut spec.input;
+            match *head {
+                "ObjectSomeValuesFrom" | "ObjectAllValuesFrom" if plain.len() >= 2 => {
+                    if let Some(r) = signed(plain[0], role_short) {
+                        if *head == "ObjectSomeValuesFrom" && plain[1].head() == Some("ObjectOneOf") {
+                            input.nominal_roles.insert(r.clone());
+                            input.named_roles.insert(r);
+                            return;
+                        }
+                        input.gen_roles.insert(r);
+                    }
+                    walk(plain[1], spec, role_short);
+                }
+                "ObjectMinCardinality" | "ObjectMaxCardinality" | "ObjectExactCardinality" if plain.len() >= 2 => {
+                    if let Some(r) = signed(plain[1], role_short) {
+                        input.gen_roles.insert(r.clone());
+                        input.merging_roles.insert(r.clone());
+                        if plain.get(2).and_then(|f| f.head()) == Some("ObjectOneOf") {
+                            input.nominal_roles.insert(r.clone());
+                            input.named_roles.insert(r);
+                        }
+                    }
+                    for filler in plain.iter().skip(2) {
+                        walk(filler, spec, role_short);
+                    }
+                }
+                "ObjectHasValue" if plain.len() >= 2 => {
+                    if let Some(r) = signed(plain[0], role_short) {
+                        input.nominal_roles.insert(r.clone());
+                        input.named_roles.insert(r);
+                    }
+                }
+                "ObjectHasSelf" if !plain.is_empty() => {
+                    if let Some(r) = signed(plain[0], role_short) {
+                        input.self_roles.insert(r.clone());
+                        input.named_roles.insert(r);
+                    }
+                }
+                "ObjectOneOf" => {
+                    input.merge_into_named = true;
+                }
+                "FunctionalObjectProperty" if !plain.is_empty() => {
+                    if let Some(r) = signed(plain[0], role_short) {
+                        input.merging_roles.insert(r);
+                    }
+                }
+                "InverseFunctionalObjectProperty" if !plain.is_empty() => {
+                    if let Some(r) = signed(plain[0], role_short) {
+                        let inv = match r.strip_prefix("__inv__") {
+                            Some(base) => base.to_string(),
+                            None => format!("__inv__{r}"),
+                        };
+                        input.merging_roles.insert(inv);
+                    }
+                }
+                "ReflexiveObjectProperty" if !plain.is_empty() => {
+                    if let Some(r) = signed(plain[0], role_short) {
+                        input.self_roles.insert(r.clone());
+                        input.named_roles.insert(r);
+                    }
+                }
+                "ClassAssertion" => {
+                    if let Some(c) = plain.first() {
+                        walk(c, spec, role_short);
+                    }
+                }
+                "ObjectPropertyAssertion" | "NegativeObjectPropertyAssertion" | "SameIndividual"
+                | "DifferentIndividuals" => {
+                    // An anonymous individual linked to others is part of
+                    // the ABox graph, which the bound does not model; one
+                    // with class assertions only is an isolated element.
+                    if plain.iter().any(|a| a.as_atom().is_some_and(|t| t.starts_with("_:"))) {
+                        spec.anonymous_links = true;
+                    }
+                }
+                "Declaration" | "AnnotationAssertion" | "DataPropertyAssertion"
+                | "NegativeDataPropertyAssertion" => {}
+                _ => {
+                    for a in plain {
+                        walk(a, spec, role_short);
+                    }
+                }
+            }
+        }
+
+        let mut composite = false;
+        let mut fenced_chain = false;
+        for row in rbox {
+            match row.first().map(String::as_str) {
+                Some("transitive" | "chain" | "chain-n") => composite = true,
+                Some("fenced") if row.get(1).map(String::as_str) == Some("role-chain") => fenced_chain = true,
+                _ => {}
+            }
+        }
+        let mut spec = ExcursionSpec::default();
+        let _ = crate::frontend::parse::for_each_ontology_child(text, |node| {
+            walk(node, &mut spec, role_short);
+            Ok(())
+        });
+        if !composite && spec.input.merging_roles.is_empty() && !fenced_chain {
+            return Some(ExcursionSpec::default());
+        }
+        if fenced_chain || spec.anonymous_links || text.contains("topObjectProperty") {
+            return None;
+        }
+        spec.global = spec.input.merge_into_named || !spec.input.nominal_roles.is_empty();
+        Some(spec)
+    }
+}
+
+/// Upper bound on the edges between named elements `0..n` that a model can
+/// add through anonymous elements, beyond the named edges of `edge_set`: for
+/// every role of `excursion_roles`, every pair of named elements in one
+/// component. Components follow the named edges of `edge_set` (an anonymous
+/// tree hangs under one named individual and merges only with the named
+/// neighbours of its root), and are one when a nominal edge or a merge into a
+/// nominal lets an anonymous tree reach any nominal individual.
+struct ExcursionBound {
+    /// Roles (short names) that may hold between named individuals through
+    /// an anonymous element.
+    roles: Vec<String>,
+    /// Component of each named element.
+    comp: Vec<usize>,
+    /// Number of named elements per component.
+    comp_size: HashMap<usize, usize>,
+}
+
+impl ExcursionBound {
+    fn compute(
+        spec: &ExcursionSpec,
+        rbox: &[Vec<String>],
+        n: usize,
+        edge_set: &HashSet<(usize, String, usize)>,
+    ) -> ExcursionBound {
+        let mut input = spec.input.clone();
+        for (u, r, v) in edge_set {
+            if *u < n && *v < n {
+                input.named_roles.insert(r.clone());
+            }
+        }
+        let roles: Vec<String> =
+            crate::frontend::named_role_bound::excursion_roles(rbox, &input).into_iter().collect();
+        let mut uf: Vec<usize> = (0..n).collect();
+        fn find(uf: &mut [usize], mut x: usize) -> usize {
+            while uf[x] != x {
+                uf[x] = uf[uf[x]];
+                x = uf[x];
+            }
+            x
+        }
+        if !roles.is_empty() {
+            if spec.global {
+                for x in 1..n {
+                    uf[x] = 0;
+                }
+            } else {
+                for (u, _, v) in edge_set {
+                    if *u < n && *v < n {
+                        let (ru, rv) = (find(&mut uf, *u), find(&mut uf, *v));
+                        if ru != rv {
+                            uf[ru.max(rv)] = ru.min(rv);
+                        }
+                    }
+                }
+            }
+        }
+        let comp: Vec<usize> = (0..n).map(|u| find(&mut uf, u)).collect();
+        let mut comp_size: HashMap<usize, usize> = HashMap::new();
+        for &c in &comp {
+            *comp_size.entry(c).or_default() += 1;
+        }
+        ExcursionBound { roles, comp, comp_size }
+    }
+
+    /// Whether every candidate edge is already in `proved` (named part).
+    fn all_proved(&self, proved: &HashSet<(usize, String, usize)>) -> bool {
+        if self.roles.is_empty() {
+            return true;
+        }
+        let n = self.comp.len();
+        let mut count: HashMap<(&str, usize), usize> = HashMap::new();
+        for (u, r, v) in proved {
+            if *u < n && *v < n && self.comp[*u] == self.comp[*v] {
+                *count.entry((r.as_str(), self.comp[*u])).or_default() += 1;
+            }
+        }
+        self.roles.iter().all(|r| {
+            self.comp_size
+                .iter()
+                .all(|(c, size)| count.get(&(r.as_str(), *c)).copied().unwrap_or(0) == size * size)
+        })
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::super::config::Config;
@@ -5116,5 +5515,236 @@ mod tests {
             SubClassOf(:A ObjectSomeValuesFrom(:r :C))\n\
             SubClassOf(:C ObjectOneOf(:b))\n)";
         assert_model_abox_matches_probe_oracle("adv13-nominal-absorption-value", adv13);
+    }
+
+    /// `--values` without `--realize` (no individual probes, so the model
+    /// path reads an elided or EL-canonical model) against the exact probe
+    /// oracle, plus the HermiT rows each case must contain. With `pad`, 40
+    /// filler individuals and 6 filler roles switch on `NamedRoleBound`.
+    fn assert_values_without_realize(name: &str, axioms: &str, expect: &[[&str; 3]], pad: bool) {
+        let mut toks: BTreeSet<String> = BTreeSet::new();
+        let mut cur = String::new();
+        let mut in_tok = false;
+        for ch in axioms.chars() {
+            if ch == ':' {
+                in_tok = true;
+                cur.clear();
+            } else if in_tok && ch.is_ascii_alphanumeric() {
+                cur.push(ch);
+            } else if in_tok {
+                in_tok = false;
+                toks.insert(cur.clone());
+            }
+        }
+        let is_ind = |t: &str| matches!(t, "a" | "b" | "d" | "e");
+        let mut decls = String::new();
+        for t in &toks {
+            if t == "Thing" {
+                continue;
+            } else if is_ind(t) {
+                decls.push_str(&format!("Declaration(NamedIndividual(:{t}))\n"));
+            } else if t.starts_with(|c: char| c.is_ascii_uppercase()) {
+                decls.push_str(&format!("Declaration(Class(:{t}))\n"));
+            } else {
+                decls.push_str(&format!("Declaration(ObjectProperty(:{t}))\n"));
+            }
+        }
+        let mut extra = String::new();
+        if pad {
+            for i in 0..40 {
+                decls.push_str(&format!("Declaration(NamedIndividual(:z{i}))\n"));
+            }
+            for i in 0..6 {
+                decls.push_str(&format!("Declaration(ObjectProperty(:p{i}))\n"));
+            }
+            extra.push_str("ObjectPropertyAssertion(:p0 :z0 :z1)\n");
+        }
+        let ofn = format!(
+            "Prefix(:=<http://ex.org/>)\nPrefix(owl:=<http://www.w3.org/2002/07/owl#>)\nOntology(<http://ex.org/{name}>\n{decls}{axioms}\n{extra})\n"
+        );
+        let _test_env = crate::test_env::write();
+        let _env = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "auto");
+        std::env::set_var("KM_THREADS", "1");
+        let path = TempPath::new(&format!("-{name}.ofn"));
+        std::fs::write(path.path(), &ofn).unwrap();
+        let cfg = Config::from_env();
+        let model_ext = classify_extended(&cfg, path.path(), None, false, false, false, true, false).unwrap();
+        let probe_ext = {
+            let _g = crate::routing::EnvironmentGuard::capture();
+            std::env::set_var("KM_ABOX_PROBES_ONLY", "1");
+            classify_extended(&cfg, path.path(), None, false, false, false, true, false).unwrap()
+        };
+        let short = |s: &str| s.rsplit([':', '/', '#']).next().unwrap_or(s).to_string();
+        let rows: BTreeSet<[String; 3]> = model_ext
+            .abox
+            .values
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|[r, a, b]| [short(&r), short(&a), short(&b)])
+            .collect();
+        for [r, a, b] in expect {
+            assert!(
+                rows.contains(&[r.to_string(), a.to_string(), b.to_string()]),
+                "{name}: missing VALUE {r} {a} {b}; got {rows:?}"
+            );
+        }
+        assert_eq!(model_ext.abox.values, probe_ext.abox.values, "VALUE mismatch on {name}");
+    }
+
+    /// Values between named individuals derived through an anonymous
+    /// individual by a role chain or a transitive role (the `f9002_44` shape
+    /// and its siblings). The expected rows are HermiT's.
+    #[test]
+    fn values_through_anonymous_excursions_without_realize() {
+        let cases: &[(&str, &str, &[[&str; 3]])] = &[
+            (
+                "f9002_44_chain_anon",
+                "SubObjectPropertyOf(ObjectInverseOf(:s3) :s1)\nSymmetricObjectProperty(:s1)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(ObjectInverseOf(:s3) :B))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:s1 :s3) :c1)\nClassAssertion(:B :a)",
+                &[["c1", "a", "a"]],
+            ),
+            (
+                "chain3_around_abox_edge",
+                "ObjectPropertyAssertion(:r :a :b)\nClassAssertion(:B :b)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(:s owl:Thing))\n\
+                 SubObjectPropertyOf(ObjectInverseOf(:s) :t)\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:r :s :t) :c)",
+                &[["c", "a", "b"]],
+            ),
+            (
+                "transitive_symmetric_loop",
+                "TransitiveObjectProperty(:t)\nSymmetricObjectProperty(:t)\nClassAssertion(:B :a)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(:t owl:Thing))",
+                &[["t", "a", "a"]],
+            ),
+            (
+                "transitive_with_inverse_subrole",
+                "TransitiveObjectProperty(:t)\nInverseObjectProperties(:t :ti)\nSubObjectPropertyOf(:ti :t)\n\
+                 ClassAssertion(:B :a)\nSubClassOf(:B ObjectSomeValuesFrom(:t :B))",
+                &[["t", "a", "a"], ["ti", "a", "a"]],
+            ),
+            (
+                "chain_with_inverse_step_self_loop",
+                "SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:r)) :c)\nClassAssertion(:B :a)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(:r owl:Thing))",
+                &[["c", "a", "a"]],
+            ),
+            (
+                "nested_chains",
+                "SubObjectPropertyOf(ObjectPropertyChain(:p :s) :c)\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:q1 :q2) :p)\n\
+                 SubObjectPropertyOf(ObjectInverseOf(:q2) :s1)\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:s1 :s2) :s)\n\
+                 SubObjectPropertyOf(ObjectInverseOf(:q1) :s2)\nClassAssertion(:B :a)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(:q1 ObjectSomeValuesFrom(:q2 owl:Thing)))",
+                &[["c", "a", "a"]],
+            ),
+            (
+                "transitive_composed_with_abox",
+                "TransitiveObjectProperty(:t)\nSubObjectPropertyOf(ObjectInverseOf(:u) :t)\n\
+                 SubObjectPropertyOf(:u :t)\nObjectPropertyAssertion(:k :a :b)\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:k :t) :c)\nClassAssertion(:B :b)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(:u owl:Thing))",
+                &[["c", "a", "b"], ["t", "b", "b"]],
+            ),
+            (
+                "same_individual_with_anonymous_loop",
+                "SameIndividual(:a :b)\nClassAssertion(:B :a)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(:r owl:Thing))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:r)) :c)",
+                &[["c", "a", "a"], ["c", "a", "b"], ["c", "b", "a"], ["c", "b", "b"]],
+            ),
+            (
+                "functional_merge_feeding_chain",
+                "FunctionalObjectProperty(:f)\nObjectPropertyAssertion(:f :a :b)\nClassAssertion(:B :a)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(:f ObjectSomeValuesFrom(:s owl:Thing)))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:f :s ObjectInverseOf(:s)) :c)",
+                &[["c", "a", "b"]],
+            ),
+            (
+                "max_cardinality_merge_feeding_chain",
+                "ObjectPropertyAssertion(:f :a :b)\nClassAssertion(:B :a)\n\
+                 SubClassOf(:B ObjectMaxCardinality(1 :f))\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(:f ObjectSomeValuesFrom(:s owl:Thing)))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:f :s ObjectInverseOf(:s)) :c)",
+                &[["c", "a", "b"]],
+            ),
+            (
+                "inverse_functional_merge_feeding_chain",
+                "InverseFunctionalObjectProperty(:f)\nObjectPropertyAssertion(:f :b :a)\nClassAssertion(:B :a)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(ObjectInverseOf(:f) ObjectSomeValuesFrom(:s owl:Thing)))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(ObjectInverseOf(:f) :s ObjectInverseOf(:s)) :c)",
+                &[["c", "a", "b"]],
+            ),
+            (
+                "chain_ending_at_nominal",
+                "ClassAssertion(:B :a)\n\
+                 SubClassOf(:B ObjectSomeValuesFrom(:r ObjectSomeValuesFrom(:s ObjectOneOf(:b))))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:r :s) :c)",
+                &[["c", "a", "b"]],
+            ),
+            (
+                "chain_through_three_anonymous_levels_to_has_value",
+                "ClassAssertion(:B :a)\nSubClassOf(:B ObjectSomeValuesFrom(:r :D))\n\
+                 SubClassOf(:D ObjectSomeValuesFrom(:r :E))\nSubClassOf(:E ObjectSomeValuesFrom(:r :F))\n\
+                 SubClassOf(:F ObjectHasValue(:s :b))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:r :r :r :s) :c)",
+                &[["c", "a", "b"]],
+            ),
+            (
+                "domain_existential_before_abox_edge",
+                "ObjectPropertyDomain(:k ObjectSomeValuesFrom(:r owl:Thing))\nObjectPropertyAssertion(:k :a :b)\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:r) :k) :c)",
+                &[["c", "a", "b"]],
+            ),
+            (
+                "complex_class_assertion_excursion",
+                "ClassAssertion(ObjectSomeValuesFrom(:r owl:Thing) :a)\nObjectPropertyAssertion(:k :b :a)\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:k :r ObjectInverseOf(:r)) :c)",
+                &[["c", "b", "a"]],
+            ),
+            (
+                "disjunctive_excursion",
+                "ClassAssertion(:B :a)\nSubClassOf(:B ObjectUnionOf(:D :E))\n\
+                 SubClassOf(:D ObjectSomeValuesFrom(:r owl:Thing))\nSubClassOf(:E ObjectSomeValuesFrom(:r owl:Thing))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:r)) :c)",
+                &[["c", "a", "a"]],
+            ),
+            (
+                "inverse_pair_under_transitive_role",
+                "InverseObjectProperties(:l :r)\nSubObjectPropertyOf(:l :p)\nSubObjectPropertyOf(:r :p)\n\
+                 TransitiveObjectProperty(:p)\nSubClassOf(:B ObjectSomeValuesFrom(:l owl:Thing))\nClassAssertion(:B :a)\n\
+                 ObjectPropertyAssertion(:k :b :b)",
+                &[["p", "a", "a"]],
+            ),
+            (
+                "fresh_individual_has_self_from_top",
+                "SubClassOf(ObjectComplementOf(:E) :E)\nSubClassOf(:E ObjectHasSelf(:s))\nClassAssertion(:B :a)\n\
+                 Declaration(NamedIndividual(:e))",
+                &[["s", "a", "a"], ["s", "e", "e"]],
+            ),
+            (
+                "fresh_individual_excursion_loop",
+                "SubClassOf(owl:Thing ObjectSomeValuesFrom(:r owl:Thing))\n\
+                 SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:r)) :c)\nClassAssertion(:B :a)\n\
+                 Declaration(NamedIndividual(:e))",
+                &[["c", "a", "a"], ["c", "e", "e"]],
+            ),
+            (
+                "fresh_individual_functional_self",
+                "SubObjectPropertyOf(ObjectInverseOf(:s0) :s0)\nInverseFunctionalObjectProperty(:s0)\n\
+                 SubClassOf(ObjectMaxCardinality(1 :s0) :D)\nSubClassOf(:D ObjectHasSelf(:s1))\n\
+                 ObjectPropertyAssertion(:k :a :b)\nDeclaration(NamedIndividual(:e))",
+                &[["s1", "a", "a"], ["s1", "e", "e"]],
+            ),
+        ];
+        let _test_env = crate::test_env::write();
+        for (name, axioms, expect) in cases {
+            assert_values_without_realize(name, axioms, expect, false);
+            assert_values_without_realize(&format!("{name}_pad"), axioms, expect, true);
+        }
     }
 }
