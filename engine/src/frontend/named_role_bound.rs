@@ -990,6 +990,45 @@ impl NamedRoleBound {
                 self_roles.insert(sup.clone());
             }
         }
+        // The pairwise fold test above misses excursions through nested
+        // chains, transitive roles and chain steps around an ABox edge
+        // (`k ∘ r ∘ r⁻`). `excursion_roles` decides them on a finite
+        // abstraction of the forest model; each reported role may hold
+        // between named individuals through an anonymous element and is
+        // treated as a diagonal role (every named individual is a target).
+        {
+            let mut rows: Vec<Vec<String>> = Vec::new();
+            for (a, b) in &subroles {
+                rows.push(vec!["subrole".into(), a.clone(), b.clone()]);
+            }
+            for (a, b) in &inverses {
+                rows.push(vec!["inverse".into(), a.clone(), b.clone()]);
+            }
+            for r in &transitive {
+                rows.push(vec!["transitive".into(), r.clone()]);
+            }
+            for (ch, sup) in &chains {
+                let mut row = vec!["chain-n".to_string(), sup.clone()];
+                row.extend(ch.iter().cloned());
+                rows.push(row);
+            }
+            let inv = |r: &String| format!("__inv__{r}");
+            let mut input = ExcursionInput::default();
+            input.named_roles.extend(edges.keys().cloned());
+            input.named_roles.extend(self_roles.iter().cloned());
+            input.named_roles.extend(w_src.iter().filter(|(_, s)| !s.is_empty()).map(|(r, _)| r.clone()));
+            input.named_roles.extend(w_dst.iter().filter(|(_, s)| !s.is_empty()).map(|(r, _)| r.clone()));
+            input.gen_roles.extend(pos_existential_roles.iter().cloned());
+            input.gen_roles.extend(inv_existential_roles.iter().map(inv));
+            input.self_roles.extend(self_roles.iter().cloned());
+            input.nominal_roles.extend(w_src.iter().filter(|(_, s)| !s.is_empty()).map(|(r, _)| r.clone()));
+            input.nominal_roles.extend(w_dst.iter().filter(|(_, s)| !s.is_empty()).map(|(r, _)| inv(r)));
+            input.merging_roles.extend(functional.iter().cloned());
+            input.merging_roles.extend(inv_functional.iter().map(inv));
+            for r in excursion_roles(&rows, &input) {
+                self_roles.insert(r);
+            }
+        }
 
         // Collect lowered rules for fixpoint evaluation.
         let mut all_rules: Vec<(Vec<RuleAtom>, Vec<RuleAtom>)> = Vec::new();
@@ -2634,6 +2673,282 @@ impl NamedRoleBound {
             mk_and(head_parts)
         };
         Some(Axiom::SubClassOf(premise, conclusion))
+    }
+}
+
+/// What the TBox lets anonymous elements do, for [`excursion_roles`]. Role
+/// names are RBox names; `__inv__r` is the inverse of `r`.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ExcursionInput {
+    /// Roles with an edge between named individuals (asserted, or from a
+    /// nominal or `HasSelf` at a named individual).
+    pub named_roles: BTreeSet<String>,
+    /// Roles that create an edge from a parent to an anonymous child:
+    /// existentials and min-cardinalities in positive polarity, universals and
+    /// max-cardinalities in negative polarity (any polarity is also sound).
+    pub gen_roles: BTreeSet<String>,
+    /// `HasSelf` and reflexive roles: loops on anonymous elements.
+    pub self_roles: BTreeSet<String>,
+    /// Roles of `ObjectHasValue(s b)` and `ObjectSomeValuesFrom(s {b})`: an
+    /// anonymous element may have an `s` edge to a named individual.
+    pub nominal_roles: BTreeSet<String>,
+    /// An anonymous element may equal a named individual (a positive
+    /// `ObjectOneOf` outside an existential filler).
+    pub merge_into_named: bool,
+    /// Roles whose successors may merge (functional, inverse-functional,
+    /// cardinality restrictions).
+    pub merging_roles: BTreeSet<String>,
+    /// Also report the roles of `HasSelf` and nominal edges as holding at a
+    /// named individual through the TBox alone (an individual that occurs
+    /// in no axiom has no other edges).
+    pub flag_named_self_and_nominal: bool,
+}
+
+/// Roles `r` that can hold between named individuals through an anonymous
+/// element: `r(a, b)` derived by the RBox from a path that leaves the named
+/// part. A forest model consists of named individuals with their ABox edges
+/// and, under each named individual, a tree of anonymous elements; a tree is
+/// entered and left through the same named individual unless one of its
+/// elements has a nominal edge or merges with a named individual. Two
+/// anonymous-tree steps compose into a named edge only when the RBox composes
+/// them: `c1(a, a)` from `s1(a, x)`, `s3(x, a)` with `s1 ∘ s3 ⊑ c1`, or
+/// `t(a, a)` from a symmetric transitive `t`.
+///
+/// The test runs on an abstraction with one node `N` for all named
+/// individuals and one node `X_t` for the anonymous elements generated through
+/// role `t` (one node for all when there are more than 64 generating roles).
+/// Every forest model maps homomorphically onto it (an anonymous element to
+/// the node of the role that generated it, or to `N` when it merged with a
+/// named individual; merged anonymous elements to one node), and the RBox
+/// closure is monotone under homomorphisms. Each fact carries a flag that is
+/// set when its derivation used an edge at an anonymous node, so a role whose
+/// named edges all come from the ABox is not reported. The result
+/// over-approximates: probes decide each candidate exactly.
+pub(crate) fn excursion_roles(rbox: &[Vec<String>], input: &ExcursionInput) -> BTreeSet<String> {
+    use std::collections::{HashMap, HashSet};
+    type Facts = HashMap<String, HashSet<(usize, usize, bool)>>;
+    fn base(r: &str) -> (&str, bool) {
+        match r.strip_prefix("__inv__") {
+            Some(b) => (b, true),
+            None => (r, false),
+        }
+    }
+    fn add(facts: &mut Facts, r: &str, u: usize, v: usize, f: bool) -> bool {
+        let (b, inv) = base(r);
+        let (u, v) = if inv { (v, u) } else { (u, v) };
+        let set = facts.entry(b.to_string()).or_default();
+        // A fact without the flag subsumes nothing: keep both, the flagged one
+        // is what the caller reads.
+        set.insert((u, v, f))
+    }
+    fn pairs(facts: &Facts, r: &str) -> Vec<(usize, usize, bool)> {
+        let (b, inv) = base(r);
+        match facts.get(b) {
+            Some(set) if inv => set.iter().map(|&(u, v, f)| (v, u, f)).collect(),
+            Some(set) => set.iter().copied().collect(),
+            None => Vec::new(),
+        }
+    }
+    fn by_source(ps: &[(usize, usize, bool)]) -> HashMap<usize, Vec<(usize, bool)>> {
+        let mut out: HashMap<usize, Vec<(usize, bool)>> = HashMap::new();
+        for &(u, v, f) in ps {
+            out.entry(u).or_default().push((v, f));
+        }
+        out
+    }
+    fn closure(rbox: &[Vec<String>], n_nodes: usize, facts: &mut Facts) {
+        loop {
+            let mut changed = false;
+            for row in rbox {
+                let kind = row.first().map(String::as_str);
+                let (kind, args) = if kind == Some("fenced") {
+                    (row.get(1).map(String::as_str), row.get(2..).unwrap_or(&[]))
+                } else {
+                    (kind, row.get(1..).unwrap_or(&[]))
+                };
+                match kind {
+                    Some("subrole" | "sub-role") if args.len() >= 2 => {
+                        for (u, v, f) in pairs(facts, &args[0]) {
+                            changed |= add(facts, &args[1], u, v, f);
+                        }
+                    }
+                    Some("inverse") if args.len() >= 2 => {
+                        for (u, v, f) in pairs(facts, &args[0]) {
+                            changed |= add(facts, &args[1], v, u, f);
+                        }
+                        for (u, v, f) in pairs(facts, &args[1]) {
+                            changed |= add(facts, &args[0], v, u, f);
+                        }
+                    }
+                    Some("symmetric-role") if !args.is_empty() => {
+                        for (u, v, f) in pairs(facts, &args[0]) {
+                            changed |= add(facts, &args[0], v, u, f);
+                        }
+                    }
+                    Some("reflexivity" | "reflexive") if !args.is_empty() => {
+                        for u in 0..n_nodes {
+                            changed |= add(facts, &args[0], u, u, false);
+                        }
+                    }
+                    Some("transitive") if !args.is_empty() => {
+                        let ps = pairs(facts, &args[0]);
+                        let out = by_source(&ps);
+                        for &(u, m, f1) in &ps {
+                            if let Some(next) = out.get(&m) {
+                                for &(w, f2) in next {
+                                    changed |= add(facts, &args[0], u, w, f1 || f2);
+                                }
+                            }
+                        }
+                    }
+                    Some("chain") if args.len() >= 3 => {
+                        changed |= compose(facts, &args[..2], &args[2]);
+                    }
+                    Some("chain-n") if args.len() >= 3 => {
+                        changed |= compose(facts, &args[1..], &args[0]);
+                    }
+                    _ => {}
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+    fn compose(facts: &mut Facts, chain: &[String], sup: &str) -> bool {
+        let mut reach: HashSet<(usize, usize, bool)> = pairs(facts, &chain[0]).into_iter().collect();
+        for step in &chain[1..] {
+            let out = by_source(&pairs(facts, step));
+            let mut next = HashSet::new();
+            for &(u, m, f1) in &reach {
+                if let Some(ws) = out.get(&m) {
+                    for &(w, f2) in ws {
+                        next.insert((u, w, f1 || f2));
+                    }
+                }
+            }
+            reach = next;
+            if reach.is_empty() {
+                return false;
+            }
+        }
+        let mut changed = false;
+        for (u, w, f) in reach {
+            changed |= add(facts, sup, u, w, f);
+        }
+        changed
+    }
+    fn find(uf: &mut [usize], mut x: usize) -> usize {
+        while uf[x] != x {
+            uf[x] = uf[uf[x]];
+            x = uf[x];
+        }
+        x
+    }
+
+    let flag_named = input.flag_named_self_and_nominal;
+    if input.gen_roles.is_empty()
+        && input.nominal_roles.is_empty()
+        && !(flag_named && !input.self_roles.is_empty())
+    {
+        return BTreeSet::new();
+    }
+    // Generating roles whose edges can reach, through the hierarchy and
+    // inverses, a composite or merging role; other edges never contribute.
+    let mut relevant: HashSet<String> = HashSet::new();
+    for row in rbox {
+        let kind = row.first().map(String::as_str);
+        match kind {
+            Some("transitive" | "chain" | "chain-n") => {
+                relevant.extend(row[1..].iter().map(|r| base(r).0.to_string()));
+            }
+            _ => {}
+        }
+    }
+    relevant.extend(input.merging_roles.iter().map(|r| base(r).0.to_string()));
+    if relevant.is_empty() && !flag_named {
+        return BTreeSet::new();
+    }
+    let matters = |r: &str| -> bool {
+        if input.merge_into_named || flag_named {
+            return true;
+        }
+        let mut probe: Facts = HashMap::new();
+        add(&mut probe, r, 0, 1, false);
+        closure(rbox, 2, &mut probe);
+        probe.keys().any(|k| relevant.contains(k))
+    };
+    let gens: Vec<&String> = input.gen_roles.iter().filter(|r| matters(r)).collect();
+    let noms: Vec<&String> = input.nominal_roles.iter().filter(|r| matters(r)).collect();
+    let selfs: Vec<&String> = input.self_roles.iter().filter(|r| matters(r)).collect();
+    if gens.is_empty() && noms.is_empty() && !(flag_named && !selfs.is_empty()) {
+        return BTreeSet::new();
+    }
+    let shared = gens.len() > 64;
+    let n_nodes = if shared { 2 } else { 1 + gens.len().max(1) };
+    let node_of = |i: usize| if shared { 1 } else { 1 + i };
+    let mut seeds: Vec<(String, usize, usize, bool)> = Vec::new();
+    for r in &input.named_roles {
+        seeds.push((r.clone(), 0, 0, false));
+    }
+    if flag_named {
+        for s in selfs.iter().chain(noms.iter()) {
+            seeds.push(((*s).clone(), 0, 0, true));
+        }
+    }
+    for (i, t) in gens.iter().enumerate() {
+        for p in 0..n_nodes {
+            seeds.push(((*t).clone(), p, node_of(i), true));
+        }
+    }
+    for x in 1..n_nodes {
+        for s in &selfs {
+            seeds.push(((*s).clone(), x, x, true));
+        }
+        for s in &noms {
+            seeds.push(((*s).clone(), x, 0, true));
+        }
+    }
+    let mut uf: Vec<usize> = (0..n_nodes).collect();
+    if input.merge_into_named {
+        for x in 1..n_nodes {
+            uf[x] = 0;
+        }
+    }
+    loop {
+        let mut facts: Facts = HashMap::new();
+        for (r, u, v, f) in &seeds {
+            let (fu, fv) = (find(&mut uf, *u), find(&mut uf, *v));
+            add(&mut facts, r, fu, fv, *f);
+        }
+        closure(rbox, n_nodes, &mut facts);
+        let mut merged = false;
+        for f in &input.merging_roles {
+            let mut succ: HashMap<usize, BTreeSet<usize>> = HashMap::new();
+            for (u, v, _) in pairs(&facts, f) {
+                succ.entry(u).or_default().insert(v);
+            }
+            for set in succ.values() {
+                let mut it = set.iter();
+                if let Some(&first) = it.next() {
+                    for &q in it {
+                        let (ra, rb) = (find(&mut uf, first), find(&mut uf, q));
+                        if ra != rb {
+                            uf[ra.max(rb)] = ra.min(rb);
+                            merged = true;
+                        }
+                    }
+                }
+            }
+        }
+        if !merged {
+            let named = find(&mut uf, 0);
+            return facts
+                .into_iter()
+                .filter(|(_, set)| set.contains(&(named, named, true)))
+                .map(|(r, _)| r)
+                .collect();
+        }
     }
 }
 

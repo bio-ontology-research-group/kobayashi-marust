@@ -165,6 +165,90 @@ entailed inequalities:
      exact probe classification (`__val_subj__` / `__val_obj__` in
      `residual_extension`). When every edge of `M_0` between named individuals
      is already in `H_0`, `residual_value_targets` is empty and `0` probes run.
+   - **Reconstructed structures are not models (anonymous excursions).** The
+     negative bound above needs `M_0` to be a model of `O`. That holds for the
+     `ht-bridge` and `cb-horn` models read from the export, but not when the
+     ABox was elided from the exported model (`abox_elided`, the usual case for
+     `--values` without `--realize`) or on `el-canonical`: then
+     `from_exported_model` rebuilds the named part from the source (ABox edges,
+     class assertions, Horn saturation, at most three rounds of Skolem
+     witnesses), and that structure is not a model. The earlier argument
+     claimed that, without `ObjectHasValue`, `ObjectOneOf` and
+     `ObjectHasSelf`, no edge between named individuals arises beyond the
+     asserted ones and their RBox closure. That condition is wrong for
+     composite roles: a path can leave a named individual into its anonymous
+     tree and come back, and a role chain or a transitive role turns the path
+     into a named edge. Example (`f9002_44`): `B(a4)`, `B ⊑ ∃s3⁻.B`,
+     `s3⁻ ⊑ s1`, `s1` symmetric and `s1 ∘ s3 ⊑ c1` entail `c1(a4, a4)` through
+     the anonymous `x` with `s3(x, a4)` and `s1(a4, x)`. KM lost the row
+     because the fast path compared two structures that both lacked it.
+     The upper bound is now `edge_set` plus `ExcursionBound`: each role that
+     `named_role_bound::excursion_roles` reports, over every pair of named
+     individuals in one component of the named edge graph (a single component
+     when the source has a nominal edge or a merge into a nominal). The fast
+     path is taken only when all those candidates are proved; otherwise every
+     unproved candidate goes to the residual probes, which decide it exactly.
+     *Argument.* A consistent `O` has a forest model `I`: the named
+     individuals with their named edges, and under each a tree of anonymous
+     elements, each created through one generating role (an existential or
+     min-cardinality restriction, a negated universal or max-cardinality),
+     with `HasSelf` loops, merges among the successors of a merging role
+     (functional, inverse-functional, cardinality) and identifications with
+     nominals. `excursion_roles` works on an abstraction with one node `N`
+     for all named individuals and one node `X_t` per generating role `t`.
+     Sending every element of `I` to its node is a homomorphism once the
+     abstraction merges the successors of every merging role, and the RBox
+     closure is monotone under homomorphisms. Each abstract fact carries a
+     flag, set when its derivation used an edge at an anonymous node, so a
+     named pair `r(a, b)` of `I` whose derivation needs an anonymous element
+     maps to a flagged fact `(N, r, N)`, and `r` is reported. Its path enters
+     and leaves anonymous trees only at named individuals joined by named
+     edges, or through nominals, so `a` and `b` lie in one component. Every
+     named edge of `I` is therefore in `edge_set` or a candidate, and a pair
+     in neither has the countermodel `I`.
+   - **Individuals outside the model.** The `ht-bridge` model holds only the
+     individuals the ABox mentions; `from_exported_model` gave every other
+     declared individual a stand-in element without classes or edges, so a
+     row such as `s(x, x)` from `⊤ ⊑ ∃s.Self` (or `⊤ ⊑ ≤1 s0` derived from an
+     inverse-functional `s0` with `s0⁻ ⊑ s0`) was lost for an individual `x`
+     that occurs only in its declaration. Such an `x` is interchangeable with
+     a fresh individual, so its rows are what the TBox gives every element:
+     loops on the roles that `excursion_roles` reports when `HasSelf` and
+     nominal roles also count at a named individual, and, when nominals
+     occur, edges on those roles to and from any individual. Each such row
+     that the Horn structure does not prove goes to the residual probes. When
+     an individual that occurs in an axiom is missing from the model, or the
+     source links anonymous individuals or uses the universal role,
+     `from_exported_model` declines and the exact probe run answers.
+   - **Named individuals forced equal (2026-11-21).** Horn rules can force
+     two named individuals equal: a nominal domain (`t1` with domain `{a1}`
+     and `t1(a0, a3)` gives `a0 = a1`), `⊤ ⊑ =1 s3` with domain `{a0}` (every
+     individual equals `a0`), or `B ⊑ {o}`. The structure carries such
+     merges only when `has_horn_merges` holds (elided ABox); otherwise it
+     keeps the two elements apart, so it is not a model and both bounds miss
+     the rows of the merged individuals (`g7002_0026` lost `t0(a1, a0)`,
+     `f4104_41` lost 3,240 of 6,480 VALUE rows without `--realize`).
+     `saturate_horn_in_place` now applies every Horn nominal merge
+     (`[B(x)] -> [x = o]`, with or without the head `{o}`) to its union-find,
+     and when two named elements end in one class without `has_horn_merges`,
+     `from_exported_model` declines and the exact probe run answers.
+   - **Bare individuals (2026-11-22).** An individual `a` that occurs only in
+     its declaration, annotations and `ClassAssertion(A, a)` with named `A`
+     (the set `S_a`) needs no value probe when every `SubClassOf`,
+     `EquivalentClasses` and `DisjointClasses` axiom holds at a *bare*
+     element: atomic classes exactly `S_a`, no successors, no data values
+     (`∃`, `HasValue`, `HasSelf`, `OneOf` and `≥ n` with `n ≥ 1` are false
+     there; `∀` and `≤ n` are true), all other axioms are property axioms or
+     assertions about other individuals, and the source has no universal
+     role, reflexive role, key or rule. Argument: take any model `I` of `O`,
+     add a new bare element `x` and interpret `a` as `x`. No element has an
+     edge to `x` and no nominal names `a`, so every other element keeps its
+     truth values, `x` satisfies the TBox by the check, and `a`'s assertions
+     hold; the result is a model of `O` in which `a` has no edge. So no row
+     `r(a, y)` or `r(y, a)` is entailed, and `from_exported_model` drops the
+     residual targets and sources of `a`. This removes the 112 excursion
+     targets of `ore_ont_14012` (16 `oboInOwl#Subset` individuals, 7
+     transitive or inverse roles), whose probe run had timed out.
 
 3. **`DIFFERENT` (`DifferentIndividuals`)**:
    - Two individuals `a` and `b` that are distinct elements in `M_0`
@@ -181,6 +265,44 @@ entailed inequalities:
      singletons. Because every fact in `H_0` holds in *every* model of `O`, a
      clash in `H_0 / (u = v)` proves that no model of `O` can identify `u` and
      `v`, so `(a, b)` is emitted in `proved_different`.
+   - **What an element of `H_0` stands for (2026-11-21).** The argument above
+     needs every element of `H_0` to name one term whose facts hold in every
+     model: a named individual, or a Skolem term `f(u)` created for exactly
+     that function at `u` while the existential's body is entailed at `u`.
+     Every clash rule may then use the element as that term. In particular the
+     min-cardinality rule `[M(x), f1(x) = f2(x)] -> []` concludes a clash from
+     `find(w1) == find(w2)` only when `w1` and `w2` are the dedicated
+     witnesses of `f1(u)` and `f2(u)`: if the Horn rules on `H_0 / (u = v)`
+     force them equal, every model of `O ∪ {a = b}` has `f1(u) = f2(u)` and
+     `M(u)`, which `O` forbids. An existing successor that only carries the
+     filler classes may be reused to satisfy an existential, but it is not
+     the term `f(u)` (a model may send `f(u)` elsewhere), so the code does not
+     record it as a witness and no inequality clash rests on it. Before this
+     rule the witness map pointed both functions of `≥ 2 s0.D` at one reused
+     successor, so every merge touching that individual reported a clash and
+     `--different` printed rows such as `DIFFERENT :a0 :a2` in
+     `g7001_0022.ofn` that are not entailed (`O ∪ {a0 = a2}` is consistent).
+     A pair whose clash cannot rest on such terms is `Undecided` and goes to
+     the exact probe.
+   - **Elements that merge individuals by choice (2026-11-22).** The
+     element-level arguments read an element of `M_0` as one individual. An
+     exported model may put several individuals into one element although
+     their sameness is not entailed (a nominal cover `⊤ ⊑ {a8, a9}` forces a
+     choice). An explicit `DifferentIndividuals(a9, a3)` then made the two
+     elements different and every pair of their members was printed
+     (`nc8302_0001.ofn`: 14 rows, 2 entailed; 2,225 rows not entailed in 750
+     cover cases, all checked with `O + SameIndividual(a b)`). When some
+     element holds individuals that `same_comp` does not prove equal, every
+     pair now goes to the exact probe.
+   - **Proved differences hold between classes (2026-11-22).** During the
+     merge test an element of the union-find stands for its whole class. A
+     merge of two classes clashes when any member of one is proved different
+     from any member of the other, not only the two roots. Checking only the
+     roots missed `DIFFERENT a2 a4` in `g8301_366.ofn` (after `a2 = a4`,
+     `≤ 1 r1` at `a4` merges `a7`, and `a7 != a2` is asserted): the model
+     side then reported the quotient as a model and the row was lost. In
+     `H_0` the clash is sound because every merge in the class is entailed
+     under `a = b` and every member difference is entailed.
    - **Negative bound (`ProvedNotDifferent` from `M_0 / (u = v)`)**: If `H_0 /
      (u = v)` does not clash, `from_exported_model` forms the quotient of the
      full exported model `M_0 / (u = v)` by identifying `u` and `v` in `M_0`,
@@ -464,7 +586,7 @@ For a consistent ontology `O`, two named individuals `a, b`, and a named object 
 4. `ObjectPropertyDomain(r, C)`, `ObjectPropertyRange(r, C)`, and `DataPropertyDomain(p, C)` propagation into entailed individual classes, followed by class subsumption closure and re-evaluation of steps 2--4 to fixpoint; and
 5. 1-head Horn normalized DL-clauses and Skolem existential witness materialization (`saturate_horn_in_place`).
 
-Every edge in `Horn(O)` holds in all models of `O` by soundness of the Horn rules, and every edge entailed by `O` holds in the specific model `M_0`:
+Every edge in `Horn(O)` holds in all models of `O` by soundness of the Horn rules, and every edge entailed by `O` holds in the specific model `M_0`, provided `M_0` is a model. On `ht-bridge` and `cb-horn` with the ABox in the export it is. When the ABox was elided or the route is `el-canonical`, `M_0` is a structure rebuilt from the source and the right-hand side below is `{ r(a, b) | M_0 |= r(a, b) }` together with the anonymous-excursion candidates of `ExcursionBound` (see "Reconstructed structures are not models" above); without them the inequality fails for role chains and transitive roles through anonymous elements (`f9002_44`):
 
 ```text
 Horn(O)  <=  { r(a, b) | O |= r(a, b) }  <=  { r(a, b) | M_0 |= r(a, b) }
