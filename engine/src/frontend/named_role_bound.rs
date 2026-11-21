@@ -2698,6 +2698,10 @@ pub(crate) struct ExcursionInput {
     /// Roles whose successors may merge (functional, inverse-functional,
     /// cardinality restrictions).
     pub merging_roles: BTreeSet<String>,
+    /// Also report the roles of `HasSelf` and nominal edges as holding at a
+    /// named individual through the TBox alone (an individual that occurs
+    /// in no axiom has no other edges).
+    pub flag_named_self_and_nominal: bool,
 }
 
 /// Roles `r` that can hold between named individuals through an anonymous
@@ -2842,7 +2846,11 @@ pub(crate) fn excursion_roles(rbox: &[Vec<String>], input: &ExcursionInput) -> B
         x
     }
 
-    if input.gen_roles.is_empty() && input.nominal_roles.is_empty() {
+    let flag_named = input.flag_named_self_and_nominal;
+    if input.gen_roles.is_empty()
+        && input.nominal_roles.is_empty()
+        && !(flag_named && !input.self_roles.is_empty())
+    {
         return BTreeSet::new();
     }
     // Generating roles whose edges can reach, through the hierarchy and
@@ -2858,11 +2866,11 @@ pub(crate) fn excursion_roles(rbox: &[Vec<String>], input: &ExcursionInput) -> B
         }
     }
     relevant.extend(input.merging_roles.iter().map(|r| base(r).0.to_string()));
-    if relevant.is_empty() {
+    if relevant.is_empty() && !flag_named {
         return BTreeSet::new();
     }
     let matters = |r: &str| -> bool {
-        if input.merge_into_named {
+        if input.merge_into_named || flag_named {
             return true;
         }
         let mut probe: Facts = HashMap::new();
@@ -2873,7 +2881,7 @@ pub(crate) fn excursion_roles(rbox: &[Vec<String>], input: &ExcursionInput) -> B
     let gens: Vec<&String> = input.gen_roles.iter().filter(|r| matters(r)).collect();
     let noms: Vec<&String> = input.nominal_roles.iter().filter(|r| matters(r)).collect();
     let selfs: Vec<&String> = input.self_roles.iter().filter(|r| matters(r)).collect();
-    if gens.is_empty() && noms.is_empty() {
+    if gens.is_empty() && noms.is_empty() && !(flag_named && !selfs.is_empty()) {
         return BTreeSet::new();
     }
     let shared = gens.len() > 64;
@@ -2882,6 +2890,11 @@ pub(crate) fn excursion_roles(rbox: &[Vec<String>], input: &ExcursionInput) -> B
     let mut seeds: Vec<(String, usize, usize, bool)> = Vec::new();
     for r in &input.named_roles {
         seeds.push((r.clone(), 0, 0, false));
+    }
+    if flag_named {
+        for s in selfs.iter().chain(noms.iter()) {
+            seeds.push(((*s).clone(), 0, 0, true));
+        }
     }
     for (i, t) in gens.iter().enumerate() {
         for p in 0..n_nodes {

@@ -1212,11 +1212,15 @@ pub(super) fn from_exported_model(
     } else {
         Vec::new()
     };
-    if !fresh_inds.is_empty()
-        && (text.contains("ObjectOneOf(") || text.contains("ObjectHasValue(") || text.contains("topObjectProperty"))
-    {
-        return None;
-    }
+    // The TBox facts a fresh individual can have: loops on `HasSelf`,
+    // reflexive and excursion roles, and with nominals edges to and from any
+    // individual. `None` (anonymous individuals in assertions, the universal
+    // role, a fenced chain) falls back to the exact probe run.
+    let fresh_spec = if fresh_inds.is_empty() {
+        None
+    } else {
+        Some(ExcursionSpec::collect(text, &meta.rbox, &|tok: &str| resolve_role_short(tok))?)
+    };
     let reconstructed = raw.abox_elided || raw.route == "el-canonical";
     let excursion_spec = if reconstructed && values_requested && !bound_disabled {
         Some(ExcursionSpec::collect(text, &meta.rbox, &|tok: &str| resolve_role_short(tok))?)
@@ -2856,10 +2860,39 @@ pub(super) fn from_exported_model(
                 }
             }
         }
-        for &x in &fresh_inds {
-            plan.residual_value_sources.insert(x);
-            for r_idx in 0..roles.len() {
-                plan.residual_value_targets.insert((r_idx, x));
+        if let Some(spec) = &fresh_spec {
+            let mut input = spec.input.clone();
+            input.flag_named_self_and_nominal = true;
+            for (u, r, v) in &edge_set {
+                if *u < n_elems && *v < n_elems {
+                    input.named_roles.insert(r.clone());
+                }
+            }
+            let nominal = spec.input.merge_into_named || !spec.input.nominal_roles.is_empty();
+            let fresh_roles = crate::frontend::named_role_bound::excursion_roles(&meta.rbox, &input);
+            for r in &fresh_roles {
+                let full_r = meta.iri_map.get(r).map(String::as_str).unwrap_or(r.as_str());
+                let Some(pub_r) = role_lookup.get(full_r).or_else(|| role_lookup.get(r)) else {
+                    continue;
+                };
+                let Some(&r_idx) = pub_role_to_idx.get(pub_r) else {
+                    continue;
+                };
+                for &x in &fresh_inds {
+                    let px = &pub_individuals[x];
+                    let others: Vec<usize> = if nominal { (0..pub_individuals.len()).collect() } else { vec![x] };
+                    for y in others {
+                        let py = &pub_individuals[y];
+                        if !plan.proved_values.contains(&[pub_r.clone(), px.clone(), py.clone()]) {
+                            plan.residual_value_targets.insert((r_idx, y));
+                            plan.residual_value_sources.insert(x);
+                        }
+                        if y != x && !plan.proved_values.contains(&[pub_r.clone(), py.clone(), px.clone()]) {
+                            plan.residual_value_targets.insert((r_idx, x));
+                            plan.residual_value_sources.insert(y);
+                        }
+                    }
+                }
             }
         }
         // Anonymous-excursion candidates, recomputed on the final `edge_set`

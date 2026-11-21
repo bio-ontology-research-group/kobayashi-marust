@@ -212,10 +212,13 @@ entailed inequalities:
      row such as `s(x, x)` from `⊤ ⊑ ∃s.Self` (or `⊤ ⊑ ≤1 s0` derived from an
      inverse-functional `s0` with `s0⁻ ⊑ s0`) was lost for an individual `x`
      that occurs only in its declaration. Such an `x` is interchangeable with
-     a fresh individual; without nominals or the universal role a fresh
-     individual is related to no other named individual, so its loop on every
-     role goes to the residual probes. With nominals or the universal role,
-     or when an individual that occurs in an axiom is missing from the model,
+     a fresh individual, so its rows are what the TBox gives every element:
+     loops on the roles that `excursion_roles` reports when `HasSelf` and
+     nominal roles also count at a named individual, and, when nominals
+     occur, edges on those roles to and from any individual. Each such row
+     that the Horn structure does not prove goes to the residual probes. When
+     an individual that occurs in an axiom is missing from the model, or the
+     source links anonymous individuals or uses the universal role,
      `from_exported_model` declines and the exact probe run answers.
 
 3. **`DIFFERENT` (`DifferentIndividuals`)**:
