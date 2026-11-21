@@ -8712,20 +8712,40 @@ fn bridge_tinput_with_trigger_absorption(
     }
     bridge_phase!("clause-scan");
 
-    // ---- functional roles → `≤1 R` on TOP (every node) ---------------------
-    // Emitted while the Builder still holds the arena borrow. Each functional
-    // role R contributes an unqualified `CCATMOST(R, 1)`; attaching it to TOP
-    // makes every node enforce ≤1 R-successor via the ported merge rule. The
-    // atmost is also seeded on the root each drive pass (it is a universal
-    // constraint, not trigger-gated).
+    // ---- functional roles → `≤1 R` as a domain concept of R ----------------
+    // KM_BRIDGE_FUNCTIONAL_ON_TOP=1 keeps the old encoding below for
+    // measurement. Otherwise, as Konclude's builder does for
+    // FunctionalObjectProperty(R) (`role->addDomainConceptLinker(<=1 R)`),
+    // `<=1 R` is a domain concept of object role R: saturation and completion add it to
+    // exactly the nodes that get an R-edge. `T <= (<=1 R)` and
+    // `exists R.T <= (<=1 R)` are equivalent (a node without R-successors
+    // satisfies `<=1 R`). On TOP, every functional role's `<=1 R` was a
+    // critical at-most test on every saturation node and was propagated into
+    // every copy of it: ore_ont_7361 (337 functional roles) ran 19.7 M
+    // critical tests against Konclude's 2.0 M.
     let functional_count = functional_roles.len();
+    let functional_on_top = std::env::var_os("KM_BRIDGE_FUNCTIONAL_ON_TOP").is_some();
     let atmost_concepts: Vec<ConceptId> = functional_roles
         .iter()
         .map(|&r| b.atmost(roles[r], 1))
         .collect();
-    for &a in &atmost_concepts {
-        tbox.push(a);
-        top_gcis.push(a);
+    for (&r, &a) in functional_roles.iter().zip(&atmost_concepts) {
+        // Data roles stay on TOP: data-property assertions do not pass
+        // through the link creation that applies role domain lists, so
+        // `<=1 d` as a domain concept never reached an individual with two
+        // values (fuzz case: FunctionalDataProperty(:d0) with two
+        // `:d0` values on one individual was reported consistent).
+        let data_role = tin.data_roles.contains(&r)
+            || b.ctx.ontology_arenas().role(roles[r]).is_data_role();
+        if functional_on_top || data_role {
+            tbox.push(a);
+            top_gcis.push(a);
+        } else {
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(roles[r])
+                .add_domain_concept_linker(super::model::substrate::NegLink { target: a, negated: false });
+        }
     }
 
     // ---- first-class number restrictions (KM_HT_CARD `card_defs`) ----------
@@ -35381,6 +35401,61 @@ mod bridge_equivalent_non_candidate_tests {
                 .contains(&(id(&tin.concepts, "ProbeB"), id(&tin.concepts, "TagA"))),
             "CCT_NOMINAL insufficiency on :b must merge :b = :a and entail ProbeB ⊑ TagA"
         );
+    }
+
+    /// `<=1 r` for a functional role is a domain concept of `r`, not a TOP
+    /// GCI. It must still reach every node with an `r`-edge however the edge is
+    /// stored: through a sub-role, a two-level hierarchy with an equivalent
+    /// role, an inverse stored from the other end, and a symmetric role. Each
+    /// case forces two successors to merge, which entails `X <= E`.
+    #[test]
+    fn functional_role_domain_encoding_merges_successors_through_every_edge_kind() {
+        let _test_env = crate::test_env::write();
+        let cases = [
+            "SubObjectPropertyOf(:s :r)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(:s :B) ObjectSomeValuesFrom(:s :C)))",
+            "SubObjectPropertyOf(:s :r)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(:s :B) ObjectSomeValuesFrom(:r :C)))",
+            "SubObjectPropertyOf(:u :s)\nSubObjectPropertyOf(:s :q)\nEquivalentObjectProperties(:q :r)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(:u :B) ObjectSomeValuesFrom(:q :C)))",
+            "InverseObjectProperties(:r :ri)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(ObjectInverseOf(:ri) :B) ObjectSomeValuesFrom(:r :C)))",
+            "SymmetricObjectProperty(:r)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(ObjectInverseOf(:r) :B) ObjectSomeValuesFrom(:r :C)))",
+        ];
+        for (index, case) in cases.iter().enumerate() {
+            let text = format!(
+                "Prefix(:=<http://example.org/func#>)\nOntology(\n\
+                 Declaration(Class(:X))\nDeclaration(Class(:B))\nDeclaration(Class(:C))\n\
+                 Declaration(Class(:D))\nDeclaration(Class(:E))\n\
+                 FunctionalObjectProperty(:r)\n{case}\n\
+                 SubClassOf(ObjectIntersectionOf(:B :C) :D)\n\
+                 EquivalentClasses(:E ObjectSomeValuesFrom(:r :D))\n)"
+            );
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+            let fr = crate::frontend::ofn_to_clauses(&text);
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+            let fr = fr.expect("in fragment");
+            let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+            let tin = crate::orchestrate::cb_to_ht::convert(
+                &fr.clauses,
+                Some(&fr.rbox),
+                &named,
+                &fr.cardinalities,
+                &fr.definers,
+                &fr.source_axioms,
+                true,
+                &fr.rules,
+                false,
+            );
+            let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+                .unwrap_or_else(|| panic!("case {index}: {:?}", take_bridge_defer_reason()));
+            assert!(res.consistent, "case {index}");
+            assert!(
+                res.subsumptions.contains(&(id(&tin.concepts, "X"), id(&tin.concepts, "E"))),
+                "case {index}: the functional role must merge the two successors, so X <= E"
+            );
+        }
     }
 
     #[test]
