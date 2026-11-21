@@ -1037,19 +1037,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if saturation_indi_node.is_none() {
             return false;
         }
-        let (initialized, completed, sat_con_set, flags, cache_entry) = {
-            let sat_node = calc_alg_context
-                .process_context()
-                .sat_node(*saturation_indi_node);
+        let (initialized, completed, sat_con_set, flags, cache_entry, self_connected) = {
+            let pc = calc_alg_context.process_context();
+            let sat_node = pc.sat_node(*saturation_indi_node);
+            let self_connected = sat_node.role_back_prop_hash.is_some()
+                && pc
+                    .role_backward_sat_prop_hash(sat_node.role_back_prop_hash)
+                    .self_connected;
             (
                 sat_node.is_initialized(),
                 sat_node.is_completed(),
                 sat_node.reapply_con_sat_label_set,
                 sat_node.indirect_status_flags.get_flags(),
                 sat_node.get_cache_expansion_data(),
+                self_connected,
             )
         };
-        if !initialized || sat_con_set.is_none() {
+        if !initialized || sat_con_set.is_none() || self_connected {
             return false;
         }
         let trace = super::sat_absorb_debug_enabled()

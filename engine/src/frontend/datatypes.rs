@@ -2513,20 +2513,40 @@ pub(crate) fn bridge_tbox_finite_values(name: &str) -> Option<Vec<String>> {
 /// Bridge-TBox variant of [`bridge_exact_finite_cover`].
 pub(crate) fn bridge_tbox_finite_cover(range: &str, head: &[&str]) -> bool {
     let Some(values) = bridge_tbox_finite_values(range) else { return false };
-    values.iter().all(|value| head.iter().any(|other|
-        bridge_exact_value_equal(value, other) == Some(true)))
-        && head.iter().all(|value| values.iter().any(|other|
-            bridge_exact_value_equal(value, other) == Some(true)))
+    let mut parsed_values = Vec::with_capacity(values.len());
+    for value in &values {
+        let Some(parsed) = ParsedBridgeValue::of(value) else { return false };
+        parsed_values.push(parsed);
+    }
+    let mut parsed_head = Vec::with_capacity(head.len());
+    for value in head {
+        let Some(parsed) = ParsedBridgeValue::of(value) else { return false };
+        parsed_head.push(parsed);
+    }
+    parsed_values.iter().all(|value| parsed_head.iter().any(|other|
+        value.equal(other) == Some(true)))
+        && parsed_head.iter().all(|value| parsed_values.iter().any(|other|
+            value.equal(other) == Some(true)))
 }
 
 /// Compare a finite range with a proposed value-concept cover extensionally.
 /// Lexical aliases can repeat a value, but cannot omit or add a value.
 pub(crate) fn bridge_exact_finite_cover(range: &str, head: &[&str]) -> bool {
     let Some(values) = bridge_exact_finite_values(range) else { return false };
-    values.iter().all(|value| head.iter().any(|other|
-        bridge_exact_value_equal(value, other) == Some(true)))
-        && head.iter().all(|value| values.iter().any(|other|
-            bridge_exact_value_equal(value, other) == Some(true)))
+    let mut parsed_values = Vec::with_capacity(values.len());
+    for value in &values {
+        let Some(parsed) = ParsedBridgeValue::of(value) else { return false };
+        parsed_values.push(parsed);
+    }
+    let mut parsed_head = Vec::with_capacity(head.len());
+    for value in head {
+        let Some(parsed) = ParsedBridgeValue::of(value) else { return false };
+        parsed_head.push(parsed);
+    }
+    parsed_values.iter().all(|value| parsed_head.iter().any(|other|
+        value.equal(other) == Some(true)))
+        && parsed_head.iter().all(|value| parsed_values.iter().any(|other|
+            value.equal(other) == Some(true)))
 }
 
 /// `true` when `range` is an IEEE range of the bridge map and the IEEE
@@ -3351,6 +3371,8 @@ pub(crate) struct ParsedBridgeAtomic {
     range: Option<DRange>,
     pub is_ieee_range: bool,
     pub is_decimal_range: bool,
+    pub is_facet_range: bool,
+    pub has_tbox_finite_values: bool,
     pub complement_operand_family: Option<&'static str>,
 }
 
@@ -3358,12 +3380,31 @@ impl ParsedBridgeAtomic {
     pub(crate) fn of(name: &str) -> Option<Self> {
         let family = bridge_tbox_atomic_family(name)?;
         let range = bridge_exact_atomic_range(name);
-        let is_ieee_range = !name.starts_with("__dt__val__")
+        let is_val = name.starts_with("__dt__val__");
+        let is_complex = name.starts_with("__dt__c__");
+        let is_ieee_range = !is_val
             && matches!(family, "float" | "double")
-            && bridge_ieee_interval(name).is_some();
-        let is_decimal_range = !name.starts_with("__dt__val__")
+            && match range.as_ref() {
+                Some(DRange::Float(_)) => true,
+                Some(DRange::Named(datatype)) => {
+                    matches!(datatype.part, Partition::Float32 | Partition::Float64)
+                }
+                _ => false,
+            };
+        let is_decimal_range = !is_val
             && family == "decimal"
-            && DecimalInterval::of(name).is_some();
+            && match range.as_ref() {
+                Some(DRange::Num(_)) => true,
+                Some(DRange::Named(datatype)) => {
+                    datatype.part == Partition::Numeric
+                        && !matches!(datatype.kind, "float" | "double")
+                }
+                _ => false,
+            };
+        let is_facet_range =
+            is_complex && matches!(range.as_ref(), Some(DRange::Float(_) | DRange::Num(_)));
+        let has_tbox_finite_values =
+            is_complex && (family == "finite" || bridge_tbox_finite_values(name).is_some());
         let complement_operand_family = bridge_exact_complement_operand(name)
             .and_then(|operand| bridge_tbox_atomic_family(&operand));
         Some(Self {
@@ -3371,6 +3412,8 @@ impl ParsedBridgeAtomic {
             range,
             is_ieee_range,
             is_decimal_range,
+            is_facet_range,
+            has_tbox_finite_values,
             complement_operand_family,
         })
     }
@@ -3381,6 +3424,47 @@ impl ParsedBridgeAtomic {
 
     pub(crate) fn disjoint(&self, right: &Self) -> Option<bool> {
         range_disjoint(self.range.as_ref()?, right.range.as_ref()?)
+    }
+}
+
+struct ParsedBridgeValue {
+    raw: Val,
+    is_extended: bool,
+    exact_ok: bool,
+}
+
+impl ParsedBridgeValue {
+    fn of(name: &str) -> Option<Self> {
+        if !bridge_tbox_atomic_name(name) {
+            return None;
+        }
+        let literal = name.strip_prefix("__dt__val__")?;
+        let (value, datatype) = parse_literal(literal)?;
+        let is_extended = matches!(
+            value,
+            Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_) | Val::Xml(_)
+        );
+        let builtin = datatype.as_deref().and_then(builtin_datatype_key);
+        let exact_ok = match (&value, builtin) {
+            (Val::Bool(_), Some("boolean")) => true,
+            (Val::Num(number), Some("integer")) if number.is_integer() => true,
+            (Val::Str(_, None), Some("string")) => true,
+            (Val::Str(_, None), None) if datatype.is_none() => true,
+            _ => false,
+        };
+        Some(Self {
+            raw: value,
+            is_extended,
+            exact_ok,
+        })
+    }
+
+    fn equal(&self, other: &Self) -> Option<bool> {
+        if self.is_extended || other.is_extended || (self.exact_ok && other.exact_ok) {
+            val_eq(&self.raw, &other.raw)
+        } else {
+            None
+        }
     }
 }
 
