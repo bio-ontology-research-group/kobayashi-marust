@@ -236,6 +236,25 @@ entailed inequalities:
      singletons. Because every fact in `H_0` holds in *every* model of `O`, a
      clash in `H_0 / (u = v)` proves that no model of `O` can identify `u` and
      `v`, so `(a, b)` is emitted in `proved_different`.
+   - **What an element of `H_0` stands for (2026-11-21).** The argument above
+     needs every element of `H_0` to name one term whose facts hold in every
+     model: a named individual, or a Skolem term `f(u)` created for exactly
+     that function at `u` while the existential's body is entailed at `u`.
+     Every clash rule may then use the element as that term. In particular the
+     min-cardinality rule `[M(x), f1(x) = f2(x)] -> []` concludes a clash from
+     `find(w1) == find(w2)` only when `w1` and `w2` are the dedicated
+     witnesses of `f1(u)` and `f2(u)`: if the Horn rules on `H_0 / (u = v)`
+     force them equal, every model of `O ∪ {a = b}` has `f1(u) = f2(u)` and
+     `M(u)`, which `O` forbids. An existing successor that only carries the
+     filler classes may be reused to satisfy an existential, but it is not
+     the term `f(u)` (a model may send `f(u)` elsewhere), so the code does not
+     record it as a witness and no inequality clash rests on it. Before this
+     rule the witness map pointed both functions of `≥ 2 s0.D` at one reused
+     successor, so every merge touching that individual reported a clash and
+     `--different` printed rows such as `DIFFERENT :a0 :a2` in
+     `g7001_0022.ofn` that are not entailed (`O ∪ {a0 = a2}` is consistent).
+     A pair whose clash cannot rest on such terms is `Undecided` and goes to
+     the exact probe.
    - **Negative bound (`ProvedNotDifferent` from `M_0 / (u = v)`)**: If `H_0 /
      (u = v)` does not clash, `from_exported_model` forms the quotient of the
      full exported model `M_0 / (u = v)` by identifying `u` and `v` in `M_0`,

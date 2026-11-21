@@ -2648,6 +2648,15 @@ pub(super) fn from_exported_model(
     // and `entailed_elem_classes`/`proved_edge_set` so universal restrictions and
     // existential checks see asserted existential successors (`d2.ofn`, `adv4`, `13700`).
     let mut n_total_elems = n_elems;
+    // `skolem_witness_of[(u, f)]` is the element that stands for the Skolem
+    // term `f(u)` in the entailed structure `H_0`: only an element created here
+    // for exactly that term while the group's body is entailed at `u`. The
+    // Skolem inequality test `[M(x), f1(x) = f2(x)] -> []` below concludes a
+    // clash from `find(w1) == find(w2)`, which is sound only if `w1` and `w2`
+    // are the terms `f1(u)` and `f2(u)`. A reused successor that merely
+    // carries the fillers is not: two functions of a min-cardinality could map
+    // to the same reused element, and every merge touching `u` then reported a
+    // clash (g7001_0022: `≥ 2 s0.D` at `a2` made `a2` "different" from all).
     let mut skolem_witness_of: HashMap<(usize, String), usize> = HashMap::new();
     let sk_rounds = if has_horn_merges { 3 } else { 2 };
     for _sk_round in 0..sk_rounds {
@@ -2715,7 +2724,9 @@ pub(super) fn from_exported_model(
                 if !already_in_entailed || !already_in_model {
                     let w_sk = n_total_elems;
                     n_total_elems += 1;
-                    skolem_witness_of.insert((u, fn_name.clone()), w_sk);
+                    if in_entailed && !already_in_entailed {
+                        skolem_witness_of.entry((u, fn_name.clone())).or_insert(w_sk);
+                    }
                     let sort_tag = if is_data_role {
                         crate::frontend::sorts::DATA_SORT
                     } else {
@@ -2745,8 +2756,6 @@ pub(super) fn from_exported_model(
                         proved_edge_set.insert(edge);
                     }
                     added_sk = true;
-                } else if let Some(w_existing) = existing_entailed.or(existing_model) {
-                    skolem_witness_of.insert((u, fn_name.clone()), w_existing);
                 }
             }
         }
@@ -3248,13 +3257,22 @@ pub(super) fn from_exported_model(
             }
         }
 
-        #[derive(Clone, Copy, PartialEq, Eq)]
+        #[derive(Clone, Copy, PartialEq, Eq, Debug)]
         enum PairVerdict {
             NotDifferent,
             HornClash,
             Undecided,
         }
 
+        let clash_trace = std::env::var_os("KM_DIFF_TRACE").is_some();
+        macro_rules! horn_clash {
+            () => {{
+                if clash_trace {
+                    eprintln!("KM_DIFF_TRACE clash at abox_rows.rs:{}", line!());
+                }
+                PairVerdict::HornClash
+            }};
+        }
         let check_dt_val_clash = |c_set: &HashSet<String>, horn_only: bool| -> Option<PairVerdict> {
             let vals: Vec<&str> = c_set
                 .iter()
@@ -3266,7 +3284,7 @@ pub(super) fn from_exported_model(
                     for j in (i + 1)..vals.len() {
                         match crate::frontend::datatypes::bridge_exact_value_equal(vals[i], vals[j])
                         {
-                            Some(false) => return Some(PairVerdict::HornClash),
+                            Some(false) => return Some(horn_clash!()),
                             None if !horn_only => return Some(PairVerdict::Undecided),
                             _ => {}
                         }
@@ -3302,7 +3320,7 @@ pub(super) fn from_exported_model(
             for &idx in &empty_body_concept_rules {
                 let cr = &concept_rules[idx];
                 if cr.heads.is_empty() && cr.nom_merge.is_none() {
-                    return PairVerdict::HornClash;
+                    return horn_clash!();
                 }
                 if let Some(u_o) = cr.nom_merge {
                     if u_o != u && u_o != v {
@@ -3330,7 +3348,7 @@ pub(super) fn from_exported_model(
                         let cr = &concept_rules[idx];
                         if cr.body.iter().all(|b| merged.contains(b)) {
                             if cr.heads.is_empty() && cr.nom_merge.is_none() {
-                                return PairVerdict::HornClash;
+                                return horn_clash!();
                             }
                             if let Some(u_o) = cr.nom_merge {
                                 if u_o != u && u_o != v {
@@ -3357,7 +3375,7 @@ pub(super) fn from_exported_model(
             }
             for &nc in &neg_merged {
                 if merged.contains(nc) {
-                    return PairVerdict::HornClash;
+                    return horn_clash!();
                 }
             }
             if let Some(v_dt) = check_dt_val_clash(&merged, horn_only) {
@@ -3481,7 +3499,7 @@ pub(super) fn from_exported_model(
                             || func_data_conflict_pairs.contains(&pair_key(keep, drop_el)))
                     {
                         return if horn_only {
-                            PairVerdict::HornClash
+                            horn_clash!()
                         } else {
                             PairVerdict::Undecided
                         };
@@ -3600,18 +3618,18 @@ pub(super) fn from_exported_model(
                     let rua = find(&mut uf, ua);
                     let rub = find(&mut uf, ub);
                     if edge_exists(rua, r, rub, &full_e_set, &active_edges) {
-                        return PairVerdict::HornClash;
+                        return horn_clash!();
                     }
                 }
                 for &(s, ref r, t) in &active_edges {
                     if s == t && (irrefl_roles.contains(r) || asym_roles.contains(r)) {
-                        return PairVerdict::HornClash;
+                        return horn_clash!();
                     }
                     if s != t
                         && asym_roles.contains(r)
                         && edge_exists(t, r, s, &full_e_set, &active_edges)
                     {
-                        return PairVerdict::HornClash;
+                        return horn_clash!();
                     }
                 }
                 for grp in &disjoint_role_groups {
@@ -3621,7 +3639,7 @@ pub(super) fn from_exported_model(
                                 if r == &grp[i]
                                     && edge_exists(s, &grp[j], t, &full_e_set, &active_edges)
                                 {
-                                    return PairVerdict::HornClash;
+                                    return horn_clash!();
                                 }
                             }
                         }
@@ -3655,7 +3673,7 @@ pub(super) fn from_exported_model(
                                 let cr = &concept_rules[idx];
                                 if cr.body.iter().all(|b| z_set.contains(b)) {
                                     if cr.heads.is_empty() && cr.nom_merge.is_none() {
-                                        return PairVerdict::HornClash;
+                                        return horn_clash!();
                                     }
                                     if let Some(u_o) = cr.nom_merge {
                                         let ro = find(&mut uf, u_o);
@@ -3694,7 +3712,7 @@ pub(super) fn from_exported_model(
                         if find(&mut uf, orig) == z {
                             for nc in &elem_neg_classes[orig] {
                                 if z_set.contains(nc) {
-                                    return PairVerdict::HornClash;
+                                    return horn_clash!();
                                 }
                             }
                         }
@@ -3766,7 +3784,7 @@ pub(super) fn from_exported_model(
                             continue;
                         }
                         match &rr.action {
-                            RoleHeadAction::Clash => return PairVerdict::HornClash,
+                            RoleHeadAction::Clash => return horn_clash!(),
                             RoleHeadAction::AddX(d) => {
                                 if let Some(pub_i) = d.strip_prefix("__nom__") {
                                     if let Some(&u_o) = ind_to_elem.get(pub_i) {
@@ -3935,7 +3953,7 @@ pub(super) fn from_exported_model(
                                     })
                                 });
                                 if all_pairwise_diff {
-                                    return PairVerdict::HornClash;
+                                    return horn_clash!();
                                 }
                             }
                         }
@@ -3957,7 +3975,7 @@ pub(super) fn from_exported_model(
                                         ) {
                                             if find(&mut uf, w1) == find(&mut uf, w2) {
                                                 return if horn_only {
-                                                    PairVerdict::HornClash
+                                                    horn_clash!()
                                                 } else {
                                                     PairVerdict::Undecided
                                                 };
@@ -4233,6 +4251,39 @@ pub(super) fn from_exported_model(
         let mut mixed_memo: HashMap<(usize, usize, bool), (PairVerdict, PairVerdict)> =
             HashMap::new();
         let base_diff = diff.clone();
+        let diff_trace = std::env::var_os("KM_DIFF_TRACE").is_some();
+        if diff_trace {
+            for &u in &ind_elems {
+                let mut m: Vec<&String> = elem_classes[u].iter().collect();
+                m.sort();
+                let mut h: Vec<&String> = entailed_elem_classes[u].iter().collect();
+                h.sort();
+                let mut n: Vec<&String> = elem_neg_classes[u].iter().collect();
+                n.sort();
+                eprintln!("KM_DIFF_TRACE elem {u} {:?}\n  model={m:?}\n  horn={h:?}\n  neg={n:?}", elem_inds[u]);
+            }
+            let mut es: Vec<_> = edge_set.iter().collect();
+            es.sort();
+            eprintln!("KM_DIFF_TRACE model edges {es:?}");
+            let mut ps: Vec<_> = proved_edge_set.iter().collect();
+            ps.sort();
+            eprintln!("KM_DIFF_TRACE horn edges {ps:?}");
+            let mut d: Vec<_> = diff.iter().collect();
+            d.sort();
+            eprintln!("KM_DIFF_TRACE pre-loop diff {d:?}");
+            for (i, rr) in role_rules.iter().enumerate() {
+                eprintln!("KM_DIFF_TRACE role_rule {i}: role={} x={:?} y={:?} self={} action={:?}", rr.role, rr.body_x, rr.body_y, rr.self_only, rr.action);
+            }
+            for (i, qf) in qual_func_rules.iter().enumerate() {
+                eprintln!("KM_DIFF_TRACE qual_func {i}: role={} inv={} x={:?} y={:?} max={}", qf.role, qf.inv, qf.body_x, qf.body_y, qf.max_n);
+            }
+            eprintln!("KM_DIFF_TRACE skolem_ineqs {:?}", skolem_ineqs);
+            eprintln!("KM_DIFF_TRACE skolem_witness_of {:?}", skolem_witness_of);
+            eprintln!("KM_DIFF_TRACE func {:?} invfunc {:?}", func_obj_roles, inv_func_obj_roles);
+            for (i, cr) in concept_rules.iter().enumerate() {
+                eprintln!("KM_DIFF_TRACE concept_rule {i}: {:?} -> {:?} nom={:?}", cr.body, cr.heads, cr.nom_merge);
+            }
+        }
         if std::env::var_os("KM_TIMING").is_some() {
             let n_pure = ind_elems.iter().filter(|&&u| pure_sig_id[u].is_some()).count();
             let n_graph = ind_elems.iter().filter(|&&u| graph_sig_id[u].is_some()).count();
@@ -4362,6 +4413,12 @@ pub(super) fn from_exported_model(
                         }
                     }
                 };
+                if diff_trace {
+                    eprintln!(
+                        "KM_DIFF_TRACE pair {:?} {:?}: model={:?} horn={:?}",
+                        elem_inds[u], elem_inds[v], model_v, horn_v
+                    );
+                }
                 match (model_v, horn_v) {
                     (PairVerdict::NotDifferent, _) => {}
                     (_, PairVerdict::HornClash) => {
