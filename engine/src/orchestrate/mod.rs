@@ -5369,7 +5369,7 @@ fn rules_consistency(
     }
     use crate::json_io::JInput;
     let classify = request.classify;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
     let _rule_environment = crate::routing::EnvironmentGuard::capture();
     if require_source_model {
         std::env::set_var("KM_TRANSITIVE_RULE_REDUCE", "1");
