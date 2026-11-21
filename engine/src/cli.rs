@@ -222,8 +222,19 @@ pub fn run_ofn(args: &[String]) {
     let path = &args[0];
     let mut meta_path: Option<&str> = None;
     let mut elc_binary_path: Option<&str> = None;
+    // `--source-stdin`: read the document from stdin instead of `path`, and do
+    // not re-validate it. Only the orchestrator passes it, and only with the
+    // exact bytes that its own `check_user_source` accepted in this
+    // classification (`frontend_run::run_ofn_split_cached_once`); `path` then
+    // only names the document in messages.
+    let mut validated_stdin = false;
     let mut index = 1;
     while index < args.len() {
+        if args[index] == "--source-stdin" {
+            validated_stdin = true;
+            index += 1;
+            continue;
+        }
         let (slot, name) = match args[index].as_str() {
             "--meta" => (&mut meta_path, "--meta"),
             "--elc-binary" => (&mut elc_binary_path, "--elc-binary"),
@@ -239,7 +250,13 @@ pub fn run_ofn(args: &[String]) {
         *slot = Some(value);
         index += 2;
     }
-    let text = match std::fs::read_to_string(path) {
+    let read = if validated_stdin {
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text).map(|_| text)
+    } else {
+        std::fs::read_to_string(path)
+    };
+    let text = match read {
         Ok(t) => t,
         Err(e) => {
             eprintln!("failed to read {}: {}", path, e);
@@ -248,8 +265,9 @@ pub fn run_ofn(args: &[String]) {
     };
     // Only the orchestrator sets this, on this worker's command alone, naming
     // the exact file it registered as its own rewrite of a validated source.
-    let trusted_rewrite = std::env::var_os(crate::orchestrate::TRUSTED_REWRITE_ENV)
-        .is_some_and(|trusted| std::path::Path::new(&trusted) == std::path::Path::new(path));
+    let trusted_rewrite = validated_stdin
+        || std::env::var_os(crate::orchestrate::TRUSTED_REWRITE_ENV)
+            .is_some_and(|trusted| std::path::Path::new(&trusted) == std::path::Path::new(path));
     let classifier_extended_atomic =
         std::env::var_os(crate::frontend::CLASSIFIER_EXTENDED_ATOMIC_ABOX_ENV)
             .is_some_and(|v| v == std::ffi::OsStr::new("1"));
