@@ -1143,53 +1143,46 @@ pub(crate) fn classify_cover(text: &str) -> Result<CoverAnswer, Decline> {
                 solver.reset();
             }
         }
-        // Batched refutation: one call asks for a model with some element in
-        // some class `a` outside one of its remaining candidates (or, for a
-        // class without an instance so far, any instance). Each model
-        // shrinks the candidates; an unsatisfiable call settles every class
-        // of this partition at once.
-        loop {
-            let act = pos(solver.new_var());
-            let mut witness_any: Vec<Lit> = vec![neg(act)];
-            for a in 0..nclass {
-                let open = match &cand[a] {
-                    None => true,
-                    Some(c) => (0..nclass).any(|b| b != a && c[b]),
-                };
-                if !open {
-                    continue;
-                }
-                for d in 0..m {
-                    let w = pos(solver.new_var());
-                    witness_any.push(w);
-                    solver.add_clause(&[neg(w), lits[a][d]]);
-                    if let Some(c) = &cand[a] {
-                        let mut outside: Vec<Lit> = vec![neg(w)];
-                        for b in 0..nclass {
-                            if c[b] && b != a {
-                                outside.push(neg(lits[b][d]));
-                            }
+        // Per class and element, under assumptions only (no clauses are
+        // added): an instance `A(d)`, then for each remaining candidate `B`
+        // a model with `A(d) ∧ ¬B(d)`. Every model found shrinks the
+        // candidates of every class through `record`; an unsatisfiable call
+        // proves `A(d) → B(d)` in this partition.
+        for a in 0..nclass {
+            for d in 0..m {
+                if cand[a].is_none() {
+                    solves += 1;
+                    match solver.solve(&[lits[a][d]], &mut budget) {
+                        Outcome::Budget => return decline("conflict budget"),
+                        Outcome::Unsat => {
+                            solver.reset();
+                            continue;
                         }
-                        solver.add_clause(&outside);
+                        Outcome::Sat => {
+                            record(&solver, &mut cand);
+                            solver.reset();
+                        }
                     }
                 }
-            }
-            if witness_any.len() == 1 {
-                break;
-            }
-            solver.add_clause(&witness_any);
-            solves += 1;
-            match solver.solve(&[act], &mut budget) {
-                Outcome::Budget => return decline("conflict budget"),
-                Outcome::Unsat => {
-                    solver.reset();
-                    solver.add_clause(&[neg(act)]);
-                    break;
-                }
-                Outcome::Sat => {
-                    record(&solver, &mut cand);
-                    solver.reset();
-                    solver.add_clause(&[neg(act)]);
+                let mut proven: Vec<bool> = vec![false; nclass];
+                loop {
+                    let next = {
+                        let c = cand[a].as_ref().expect("an instance was recorded");
+                        (0..nclass).find(|&b| b != a && c[b] && !proven[b])
+                    };
+                    let Some(b) = next else { break };
+                    solves += 1;
+                    match solver.solve(&[lits[a][d], neg(lits[b][d])], &mut budget) {
+                        Outcome::Budget => return decline("conflict budget"),
+                        Outcome::Unsat => {
+                            proven[b] = true;
+                            solver.reset();
+                        }
+                        Outcome::Sat => {
+                            record(&solver, &mut cand);
+                            solver.reset();
+                        }
+                    }
                 }
             }
         }
