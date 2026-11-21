@@ -13527,6 +13527,20 @@ fn mark_core_blocking_concepts(ctx: &mut CalculationAlgorithmContextBase) -> usi
     if !non_el_constructs_used {
         return 0;
     }
+    // The marks change which blocker candidates the linked hash search
+    // offers, and on terminologies with `∃r.Self` that changed answers:
+    // `A ⊑ ∃r.Self`, functional `r`, `B ⊑ ∃r.A`, `A ⊑ ∃r⁻.B` lost `B ⊑ A`
+    // (HermiT entails it; every build before this pass gives it). Until the
+    // blocking test is shown exact for self-connected nodes, terminologies
+    // with a self restriction keep the unmarked candidate search.
+    if (0..n).any(|i| {
+        ctx.ontology_arenas()
+            .concept(ConceptId::new(i as Cint64))
+            .get_operator_code()
+            == op::CCSELF
+    }) {
+        return 0;
+    }
     let mut marked = 0usize;
     for i in 0..n {
         let cid = ConceptId::new(i as Cint64);

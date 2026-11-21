@@ -52,3 +52,30 @@ fn realization_with_different_rows_keeps_unsatisfiable_classes() {
     assert_eq!(unsat_rows(&path, &["--realize", "--different"], &[]), expected);
     assert_eq!(unsat_rows(&path, &["--realize"], &[]), expected);
 }
+
+/// `A ⊑ ∃r.Self` with `r` functional: the self edge fills `A`'s only
+/// `r`-slot, so `B ⊑ ∃r.A` and `A ⊑ ∃r⁻.B` make `B` and `A` equivalent
+/// (HermiT). With the core blocking concept marks (1ba05c77) the native
+/// bridge lost `B ⊑ A` and `B ⊑ G`.
+#[test]
+fn self_restrictions_keep_the_unmarked_blocker_search() {
+    let path = fixture("self-loop-functional.ofn");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
+    for (key, _) in std::env::vars() {
+        if key.starts_with("KM_") {
+            command.env_remove(key);
+        }
+    }
+    let output = command
+        .env("KM_THREADS", "1")
+        .env("KM_ROUTE", "ht_bridge")
+        .args(["classify", "--lines"])
+        .arg(&path)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    for row in ["SUB\t:A\t:B", "SUB\t:A\t:G", "SUB\t:B\t:A", "SUB\t:B\t:G"] {
+        assert!(stdout.lines().any(|line| line == row), "{row}: {stdout}");
+    }
+}
