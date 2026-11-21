@@ -1842,6 +1842,124 @@ fn ground_equality_union_min(parent: &mut [u32], left: u32, right: u32) {
     }
 }
 
+/// The individual `o` of a one-element domain, if the clause set forces it:
+/// some clause `B_1(x) ∧ … ∧ B_n(x) → x ≈ o` (n ≥ 0) whose body concepts are
+/// all forced on every element, where the forced concepts are the least set
+/// closed under body-free unit clauses `→ D(x)` and Horn clauses
+/// `B_1(x) ∧ … ∧ B_n(x) → D(x)` over forced `B_i`. This is the clause form of
+/// `⊤ ⊑ {o}` (`→ N(x)`, `N(x) → x ≈ o`). `KM_NO_DOMAIN_SINGLETON` disables it
+/// (diagnostic).
+fn forced_domain_singleton(clauses: &[OntologyClause]) -> Option<Term> {
+    if std::env::var_os("KM_NO_DOMAIN_SINGLETON").is_some() {
+        return None;
+    }
+    let concept_on_x = |p: &Pred| match *p {
+        Pred::Concept { iri, t } if t == X => Some(iri),
+        _ => None,
+    };
+    // Horn clauses over unary atoms on `x` with one concept head on `x`.
+    let mut horn: Vec<(Vec<Iri>, Iri)> = Vec::new();
+    let mut merges: Vec<(Vec<Iri>, Term)> = Vec::new();
+    for clause in clauses {
+        if clause.head.len() != 1 {
+            continue;
+        }
+        let Some(body) = clause.body.iter().map(concept_on_x).collect::<Option<Vec<Iri>>>() else {
+            continue;
+        };
+        match clause.head[0] {
+            Lit::P(p) => {
+                if let Some(d) = concept_on_x(&p) {
+                    horn.push((body, d));
+                }
+            }
+            Lit::Eq { s, t } => {
+                if s == X && is_individual(t) {
+                    merges.push((body, t));
+                } else if t == X && is_individual(s) {
+                    merges.push((body, s));
+                }
+            }
+            Lit::Ineq { .. } => {}
+        }
+    }
+    if merges.is_empty() {
+        return None;
+    }
+    let mut forced: HashSet<Iri> = HashSet::default();
+    loop {
+        let before = forced.len();
+        for (body, d) in &horn {
+            if !forced.contains(d) && body.iter().all(|b| forced.contains(b)) {
+                forced.insert(*d);
+            }
+        }
+        if forced.len() == before {
+            break;
+        }
+    }
+    merges
+        .iter()
+        .filter(|(body, _)| body.iter().all(|b| forced.contains(b)))
+        .map(|&(_, o)| o)
+        .min()
+}
+
+/// One-element domain (docs/V1.7.0-NOMINAL-COVER.md): when the clause set
+/// forces `x ≈ o` on every element (`forced_domain_singleton`), add the unit
+/// `→ a ≈ o` for every other individual `a` of the clause set, so that
+/// `merge_asserted_ground_equalities` merges all individuals into one. Each
+/// added unit is the ground instance at `a` of clauses of the set (the forcing
+/// Horn chain and the merge clause, resolved), hence entailed, and the
+/// quotient that follows is exact. Returns the number of added units.
+fn add_domain_singleton_equalities(clauses: &mut Vec<OntologyClause>) -> usize {
+    let Some(o) = forced_domain_singleton(clauses) else {
+        return 0;
+    };
+    let mut inds: Vec<Term> = Vec::new();
+    let mut see = |t: Term| {
+        if is_individual(t) {
+            inds.push(t);
+        } else if is_comp(t) {
+            inds.push(comp_parts(t).1);
+        }
+    };
+    for clause in clauses.iter() {
+        for pred in &clause.body {
+            match *pred {
+                Pred::Concept { t, .. } => see(t),
+                Pred::Role { s, t, .. } => {
+                    see(s);
+                    see(t);
+                }
+            }
+        }
+        for literal in &clause.head {
+            match *literal {
+                Lit::P(Pred::Concept { t, .. }) => see(t),
+                Lit::P(Pred::Role { s, t, .. }) => {
+                    see(s);
+                    see(t);
+                }
+                Lit::Eq { s, t } | Lit::Ineq { s, t } => {
+                    see(s);
+                    see(t);
+                }
+            }
+        }
+    }
+    inds.sort_unstable();
+    inds.dedup();
+    let mut added = 0;
+    for a in inds {
+        if a != o {
+            clauses.push(OntologyClause::new(Vec::new(), vec![Lit::eq(a, o)]));
+            added += 1;
+        }
+    }
+    added
+}
+
 /// Eagerly merge unconditional named-individual equalities.
 ///
 /// Only unit ground facts `top -> o1 = o2` participate. A conditional or
@@ -4407,12 +4525,31 @@ impl Engine {
     /// by `from_prepared`, and preparation is a pure function of the input clause
     /// set.
     pub fn prepare(sig: Sig, ont_clauses: Vec<OntologyClause>, dropped: usize) -> PreparedOntology {
+        Engine::prepare_opts(sig, ont_clauses, dropped, true)
+    }
+
+    /// `prepare`, with the one-element-domain merge
+    /// (`add_domain_singleton_equalities`) switched by `domain_singleton`.
+    /// The cb-horn model builder (`cb_model`) reads one context per
+    /// individual and keeps the merge off.
+    pub fn prepare_opts(
+        sig: Sig,
+        ont_clauses: Vec<OntologyClause>,
+        dropped: usize,
+        domain_singleton: bool,
+    ) -> PreparedOntology {
         let mut sig = sig;
         // A role pointing into the central variable can consume a parent
         // label in a successor context. Enable edge-conditioned label offers
         // for these ontologies without requiring an external tuning flag.
         sig.rsucc = std::env::var_os("KM_RSUCC").is_some()
             || ont_clauses.iter().any(clause_enables_rsucc);
+        let mut ont_clauses = ont_clauses;
+        let domain_singleton_units =
+            if domain_singleton { add_domain_singleton_equalities(&mut ont_clauses) } else { 0 };
+        if std::env::var_os("KM_PROF").is_some() && domain_singleton_units != 0 {
+            eprintln!("KM_PROF domain-singleton units={domain_singleton_units}");
+        }
         let (ont_clauses, max_input_ind, ground_merge) =
             merge_asserted_ground_equalities(ont_clauses);
         if std::env::var_os("KM_PROF").is_some() && ground_merge.asserted_pairs != 0 {
@@ -11868,7 +12005,7 @@ pub(crate) fn cb_model(
     sig.concept_succ_trigger.fill(true);
     sig.forward_role_succ_trigger.fill(true);
     sig.backward_role_succ_trigger.fill(true);
-    let mut engine = Engine::new(sig, ont_clauses, max_z);
+    let mut engine = Engine::from_prepared(&Engine::prepare_opts(sig, ont_clauses, max_z, false));
     let mut queries = engine.named_queries();
     for rnom in &root_noms {
         if let Some(pos) = engine.sig.concept_names.iter().position(|n| n == rnom) {

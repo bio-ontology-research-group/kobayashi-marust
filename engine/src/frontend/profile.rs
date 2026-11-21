@@ -186,6 +186,12 @@ pub struct SourceStatistics {
     #[serde(default, skip_serializing_if = "is_zero")]
     pub object_nominal_concepts: u64,
     pub has_self: u64,
+    /// `SubClassOf(owl:Thing ObjectOneOf(..))` and `EquivalentClasses` with
+    /// `owl:Thing` and an `ObjectOneOf` operand: covers of the domain by
+    /// named individuals (the finite-cover route's syntactic gate,
+    /// docs/V1.7.0-NOMINAL-COVER.md).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_nominal_covers: u64,
     pub datatype_constructors: u64,
     pub max_concept_depth: u64,
     pub max_concept_arity: u64,
@@ -534,6 +540,12 @@ impl<'a> SourceProfileBuilder<'a> {
             "SubClassOf" => {
                 self.logical_tbox(head);
                 self.stats.subclass_axioms += 1;
+                if args.len() == 2
+                    && args[0].as_atom().is_some_and(is_top)
+                    && args[1].head() == Some("ObjectOneOf")
+                {
+                    self.stats.top_nominal_covers += 1;
+                }
                 if let Some(lhs) = args.first().and_then(|arg| arg.as_atom()) {
                     self.subclass_lhs.insert(lhs);
                 }
@@ -551,6 +563,11 @@ impl<'a> SourceProfileBuilder<'a> {
             "EquivalentClasses" => {
                 self.logical_tbox(head);
                 self.stats.equivalent_class_axioms += 1;
+                if args.iter().any(|arg| arg.as_atom().is_some_and(is_top))
+                    && args.iter().any(|arg| arg.head() == Some("ObjectOneOf"))
+                {
+                    self.stats.top_nominal_covers += 1;
+                }
                 if args.len() == 2 {
                     for (named, definition) in [(args[0], args[1]), (args[1], args[0])] {
                         if definition.head() == Some("ObjectSomeValuesFrom") {

@@ -16,6 +16,7 @@ pub mod engine_run;
 pub mod explain;
 pub mod features;
 mod flat_nf1;
+mod finite_cover;
 pub mod frontend_check;
 pub mod frontend_run;
 pub(crate) mod inert_sorts;
@@ -2777,6 +2778,11 @@ fn classify_with_evidence_inner(
     }
     let (mut clauses_path, mut meta, mut cached_input, mut elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
+    if let Some(evidence) =
+        finite_cover_evidence(ont, &meta, retain_grouped_output, timing, t_start)?
+    {
+        return Ok(evidence);
+    }
     // Owned here so it is released with this classification on every path.
     let mut positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
     let _public_subject_file = if let Some(path) = std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE") {
@@ -4202,6 +4208,145 @@ fn classify_with_evidence_inner(
         consistency_certified,
         timing,
     )
+}
+
+/// Whether the finite-cover route may answer: not under a route the caller
+/// forced at start-up (`KM_ROUTE` other than `auto`), and not when
+/// `KM_NO_FINITE_COVER` is set. Read once.
+fn finite_cover_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        std::env::var_os("KM_NO_FINITE_COVER").is_none()
+            && match std::env::var("KM_ROUTE") {
+                Err(_) => true,
+                Ok(route) => route.is_empty() || route == "auto",
+            }
+    })
+}
+
+/// Whether this run must produce certificates or an exported model, which
+/// the finite-cover route does not emit; the route then declines and a
+/// certifying route answers. Certificates are consumed under
+/// `KM_LEAN_CHECKERS` (`lean_checkers::active`), `KM_REQUIRE_LEAN_CHECKERS`,
+/// certified CB (`KM_CB_LEAN_REQUIRED`, `KM_CB_CERT_BUNDLE`), and a model under
+/// `--export-model` (`KM_EXPORT_MODEL_ACTIVE` without the realization's own
+/// ABox-only capture `KM_EXPORT_ABOX_ONLY`, after which realization runs its
+/// exact probe path when no model is recorded).
+fn finite_cover_certificate_mode(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    let set = |key: &str| env(key).is_some_and(|v| !v.is_empty());
+    set(crate::lean_checkers::DIR_ENV)
+        || set("KM_REQUIRE_LEAN_CHECKERS")
+        || set("KM_CB_LEAN_REQUIRED")
+        || set("KM_CB_CERT_BUNDLE")
+        || (set("KM_EXPORT_MODEL_ACTIVE") && !set("KM_EXPORT_ABOX_ONLY"))
+}
+
+/// The finite-cover route (docs/V1.7.0-NOMINAL-COVER.md): an ontology with
+/// `⊤ ⊑ {o1, …, ok}`, k ≤ 4, is classified by search over its finite
+/// interpretations (`finite_cover::classify_cover`). Runs once per outermost
+/// classification, before every other route; `None` when it declines.
+fn finite_cover_evidence(
+    ont: &Path,
+    meta: &frontend_run::Meta,
+    retain_grouped_output: bool,
+    timing: bool,
+    t_start: std::time::Instant,
+) -> Result<Option<ClassificationEvidence>, OrchestrateError> {
+    // Syntactic gate first: the frontend's source profile counts the cover
+    // axioms in its single streaming pass, so an input without a cover costs
+    // one integer test here and is never read again.
+    if meta.profile.source.top_nominal_covers == 0
+        || !finite_cover_enabled()
+        || finite_cover_certificate_mode(|key| std::env::var_os(key))
+        || reference_force_enabled()
+        || CLASSIFY_DEPTH.with(|d| d.get()) != 1
+        || !meta.dropped_source_axioms.is_empty()
+        || meta.uncarried_data_assertions > 0
+        || !meta.data_roles.is_empty()
+    {
+        return Ok(None);
+    }
+    let _ = meta;
+    let text = {
+        let prepared = input::prepare_for_reasoning(ont)?;
+        std::fs::read_to_string(prepared.path())?
+    };
+    if !text.contains("ObjectOneOf") {
+        return Ok(None);
+    }
+    let answer = match finite_cover::classify_cover(&text) {
+        Ok(answer) => answer,
+        Err(reason) => {
+            if timing {
+                eprintln!("KM_TIMING finite cover declined: {}", reason.0);
+            }
+            return Ok(None);
+        }
+    };
+    if timing {
+        eprintln!(
+            "KM_TIMING finite cover answered @ {:.2}s (consistent={}, classes={}, partitions={}, solves={})",
+            t_start.elapsed().as_secs_f64(),
+            answer.consistent,
+            answer.supers.len(),
+            answer.partitions,
+            answer.solves,
+        );
+    }
+    let export = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    if !answer.consistent {
+        if export {
+            model_export::record_inconsistent();
+        }
+        return Ok(Some(ClassificationEvidence {
+            classification: Classification {
+                approximate: None,
+                consistent: false,
+                subsumptions: vec![],
+                unsatisfiable: vec![],
+                dropped: 0,
+            },
+            grouped_subsumptions: None,
+            consistency_certified: true,
+        }));
+    }
+    // The publication convention of `map_engine_out_to_evidence`: rows by
+    // full IRI, no self rows, unsatisfiable classes listed (not their rows).
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut unsat: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (class, supers) in answer.supers {
+        match supers {
+            None => {
+                unsat.insert(class);
+            }
+            Some(supers) => {
+                let row: Vec<String> = supers.into_iter().filter(|s| *s != class).collect();
+                if !row.is_empty() {
+                    grouped.entry(class).or_default().extend(row);
+                }
+            }
+        }
+    }
+    for row in grouped.values_mut() {
+        row.sort_unstable();
+        row.dedup();
+    }
+    if export {
+        model_export::record_declined("the finite-cover route exports no model".into());
+    }
+    let _ = retain_grouped_output;
+    timing_mark("output mapping done");
+    Ok(Some(ClassificationEvidence {
+        classification: Classification {
+            approximate: None,
+            consistent: true,
+            subsumptions: flatten_grouped_subsumptions(grouped),
+            unsatisfiable: unsat.into_iter().collect(),
+            dropped: 0,
+        },
+        grouped_subsumptions: None,
+        consistency_certified: true,
+    }))
 }
 
 fn map_engine_out_to_evidence(
@@ -6582,5 +6727,35 @@ mod tests {
         assert_eq!(production_saturation_rss_override(Some("NaN")), None);
         assert_eq!(production_saturation_rss_override(Some("nonsense")), None);
         assert_eq!(production_saturation_rss_override(None), None);
+    }
+}
+
+#[cfg(test)]
+mod finite_cover_gate_tests {
+    use super::finite_cover_certificate_mode;
+    use std::ffi::OsString;
+
+    fn mode(vars: &[(&str, &str)]) -> bool {
+        let vars: Vec<(String, OsString)> =
+            vars.iter().map(|(k, v)| (k.to_string(), OsString::from(v))).collect();
+        finite_cover_certificate_mode(|key| {
+            vars.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+        })
+    }
+
+    #[test]
+    fn finite_cover_declines_when_certificates_or_a_model_are_consumed() {
+        assert!(!mode(&[]));
+        assert!(mode(&[("KM_LEAN_CHECKERS", "/some/dir")]));
+        assert!(mode(&[("KM_REQUIRE_LEAN_CHECKERS", "1")]));
+        assert!(mode(&[("KM_CB_LEAN_REQUIRED", "1")]));
+        assert!(mode(&[("KM_CB_CERT_BUNDLE", "/x")]));
+        // `--export-model`
+        assert!(mode(&[("KM_EXPORT_MODEL_ACTIVE", "1")]));
+        // realization's own ABox capture: the route answers, no model recorded
+        assert!(!mode(&[("KM_EXPORT_MODEL_ACTIVE", "1"), ("KM_EXPORT_ABOX_ONLY", "1")]));
+        // `--export-model` together with realization stays declined
+        assert!(mode(&[("KM_EXPORT_MODEL_ACTIVE", "1"), ("KM_LEAN_CHECKERS", "/d"), ("KM_EXPORT_ABOX_ONLY", "1")]));
+        assert!(!mode(&[("KM_LEAN_CHECKERS", "")]));
     }
 }
