@@ -979,21 +979,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             return false;
         }
-        let (initialized, completed, flags, self_connected) = {
-            let pc = calc_alg_context.process_context();
-            let sat_node = pc.sat_node(saturation_indi_node);
-            let self_connected = sat_node.role_back_prop_hash.is_some()
-                && pc
-                    .role_backward_sat_prop_hash(sat_node.role_back_prop_hash)
-                    .self_connected;
+        let (initialized, completed, flags) = {
+            let sat_node = calc_alg_context
+                .process_context()
+                .sat_node(saturation_indi_node);
             (
                 sat_node.is_initialized(),
                 sat_node.is_completed(),
                 sat_node.indirect_status_flags.get_flags(),
-                self_connected,
             )
         };
-        if initialized && completed && !self_connected {
+        if initialized && completed {
             let mut caching_establishment_possible = false;
 
             if flags & (SatF::INDSATFLAGINSUFFICIENT | SatF::INDSATFLAGCLASHED) == 0 {

@@ -7022,6 +7022,15 @@ fn bridge_tinput_with_trigger_absorption(
         let mut seen_inclusions = crate::fxhash::FxHashSet::default();
         let mut forced_subclass_names = crate::fxhash::FxHashSet::default();
         let mut equivalence_name_counts: HashMap<&str, usize> = HashMap::default();
+        // A told `SubClassOf(A C)` normally keeps `A` from becoming a CCEQ
+        // host. When `A` has exactly one `EquivalentClasses(A D)` and `C` is
+        // `D` or a top-level conjunct of `D`, the told axiom is entailed by the
+        // definition. Such a name may be "relaxed": it is not forced, and its
+        // told axioms (all entailed) are not encoded, because every encoding
+        // of the equivalence below (lazy CCEQ unfolding `A -> D`, trigger
+        // absorption with the forward unfolding `A -> D`, or the two plain
+        // inclusions) contains `A -> D`, which entails `A -> C`. Which names
+        // are relaxed is a speed decision only; see `relaxed_names`.
         let mut unique_equivalence_defs: HashMap<&str, &SourceConcept> = HashMap::default();
         for axiom in &tin.source_axioms {
             if axiom.kind == crate::json_io::SourceAxiomKind::Equivalent {
@@ -7040,19 +7049,23 @@ fn bridge_tinput_with_trigger_absorption(
                 }
             }
         }
-        let is_redundant_equiv_conjunct_subclass =
-            |name: &str, right: &SourceConcept| -> bool {
-                let Some(&def) = unique_equivalence_defs.get(name) else {
-                    return false;
-                };
-                right == def
-                    || matches!(def, SourceConcept::And(conjuncts) if conjuncts.contains(right))
+        // Diagnostic: `KM_BRIDGE_FORCE_ALL_TOLD_SUBCLASS` restores the old rule
+        // (every told SubClassOf forces its left name) for paired measurement.
+        let force_all_told = std::env::var_os("KM_BRIDGE_FORCE_ALL_TOLD_SUBCLASS").is_some();
+        let entailed_by_unique_definition = |name: &str, right: &SourceConcept| -> bool {
+            if force_all_told {
+                return false;
+            }
+            let Some(&def) = unique_equivalence_defs.get(name) else {
+                return false;
             };
+            right == def || matches!(def, SourceConcept::And(conjuncts) if conjuncts.contains(right))
+        };
         for axiom in &tin.source_axioms {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
                     if let SourceConcept::Name(name) = &axiom.left {
-                        if !is_redundant_equiv_conjunct_subclass(name.as_str(), &axiom.right) {
+                        if !entailed_by_unique_definition(name.as_str(), &axiom.right) {
                             forced_subclass_names.insert(name.as_str());
                         }
                     }
@@ -7065,6 +7078,109 @@ fn bridge_tinput_with_trigger_absorption(
                     }
                 }
                 crate::json_io::SourceAxiomKind::Equivalent => {}
+            }
+        }
+        let mut relaxed_names: crate::fxhash::FxHashSet<&str> = Default::default();
+        for axiom in &tin.source_axioms {
+            if axiom.kind == crate::json_io::SourceAxiomKind::SubClass {
+                if let SourceConcept::Name(name) = &axiom.left {
+                    if !forced_subclass_names.contains(name.as_str()) {
+                        relaxed_names.insert(name.as_str());
+                    }
+                }
+            }
+        }
+        if !relaxed_names.is_empty() {
+            // Same host choice and fixpoint as `non_triggerable_hosts` below,
+            // over the current forced set.
+            let mut non_triggerable: crate::fxhash::FxHashSet<&str> = Default::default();
+            loop {
+                let before = non_triggerable.len();
+                for axiom in &tin.source_axioms {
+                    if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                        continue;
+                    }
+                    if let Some((name, definition)) =
+                        [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                            .into_iter()
+                            .find_map(|(named_side, definition)| match named_side {
+                                SourceConcept::Name(name)
+                                    if !forced_subclass_names.contains(name.as_str())
+                                        && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
+                                {
+                                    Some((name.as_str(), definition))
+                                }
+                                _ => None,
+                            })
+                    {
+                        if !syntactically_triggerable(definition, true, &non_triggerable) {
+                            non_triggerable.insert(name);
+                        }
+                    }
+                }
+                if non_triggerable.len() == before {
+                    break;
+                }
+            }
+            // Relax only names whose told superclasses are all named classes and
+            // whose definition requires at least two successors (a positive
+            // `>= n r.C` with n >= 2, or a negated `<= n r.C` with n >= 1). The
+            // reverse direction of such a definition cannot be trigger-absorbed
+            // (triggers need n <= 1), so for a forced name it stays a general
+            // inclusion `not D or A`, whose `<= n-1 r.C` branch is open on every
+            // node. As a lazily unfolded CCEQ definition it is not. Measured
+            // on ore_ont_9540 (`Rectangle == =4 has_point.right_angle_point and
+            // Quadrilateral` with told `SubClassOf(Rectangle Quadrilateral)`):
+            // 12.8-15.5 s / 800 MB to 2.3-2.9 s / 83 MB. Without the cardinality
+            // condition, ore_ont_10080 (six OBI definitions with universal
+            // restrictions) was 30 % slower; with a complex told superclass,
+            // ore_ont_10140 (two definitions with told cardinality superclasses)
+            // was 19 s slower. `KM_BRIDGE_RELAX_ANY_TOLD_SUPERCLASS` drops both
+            // conditions for measurement and differential testing.
+            let any_told = std::env::var_os("KM_BRIDGE_RELAX_ANY_TOLD_SUPERCLASS").is_some();
+            let mut complex_told: crate::fxhash::FxHashSet<&str> = Default::default();
+            for axiom in &tin.source_axioms {
+                if axiom.kind == crate::json_io::SourceAxiomKind::SubClass {
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        if !matches!(axiom.right, SourceConcept::Name(_)) {
+                            complex_told.insert(name.as_str());
+                        }
+                    }
+                }
+            }
+            fn requires_two_successors(concept: &SourceConcept, positive: bool) -> bool {
+                match concept {
+                    SourceConcept::AtLeast(n, _, filler) => {
+                        (positive && *n >= 2) || requires_two_successors(filler, positive)
+                    }
+                    SourceConcept::AtMost(n, _, filler) => {
+                        (!positive && *n >= 1) || requires_two_successors(filler, !positive)
+                    }
+                    SourceConcept::Not(operand) => requires_two_successors(operand, !positive),
+                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                        operands.iter().any(|op| requires_two_successors(op, positive))
+                    }
+                    SourceConcept::Exists(_, filler) => requires_two_successors(filler, positive),
+                    SourceConcept::Forall(_, filler) => requires_two_successors(filler, positive),
+                    _ => false,
+                }
+            }
+            relaxed_names.retain(|name| {
+                non_triggerable.contains(name)
+                    && (any_told
+                        || (!complex_told.contains(name)
+                            && unique_equivalence_defs
+                                .get(name)
+                                .is_some_and(|def| requires_two_successors(def, true))))
+            });
+            for axiom in &tin.source_axioms {
+                if axiom.kind == crate::json_io::SourceAxiomKind::SubClass {
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        if !relaxed_names.contains(name.as_str()) {
+                            forced_subclass_names.insert(name.as_str());
+                        }
+                    }
+                }
             }
         }
         fn collect_source_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
@@ -7312,9 +7428,12 @@ fn bridge_tinput_with_trigger_absorption(
         for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
+                    // A relaxed name that is still unforced after the cycle
+                    // check is a CCEQ host whose lazy unfolding entails this
+                    // axiom (see `relaxed_names`).
                     if let SourceConcept::Name(name) = &axiom.left {
-                        if !forced_subclass_names.contains(name.as_str())
-                            && is_redundant_equiv_conjunct_subclass(name.as_str(), &axiom.right)
+                        if relaxed_names.contains(name.as_str())
+                            && !forced_subclass_names.contains(name.as_str())
                         {
                             continue;
                         }
@@ -8769,6 +8888,16 @@ fn bridge_tinput_with_trigger_absorption(
         }
     }
     bridge_phase!("terminology-stamp");
+
+    // Konclude runs `CCoreBlockingConceptMarkerPreProcess` after the role
+    // automata and propagation-direction passes. The linked candidate-hash
+    // blocker search reads these marks; without them every label set lacks a
+    // core descriptor and the search falls back to the linear candidate scan.
+    let core_blocking_marked = mark_core_blocking_concepts(ctx);
+    bridge_phase!("core-blocking-marker");
+    if std::env::var_os("KM_HT_STATS").is_some() {
+        eprintln!("bridge [core-blocking] marked={core_blocking_marked}");
+    }
 
     // Konclude's preprocessors may add assertions after the source ABox was
     // materialized. In particular, nominal trigger absorption asserts a fresh
@@ -13353,6 +13482,88 @@ fn extract_propagation_into_creation_direction(ctx: &mut CalculationAlgorithmCon
                 .propagation_into_creation_direction = true;
         }
     }
+}
+
+/// Port of `CCoreBlockingConceptMarkerPreProcess::preprocess`
+/// (Reasoner/Preprocess, cpp 39-90, on by default via
+/// `Konclude.Calculation.Preprocessing.CoreBlockingConceptMarking`).
+///
+/// For every SOME/ALL/ATLEAST/AQSOME/ATMOST concept the C++ walks the operand
+/// list and marks the QUANTIFIER concept itself (`opConcept = concept`) as a
+/// core blocking concept with polarity `opNegated ^ opNegate`, where
+/// `opNegated = (opCode == CCALL)` and `opNegate = opNegated ^ linker.isNegated()`;
+/// the polarity is therefore the operand linker's negation flag. This is
+/// ported literally, including that polarity.
+///
+/// KONCLUDE-PORT-NOTE[data]: Konclude's `CDataExtenderPreProcess` gives every
+/// concept a `CConceptProcessData` before this pass; the port allocates it
+/// lazily, so a missing record is allocated here (the C++ `if (conProDes)`
+/// is always true at this point in Konclude).
+/// KONCLUDE-PORT-NOTE[el-skip]: the C++ skips the pass when
+/// `SkipForELFragment` (default true) holds and the expression builder saw no
+/// non-EL construct. The port has no builder construct flags; it treats the
+/// arena as EL when no concept has an operator outside atom, TOP, BOTTOM,
+/// AND, SOME, nominal, EQ and SUB. Marks only steer which blocker candidate
+/// the linked hash search tests first; every candidate still passes the full
+/// blocking test, so this approximation affects speed, not answers.
+fn mark_core_blocking_concepts(ctx: &mut CalculationAlgorithmContextBase) -> usize {
+    use super::model::concept_process::{ConceptProcessData, ConceptProcessDataId};
+    let n = ctx.ontology_arenas().concept_count();
+    let non_el_constructs_used = (0..n).any(|i| {
+        !matches!(
+            ctx.ontology_arenas()
+                .concept(ConceptId::new(i as Cint64))
+                .get_operator_code(),
+            op::CCATOM
+                | op::CCTOP
+                | op::CCBOTTOM
+                | op::CCAND
+                | op::CCSOME
+                | op::CCNOMINAL
+                | op::CCEQ
+                | op::CCSUB
+        )
+    });
+    if !non_el_constructs_used {
+        return 0;
+    }
+    let mut marked = 0usize;
+    for i in 0..n {
+        let cid = ConceptId::new(i as Cint64);
+        let (op_code, polarities): (Cint64, Vec<bool>) = {
+            let c = ctx.ontology_arenas().concept(cid);
+            (
+                c.get_operator_code(),
+                c.get_operand_list().iter().map(|l| l.negated).collect(),
+            )
+        };
+        if !matches!(
+            op_code,
+            op::CCSOME | op::CCALL | op::CCATLEAST | op::CCAQSOME | op::CCATMOST
+        ) {
+            continue;
+        }
+        let op_negated = op_code == op::CCALL;
+        for linker_negated in polarities {
+            let op_negate = op_negated ^ linker_negated;
+            let negated = op_negated ^ op_negate;
+            let arenas = ctx.ontology_arenas_mut();
+            let concept_data = arenas.concept(cid).get_concept_data();
+            let con_pro_data = if concept_data == super::model::substrate::INVALID {
+                let fresh = arenas.alloc_concept_process_data(ConceptProcessData::new());
+                arenas.concept_mut(cid).set_concept_data(fresh.raw);
+                fresh
+            } else {
+                ConceptProcessDataId::new(concept_data)
+            };
+            let data = arenas.concept_process_data_mut(con_pro_data);
+            if !data.is_core_blocking_concept(negated) {
+                marked += 1;
+                data.set_core_blocking_concept(negated, true);
+            }
+        }
+    }
+    marked
 }
 
 /// Port of the CONSTRUCTION half of
