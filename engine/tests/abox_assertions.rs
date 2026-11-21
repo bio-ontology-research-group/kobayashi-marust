@@ -164,3 +164,29 @@ fn asserted_data_values_keep_restricted_individuals_different() {
         assert!(stdout.lines().any(|line| line == row), "{case}: {stdout}");
     }
 }
+
+/// Probe classes `P ≡ {a}` (as `--realize` adds them) put a nominal on an
+/// ABox template node. A CCT_NOMINAL shortcut kept the template's
+/// insufficiency from its representatives, which then never ran their own
+/// cardinality checks: the first two inputs are inconsistent and the third
+/// entails `a3 = a5` (HermiT), yet km reported them consistent, or omitted
+/// the `SAME` row.
+#[test]
+fn nominal_on_an_abox_template_keeps_representatives_insufficient() {
+    for case in ["template-nominal-at-most-probe", "template-nominal-functional-merge"] {
+        for (options, env) in [
+            (&[][..], &[("KM_ROUTE", "ht_bridge")][..]),
+            (&["--realize"][..], &[][..]),
+            (&["--realize", "--values", "--different"][..], &[][..]),
+        ] {
+            let output = km_env(&fixture(&format!("{case}.ofn")), options, env);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "{case} {options:?}: {}", String::from_utf8_lossy(&output.stderr));
+            assert_eq!(stdout.lines().next(), Some("CONSISTENT 0"), "{case} {options:?} {env:?}: {stdout}");
+        }
+    }
+    let output = km(&fixture("template-nominal-symmetric-same.ofn"), &["--realize"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "SAME\t:a3\t:a5"), "{stdout}");
+}

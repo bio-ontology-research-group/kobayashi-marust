@@ -82,7 +82,6 @@ use super::super::process::SatNodeId;
 // File-local mirror of the (file-private) copies in `s08.rs` / `s09.rs`.
 const CCT_FORALL: Cint64 = 0;
 const CCT_ATMOST: Cint64 = 1;
-const CCT_NOMINAL: Cint64 = 5;
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     // =======================================================================
@@ -827,21 +826,18 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             if node_ref.get_nominal_individual() == nominal_individual {
                 return;
             }
-            if node_ref.get_nominal_individual().is_none() {
-                self.update_direct_adding_individual_status_flags(
-                    *process_indi,
-                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCRITICAL
-                        | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGNOMINALCONNECTION,
-                    calc_alg_context,
-                );
-                self.add_critical_concept_descriptor(
-                    con_des,
-                    CCT_NOMINAL,
-                    process_indi,
-                    calc_alg_context,
-                );
-                return;
-            }
+            // An unattached ABox template node with a nominal stays
+            // insufficient, and that insufficiency reaches every node that
+            // depends on the template. 78bbeb27 queued a CCT_NOMINAL check
+            // instead, marked only the template insufficient (not its
+            // dependents) and forwarded the nominal check alone. A
+            // representative that leaves its other critical checks to the
+            // template then kept a sufficient label: with `⊤ ⊑ ≤1 r.G`,
+            // `r(a5, a4)`, `r(a5, a1)`, `G(a4)`, `G(a1)`, disjoint `C(a4)` and
+            // `F(a1)` and the probe `P5 ≡ {a5}` the bridge answered consistent,
+            // and a functional symmetric `r` with `r(a4, a5)`, `r(a3, a4)` lost
+            // `SAME a3 a5` under `--realize` (HermiT: inconsistent, entailed).
+            // The completion graph performs the merge.
         }
         // The complete nominal association expansion above is not implemented.
         // A nominal descriptor alone does not include its individual's asserted
