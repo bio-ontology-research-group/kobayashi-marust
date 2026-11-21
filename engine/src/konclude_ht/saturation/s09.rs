@@ -398,6 +398,79 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         }
     }
 
+    /// Whether the forwarded CCT_NOMINAL shortcut is sound for an unattached
+    /// ABox template node: its saturated label holds no concept whose test
+    /// depends on the role edges of the nodes that copy the template.
+    ///
+    /// The shortcut marks only the template insufficient, not its dependent
+    /// representatives, and forwards the nominal check alone. A representative
+    /// relies on the template for the critical tests of its copied label (the
+    /// at-most test of a substituted node is skipped), and those tests stop at
+    /// the template once it is insufficient. With an at-most, universal,
+    /// self, disjunction or value restriction in the template's label that
+    /// loses answers: `⊤ ⊑ ≤1 r.G`, `r(a5,a4)`, `r(a5,a1)`, `G(a4)`, `G(a1)`,
+    /// disjoint `C(a4)`, `F(a1)` and the probe `P5 ≡ {a5}` came out
+    /// consistent (78bbeb27). Such a template stays insufficient for its
+    /// dependents too, as before 78bbeb27. Labels of atoms, conjunctions,
+    /// existentials, nominals and implication triggers keep the shortcut
+    /// (ore_ont_10949: `C_i ⊑ {a_i}`).
+    fn template_label_free_of_edge_restrictions(
+        node: SatNodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        use super::super::model::op;
+        let pc = calc_alg_context.process_context();
+        let node_ref = pc.sat_node(node);
+        if node_ref.indirect_status_flags.get_flags()
+            & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCARDINALITYRESTRICTED
+            != 0
+        {
+            return false;
+        }
+        let label = node_ref.reapply_con_sat_label_set;
+        if label.is_none() {
+            return false;
+        }
+        let arenas = calc_alg_context.ontology_arenas();
+        let mut descriptor = pc
+            .reapply_con_sat_label_set(label)
+            .get_concept_saturation_description_linker();
+        let mut walked = 0usize;
+        while descriptor.is_some() {
+            walked += 1;
+            if walked > pc.con_sat_desc_count() {
+                return false;
+            }
+            let d = pc.con_sat_desc(descriptor);
+            let negated = d.get_negation();
+            let code = arenas.concept(d.get_concept()).get_operator_code();
+            let edge_insensitive = if negated {
+                matches!(code, op::CCATOM | op::CCSUB | op::CCBOTTOM)
+            } else {
+                matches!(
+                    code,
+                    op::CCATOM
+                        | op::CCSUB
+                        | op::CCTOP
+                        | op::CCAND
+                        | op::CCSOME
+                        | op::CCNOMINAL
+                        | op::CCIMPLTRIG
+                        | op::CCIMPL
+                        | op::CCEQ
+                        | op::CCBRANCHTRIG
+                        | op::CCDATATYPE
+                        | op::CCDATALITERAL
+                )
+            };
+            if !edge_insensitive {
+                return false;
+            }
+            descriptor = d.get_next_concept_desciptor();
+        }
+        true
+    }
+
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::checkCriticalConceptsForNode`
     /// (cpp 3002–3189). The per-node critical-concept dispatch: drains the node's
     /// per-type critical-concept queues (FORALL, ATMOST, VALUE, NOMINAL, DISJUNCTION,
@@ -677,7 +750,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     calc_alg_context,
                 ) {
                     self.insufficient_nominal_count += 1;
-                    if unattached_abox_template {
+                    if unattached_abox_template
+                        && Self::template_label_free_of_edge_restrictions(
+                            *indi_proc_sat_node,
+                            calc_alg_context,
+                        )
+                    {
                         self.update_direct_not_dependent_adding_individual_status_flags(
                             *indi_proc_sat_node,
                             IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
