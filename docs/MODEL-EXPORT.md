@@ -220,6 +220,18 @@ entailed inequalities:
      an individual that occurs in an axiom is missing from the model, or the
      source links anonymous individuals or uses the universal role,
      `from_exported_model` declines and the exact probe run answers.
+   - **Named individuals forced equal (2026-11-21).** Horn rules can force
+     two named individuals equal: a nominal domain (`t1` with domain `{a1}`
+     and `t1(a0, a3)` gives `a0 = a1`), `⊤ ⊑ =1 s3` with domain `{a0}` (every
+     individual equals `a0`), or `B ⊑ {o}`. The structure carries such
+     merges only when `has_horn_merges` holds (elided ABox); otherwise it
+     keeps the two elements apart, so it is not a model and both bounds miss
+     the rows of the merged individuals (`g7002_0026` lost `t0(a1, a0)`,
+     `f4104_41` lost 3,240 of 6,480 VALUE rows without `--realize`).
+     `saturate_horn_in_place` now applies every Horn nominal merge
+     (`[B(x)] -> [x = o]`, with or without the head `{o}`) to its union-find,
+     and when two named elements end in one class without `has_horn_merges`,
+     `from_exported_model` declines and the exact probe run answers.
 
 3. **`DIFFERENT` (`DifferentIndividuals`)**:
    - Two individuals `a` and `b` that are distinct elements in `M_0`

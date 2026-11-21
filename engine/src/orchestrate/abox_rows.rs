@@ -2318,6 +2318,7 @@ pub(super) fn from_exported_model(
     // Set when a saturation stops at its guard bound before its fixpoint; the
     // plan is then declined so the caller runs the exact probe path.
     let horn_saturation_cut = std::cell::Cell::new(false);
+    let unrepresented_named_merge = std::cell::Cell::new(false);
     // Saturate a `(classes, edges)` state under deterministic 1-head Horn rules
     let saturate_horn_in_place = |classes: &mut [HashSet<String>],
                                   edges: &mut HashSet<(usize, String, usize)>|
@@ -2362,7 +2363,7 @@ pub(super) fn from_exported_model(
                             work.push(h.clone());
                             changed = true;
                         }
-                    } else if has_horn_merges && cr.heads.is_empty() {
+                    } else if cr.heads.len() <= 1 {
                         if let Some(u_o) = cr.nom_merge {
                             if u_o < num && union_uf(&mut uf, u, u_o) {
                                 merged_any = true;
@@ -2391,10 +2392,11 @@ pub(super) fn from_exported_model(
                                     work.push(h.clone());
                                     changed = true;
                                 }
-                            } else if has_horn_merges
-                                && cr.heads.is_empty()
+                            } else if cr.heads.len() <= 1
                                 && cr.body.iter().all(|b| classes[u].contains(b))
                             {
+                                // `[B(x)] -> [x = o]` (head `{o}` or none):
+                                // a Horn nominal merge.
                                 if let Some(u_o) = cr.nom_merge {
                                     if u_o < num && union_uf(&mut uf, u, u_o) {
                                         merged_any = true;
@@ -2605,6 +2607,20 @@ pub(super) fn from_exported_model(
         if !reached_fixpoint {
             horn_saturation_cut.set(true);
         }
+        // Two named elements forced equal by Horn rules (a nominal domain,
+        // `⊤ ⊑ =1 r` with a nominal domain, `B ⊑ {o}`) when the plan does not
+        // carry Horn merges (`has_horn_merges` needs an elided ABox): the
+        // structure keeps them apart, so it is not a model and its rows of the
+        // merged individuals are incomplete (g7002_0026 lost `t0(a1, a0)`,
+        // f4104_41 lost 3,240 VALUE rows). Decline; the exact probes answer.
+        if !has_horn_merges
+            && (0..num.min(n_elems)).any(|u| {
+                let r = find_uf(&mut uf, u);
+                r != u && r < n_elems
+            })
+        {
+            unrepresented_named_merge.set(true);
+        }
         let mut merged_named_pairs: Vec<(usize, usize)> = Vec::new();
         if has_horn_merges && (0..num).any(|u| find_uf(&mut uf, u) != u) {
             let mut members_by_root: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -2772,6 +2788,12 @@ pub(super) fn from_exported_model(
     if horn_saturation_cut.get() {
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!("KM_TIMING abox_rows: Horn saturation hit its guard bound; plan declined");
+        }
+        return None;
+    }
+    if unrepresented_named_merge.get() {
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!("KM_TIMING abox_rows: Horn rules merge named individuals the plan keeps apart; plan declined");
         }
         return None;
     }
