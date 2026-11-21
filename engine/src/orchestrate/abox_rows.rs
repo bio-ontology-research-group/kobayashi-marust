@@ -3550,6 +3550,8 @@ pub(super) fn from_exported_model(
             let mut full_e_set: Option<HashSet<(usize, String, usize)>> = None;
 
             let mut merge_queue: Vec<(usize, usize)> = vec![(u_init, v_init)];
+            // Members of each union-find class with more than one element.
+            let mut class_members: HashMap<usize, Vec<usize>> = HashMap::new();
             let mut elem_has_non_refl: Vec<bool> = has_non_refl_edge.clone();
             // The step bound only guards against a runaway loop. A merge that
             // has not reached its fixpoint within it proves nothing either way:
@@ -3567,11 +3569,24 @@ pub(super) fn from_exported_model(
                         continue;
                     }
                     let (keep, drop_el) = (ra.min(rb), ra.max(rb));
-                    if keep < n_elems
-                        && drop_el < n_elems
-                        && (cur_diff.contains(&pair_key(keep, drop_el))
-                            || func_data_conflict_pairs.contains(&pair_key(keep, drop_el)))
-                    {
+                    // The classes being joined, not just their roots, must be
+                    // free of a proved difference: after `u = v` the root of
+                    // `{u, v}` stands for both, and a later merge with `w`
+                    // clashes when `w != v` is proved even if `w != u` is not
+                    // (g8301_366: `a2 = a4`, then `≤ 1 r1` merges `a7` into
+                    // the class, and `a7 != a2` is asserted).
+                    let mk = class_members.remove(&keep).unwrap_or_else(|| vec![keep]);
+                    let md = class_members.remove(&drop_el).unwrap_or_else(|| vec![drop_el]);
+                    let proved_apart = mk.iter().filter(|&&x| x < n_elems).any(|&x| {
+                        md.iter().filter(|&&y| y < n_elems).any(|&y| {
+                            cur_diff.contains(&pair_key(x, y))
+                                || func_data_conflict_pairs.contains(&pair_key(x, y))
+                        })
+                    });
+                    let mut joined = mk;
+                    joined.extend(md);
+                    class_members.insert(keep, joined);
+                    if proved_apart {
                         return if horn_only {
                             horn_clash!()
                         } else {
@@ -6074,6 +6089,7 @@ mod tests {
             ("f4104_41", F4104_41),
             ("bare_individual", BARE_INDIVIDUAL),
             ("bare_but_constrained", BARE_BUT_CONSTRAINED),
+            ("g8301_366", G8301_366),
         ];
         let _test_env = crate::test_env::write();
         let _env = crate::routing::EnvironmentGuard::capture();
@@ -6102,6 +6118,10 @@ mod tests {
                         .iter()
                         .any(|[r, a, b]| short(r) == "t0" && short(a) == "a1" && short(b) == "a0")),
                     "f4104_41" => assert_eq!(values.len(), 6480, "{name}"),
+                    "g8301_366" => assert!(
+                        different.iter().any(|[a, b]| short(a) == "a2" && short(b) == "a4"),
+                        "{name}: {different:?}"
+                    ),
                     "bare_individual" => {
                         assert!(values.iter().any(|[r, a, b]| short(r) == "p" && short(a) == "a" && short(b) == "a"));
                         assert!(values.iter().all(|[_, a, b]| short(a) != "x" && short(b) != "x"), "{values:?}");
@@ -6126,6 +6146,52 @@ mod tests {
         InverseObjectProperties(:l :r) SubObjectPropertyOf(:l :p) SubObjectPropertyOf(:r :p) TransitiveObjectProperty(:p)\n\
         SubClassOf(:B ObjectSomeValuesFrom(:l owl:Thing)) SubClassOf(:S ObjectSomeValuesFrom(:l owl:Thing))\n\
         ClassAssertion(:B :a) ClassAssertion(:S :x)\n)";
+    /// `a2 = a4` forces `a7` into the class (`≤ 1 r1` at `a4`), and
+    /// `a7 != a2` is asserted: `DIFFERENT a2 a4` is entailed (HermiT agrees).
+    const G8301_366: &str = r#"Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/f>
+Declaration(ObjectProperty(:r0))
+Declaration(ObjectProperty(:r1))
+Declaration(ObjectProperty(:r2))
+Declaration(ObjectProperty(:r3))
+Declaration(NamedIndividual(:a0))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+Declaration(NamedIndividual(:a3))
+Declaration(NamedIndividual(:a4))
+Declaration(NamedIndividual(:a5))
+Declaration(NamedIndividual(:a6))
+Declaration(NamedIndividual(:a7))
+Declaration(NamedIndividual(:a8))
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:D))
+Declaration(Class(:E))
+Declaration(Class(:F))
+SubClassOf(:A :F)
+ObjectPropertyDomain(:r1 ObjectIntersectionOf(:E :A))
+SubClassOf(:F ObjectAllValuesFrom(:r0 :F))
+SubClassOf(ObjectUnionOf(:D :F) :E)
+SubObjectPropertyOf(:r1 ObjectInverseOf(:r1))
+SubClassOf(ObjectSomeValuesFrom(ObjectInverseOf(:r1) :A) :F)
+SubClassOf(:E ObjectMaxCardinality(1 :r1))
+DifferentIndividuals(:a7 :a2)
+ClassAssertion(:D :a5)
+DifferentIndividuals(:a2 :a8)
+ObjectPropertyAssertion(:r1 :a2 :a2)
+ObjectPropertyAssertion(:r2 :a4 :a4)
+ClassAssertion(:A :a0)
+ObjectPropertyAssertion(:r2 :a1 :a2)
+ObjectPropertyAssertion(:r1 :a7 :a4)
+ObjectPropertyAssertion(:r3 :a0 :a7)
+ObjectPropertyAssertion(:r1 :a8 :a1)
+ClassAssertion(:D :a1)
+ObjectPropertyAssertion(:r2 :a4 :a7)
+ClassAssertion(ObjectSomeValuesFrom(:r2 ObjectHasValue(:r0 :a1)) :a7)
+ClassAssertion(:E :a4)
+)
+"#;
     const G7001_0022: &str = r#"Prefix(:=<http://ex.org/>)
 Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
 Ontology(<http://ex.org/g>

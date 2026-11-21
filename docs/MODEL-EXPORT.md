@@ -284,6 +284,15 @@ entailed inequalities:
      `g7001_0022.ofn` that are not entailed (`O ∪ {a0 = a2}` is consistent).
      A pair whose clash cannot rest on such terms is `Undecided` and goes to
      the exact probe.
+   - **Proved differences hold between classes (2026-11-22).** During the
+     merge test an element of the union-find stands for its whole class. A
+     merge of two classes clashes when any member of one is proved different
+     from any member of the other, not only the two roots. Checking only the
+     roots missed `DIFFERENT a2 a4` in `g8301_366.ofn` (after `a2 = a4`,
+     `≤ 1 r1` at `a4` merges `a7`, and `a7 != a2` is asserted): the model
+     side then reported the quotient as a model and the row was lost. In
+     `H_0` the clash is sound because every merge in the class is entailed
+     under `a = b` and every member difference is entailed.
    - **Negative bound (`ProvedNotDifferent` from `M_0 / (u = v)`)**: If `H_0 /
      (u = v)` does not clash, `from_exported_model` forms the quotient of the
      full exported model `M_0 / (u = v)` by identifying `u` and `v` in `M_0`,
