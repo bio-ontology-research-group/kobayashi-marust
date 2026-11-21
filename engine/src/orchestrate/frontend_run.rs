@@ -597,8 +597,22 @@ fn run_ofn_split_cached_once(
     if keep_clauses_dir.is_none() {
         command.arg("--elc-binary").arg(elc_binary.path());
     }
+    // When this classification's own `check_user_source` accepted exactly the
+    // bytes now in this file (byte equality with the retained copy, never a
+    // hash or a flag), hand the worker those bytes on stdin. It parses them
+    // without validating them again, instead of re-reading the file and
+    // repeating the check: on ore_ont_12567 and 12128 the repeat was 3.5 s of
+    // the worker's 14 s. Anything else (no cache, lenient rewrite, converted
+    // input, a file that changed) leaves the worker on its own validation.
+    let validated_source = (!trusted && std::env::var_os("KM_NO_VALIDATED_STDIN").is_none())
+        .then(|| std::fs::read_to_string(ont).ok())
+        .flatten()
+        .filter(|text| crate::frontend::conformance::cached_user_source_accepted(text));
+    if validated_source.is_some() {
+        command.arg("--source-stdin");
+    }
     command
-        .stdin(Stdio::null())
+        .stdin(if validated_source.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(File::create(clauses.path())?)
         .stderr(File::create(stderr.path())?)
         .env(crate::frontend::CLASSIFIER_EXTENDED_ATOMIC_ABOX_ENV, "1");
@@ -609,12 +623,24 @@ fn run_ofn_split_cached_once(
         command.env_remove(super::TRUSTED_REWRITE_ENV);
     }
     crate::mem::release_code_pages();
-    let status = command
-        .status()
-        .map_err(|e| OrchestrateError::Spawn {
-            bin: "ofn".into(),
-            source: e,
-        })?;
+    let mut child = command.spawn().map_err(|e| OrchestrateError::Spawn {
+        bin: "ofn".into(),
+        source: e,
+    })?;
+    let feeder = match (validated_source, child.stdin.take()) {
+        (Some(text), Some(mut stdin)) => Some(std::thread::spawn(move || {
+            // A worker that exits early closes the pipe; its status reports why.
+            let _ = std::io::Write::write_all(&mut stdin, text.as_bytes());
+        })),
+        _ => None,
+    };
+    let status = child.wait().map_err(|e| OrchestrateError::Spawn {
+        bin: "ofn".into(),
+        source: e,
+    })?;
+    if let Some(feeder) = feeder {
+        let _ = feeder.join();
+    }
 
     let code = crate::orchestrate::engine_run::exit_status_code(&status);
     if code == 3 {

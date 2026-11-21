@@ -38,7 +38,8 @@ const ELC_BINARY_MAGIC: &[u8; 8] = b"KMELC\0\x01\0";
 const ELC_OUTPUT_BINARY_MAGIC: &[u8; 8] = b"KMELCO\x01\0";
 const MAX_BINARY_ITEMS: usize = 100_000_000;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+// `Deserialize` is `tag_first_enum!` below (the tag is decoded first).
+#[derive(Serialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "kind")]
 pub enum JTerm {
     #[serde(rename = "var")]
@@ -54,7 +55,8 @@ pub enum JTerm {
     Fun { function: String, arg: Box<JTerm> },
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+// `Deserialize` is `tag_first_enum!` below (the tag is decoded first).
+#[derive(Serialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "kind")]
 pub enum JAtom {
     #[serde(rename = "concept")]
@@ -68,6 +70,19 @@ pub enum JAtom {
     #[serde(rename = "eq")]
     Eq { left: JTerm, right: JTerm },
 }
+
+crate::tag_first_enum!(JTerm, JTermDerived, "kind", {
+    "var" => Var { name: String },
+    "ind" => Ind { name: String },
+    "aux" => Aux { root: String, label: Vec<(String, i64)> },
+    "fun" => Fun { function: String, arg: Box<JTerm> },
+});
+
+crate::tag_first_enum!(JAtom, JAtomDerived, "kind", {
+    "concept" => Concept { concept: String, term: JTerm },
+    "role" => Role { role: String, source: JTerm, target: JTerm },
+    "eq" => Eq { left: JTerm, right: JTerm },
+});
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct JClause {

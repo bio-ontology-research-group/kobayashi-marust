@@ -5451,7 +5451,8 @@ impl<'a> CacheRun<'a> {
 
 /// JSON atom: `{"k":"c","neg":b,"c":id,"t":var}` (concept), `{"k":"r","r":id,
 /// "s":var,"t":var}` (role), `{"k":"e","r":id,"neg":b,"c":id,"t":var}` (∃ ≥1 R.B).
-#[derive(Serialize, Deserialize)]
+/// `Deserialize` is `tag_first_enum!` below (the tag is decoded first).
+#[derive(Serialize)]
 #[serde(tag = "k")]
 pub enum JAtom {
     #[serde(rename = "c")]
@@ -5463,6 +5464,13 @@ pub enum JAtom {
     #[serde(rename = "eq")]
     Eq { s: Var, t: Var },
 }
+
+crate::tag_first_enum!(JAtom, JAtomDerived, "k", {
+    "c" => Concept { neg: bool, c: C, t: Var },
+    "r" => Role { r: R, s: Var, t: Var },
+    "e" => Exists { r: R, neg: bool, c: C, t: Var },
+    "eq" => Eq { s: Var, t: Var },
+});
 
 #[derive(Serialize, Deserialize)]
 pub struct JClause {

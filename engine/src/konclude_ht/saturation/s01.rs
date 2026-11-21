@@ -1194,6 +1194,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         }
 
         self.complete_saturated_individual_nodes(calc_alg_context); // 438
+        // Diagnostic only (`KM_SAT_COUNTERS` with `KM_BRIDGE_PROGRESS`): the
+        // same counter lines as an aborted pass, labelled `stage=completed`,
+        // for comparison with Konclude's `KSATDBG precompute` line.
+        if self.diagnostic_counters_enabled {
+            report_timeout("completed", self, calc_alg_context);
+        }
         true // 450 (satisfiable)
     }
 
