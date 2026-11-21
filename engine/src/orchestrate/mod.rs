@@ -5376,7 +5376,7 @@ fn rules_consistency(
     }
     use crate::json_io::JInput;
     let classify = request.classify;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
     let _rule_environment = crate::routing::EnvironmentGuard::capture();
     if require_source_model {
         std::env::set_var("KM_TRANSITIVE_RULE_REDUCE", "1");
@@ -5582,9 +5582,8 @@ fn rules_consistency(
     let out_path = tmpfile::TempPath::new(".rulescons.json");
     // The worker's stderr is kept so that a failure reports its reason.
     let err_path = tmpfile::TempPath::new(".rulescons.err");
-    let mut cmd = Command::new(&tab_prog);
-    cmd.args(&tab_pre)
-        .stdin(Stdio::piped())
+    let mut cmd = engine_run::worker_command(&tab_prog, &tab_pre, None, true);
+    cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path())?)
         .stderr(File::create(err_path.path())?)
         .env("KM_RULES_CONSISTENCY", "1");
@@ -5610,6 +5609,7 @@ fn rules_consistency(
     // order and never the set of matches (docs/DL-SAFE-RULES.md, "One join
     // order for both rule probes").
     cmd.env("KM_RULE_JOIN_ORDER", "1");
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: "tableau".into(),
         source: e,

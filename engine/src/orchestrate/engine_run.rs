@@ -225,6 +225,7 @@ pub(crate) fn status_cancellable(cmd: &mut std::process::Command) -> Option<std:
     if CANCEL.load(Ordering::SeqCst) {
         return None;
     }
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().ok()?;
     let pid = child.id();
     register(pid);
@@ -289,6 +290,36 @@ pub(crate) fn read_rss(pid: u32) -> Option<u64> {
     Some(resident * 4096)
 }
 
+/// A worker `Command` for `program prefix...`, as `nice -n <nice> program
+/// prefix...` would run it but without the `nice` process: the increment is
+/// applied in the child before `exec` (`bigstack::prepare_worker_command`).
+/// `deep_stack` marks a `km tableau` worker, which then starts with the
+/// stack limit its own re-execution would install. An increment that is not
+/// an integer keeps the `nice` program, which reports it as before.
+pub(crate) fn worker_command(
+    program: &Path,
+    prefix: &[String],
+    nice: Option<&str>,
+    deep_stack: bool,
+) -> Command {
+    let stack = deep_stack.then(crate::bigstack::tableau_worker_stack_bytes);
+    match nice.map(|value| (value, value.trim().parse::<i32>())) {
+        Some((value, Err(_))) => {
+            let mut c = Command::new("nice");
+            c.arg("-n").arg(value).arg(program).args(prefix);
+            crate::bigstack::prepare_worker_command(&mut c, stack, None);
+            c
+        }
+        parsed => {
+            let mut c = Command::new(program);
+            c.args(prefix);
+            let increment = parsed.and_then(|(_, n)| n.ok());
+            crate::bigstack::prepare_worker_command(&mut c, stack, increment);
+            c
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_engine(
     program: &Path,
@@ -320,16 +351,8 @@ pub fn run_engine(
     let stdout_tmp = TempPath::new(".out.json");
     let stderr_tmp = TempPath::new(".err");
 
-    let mut cmd = if nice {
-        // the niced racer only consumes cores the primary leaves idle.
-        let mut c = Command::new("nice");
-        c.arg("-n").arg("19").arg(program).args(prefix);
-        c
-    } else {
-        let mut c = Command::new(program);
-        c.args(prefix);
-        c
-    };
+    // the niced racer only consumes cores the primary leaves idle.
+    let mut cmd = worker_command(program, prefix, nice.then_some("19"), false);
     cmd.stdin(File::open(clauses_path)?)
         .stdout(File::create(stdout_tmp.path())?)
         .stderr(File::create(stderr_tmp.path())?);
@@ -345,6 +368,7 @@ pub fn run_engine(
         cmd.env("KM_WORKER_MODEL_OUT", model_out);
     }
 
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: bin_name.clone(),
         source: e,

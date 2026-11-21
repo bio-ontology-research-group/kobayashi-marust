@@ -608,6 +608,7 @@ fn run_ofn_split_cached_once(
     } else {
         command.env_remove(super::TRUSTED_REWRITE_ENV);
     }
+    crate::mem::release_code_pages();
     let status = command
         .status()
         .map_err(|e| OrchestrateError::Spawn {

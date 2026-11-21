@@ -245,15 +245,7 @@ fn spawn_tableau(
         return None;
     }
     let out_path = super::tmpfile::TempPath::new(".tabrace.json");
-    let mut cmd = if cfg.tab_race_nice {
-        let mut c = Command::new("nice");
-        c.arg("-n").arg("19").arg(&tab_prog).args(&tab_pre);
-        c
-    } else {
-        let mut c = Command::new(&tab_prog);
-        c.args(&tab_pre);
-        c
-    };
+    let mut cmd = engine_run::worker_command(&tab_prog, &tab_pre, cfg.tab_race_nice.then_some("19"), true);
     cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path()).ok()?)
         .stderr(Stdio::null())
@@ -264,6 +256,7 @@ fn spawn_tableau(
         model_out.push(".model");
         cmd.env("KM_WORKER_MODEL_OUT", model_out);
     }
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().ok()?;
     // feed the TInput on a background thread (ignore broken pipe if the tableau
     // exits before draining — the small TInput never deadlocks)
@@ -470,15 +463,7 @@ fn spawn_elc_cert(
     let out_path = super::tmpfile::TempPath::new(".elcrace.json");
     let cert = std::env::var("KM_ELC_CERT").unwrap_or_else(|_| "2".to_string());
     let (elc_prog, elc_pre) = cfg.elc_cmd();
-    let mut cmd = if nice && cfg.tab_race_nice {
-        let mut c = Command::new("nice");
-        c.arg("-n").arg("19").arg(&elc_prog).args(&elc_pre);
-        c
-    } else {
-        let mut c = Command::new(&elc_prog);
-        c.args(&elc_pre);
-        c
-    };
+    let mut cmd = engine_run::worker_command(&elc_prog, &elc_pre, (nice && cfg.tab_race_nice).then_some("19"), false);
     cmd.env("KM_ELC_OUTPUT_BINARY", "1");
     cmd.stdin(File::open(clauses_path).ok()?)
         .stdout(File::create(out_path.path()).ok()?)
@@ -489,6 +474,7 @@ fn spawn_elc_cert(
         model_out.push(".model");
         cmd.env("KM_WORKER_MODEL_OUT", model_out);
     }
+    crate::mem::release_code_pages();
     let child = cmd.spawn().ok()?;
     Some((child, out_path))
 }
@@ -2689,15 +2675,8 @@ fn prepare_ht_with_input(
     }
     let out_path = super::tmpfile::TempPath::new(".htrace.json");
     // a light nice keeps HT from preempting CB on the onts CB finishes quickly.
-    let mut cmd = if cfg.ht_nice != "0" && !cfg.ht_nice.is_empty() {
-        let mut c = Command::new("nice");
-        c.arg("-n").arg(&cfg.ht_nice).arg(&tab_prog).args(&tab_pre);
-        c
-    } else {
-        let mut c = Command::new(&tab_prog);
-        c.args(&tab_pre);
-        c
-    };
+    let ht_nice = (cfg.ht_nice != "0" && !cfg.ht_nice.is_empty()).then_some(cfg.ht_nice.as_str());
+    let mut cmd = engine_run::worker_command(&tab_prog, &tab_pre, ht_nice, true);
     cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path()).ok()?);
     // stderr: inherit when stats/trace requested (diagnostic). Under
@@ -2982,6 +2961,7 @@ impl PreparedHt {
             model_out.push(".model");
             cmd.env("KM_WORKER_MODEL_OUT", model_out);
         }
+        crate::mem::release_code_pages();
         let mut child = cmd.spawn().ok()?;
         if let Some(stderr) = child.stderr.take() {
             forward_ht_worker_errors(stderr);

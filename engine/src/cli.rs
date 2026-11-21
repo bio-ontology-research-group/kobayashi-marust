@@ -7903,12 +7903,14 @@ pub fn run_tableau() {
     // committed page by page as it grows, so it serves both without charging
     // gigabytes of unused stack against a strict commit limit at startup
     // (`bigstack`). This must run before any thread exists or stdin is read:
-    // it may re-execute the worker once with a larger RLIMIT_STACK.
+    // it may re-execute the worker once with a larger RLIMIT_STACK. The
+    // supervisor spawns this worker with that limit already set
+    // (`bigstack::prepare_worker_command`), so the re-execution is skipped.
     let stack_mb = std::env::var("KM_TAB_STACK_MB")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(2048);
-    crate::bigstack::ensure_main_stack((stack_mb << 20).max(crate::bigstack::DEEP_STACK));
+    crate::bigstack::ensure_main_stack(crate::bigstack::tableau_worker_stack_bytes());
     die_with_supervisor();
     maybe_enable_debug();
     let mut buf = String::new();

@@ -61,6 +61,61 @@ pub fn release_before_worker_wait() {
     }
 }
 
+/// The `r-x` mapping of this program's own code: the mapping in
+/// `/proc/self/maps` that contains this function. Read once.
+#[cfg(target_os = "linux")]
+fn own_code_mapping() -> Option<(usize, usize)> {
+    static RANGE: std::sync::OnceLock<Option<(usize, usize)>> = std::sync::OnceLock::new();
+    *RANGE.get_or_init(|| {
+        let here = own_code_mapping as fn() -> Option<(usize, usize)> as usize;
+        let maps = std::fs::read_to_string("/proc/self/maps").ok()?;
+        maps.lines().find_map(|line| {
+            let mut fields = line.split_whitespace();
+            let (start, end) = fields.next()?.split_once('-')?;
+            let perms = fields.next()?;
+            let (start, end) = (usize::from_str_radix(start, 16).ok()?, usize::from_str_radix(end, 16).ok()?);
+            // Only a read-only, executable, private file mapping: its pages
+            // are never written, so the file always holds their contents.
+            (start <= here && here < end && perms == "r-xp").then_some((start, end))
+        })
+    })
+}
+
+/// Opt-in switch for [`release_code_pages`]: `KM_CODE_RELEASE=1`.
+fn code_release_enabled() -> bool {
+    switched_on(std::env::var_os("KM_CODE_RELEASE").as_deref())
+}
+
+/// Opt-in (`KM_CODE_RELEASE=1`; off by default): unmap the resident pages of
+/// this program's code before the supervisor starts a worker and waits.
+///
+/// What it does: the code is a private, read-only mapping of the `km` file.
+/// `madvise(MADV_DONTNEED)` drops the supervisor's page-table entries for it;
+/// the pages stay in the page cache, and code the supervisor runs later is
+/// mapped again on first use (a minor fault). No data mapping is touched, so
+/// no state changes.
+///
+/// What it does not do: it frees almost no physical memory. The worker runs
+/// the same binary and maps many of the same cached pages, and the dropped
+/// pages stay cached. Its main effect is on a process-tree RSS sum, which
+/// counts shared code pages once per process (10 to 11 MiB of the
+/// supervisor's 12 MiB on small inputs). It is off by default so that a
+/// reported memory figure does not rest on that accounting effect.
+/// Linux only.
+pub fn release_code_pages() {
+    #[cfg(target_os = "linux")]
+    {
+        if !code_release_enabled() {
+            return;
+        }
+        if let Some((start, end)) = own_code_mapping() {
+            unsafe {
+                libc::madvise(start as *mut libc::c_void, end - start, libc::MADV_DONTNEED);
+            }
+        }
+    }
+}
+
 /// Turn transparent huge pages off for this process and every process it
 /// starts (E4). With THP `always`, mimalloc's sparse 64 KiB pages each pull
 /// in a 2 MiB huge page and every km process carries 20 to 30 MiB of extra
@@ -107,5 +162,35 @@ mod tests {
             assert!(block.iter().all(|&b| b as usize == i));
         }
         release_transient_heap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn released_code_pages_fault_back_in() {
+        let _test_env = crate::test_env::write();
+        let previous = std::env::var_os("KM_CODE_RELEASE");
+        // Off by default.
+        std::env::remove_var("KM_CODE_RELEASE");
+        assert!(!super::code_release_enabled());
+        std::env::set_var("KM_CODE_RELEASE", "0");
+        assert!(!super::code_release_enabled());
+        std::env::set_var("KM_CODE_RELEASE", "1");
+        assert!(super::code_release_enabled());
+        let (start, end) = super::own_code_mapping().expect("km code mapping");
+        assert!(start < end);
+        fn work(n: u64) -> u64 {
+            (0..n).fold(0u64, |acc, x| acc.wrapping_mul(31).wrapping_add(x))
+        }
+        let before = work(std::hint::black_box(10_000));
+        super::release_code_pages();
+        // Code runs again after its pages were dropped, with the same result.
+        assert_eq!(work(std::hint::black_box(10_000)), before);
+        let live: Vec<u8> = vec![7; 1 << 20];
+        super::release_code_pages();
+        assert!(live.iter().all(|&b| b == 7));
+        match previous {
+            Some(value) => std::env::set_var("KM_CODE_RELEASE", value),
+            None => std::env::remove_var("KM_CODE_RELEASE"),
+        }
     }
 }
