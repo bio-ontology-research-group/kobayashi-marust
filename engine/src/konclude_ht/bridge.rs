@@ -7022,11 +7022,52 @@ fn bridge_tinput_with_trigger_absorption(
         let mut seen_inclusions = crate::fxhash::FxHashSet::default();
         let mut forced_subclass_names = crate::fxhash::FxHashSet::default();
         let mut equivalence_name_counts: HashMap<&str, usize> = HashMap::default();
+        // A told `SubClassOf(A C)` normally keeps `A` from becoming a CCEQ
+        // host. When `A` has exactly one `EquivalentClasses(A D)` and `C` is
+        // `D` or a top-level conjunct of `D`, the told axiom is entailed by the
+        // definition. Such a name may be "relaxed": it is not forced, and its
+        // told axioms (all entailed) are not encoded, because every encoding
+        // of the equivalence below (lazy CCEQ unfolding `A -> D`, trigger
+        // absorption with the forward unfolding `A -> D`, or the two plain
+        // inclusions) contains `A -> D`, which entails `A -> C`. Which names
+        // are relaxed is a speed decision only; see `relaxed_names`.
+        let mut unique_equivalence_defs: HashMap<&str, &SourceConcept> = HashMap::default();
+        for axiom in &tin.source_axioms {
+            if axiom.kind == crate::json_io::SourceAxiomKind::Equivalent {
+                for (named_side, def_side) in
+                    [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                {
+                    if let SourceConcept::Name(name) = named_side {
+                        let count = equivalence_name_counts.entry(name.as_str()).or_default();
+                        *count += 1;
+                        if *count == 1 {
+                            unique_equivalence_defs.insert(name.as_str(), def_side);
+                        } else {
+                            unique_equivalence_defs.remove(name.as_str());
+                        }
+                    }
+                }
+            }
+        }
+        // Diagnostic: `KM_BRIDGE_FORCE_ALL_TOLD_SUBCLASS` restores the old rule
+        // (every told SubClassOf forces its left name) for paired measurement.
+        let force_all_told = std::env::var_os("KM_BRIDGE_FORCE_ALL_TOLD_SUBCLASS").is_some();
+        let entailed_by_unique_definition = |name: &str, right: &SourceConcept| -> bool {
+            if force_all_told {
+                return false;
+            }
+            let Some(&def) = unique_equivalence_defs.get(name) else {
+                return false;
+            };
+            right == def || matches!(def, SourceConcept::And(conjuncts) if conjuncts.contains(right))
+        };
         for axiom in &tin.source_axioms {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
                     if let SourceConcept::Name(name) = &axiom.left {
-                        forced_subclass_names.insert(name.as_str());
+                        if !entailed_by_unique_definition(name.as_str(), &axiom.right) {
+                            forced_subclass_names.insert(name.as_str());
+                        }
                     }
                 }
                 crate::json_io::SourceAxiomKind::Disjoint => {
@@ -7036,10 +7077,107 @@ fn bridge_tinput_with_trigger_absorption(
                         }
                     }
                 }
-                crate::json_io::SourceAxiomKind::Equivalent => {
-                    for side in [&axiom.left, &axiom.right] {
-                        if let SourceConcept::Name(name) = side {
-                            *equivalence_name_counts.entry(name.as_str()).or_default() += 1;
+                crate::json_io::SourceAxiomKind::Equivalent => {}
+            }
+        }
+        let mut relaxed_names: crate::fxhash::FxHashSet<&str> = Default::default();
+        for axiom in &tin.source_axioms {
+            if axiom.kind == crate::json_io::SourceAxiomKind::SubClass {
+                if let SourceConcept::Name(name) = &axiom.left {
+                    if !forced_subclass_names.contains(name.as_str()) {
+                        relaxed_names.insert(name.as_str());
+                    }
+                }
+            }
+        }
+        if !relaxed_names.is_empty() {
+            // Same host choice and fixpoint as `non_triggerable_hosts` below,
+            // over the current forced set.
+            let mut non_triggerable: crate::fxhash::FxHashSet<&str> = Default::default();
+            loop {
+                let before = non_triggerable.len();
+                for axiom in &tin.source_axioms {
+                    if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                        continue;
+                    }
+                    if let Some((name, definition)) =
+                        [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                            .into_iter()
+                            .find_map(|(named_side, definition)| match named_side {
+                                SourceConcept::Name(name)
+                                    if !forced_subclass_names.contains(name.as_str())
+                                        && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
+                                {
+                                    Some((name.as_str(), definition))
+                                }
+                                _ => None,
+                            })
+                    {
+                        if !syntactically_triggerable(definition, true, &non_triggerable) {
+                            non_triggerable.insert(name);
+                        }
+                    }
+                }
+                if non_triggerable.len() == before {
+                    break;
+                }
+            }
+            // Relax only names whose told superclasses are all named classes and
+            // whose definition requires at least two successors (a positive
+            // `>= n r.C` with n >= 2, or a negated `<= n r.C` with n >= 1). The
+            // reverse direction of such a definition cannot be trigger-absorbed
+            // (triggers need n <= 1), so for a forced name it stays a general
+            // inclusion `not D or A`, whose `<= n-1 r.C` branch is open on every
+            // node. As a lazily unfolded CCEQ definition it is not. Measured
+            // on ore_ont_9540 (`Rectangle == =4 has_point.right_angle_point and
+            // Quadrilateral` with told `SubClassOf(Rectangle Quadrilateral)`):
+            // 12.8-15.5 s / 800 MB to 2.3-2.9 s / 83 MB. Without the cardinality
+            // condition, ore_ont_10080 (six OBI definitions with universal
+            // restrictions) was 30 % slower; with a complex told superclass,
+            // ore_ont_10140 (two definitions with told cardinality superclasses)
+            // was 19 s slower. `KM_BRIDGE_RELAX_ANY_TOLD_SUPERCLASS` drops both
+            // conditions for measurement and differential testing.
+            let any_told = std::env::var_os("KM_BRIDGE_RELAX_ANY_TOLD_SUPERCLASS").is_some();
+            let mut complex_told: crate::fxhash::FxHashSet<&str> = Default::default();
+            for axiom in &tin.source_axioms {
+                if axiom.kind == crate::json_io::SourceAxiomKind::SubClass {
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        if !matches!(axiom.right, SourceConcept::Name(_)) {
+                            complex_told.insert(name.as_str());
+                        }
+                    }
+                }
+            }
+            fn requires_two_successors(concept: &SourceConcept, positive: bool) -> bool {
+                match concept {
+                    SourceConcept::AtLeast(n, _, filler) => {
+                        (positive && *n >= 2) || requires_two_successors(filler, positive)
+                    }
+                    SourceConcept::AtMost(n, _, filler) => {
+                        (!positive && *n >= 1) || requires_two_successors(filler, !positive)
+                    }
+                    SourceConcept::Not(operand) => requires_two_successors(operand, !positive),
+                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                        operands.iter().any(|op| requires_two_successors(op, positive))
+                    }
+                    SourceConcept::Exists(_, filler) => requires_two_successors(filler, positive),
+                    SourceConcept::Forall(_, filler) => requires_two_successors(filler, positive),
+                    _ => false,
+                }
+            }
+            relaxed_names.retain(|name| {
+                non_triggerable.contains(name)
+                    && (any_told
+                        || (!complex_told.contains(name)
+                            && unique_equivalence_defs
+                                .get(name)
+                                .is_some_and(|def| requires_two_successors(def, true))))
+            });
+            for axiom in &tin.source_axioms {
+                if axiom.kind == crate::json_io::SourceAxiomKind::SubClass {
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        if !relaxed_names.contains(name.as_str()) {
+                            forced_subclass_names.insert(name.as_str());
                         }
                     }
                 }
@@ -7290,6 +7428,16 @@ fn bridge_tinput_with_trigger_absorption(
         for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
+                    // A relaxed name that is still unforced after the cycle
+                    // check is a CCEQ host whose lazy unfolding entails this
+                    // axiom (see `relaxed_names`).
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        if relaxed_names.contains(name.as_str())
+                            && !forced_subclass_names.contains(name.as_str())
+                        {
+                            continue;
+                        }
+                    }
                     encode!(&axiom.left, &axiom.right);
                 }
                 crate::json_io::SourceAxiomKind::Equivalent => {
