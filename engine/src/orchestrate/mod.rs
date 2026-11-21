@@ -16,6 +16,7 @@ pub mod engine_run;
 pub mod explain;
 pub mod features;
 mod flat_nf1;
+mod finite_cover;
 pub mod frontend_check;
 pub mod frontend_run;
 pub(crate) mod inert_sorts;
@@ -2772,6 +2773,11 @@ fn classify_with_evidence_inner(
     }
     let (mut clauses_path, mut meta, mut cached_input, mut elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
+    if let Some(evidence) =
+        finite_cover_evidence(ont, &meta, retain_grouped_output, timing, t_start)?
+    {
+        return Ok(evidence);
+    }
     // Owned here so it is released with this classification on every path.
     let mut positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
     let _public_subject_file = if let Some(path) = std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE") {
@@ -4195,6 +4201,97 @@ fn classify_with_evidence_inner(
         consistency_certified,
         timing,
     )
+}
+
+/// Whether the finite-cover route may answer: not under a route the caller
+/// forced at start-up (`KM_ROUTE` other than `auto`), and not when
+/// `KM_NO_FINITE_COVER` is set. Read once.
+fn finite_cover_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        std::env::var_os("KM_NO_FINITE_COVER").is_none()
+            && match std::env::var("KM_ROUTE") {
+                Err(_) => true,
+                Ok(route) => route.is_empty() || route == "auto",
+            }
+    })
+}
+
+/// The finite-cover route (docs/V1.7.0-NOMINAL-COVER.md): an ontology with
+/// `⊤ ⊑ {o1, …, ok}`, k ≤ 4, is classified by search over its finite
+/// interpretations (`finite_cover::classify_cover`). Runs once per outermost
+/// classification, before every other route; `None` when it declines.
+fn finite_cover_evidence(
+    ont: &Path,
+    meta: &frontend_run::Meta,
+    retain_grouped_output: bool,
+    timing: bool,
+    t_start: std::time::Instant,
+) -> Result<Option<ClassificationEvidence>, OrchestrateError> {
+    if !finite_cover_enabled()
+        || CLASSIFY_DEPTH.with(|d| d.get()) != 1
+        || !meta.dropped_source_axioms.is_empty()
+        || meta.uncarried_data_assertions > 0
+        || !meta.data_roles.is_empty()
+    {
+        return Ok(None);
+    }
+    let text = {
+        let prepared = input::prepare_for_reasoning(ont)?;
+        std::fs::read_to_string(prepared.path())?
+    };
+    if !text.contains("ObjectOneOf") {
+        return Ok(None);
+    }
+    let is_top_or_bottom = |full: &str| {
+        full == "http://www.w3.org/2002/07/owl#Thing"
+            || full == "http://www.w3.org/2002/07/owl#Nothing"
+            || full == "owl:Thing"
+            || full == "owl:Nothing"
+    };
+    let mut short_of: HashMap<String, String> = HashMap::new();
+    let mut classes: Vec<String> = Vec::new();
+    for name in &meta.named {
+        let full = meta.iri_map.get(name).cloned().unwrap_or_else(|| name.clone());
+        if is_top_or_bottom(&full) || short_of.contains_key(&full) {
+            continue;
+        }
+        short_of.insert(full.clone(), name.clone());
+        classes.push(full);
+    }
+    let answer = match finite_cover::classify_cover(&text, &classes) {
+        Ok(answer) => answer,
+        Err(reason) => {
+            if timing {
+                eprintln!("KM_TIMING finite cover declined: {}", reason.0);
+            }
+            return Ok(None);
+        }
+    };
+    if timing {
+        eprintln!(
+            "KM_TIMING finite cover answered @ {:.2}s (consistent={}, partitions={}, solves={})",
+            t_start.elapsed().as_secs_f64(),
+            answer.consistent,
+            answer.partitions,
+            answer.solves,
+        );
+    }
+    let mut out = EngineOut { inconsistent: !answer.consistent, ..EngineOut::default() };
+    if answer.consistent {
+        for (full, supers) in &answer.supers {
+            let subject = short_of[full].clone();
+            let row = match supers {
+                None => vec!["owl:Nothing".to_string()],
+                Some(supers) => supers.iter().map(|s| short_of[s].clone()).collect(),
+            };
+            out.subsumptions.insert(subject, row);
+        }
+        if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+            model_export::record_declined("the finite-cover route exports no model".into());
+        }
+    }
+    map_engine_out_to_evidence(out, meta, retain_grouped_output, true, timing).map(Some)
 }
 
 fn map_engine_out_to_evidence(
