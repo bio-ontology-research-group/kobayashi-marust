@@ -676,7 +676,7 @@ pub struct ProcessContext {
         HashMap<(RoleId, RoleSaturationProcessLinkerId), RoleSaturationProcessLinkerId>,
     /// Lazily materialized role membership sets keyed by interned role-linker head.
     sat_copy_init_role_linker_sets:
-        HashMap<RoleSaturationProcessLinkerId, HashSet<RoleId>>,
+        HashMap<RoleSaturationProcessLinkerId, RoleLinkerMembership>,
     /// `CSaturationIndividualNodeFUNCTIONALConceptsExtensionData` pool.
     sat_indi_node_functional_concept_ext_datas:
         Arena<SaturationIndividualNodeFunctionalConceptsExtensionData>,
@@ -6406,8 +6406,15 @@ impl ProcessContext {
         id
     }
 
-    /// Test whether an interned role-linker chain `head` contains `role`,
-    /// materializing and caching a `HashSet<RoleId>` for `head` on first lookup.
+    /// Test whether an interned role-linker chain `head` contains `role`.
+    ///
+    /// Interned chains are immutable `(role, next)` steps, so the role set of
+    /// a head is the set of its `next` plus its own role. Each head's set is
+    /// built once from its nearest cached ancestor: a bitset over role ids
+    /// (one copy of the parent's words plus one bit) while the ids fit
+    /// `ROLE_LINKER_BITSET_LIMIT` bits, else a hash set as before. Building
+    /// every head's hash set from scratch along its whole chain was
+    /// quadratic: 18 % of the HT worker's CPU on ore_ont_7361.
     pub fn copying_initializing_role_linker_contains(
         &mut self,
         head: RoleSaturationProcessLinkerId,
@@ -6416,19 +6423,25 @@ impl ProcessContext {
         if head.is_none() {
             return false;
         }
-        if let Some(set) = self.sat_copy_init_role_linker_sets.get(&head) {
-            return set.contains(&role);
+        if !self.sat_copy_init_role_linker_sets.contains_key(&head) {
+            let mut path: smallvec::SmallVec<[RoleSaturationProcessLinkerId; 8]> =
+                smallvec::SmallVec::new();
+            let mut cursor = head;
+            while cursor.is_some() && !self.sat_copy_init_role_linker_sets.contains_key(&cursor) {
+                path.push(cursor);
+                cursor = self.role_sat_proc_linker(cursor).get_next();
+            }
+            let mut current = if cursor.is_some() {
+                self.sat_copy_init_role_linker_sets[&cursor].clone()
+            } else {
+                RoleLinkerMembership::Bits(Vec::new())
+            };
+            for &link in path.iter().rev() {
+                current.insert(self.role_sat_proc_linker(link).get_role());
+                self.sat_copy_init_role_linker_sets.insert(link, current.clone());
+            }
         }
-        let mut set = HashSet::default();
-        let mut cursor = head;
-        while cursor.is_some() {
-            let linker = self.role_sat_proc_linker(cursor);
-            set.insert(linker.get_role());
-            cursor = linker.get_next();
-        }
-        let found = set.contains(&role);
-        self.sat_copy_init_role_linker_sets.insert(head, set);
-        found
+        self.sat_copy_init_role_linker_sets[&head].contains(role)
     }
     arena_accessors!(
         sat_indi_node_functional_concept_ext_datas,
@@ -9338,6 +9351,45 @@ mod tests {
     };
     use super::*;
 
+    /// Bitset role membership of interned role-linker chains equals a walk of
+    /// each chain, for heads queried in any order and for role ids on both
+    /// sides of the bitset limit.
+    #[test]
+    fn interned_role_linker_membership_matches_chain_walk() {
+        let _test_env = crate::test_env::read();
+        let mut ctx = ProcessContext::new();
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut heads = vec![RoleSaturationProcessLinkerId::NONE];
+        for _ in 0..400 {
+            let parent = heads[(next() % heads.len() as u64) as usize];
+            let raw = if next() % 10 == 0 { 4000 + next() % 300 } else { next() % 40 };
+            let head = ctx.intern_copying_initializing_role_process_linker(RoleId::new(raw as Cint64), parent);
+            heads.push(head);
+        }
+        let walk = |ctx: &ProcessContext, mut head: RoleSaturationProcessLinkerId, role: RoleId| {
+            while head.is_some() {
+                if ctx.role_sat_proc_linker(head).get_role() == role {
+                    return true;
+                }
+                head = ctx.role_sat_proc_linker(head).get_next();
+            }
+            false
+        };
+        for _ in 0..4000 {
+            let head = heads[(next() % heads.len() as u64) as usize];
+            let raw = if next() % 10 == 0 { 4000 + next() % 300 } else { next() % 40 };
+            let role = RoleId::new(raw as Cint64);
+            let expected = walk(&ctx, head, role);
+            assert_eq!(ctx.copying_initializing_role_linker_contains(head, role), expected);
+        }
+    }
+
     /// docs/HYBRID-CB-HT.md §16: a spine journal epoch restores marks on
     /// pre-existing track points and drops track points allocated inside it,
     /// and nested journals unwind independently.
@@ -10845,5 +10897,60 @@ mod tests {
             child_box.branching_tree_with_context(&mut ctx, false),
             child_tree
         );
+    }
+}
+
+/// Largest role-id bit index kept as a bitset in `RoleLinkerMembership`.
+const ROLE_LINKER_BITSET_LIMIT: usize = 4096;
+
+/// Role set of one interned role-linker head (see
+/// `ProcessContext::copying_initializing_role_linker_contains`).
+#[derive(Clone)]
+pub(crate) enum RoleLinkerMembership {
+    /// Bit `k` set for role key `k` (`role_key`).
+    Bits(Vec<u64>),
+    Set(HashSet<RoleId>),
+}
+
+fn role_key(role: RoleId) -> usize {
+    // NONE has its own key so membership stays exactly that of a set of ids.
+    if role.is_none() { 0 } else { role.index() + 1 }
+}
+
+impl RoleLinkerMembership {
+    fn insert(&mut self, role: RoleId) {
+        let key = role_key(role);
+        if let RoleLinkerMembership::Bits(words) = self {
+            if key < ROLE_LINKER_BITSET_LIMIT {
+                if words.len() <= key / 64 {
+                    words.resize(key / 64 + 1, 0);
+                }
+                words[key / 64] |= 1u64 << (key % 64);
+                return;
+            }
+            let mut set = HashSet::default();
+            for (index, word) in words.iter().enumerate() {
+                for bit in 0..64 {
+                    if word >> bit & 1 == 1 {
+                        let k = index * 64 + bit;
+                        set.insert(if k == 0 { RoleId::NONE } else { RoleId::new((k - 1) as Cint64) });
+                    }
+                }
+            }
+            *self = RoleLinkerMembership::Set(set);
+        }
+        if let RoleLinkerMembership::Set(set) = self {
+            set.insert(role);
+        }
+    }
+
+    fn contains(&self, role: RoleId) -> bool {
+        match self {
+            RoleLinkerMembership::Bits(words) => {
+                let key = role_key(role);
+                words.get(key / 64).is_some_and(|word| word >> (key % 64) & 1 == 1)
+            }
+            RoleLinkerMembership::Set(set) => set.contains(&role),
+        }
     }
 }

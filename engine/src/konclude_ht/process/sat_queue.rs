@@ -215,8 +215,13 @@ impl CriticalIndividualNodeProcessingQueue {
 /// Port of `CCriticalIndividualNodeConceptTestSet`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CriticalIndividualNodeConceptTestSet {
-    /// `mIndiConceptTestedSet`.
-    pub indi_concept_tested_set: HashSet<(SatNodeId, ConceptId)>,
+    /// `mIndiConceptTestedSet`, for pairs whose two ids fit 32 bits each,
+    /// packed into one `u64` (`packed_tested_key`): half the table of the
+    /// 16-byte pair keys, which on ore_ont_7361 held 816 MiB of the HT
+    /// worker's peak and most of `check_critical_concepts_for_node`'s probes.
+    pub indi_concept_tested_set: HashSet<u64>,
+    /// The same set for any pair that does not fit (`packed_tested_key` None).
+    pub indi_concept_tested_wide: HashSet<(SatNodeId, ConceptId)>,
     /// `mProcessContext` opaque back handle.
     pub process_context: Cint64,
 }
@@ -232,6 +237,7 @@ impl CriticalIndividualNodeConceptTestSet {
     pub fn new(process_context: Cint64) -> Self {
         Self {
             indi_concept_tested_set: HashSet::default(),
+            indi_concept_tested_wide: HashSet::default(),
             process_context,
         }
     }
@@ -243,8 +249,10 @@ impl CriticalIndividualNodeConceptTestSet {
     ) -> &mut Self {
         if let Some(queue) = processing_queue {
             self.indi_concept_tested_set = queue.indi_concept_tested_set.clone();
+            self.indi_concept_tested_wide = queue.indi_concept_tested_wide.clone();
         } else {
             self.indi_concept_tested_set.clear();
+            self.indi_concept_tested_wide.clear();
         }
         self
     }
@@ -255,8 +263,10 @@ impl CriticalIndividualNodeConceptTestSet {
         concept: ConceptId,
         individual: SatNodeId,
     ) -> bool {
-        self.indi_concept_tested_set
-            .contains(&(individual, concept))
+        match packed_tested_key(individual, concept) {
+            Some(key) => self.indi_concept_tested_set.contains(&key),
+            None => self.indi_concept_tested_wide.contains(&(individual, concept)),
+        }
     }
 
     /// Port of `insertConceptTestedForIndividual(CConcept*, ...)`.
@@ -265,13 +275,29 @@ impl CriticalIndividualNodeConceptTestSet {
         concept: ConceptId,
         individual: SatNodeId,
     ) -> &mut Self {
-        self.indi_concept_tested_set.insert((individual, concept));
+        match packed_tested_key(individual, concept) {
+            Some(key) => {
+                self.indi_concept_tested_set.insert(key);
+            }
+            None => {
+                self.indi_concept_tested_wide.insert((individual, concept));
+            }
+        }
         self
     }
 
     // The `CConceptSaturationDescriptor*` overloads bottom out in
     // `criticalConDes->getConcept()`. The descriptor remains opaque in this
     // wave, so only the direct `CConcept*` pair operations are live here.
+}
+
+/// `(individual, concept)` as one `u64` when both raw ids lie in `0..2^32`;
+/// distinct pairs give distinct keys, so the packed set has exactly the
+/// membership of the pair set.
+fn packed_tested_key(individual: SatNodeId, concept: ConceptId) -> Option<u64> {
+    let node = u32::try_from(individual.raw).ok()?;
+    let concept = u32::try_from(concept.raw).ok()?;
+    Some((u64::from(node) << 32) | u64::from(concept))
 }
 
 /// Port of `CCriticalSaturationConceptQueue`.
@@ -556,6 +582,31 @@ mod tests {
 
         target.init_individual_node_concept_test_set(None);
         assert!(!target.is_concept_tested_for_individual(concept, node));
+    }
+
+    #[test]
+    fn critical_individual_node_concept_test_set_packs_without_collisions() {
+        let _test_env = crate::test_env::read();
+        let mut set = CriticalIndividualNodeConceptTestSet::new(INVALID);
+        let big = (1i64 << 32) + 3;
+        let pairs = [
+            (SatNodeId::new(1), ConceptId::new(2)),
+            (SatNodeId::new(2), ConceptId::new(1)),
+            (SatNodeId::new(big), ConceptId::new(2)),
+            (SatNodeId::new(2), ConceptId::new(big)),
+            (SatNodeId::NONE, ConceptId::new(2)),
+            (SatNodeId::new(3), ConceptId::NONE),
+        ];
+        for (index, &(node, concept)) in pairs.iter().enumerate() {
+            assert!(!set.is_concept_tested_for_individual(concept, node), "{index} before");
+            set.insert_concept_tested_for_individual(concept, node);
+            for (later, &(n, c)) in pairs.iter().enumerate() {
+                assert_eq!(set.is_concept_tested_for_individual(c, n), later <= index, "{index}/{later}");
+            }
+        }
+        let mut copy = CriticalIndividualNodeConceptTestSet::new(INVALID);
+        copy.init_individual_node_concept_test_set(Some(&set));
+        assert!(pairs.iter().all(|&(n, c)| copy.is_concept_tested_for_individual(c, n)));
     }
 
     #[test]
