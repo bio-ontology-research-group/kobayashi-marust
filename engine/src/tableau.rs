@@ -6957,6 +6957,9 @@ pub(crate) fn run_bridge_json_owned_compact(
             (result, producer_input.concepts, reason)
         })?;
     let result = result.ok_or_else(|| bridge_defer_message(reason))?;
+    if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
+        let _ = std::fs::write(marker, b"bridge");
+    }
     if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
         let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
             .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
@@ -6966,6 +6969,60 @@ pub(crate) fn run_bridge_json_owned_compact(
     }
     crate::mem::release_transient_heap();
     compact_bridge_classification(concepts, result)
+}
+
+/// Run a mixed bridge/specialist worker: parse the wire JSON once into the
+/// producer `TInput`, emit compact binary output when the bridge arm answers,
+/// and convert in memory to the fallback tableau `TInput` (emitting JSON) if
+/// the bridge arm defers.
+pub(crate) fn run_bridge_or_json_owned_compact(
+    input: String,
+) -> Result<Result<crate::json_io::CompactElcOutput, String>, String> {
+    if std::env::var_os("KM_HT_BRIDGE").is_none()
+        || std::env::var_os("KM_RULES_CONSISTENCY").is_some()
+        || ht_lean_certification_requested()
+    {
+        return run_json_owned(input).map(Err);
+    }
+    let producer: crate::orchestrate::cb_to_ht::TInput =
+        serde_json::from_str(&input).map_err(|e| e.to_string())?;
+    drop(input);
+    validate_producer_input_for_bridge(&producer)?;
+    crate::mem::release_transient_heap();
+
+    let (result, mut producer, reason) = crate::bigstack::run(
+        "konclude_ht bridge",
+        crate::bigstack::DEEP_STACK,
+        move || {
+            let result = crate::konclude_ht::bridge::bridged_classify(&producer);
+            let reason = crate::konclude_ht::bridge::take_bridge_defer_reason();
+            (result, producer, reason)
+        },
+    )?;
+    if let Some(result) = result {
+        if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
+            let _ = std::fs::write(marker, b"bridge");
+        }
+        if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+            let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
+                .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
+            crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+                &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
+            );
+        }
+        let concepts = std::mem::take(&mut producer.concepts);
+        drop(producer);
+        crate::mem::release_transient_heap();
+        return compact_bridge_classification(concepts, result).map(Ok);
+    }
+    if std::env::var_os("KM_HT_BRIDGE_ONLY").is_some() {
+        return Err(bridge_defer_message(reason));
+    }
+    let inp = producer_input(producer)?;
+    let output = run_tinput_inner_with_bridge(inp, None, None, false)?;
+    serde_json::to_string(&output)
+        .map(Err)
+        .map_err(|error| error.to_string())
 }
 
 /// The worker's defer error, naming the gate the bridge recorded.
@@ -8542,9 +8599,18 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
 }
 
 fn run_tinput_inner(
+    inp: TInput,
+    raw_input: Option<std::borrow::Cow<'_, str>>,
+    forced_ht: Option<bool>,
+) -> Result<TOutput, String> {
+    run_tinput_inner_with_bridge(inp, raw_input, forced_ht, true)
+}
+
+fn run_tinput_inner_with_bridge(
     mut inp: TInput,
     mut raw_input: Option<std::borrow::Cow<'_, str>>,
     forced_ht: Option<bool>,
+    try_bridge: bool,
 ) -> Result<TOutput, String> {
     let native_abox = validate_native_abox(&inp)?;
     let native_abox_active = native_abox.active;
@@ -8558,7 +8624,8 @@ fn run_tinput_inner(
     if native_abox_active && (!ht_enabled || std::env::var_os("KM_RULES_CONSISTENCY").is_some()) {
         return Err("native ABox requires the hypertableau mechanism".to_string());
     }
-    if std::env::var_os("KM_RULES_CONSISTENCY").is_none()
+    if try_bridge
+        && std::env::var_os("KM_RULES_CONSISTENCY").is_none()
         && std::env::var_os("KM_HT_BRIDGE").is_some()
         && !lean_cert_requested
     {

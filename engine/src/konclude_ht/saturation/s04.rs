@@ -70,19 +70,19 @@
 
 use super::super::completion::context::CalculationAlgorithmContextBase;
 use super::super::model::concept_process::ConceptProcessDataId;
-use super::super::model::op::{CCATLEAST, CCATMOST, CCATOM};
+use super::super::model::op::{CCATLEAST, CCATMOST};
 use super::super::model::substrate::Cint64;
 use super::super::model::RoleId;
 use super::super::model::{ConceptId, NegLink};
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::stubs::ConceptSaturationProcessLinkerId;
 use super::super::process::SatNodeId;
-use super::satellites::ConceptSaturationDescriptorId;
 
 // `CCriticalConceptType` enum tags used by `addCriticalConceptDescriptor`.
 // File-local mirror of the (file-private) copies in `s08.rs` / `s09.rs`.
 const CCT_FORALL: Cint64 = 0;
 const CCT_ATMOST: Cint64 = 1;
+const CCT_NOMINAL: Cint64 = 5;
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     // =======================================================================
@@ -807,6 +807,42 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        let con_des = calc_alg_context
+            .process_context()
+            .con_sat_proc_linker(con_sat_pro_linker)
+            .get_concept_saturation_descriptor();
+        let (concept, con_negation) = {
+            let desc = calc_alg_context.process_context().con_sat_desc(con_des);
+            (desc.get_concept(), desc.get_negation())
+        };
+        let nominal_individual = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_nominal_individual();
+        let node_ref = calc_alg_context.process_context().sat_node(*process_indi);
+        if !con_negation
+            && node_ref.is_abox_individual_representation_node()
+            && nominal_individual.is_some()
+        {
+            if node_ref.get_nominal_individual() == nominal_individual {
+                return;
+            }
+            if node_ref.get_nominal_individual().is_none() {
+                self.update_direct_adding_individual_status_flags(
+                    *process_indi,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCRITICAL
+                        | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGNOMINALCONNECTION,
+                    calc_alg_context,
+                );
+                self.add_critical_concept_descriptor(
+                    con_des,
+                    CCT_NOMINAL,
+                    process_indi,
+                    calc_alg_context,
+                );
+                return;
+            }
+        }
         // The complete nominal association expansion above is not implemented.
         // A nominal descriptor alone does not include its individual's asserted
         // types. Never advertise that partial label as a sufficient cached
@@ -824,11 +860,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 #[cfg(test)]
 mod tests {
     use super::super::super::model::concept::Concept;
+    use super::super::super::model::op::CCATOM;
     use super::super::super::model::role::Role;
     use super::super::super::model::ConceptId;
     use super::super::super::process::sat_node::IndividualSaturationProcessNode;
     use super::super::algorithm::SaturationTaskHandleAlgorithm;
-    use super::super::satellites::{ConceptSaturationDescriptor, ConceptSaturationProcessLinker};
+    use super::super::satellites::{
+        ConceptSaturationDescriptor, ConceptSaturationDescriptorId, ConceptSaturationProcessLinker,
+    };
     use super::*;
 
     fn role(ctx: &mut CalculationAlgorithmContextBase, tag: Cint64) -> RoleId {
