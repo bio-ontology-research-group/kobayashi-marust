@@ -903,6 +903,108 @@ impl<'a> Grounding<'a> {
 // Cover detection and classification
 // ---------------------------------------------------------------------------
 
+
+/// The top-level operands of the parenthesised list that starts at `open`
+/// (the index of its `(`), and the index just past its `)`. IRIs in `<…>` and
+/// quoted literals are single operands.
+fn list_operands(text: &str, open: usize) -> Option<(Vec<&str>, usize)> {
+    let bytes = text.as_bytes();
+    let mut depth = 0i32;
+    let mut i = open;
+    let mut start: Option<usize> = None;
+    let mut out = Vec::new();
+    while i < bytes.len() {
+        let c = bytes[i];
+        match c {
+            b'<' if depth >= 1 => {
+                if depth == 1 && start.is_none() {
+                    start = Some(i);
+                }
+                while i < bytes.len() && bytes[i] != b'>' {
+                    i += 1;
+                }
+            }
+            b'"' if depth >= 1 => {
+                if depth == 1 && start.is_none() {
+                    start = Some(i);
+                }
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    if bytes[i] == b'\\' {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+            }
+            b'(' => {
+                depth += 1;
+                if depth == 2 && start.is_none() {
+                    // an operand that is itself a list starts at its head
+                }
+            }
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(st) = start.take() {
+                        out.push(text[st..i].trim());
+                    }
+                    return Some((out, i + 1));
+                }
+            }
+            b' ' | b'\t' | b'\n' | b'\r' if depth == 1 => {
+                if let Some(st) = start.take() {
+                    out.push(text[st..i].trim());
+                }
+            }
+            _ => {
+                if depth == 1 && start.is_none() {
+                    start = Some(i);
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Rewrite `ObjectPropertyDomain(R C)` to `SubClassOf(ObjectSomeValuesFrom(R
+/// owl:Thing) C)` and `ObjectPropertyRange(R C)` to `SubClassOf(owl:Thing
+/// ObjectAllValuesFrom(R C))` (OWL 2 Direct Semantics, the same equivalences
+/// the parser applies to its complex cases). Axiom annotations are dropped.
+/// Declines on a shape it cannot split into exactly two operands.
+fn desugar_domain_range(text: &str) -> Result<String, Decline> {
+    const HEADS: [&str; 2] = ["ObjectPropertyDomain(", "ObjectPropertyRange("];
+    if !HEADS.iter().any(|h| text.contains(h)) {
+        return Ok(text.to_string());
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = 0usize;
+    loop {
+        let next = HEADS
+            .iter()
+            .filter_map(|h| text[rest..].find(h).map(|i| (rest + i, *h)))
+            .min_by_key(|(i, _)| *i);
+        let Some((at, head)) = next else { break };
+        let open = at + head.len() - 1;
+        let Some((ops, end)) = list_operands(text, open) else {
+            return decline("unbalanced domain or range axiom");
+        };
+        let ops: Vec<&str> = ops.into_iter().filter(|o| !o.starts_with("Annotation(")).collect();
+        if ops.len() != 2 {
+            return decline("domain or range axiom with an unexpected shape");
+        }
+        out.push_str(&text[rest..at]);
+        if head.starts_with("ObjectPropertyDomain") {
+            out.push_str(&format!("SubClassOf(ObjectSomeValuesFrom({} owl:Thing) {})", ops[0], ops[1]));
+        } else {
+            out.push_str(&format!("SubClassOf(owl:Thing ObjectAllValuesFrom({} {}))", ops[0], ops[1]));
+        }
+        rest = end;
+    }
+    out.push_str(&text[rest..]);
+    Ok(out)
+}
+
 /// The class tokens of `Declaration(Class(X))` in functional syntax.
 fn declared_classes(text: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -994,6 +1096,10 @@ pub(crate) fn classify_cover(text: &str) -> Result<CoverAnswer, Decline> {
     // The frontend's prefix expansion and builtin spellings, then its parser.
     let canonical = crate::frontend::builtin_aliases::canonicalize(text)
         .map_err(|e| Decline(format!("canonicalize: {e}")))?;
+    // The parser keeps simple domain and range axioms out of its axiom list
+    // (the frontend reads them on its RBox path), so rewrite every one of them
+    // into the class inclusion it means before parsing.
+    let canonical = desugar_domain_range(&canonical)?;
     let mut reg = IriRegistry::new();
     let ontology = parse::parse_axioms(&mut reg, &canonical).map_err(|e| Decline(format!("parse: {}", e.0)))?;
     if !ontology.dropped_source_axioms().is_empty() {
@@ -1290,4 +1396,202 @@ mod tests {
         assert!(ans.consistent);
         assert_eq!(ans.supers["http://e/Pa"], Some(vec!["http://e/X".to_string()]));
     }
+    /// `:x` -> `<http://e/x>`; wraps the axioms in an ontology with the
+    /// definitions `Px ≡ {x}` for the individuals a, b, c, o1, o2.
+    fn expand(axioms: &str) -> String {
+        let mut out = String::new();
+        let chars: Vec<char> = axioms.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            let c = chars[i];
+            let starts = c == ':'
+                && (i == 0 || chars[i - 1] == ' ' || chars[i - 1] == '(')
+                && i + 1 < chars.len()
+                && chars[i + 1].is_ascii_alphabetic();
+            if starts {
+                let mut j = i + 1;
+                while j < chars.len() && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
+                    j += 1;
+                }
+                let name: String = chars[i + 1..j].iter().collect();
+                out.push_str(&format!("<http://e/{name}>"));
+                i = j;
+            } else {
+                out.push(c);
+                i += 1;
+            }
+        }
+        let mut defs = String::new();
+        for x in ["a", "b", "c", "o1", "o2"] {
+            defs.push_str(&format!(
+                "EquivalentClasses(<http://e/P{x}> ObjectOneOf(<http://e/{x}>))\n"
+            ));
+        }
+        format!("Ontology(\n{defs}{out}\n)")
+    }
+
+    enum Q {
+        Sub(&'static str, &'static str),
+        Consistent,
+    }
+
+    fn holds(axioms: &str, q: &Q) -> bool {
+        let text = expand(axioms);
+        let ans = classify_cover(&text).map_err(|d| d.0).expect("route answers");
+        match q {
+            Q::Consistent => ans.consistent,
+            Q::Sub(a, b) => {
+                if !ans.consistent {
+                    return true;
+                }
+                let key = format!("http://e/{a}");
+                match ans.supers.get(&key) {
+                    None => panic!("class {a} unknown"),
+                    Some(None) => true,
+                    Some(Some(sups)) => sups.contains(&format!("http://e/{b}")),
+                }
+            }
+        }
+    }
+
+    const C1: &str = "SubClassOf(owl:Thing ObjectOneOf(:o1)) ";
+    const C2: &str = "SubClassOf(owl:Thing ObjectOneOf(:o1 :o2)) ";
+
+    /// One entailed and one non-entailed (or one consistent and one
+    /// inconsistent) case per accepted constructor, answers computed by hand
+    /// (docs/V1.7.0-NOMINAL-COVER.md, table in section 3.4).
+    #[test]
+    fn every_accepted_constructor_entailed_and_not() {
+        let cases: Vec<(&str, String, Q, bool)> = vec![
+            // class axioms
+            ("SubClassOf+", format!("{C2}SubClassOf(:A :B) SubClassOf(:B :C)"), Q::Sub("A", "C"), true),
+            ("SubClassOf-", format!("{C2}SubClassOf(:A :B) SubClassOf(:B :C)"), Q::Sub("C", "A"), false),
+            ("EquivalentClasses+", format!("{C2}EquivalentClasses(:A :B)"), Q::Sub("B", "A"), true),
+            ("EquivalentClasses-", format!("{C2}EquivalentClasses(:A :B) Declaration(Class(:C))"), Q::Sub("A", "C"), false),
+            ("DisjointClasses+", format!("{C2}DisjointClasses(:A :B) SubClassOf(:C :A) SubClassOf(:C :B) Declaration(Class(:D))"), Q::Sub("C", "D"), true),
+            ("DisjointClasses-", format!("{C2}DisjointClasses(:A :B) SubClassOf(:C :A) Declaration(Class(:D))"), Q::Sub("C", "D"), false),
+            ("DisjointUnion+", format!("{C2}DisjointUnion(:A :B :C) ClassAssertion(:B :a)"), Q::Sub("Pa", "A"), true),
+            ("DisjointUnion-", format!("{C2}DisjointUnion(:A :B :C) ClassAssertion(:B :a)"), Q::Sub("Pa", "C"), false),
+            ("owl:Nothing+", format!("{C2}SubClassOf(:A owl:Nothing) Declaration(Class(:B))"), Q::Sub("A", "B"), true),
+            ("owl:Nothing-", format!("{C2}SubClassOf(:A :C) Declaration(Class(:B))"), Q::Sub("A", "B"), false),
+            // boolean constructors
+            ("ObjectIntersectionOf+", format!("{C2}EquivalentClasses(:X ObjectIntersectionOf(:A :B)) SubClassOf(:Y :A) SubClassOf(:Y :B)"), Q::Sub("Y", "X"), true),
+            ("ObjectIntersectionOf-", format!("{C2}EquivalentClasses(:X ObjectIntersectionOf(:A :B)) SubClassOf(:Y :A)"), Q::Sub("Y", "X"), false),
+            ("ObjectUnionOf+", format!("{C2}EquivalentClasses(:X ObjectUnionOf(:A :B))"), Q::Sub("A", "X"), true),
+            ("ObjectUnionOf-", format!("{C2}EquivalentClasses(:X ObjectUnionOf(:A :B))"), Q::Sub("X", "A"), false),
+            ("ObjectComplementOf+", format!("{C2}EquivalentClasses(:X ObjectComplementOf(:A)) SubClassOf(:Y ObjectComplementOf(:A))"), Q::Sub("Y", "X"), true),
+            ("ObjectComplementOf-", format!("{C2}EquivalentClasses(:X ObjectComplementOf(:A)) SubClassOf(:Y ObjectComplementOf(:B)) Declaration(Class(:A))"), Q::Sub("Y", "X"), false),
+            // nominals other than the cover's individuals
+            ("ObjectOneOf other+", format!("{C1}Declaration(Class(:Z))"), Q::Sub("Pa", "Po1"), true),
+            ("ObjectOneOf other-", format!("{C2}Declaration(Class(:Z))"), Q::Sub("Pa", "Po1"), false),
+            ("ObjectOneOf in cover+", format!("{C2}EquivalentClasses(:X ObjectOneOf(:o1 :o2))"), Q::Sub("Pa", "X"), true),
+            ("ObjectOneOf in cover-", format!("{C2}EquivalentClasses(:X ObjectOneOf(:o1 :b))"), Q::Sub("Pa", "X"), false),
+            // restrictions
+            ("ObjectSomeValuesFrom+", format!("{C2}EquivalentClasses(:X ObjectSomeValuesFrom(:r :A)) ObjectPropertyAssertion(:r :a :b) ClassAssertion(:A :b)"), Q::Sub("Pa", "X"), true),
+            ("ObjectSomeValuesFrom-", format!("{C2}EquivalentClasses(:X ObjectSomeValuesFrom(:r :A)) ObjectPropertyAssertion(:r :a :b) Declaration(Class(:A))"), Q::Sub("Pa", "X"), false),
+            ("ObjectAllValuesFrom+", format!("{C2}SubClassOf(:A ObjectAllValuesFrom(:r :B)) ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pb", "B"), true),
+            ("ObjectAllValuesFrom-", format!("{C2}SubClassOf(:A ObjectAllValuesFrom(:r :B)) ObjectPropertyAssertion(:r :a :b) Declaration(Class(:A))"), Q::Sub("Pb", "B"), false),
+            ("ObjectHasValue+", format!("{C2}EquivalentClasses(:X ObjectHasValue(:r :b)) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "X"), true),
+            ("ObjectHasValue-", format!("{C2}EquivalentClasses(:X ObjectHasValue(:r :b)) ObjectPropertyAssertion(:r :a :c)"), Q::Sub("Pa", "X"), false),
+            // counting distinct elements under the case's equalities
+            ("ObjectMinCardinality+", format!("{C2}EquivalentClasses(:X ObjectMinCardinality(2 :r)) ObjectPropertyAssertion(:r :a :o1) ObjectPropertyAssertion(:r :a :o2) DifferentIndividuals(:o1 :o2)"), Q::Sub("Pa", "X"), true),
+            ("ObjectMinCardinality-", format!("{C2}EquivalentClasses(:X ObjectMinCardinality(2 :r)) ObjectPropertyAssertion(:r :a :o1) ObjectPropertyAssertion(:r :a :o2)"), Q::Sub("Pa", "X"), false),
+            ("ObjectMinCardinality q+", format!("{C2}EquivalentClasses(:X ObjectMinCardinality(2 :r :A)) ObjectPropertyAssertion(:r :a :o1) ObjectPropertyAssertion(:r :a :o2) DifferentIndividuals(:o1 :o2) ClassAssertion(:A :o1) ClassAssertion(:A :o2)"), Q::Sub("Pa", "X"), true),
+            ("ObjectMinCardinality q-", format!("{C2}EquivalentClasses(:X ObjectMinCardinality(2 :r :A)) ObjectPropertyAssertion(:r :a :o1) ObjectPropertyAssertion(:r :a :o2) DifferentIndividuals(:o1 :o2) ClassAssertion(:A :o1)"), Q::Sub("Pa", "X"), false),
+            ("ObjectMinCardinality over domain+", format!("{C1}SubClassOf(:A ObjectMinCardinality(2 ObjectInverseOf(:s))) Declaration(Class(:B))"), Q::Sub("A", "B"), true),
+            ("ObjectMinCardinality over domain-", format!("{C2}SubClassOf(:A ObjectMinCardinality(2 ObjectInverseOf(:s))) Declaration(Class(:B))"), Q::Sub("A", "B"), false),
+            ("ObjectMaxCardinality+", format!("{C1}EquivalentClasses(:X ObjectMaxCardinality(1 :r)) Declaration(Class(:A))"), Q::Sub("A", "X"), true),
+            ("ObjectMaxCardinality-", format!("{C2}EquivalentClasses(:X ObjectMaxCardinality(1 :r)) Declaration(Class(:A))"), Q::Sub("A", "X"), false),
+            ("ObjectMaxCardinality q+", format!("{C2}SubClassOf(:A ObjectMaxCardinality(1 :r :B)) ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:r :a :c) ClassAssertion(:B :b) ClassAssertion(:B :c)"), Q::Sub("Pb", "Pc"), true),
+            ("ObjectMaxCardinality q-", format!("{C2}SubClassOf(:A ObjectMaxCardinality(1 :r :B)) ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:r :a :c) ClassAssertion(:B :b)"), Q::Sub("Pb", "Pc"), false),
+            ("ObjectExactCardinality+", format!("{C1}EquivalentClasses(:X ObjectExactCardinality(1 :r)) SubClassOf(:A ObjectSomeValuesFrom(:r owl:Thing))"), Q::Sub("A", "X"), true),
+            ("ObjectExactCardinality-", format!("{C1}EquivalentClasses(:X ObjectExactCardinality(1 :r)) Declaration(Class(:A))"), Q::Sub("A", "X"), false),
+            ("ObjectHasSelf+", format!("{C1}EquivalentClasses(:X ObjectHasSelf(:r)) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "X"), true),
+            ("ObjectHasSelf-", format!("{C2}EquivalentClasses(:X ObjectHasSelf(:r)) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "X"), false),
+            ("ObjectInverseOf+", format!("{C2}EquivalentClasses(:X ObjectSomeValuesFrom(ObjectInverseOf(:r) owl:Thing)) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pb", "X"), true),
+            ("ObjectInverseOf-", format!("{C2}EquivalentClasses(:X ObjectSomeValuesFrom(ObjectInverseOf(:r) owl:Thing)) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "X"), false),
+            // object property axioms
+            ("SubObjectPropertyOf+", format!("{C2}SubObjectPropertyOf(:r :s) EquivalentClasses(:X ObjectSomeValuesFrom(:s owl:Thing)) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "X"), true),
+            ("SubObjectPropertyOf-", format!("{C2}SubObjectPropertyOf(:s :r) EquivalentClasses(:X ObjectSomeValuesFrom(:s owl:Thing)) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "X"), false),
+            ("EquivalentObjectProperties+", format!("{C2}EquivalentObjectProperties(:r :s) EquivalentClasses(:X ObjectSomeValuesFrom(:s owl:Thing)) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "X"), true),
+            ("EquivalentObjectProperties-", format!("{C2}EquivalentObjectProperties(:r :t) EquivalentClasses(:X ObjectSomeValuesFrom(:s owl:Thing)) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "X"), false),
+            ("ObjectPropertyChain+", format!("{C2}SubObjectPropertyOf(ObjectPropertyChain(:r :s) :t) ObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:s :b :c) EquivalentClasses(:X ObjectHasValue(:t :c))"), Q::Sub("Pa", "X"), true),
+            ("ObjectPropertyChain-", format!("{C2}SubObjectPropertyOf(ObjectPropertyChain(:r :s) :t) ObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:s :c :b) EquivalentClasses(:X ObjectHasValue(:t :c))"), Q::Sub("Pa", "X"), false),
+            ("TransitiveObjectProperty+", format!("{C2}TransitiveObjectProperty(:t) ObjectPropertyAssertion(:t :a :b) ObjectPropertyAssertion(:t :b :c) EquivalentClasses(:X ObjectHasValue(:t :c))"), Q::Sub("Pa", "X"), true),
+            ("TransitiveObjectProperty-", format!("{C2}ObjectPropertyAssertion(:t :a :b) ObjectPropertyAssertion(:t :b :c) EquivalentClasses(:X ObjectHasValue(:t :c))"), Q::Sub("Pa", "X"), false),
+            ("SymmetricObjectProperty+", format!("{C2}SymmetricObjectProperty(:r) ObjectPropertyAssertion(:r :a :b) EquivalentClasses(:X ObjectHasValue(:r :a))"), Q::Sub("Pb", "X"), true),
+            ("SymmetricObjectProperty-", format!("{C2}ObjectPropertyAssertion(:r :a :b) EquivalentClasses(:X ObjectHasValue(:r :a))"), Q::Sub("Pb", "X"), false),
+            ("AsymmetricObjectProperty inconsistent", format!("{C1}AsymmetricObjectProperty(:r) ObjectPropertyAssertion(:r :a :b)"), Q::Consistent, false),
+            ("AsymmetricObjectProperty consistent", format!("{C2}AsymmetricObjectProperty(:r) ObjectPropertyAssertion(:r :a :b)"), Q::Consistent, true),
+            ("ReflexiveObjectProperty+", format!("{C2}ReflexiveObjectProperty(:r) EquivalentClasses(:X ObjectHasSelf(:r)) Declaration(Class(:A))"), Q::Sub("A", "X"), true),
+            ("ReflexiveObjectProperty-", format!("{C2}EquivalentClasses(:X ObjectHasSelf(:r)) Declaration(Class(:A))"), Q::Sub("A", "X"), false),
+            ("IrreflexiveObjectProperty inconsistent", format!("{C1}IrreflexiveObjectProperty(:r) ObjectPropertyAssertion(:r :a :b)"), Q::Consistent, false),
+            ("IrreflexiveObjectProperty consistent", format!("{C2}IrreflexiveObjectProperty(:r) ObjectPropertyAssertion(:r :a :b)"), Q::Consistent, true),
+            ("FunctionalObjectProperty+", format!("{C2}FunctionalObjectProperty(:r) ObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:r :a :c)"), Q::Sub("Pb", "Pc"), true),
+            ("FunctionalObjectProperty-", format!("{C2}ObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:r :a :c)"), Q::Sub("Pb", "Pc"), false),
+            ("InverseFunctionalObjectProperty+", format!("{C2}InverseFunctionalObjectProperty(:r) ObjectPropertyAssertion(:r :b :a) ObjectPropertyAssertion(:r :c :a)"), Q::Sub("Pb", "Pc"), true),
+            ("InverseFunctionalObjectProperty-", format!("{C2}FunctionalObjectProperty(:r) ObjectPropertyAssertion(:r :b :a) ObjectPropertyAssertion(:r :c :a)"), Q::Sub("Pb", "Pc"), false),
+            ("InverseObjectProperties+", format!("{C2}InverseObjectProperties(:r :s) ObjectPropertyAssertion(:r :a :b) EquivalentClasses(:X ObjectHasValue(:s :a))"), Q::Sub("Pb", "X"), true),
+            ("InverseObjectProperties-", format!("{C2}InverseObjectProperties(:r :t) ObjectPropertyAssertion(:r :a :b) EquivalentClasses(:X ObjectHasValue(:s :a))"), Q::Sub("Pb", "X"), false),
+            ("DisjointObjectProperties inconsistent", format!("{C1}DisjointObjectProperties(:r :s) ObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:s :a :c)"), Q::Consistent, false),
+            ("DisjointObjectProperties consistent", format!("{C2}DisjointObjectProperties(:r :s) ObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:s :a :c)"), Q::Consistent, true),
+            ("ObjectPropertyDomain+", format!("{C2}ObjectPropertyDomain(:r :A) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "A"), true),
+            ("ObjectPropertyDomain-", format!("{C2}ObjectPropertyDomain(:r :A) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pb", "A"), false),
+            ("ObjectPropertyRange+", format!("{C2}ObjectPropertyRange(:r :A) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pb", "A"), true),
+            ("ObjectPropertyRange-", format!("{C2}ObjectPropertyRange(:r :A) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "A"), false),
+            // assertions
+            ("ClassAssertion+", format!("{C2}ClassAssertion(:A :a)"), Q::Sub("Pa", "A"), true),
+            ("ClassAssertion-", format!("{C2}ClassAssertion(:A :a)"), Q::Sub("Pb", "A"), false),
+            ("ObjectPropertyAssertion+", format!("{C2}ObjectPropertyAssertion(:r :a :b) EquivalentClasses(:X ObjectHasValue(:r :b))"), Q::Sub("Pa", "X"), true),
+            ("ObjectPropertyAssertion-", format!("{C2}ObjectPropertyAssertion(:r :a :b) EquivalentClasses(:X ObjectHasValue(:r :b))"), Q::Sub("Pb", "X"), false),
+            ("NegativeObjectPropertyAssertion+", format!("{C2}NegativeObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:r :a :c) EquivalentClasses(:Y ObjectIntersectionOf(:Pb :Pc)) Declaration(Class(:Z))"), Q::Sub("Y", "Z"), true),
+            ("NegativeObjectPropertyAssertion-", format!("{C2}ObjectPropertyAssertion(:r :a :c) EquivalentClasses(:Y ObjectIntersectionOf(:Pb :Pc)) Declaration(Class(:Z))"), Q::Sub("Y", "Z"), false),
+            ("NegativeObjectPropertyAssertion one element", format!("{C1}NegativeObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:r :a :c)"), Q::Consistent, false),
+            ("SameIndividual+", format!("{C2}SameIndividual(:a :b)"), Q::Sub("Pa", "Pb"), true),
+            ("SameIndividual-", format!("{C2}SameIndividual(:a :c)"), Q::Sub("Pa", "Pb"), false),
+            ("DifferentIndividuals+", format!("{C2}DifferentIndividuals(:a :b) DifferentIndividuals(:a :c)"), Q::Sub("Pb", "Pc"), true),
+            ("DifferentIndividuals-", format!("{C2}DifferentIndividuals(:a :b)"), Q::Sub("Pb", "Pc"), false),
+            ("DifferentIndividuals one element", format!("{C1}DifferentIndividuals(:a :b)"), Q::Consistent, false),
+            ("cover by EquivalentClasses", format!("EquivalentClasses(owl:Thing ObjectOneOf(:o1)) Declaration(Class(:Z))"), Q::Sub("Pa", "Po1"), true),
+        ];
+        let mut wrong = Vec::new();
+        for (name, axioms, q, expected) in &cases {
+            if holds(axioms, q) != *expected {
+                wrong.push(*name);
+            }
+        }
+        assert!(wrong.is_empty(), "wrong answers: {wrong:?}");
+    }
+
+    #[test]
+    fn declines_every_construct_outside_the_grounding() {
+        for axioms in [
+            "SubClassOf(owl:Thing ObjectOneOf(:o1)) HasKey(:A (:r) ())",
+            "SubClassOf(owl:Thing ObjectOneOf(:o1)) SubObjectPropertyOf(:r owl:topObjectProperty)",
+            "SubClassOf(owl:Thing ObjectOneOf(:o1)) ObjectPropertyAssertion(:r :a _:x)",
+            "SubClassOf(owl:Thing ObjectOneOf(:o1)) Declaration(Annotation(<http://e/l> \"x\") Class(:A))",
+            "SubClassOf(owl:Thing ObjectOneOf(:o1)) DLSafeRule(Body(ClassAtom(:A Variable(<http://e/v>))) Head(ClassAtom(:B Variable(<http://e/v>))))",
+            "SubClassOf(owl:Thing ObjectOneOf(:o1)) SubClassOf(:A DataSomeValuesFrom(:d <http://www.w3.org/2001/XMLSchema#integer>))",
+            "SubClassOf(owl:Thing ObjectOneOf(:o1 :o2 :o3 :o4 :o5))",
+            "SubClassOf(owl:Thing ObjectUnionOf(:A ObjectOneOf(:o1)))",
+        ] {
+            assert!(classify_cover(&expand(axioms)).is_err(), "must decline: {axioms}");
+        }
+    }
+
+    #[test]
+    fn domain_and_range_in_every_spelling() {
+        let cases: Vec<(String, Q, bool)> = vec![
+            (format!("{C2}ObjectPropertyDomain(ObjectInverseOf(:r) :A) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pb", "A"), true),
+            (format!("{C2}ObjectPropertyRange(ObjectInverseOf(:r) :A) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "A"), true),
+            (format!("{C2}ObjectPropertyDomain(:r ObjectUnionOf(:A :B)) ObjectPropertyAssertion(:r :a :b) ClassAssertion(ObjectComplementOf(:B) :a)"), Q::Sub("Pa", "A"), true),
+            (format!("{C2}ObjectPropertyDomain(Annotation(<http://e/n> <http://e/v>) :r :A) ObjectPropertyAssertion(:r :a :b)"), Q::Sub("Pa", "A"), true),
+            (format!("{C2}ObjectPropertyRange(:r owl:Nothing) ObjectPropertyAssertion(:r :a :b)"), Q::Consistent, false),
+            (format!("{C2}ObjectPropertyRange(:r :A)"), Q::Sub("Pa", "A"), false),
+        ];
+        for (i, (axioms, q, expected)) in cases.iter().enumerate() {
+            assert_eq!(holds(axioms, q), *expected, "case {i}");
+        }
+    }
+
 }

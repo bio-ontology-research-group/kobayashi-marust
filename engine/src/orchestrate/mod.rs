@@ -4224,6 +4224,23 @@ fn finite_cover_enabled() -> bool {
     })
 }
 
+/// Whether this run must produce certificates or an exported model, which
+/// the finite-cover route does not emit; the route then declines and a
+/// certifying route answers. Certificates are consumed under
+/// `KM_LEAN_CHECKERS` (`lean_checkers::active`), `KM_REQUIRE_LEAN_CHECKERS`,
+/// certified CB (`KM_CB_LEAN_REQUIRED`, `KM_CB_CERT_BUNDLE`), and a model under
+/// `--export-model` (`KM_EXPORT_MODEL_ACTIVE` without the realization's own
+/// ABox-only capture `KM_EXPORT_ABOX_ONLY`, after which realization runs its
+/// exact probe path when no model is recorded).
+fn finite_cover_certificate_mode(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    let set = |key: &str| env(key).is_some_and(|v| !v.is_empty());
+    set(crate::lean_checkers::DIR_ENV)
+        || set("KM_REQUIRE_LEAN_CHECKERS")
+        || set("KM_CB_LEAN_REQUIRED")
+        || set("KM_CB_CERT_BUNDLE")
+        || (set("KM_EXPORT_MODEL_ACTIVE") && !set("KM_EXPORT_ABOX_ONLY"))
+}
+
 /// The finite-cover route (docs/V1.7.0-NOMINAL-COVER.md): an ontology with
 /// `⊤ ⊑ {o1, …, ok}`, k ≤ 4, is classified by search over its finite
 /// interpretations (`finite_cover::classify_cover`). Runs once per outermost
@@ -4235,7 +4252,13 @@ fn finite_cover_evidence(
     timing: bool,
     t_start: std::time::Instant,
 ) -> Result<Option<ClassificationEvidence>, OrchestrateError> {
-    if !finite_cover_enabled()
+    // Syntactic gate first: the frontend's source profile counts the cover
+    // axioms in its single streaming pass, so an input without a cover costs
+    // one integer test here and is never read again.
+    if meta.profile.source.top_nominal_covers == 0
+        || !finite_cover_enabled()
+        || finite_cover_certificate_mode(|key| std::env::var_os(key))
+        || reference_force_enabled()
         || CLASSIFY_DEPTH.with(|d| d.get()) != 1
         || !meta.dropped_source_axioms.is_empty()
         || meta.uncarried_data_assertions > 0
@@ -6704,5 +6727,35 @@ mod tests {
         assert_eq!(production_saturation_rss_override(Some("NaN")), None);
         assert_eq!(production_saturation_rss_override(Some("nonsense")), None);
         assert_eq!(production_saturation_rss_override(None), None);
+    }
+}
+
+#[cfg(test)]
+mod finite_cover_gate_tests {
+    use super::finite_cover_certificate_mode;
+    use std::ffi::OsString;
+
+    fn mode(vars: &[(&str, &str)]) -> bool {
+        let vars: Vec<(String, OsString)> =
+            vars.iter().map(|(k, v)| (k.to_string(), OsString::from(v))).collect();
+        finite_cover_certificate_mode(|key| {
+            vars.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+        })
+    }
+
+    #[test]
+    fn finite_cover_declines_when_certificates_or_a_model_are_consumed() {
+        assert!(!mode(&[]));
+        assert!(mode(&[("KM_LEAN_CHECKERS", "/some/dir")]));
+        assert!(mode(&[("KM_REQUIRE_LEAN_CHECKERS", "1")]));
+        assert!(mode(&[("KM_CB_LEAN_REQUIRED", "1")]));
+        assert!(mode(&[("KM_CB_CERT_BUNDLE", "/x")]));
+        // `--export-model`
+        assert!(mode(&[("KM_EXPORT_MODEL_ACTIVE", "1")]));
+        // realization's own ABox capture: the route answers, no model recorded
+        assert!(!mode(&[("KM_EXPORT_MODEL_ACTIVE", "1"), ("KM_EXPORT_ABOX_ONLY", "1")]));
+        // `--export-model` together with realization stays declined
+        assert!(mode(&[("KM_EXPORT_MODEL_ACTIVE", "1"), ("KM_LEAN_CHECKERS", "/d"), ("KM_EXPORT_ABOX_ONLY", "1")]));
+        assert!(!mode(&[("KM_LEAN_CHECKERS", "")]));
     }
 }
