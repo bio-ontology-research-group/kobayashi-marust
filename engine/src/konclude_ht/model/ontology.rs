@@ -404,7 +404,7 @@ impl OntologyArenas {
     );
     /// Port-facing iteration over `CIndividualVector::getData(i)` entries.
     #[inline]
-    pub fn individual_iter(&self) -> std::slice::Iter<'_, Individual> {
+    pub fn individual_iter(&self) -> super::substrate::ChunkIter<'_, Individual> {
         self.individuals.iter()
     }
     /// Port-facing `CIndividualVector::getData(i)`.
