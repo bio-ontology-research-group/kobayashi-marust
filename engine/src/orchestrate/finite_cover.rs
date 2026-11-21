@@ -903,6 +903,23 @@ impl<'a> Grounding<'a> {
 // Cover detection and classification
 // ---------------------------------------------------------------------------
 
+/// The class tokens of `Declaration(Class(X))` in functional syntax.
+fn declared_classes(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("Declaration(") {
+        rest = &rest[i + "Declaration(".len()..];
+        let body = rest.trim_start();
+        if let Some(after) = body.strip_prefix("Class(") {
+            let after = after.trim_start();
+            if let Some(end) = after.find(|c: char| c == ')' || c.is_whitespace()) {
+                out.push(after[..end].to_string());
+            }
+        }
+    }
+    out
+}
+
 /// The individuals of a cover axiom `⊤ ⊑ {o1 … ok}` (or its equivalence form).
 fn cover_of(ax: &Axiom) -> Option<Vec<String>> {
     let rhs = match ax {
@@ -965,14 +982,20 @@ pub(crate) struct CoverAnswer {
 
 /// Decide the classification of `text` (functional syntax) for the classes
 /// `classes` (full IRIs), or decline.
-pub(crate) fn classify_cover(text: &str, classes: &[String]) -> Result<CoverAnswer, Decline> {
+pub(crate) fn classify_cover(text: &str) -> Result<CoverAnswer, Decline> {
+    if text.contains("Declaration(Annotation") {
+        return decline("annotated declarations");
+    }
     for head in UNSUPPORTED_HEADS {
         if text.contains(head) {
             return decline(format!("unsupported construct {head}"));
         }
     }
+    // The frontend's prefix expansion and builtin spellings, then its parser.
+    let canonical = crate::frontend::builtin_aliases::canonicalize(text)
+        .map_err(|e| Decline(format!("canonicalize: {e}")))?;
     let mut reg = IriRegistry::new();
-    let ontology = parse::parse_axioms(&mut reg, text).map_err(|e| Decline(format!("parse: {}", e.0)))?;
+    let ontology = parse::parse_axioms(&mut reg, &canonical).map_err(|e| Decline(format!("parse: {}", e.0)))?;
     if !ontology.dropped_source_axioms().is_empty() {
         return decline("dropped source axioms");
     }
@@ -1010,15 +1033,50 @@ pub(crate) fn classify_cover(text: &str, classes: &[String]) -> Result<CoverAnsw
             _ => {}
         }
     }
-    if inds.len() > MAX_INDIVIDUALS || roles.len() > MAX_ROLES || classes.len() > MAX_CLASSES {
+    if inds.len() > MAX_INDIVIDUALS || roles.len() > MAX_ROLES {
         return decline("size bound");
     }
-    // Class names in this parse, per requested full IRI.
-    let class_names: Vec<Option<String>> = classes
-        .iter()
-        .map(|full| reg.assigned(full).map(str::to_string))
-        .collect();
-
+    // The classes: every class name of the parse and every declared class,
+    // as internal names of this parse's registry (the same registry the
+    // frontend builds from the same canonical text).
+    let mut class_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    {
+        fn walk(c: &Concept, out: &mut std::collections::BTreeSet<String>) {
+            match c {
+                Concept::Name(n) => {
+                    out.insert(n.clone());
+                }
+                Concept::Not(x)
+                | Concept::Exists(_, x)
+                | Concept::Forall(_, x)
+                | Concept::AtLeast(_, _, x)
+                | Concept::AtMost(_, _, x) => walk(x, out),
+                Concept::And(xs) | Concept::Or(xs) => xs.iter().for_each(|x| walk(x, out)),
+                Concept::Top | Concept::Bottom | Concept::Nominal(_) | Concept::HasSelf(_) => {}
+            }
+        }
+        for ax in &axioms {
+            match ax {
+                Axiom::SubClassOf(a, b) | Axiom::EquivalentClasses(a, b) | Axiom::DisjointClasses(a, b) => {
+                    walk(a, &mut class_set);
+                    walk(b, &mut class_set);
+                }
+                Axiom::ConceptAssertion(a, _) => walk(a, &mut class_set),
+                _ => {}
+            }
+        }
+    }
+    for token in declared_classes(&canonical) {
+        let short = reg.short(&token);
+        if short != "owl:Thing" && short != "owl:Nothing" {
+            class_set.insert(short);
+        }
+    }
+    let class_names: Vec<String> = class_set.into_iter().collect();
+    let classes: Vec<String> = class_names.iter().map(|n| reg.full_iri(n)).collect();
+    if classes.len() > MAX_CLASSES {
+        return decline("size bound");
+    }
     let k = cover.len();
     let mut budget = CONFLICT_BUDGET;
     let mut consistent = false;
@@ -1053,9 +1111,8 @@ pub(crate) fn classify_cover(text: &str, classes: &[String]) -> Result<CoverAnsw
         // Class literals per requested class and element (fresh classes get
         // unconstrained variables).
         let mut lits: Vec<Vec<Lit>> = Vec::with_capacity(nclass);
-        for (i, name) in class_names.iter().enumerate() {
-            let key = name.clone().unwrap_or_else(|| format!("\u{0}fresh{i}"));
-            lits.push((0..m).map(|d| g.class(&key, d)).collect());
+        for name in &class_names {
+            lits.push((0..m).map(|d| g.class(name, d)).collect());
         }
         let mut solver = g.solver;
         let record = |solver: &Solver, cand: &mut Vec<Option<Vec<bool>>>| {
@@ -1163,18 +1220,17 @@ mod tests {
         assert_eq!(partitions(4).len(), 15);
     }
 
-    fn supers(text: &str, classes: &[&str]) -> CoverAnswer {
-        let classes: Vec<String> = classes.iter().map(|c| c.to_string()).collect();
-        classify_cover(text, &classes).map_err(|d| d.0).expect("route answers")
+    fn supers(text: &str, _classes: &[&str]) -> CoverAnswer {
+        classify_cover(text).map_err(|d| d.0).expect("route answers")
     }
 
     #[test]
     fn singleton_cover_makes_inverse_minimum_unsatisfiable() {
-        let text = "Prefix(:=<http://e/>)\nOntology(\
-            SubClassOf(owl:Thing ObjectOneOf(:a0))\
-            SubClassOf(:A ObjectMinCardinality(2 ObjectInverseOf(:s1)))\
-            EquivalentClasses(:V0 ObjectHasValue(:s2 :a0))\
-            EquivalentClasses(:V1 ObjectHasValue(:s2 :a1)))";
+        let text = "Ontology(\
+            SubClassOf(owl:Thing ObjectOneOf(<http://e/a0>))\
+            SubClassOf(<http://e/A> ObjectMinCardinality(2 ObjectInverseOf(<http://e/s1>)))\
+            EquivalentClasses(<http://e/V0> ObjectHasValue(<http://e/s2> <http://e/a0>))\
+            EquivalentClasses(<http://e/V1> ObjectHasValue(<http://e/s2> <http://e/a1>)))";
         let ans = supers(text, &["http://e/A", "http://e/V0", "http://e/V1"]);
         assert!(ans.consistent);
         assert_eq!(ans.supers["http://e/A"], None);
@@ -1186,13 +1242,13 @@ mod tests {
     fn two_element_cover_keeps_open_merges_open() {
         // c1(a0, a0); a1 and a2 may be equal or not; nothing beyond the
         // assertion is entailed for the other individuals.
-        let text = "Prefix(:=<http://e/>)\nOntology(\
-            SubClassOf(owl:Thing ObjectOneOf(:a1 :a2))\
-            ObjectPropertyAssertion(:c1 :a0 :a0)\
-            EquivalentClasses(:P0 ObjectOneOf(:a0))\
-            EquivalentClasses(:P1 ObjectOneOf(:a1))\
-            EquivalentClasses(:V3 ObjectHasValue(:c1 :a3))\
-            EquivalentClasses(:S0 ObjectHasSelf(:c1)))";
+        let text = "Ontology(\
+            SubClassOf(owl:Thing ObjectOneOf(<http://e/a1> <http://e/a2>))\
+            ObjectPropertyAssertion(<http://e/c1> <http://e/a0> <http://e/a0>)\
+            EquivalentClasses(<http://e/P0> ObjectOneOf(<http://e/a0>))\
+            EquivalentClasses(<http://e/P1> ObjectOneOf(<http://e/a1>))\
+            EquivalentClasses(<http://e/V3> ObjectHasValue(<http://e/c1> <http://e/a3>))\
+            EquivalentClasses(<http://e/S0> ObjectHasSelf(<http://e/c1>)))";
         let ans = supers(
             text,
             &["http://e/P0", "http://e/P1", "http://e/V3", "http://e/S0"],
@@ -1206,35 +1262,35 @@ mod tests {
 
     #[test]
     fn functional_role_and_cover_force_an_inconsistency() {
-        let text = "Prefix(:=<http://e/>)\nOntology(\
-            SubClassOf(owl:Thing ObjectOneOf(:a :b))\
-            DifferentIndividuals(:a :b)\
-            SubClassOf(owl:Thing ObjectMinCardinality(2 :r))\
-            FunctionalObjectProperty(:r))";
+        let text = "Ontology(\
+            SubClassOf(owl:Thing ObjectOneOf(<http://e/a> <http://e/b>))\
+            DifferentIndividuals(<http://e/a> <http://e/b>)\
+            SubClassOf(owl:Thing ObjectMinCardinality(2 <http://e/r>))\
+            FunctionalObjectProperty(<http://e/r>))";
         let ans = supers(text, &[]);
         assert!(!ans.consistent);
     }
 
     #[test]
     fn declines_data_properties_and_large_covers() {
-        let data = "Prefix(:=<http://e/>)\nOntology(SubClassOf(owl:Thing ObjectOneOf(:a))\
-            DataPropertyAssertion(:d :a \"1\"))";
-        assert!(classify_cover(data, &[]).is_err());
-        let big = "Prefix(:=<http://e/>)\nOntology(SubClassOf(owl:Thing ObjectOneOf(:a :b :c :d :e)))";
-        assert!(classify_cover(big, &[]).is_err());
-        let none = "Prefix(:=<http://e/>)\nOntology(SubClassOf(:A :B))";
-        assert!(classify_cover(none, &[]).is_err());
+        let data = "Ontology(SubClassOf(owl:Thing ObjectOneOf(<http://e/a>))\
+            DataPropertyAssertion(<http://e/d> <http://e/a> \"1\"))";
+        assert!(classify_cover(data).is_err());
+        let big = "Ontology(SubClassOf(owl:Thing ObjectOneOf(<http://e/a> <http://e/b> <http://e/c> <http://e/d> <http://e/e>)))";
+        assert!(classify_cover(big).is_err());
+        let none = "Ontology(SubClassOf(<http://e/A> <http://e/B>))";
+        assert!(classify_cover(none).is_err());
     }
 
     #[test]
     fn chains_and_transitivity_over_the_cover() {
-        let text = "Prefix(:=<http://e/>)\nOntology(\
-            SubClassOf(owl:Thing ObjectOneOf(:a :b :c))\
-            DifferentIndividuals(:a :b) DifferentIndividuals(:b :c) DifferentIndividuals(:a :c)\
-            ObjectPropertyAssertion(:r :a :b) ObjectPropertyAssertion(:r :b :c)\
-            TransitiveObjectProperty(:r)\
-            EquivalentClasses(:X ObjectHasValue(:r :c))\
-            EquivalentClasses(:Pa ObjectOneOf(:a)))";
+        let text = "Ontology(\
+            SubClassOf(owl:Thing ObjectOneOf(<http://e/a> <http://e/b> <http://e/c>))\
+            DifferentIndividuals(<http://e/a> <http://e/b>) DifferentIndividuals(<http://e/b> <http://e/c>) DifferentIndividuals(<http://e/a> <http://e/c>)\
+            ObjectPropertyAssertion(<http://e/r> <http://e/a> <http://e/b>) ObjectPropertyAssertion(<http://e/r> <http://e/b> <http://e/c>)\
+            TransitiveObjectProperty(<http://e/r>)\
+            EquivalentClasses(<http://e/X> ObjectHasValue(<http://e/r> <http://e/c>))\
+            EquivalentClasses(<http://e/Pa> ObjectOneOf(<http://e/a>)))";
         let ans = supers(text, &["http://e/X", "http://e/Pa"]);
         assert!(ans.consistent);
         assert_eq!(ans.supers["http://e/Pa"], Some(vec!["http://e/X".to_string()]));

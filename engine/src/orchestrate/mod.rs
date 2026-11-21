@@ -4243,6 +4243,7 @@ fn finite_cover_evidence(
     {
         return Ok(None);
     }
+    let _ = meta;
     let text = {
         let prepared = input::prepare_for_reasoning(ont)?;
         std::fs::read_to_string(prepared.path())?
@@ -4250,23 +4251,7 @@ fn finite_cover_evidence(
     if !text.contains("ObjectOneOf") {
         return Ok(None);
     }
-    let is_top_or_bottom = |full: &str| {
-        full == "http://www.w3.org/2002/07/owl#Thing"
-            || full == "http://www.w3.org/2002/07/owl#Nothing"
-            || full == "owl:Thing"
-            || full == "owl:Nothing"
-    };
-    let mut short_of: HashMap<String, String> = HashMap::new();
-    let mut classes: Vec<String> = Vec::new();
-    for name in &meta.named {
-        let full = meta.iri_map.get(name).cloned().unwrap_or_else(|| name.clone());
-        if is_top_or_bottom(&full) || short_of.contains_key(&full) {
-            continue;
-        }
-        short_of.insert(full.clone(), name.clone());
-        classes.push(full);
-    }
-    let answer = match finite_cover::classify_cover(&text, &classes) {
+    let answer = match finite_cover::classify_cover(&text) {
         Ok(answer) => answer,
         Err(reason) => {
             if timing {
@@ -4277,28 +4262,68 @@ fn finite_cover_evidence(
     };
     if timing {
         eprintln!(
-            "KM_TIMING finite cover answered @ {:.2}s (consistent={}, partitions={}, solves={})",
+            "KM_TIMING finite cover answered @ {:.2}s (consistent={}, classes={}, partitions={}, solves={})",
             t_start.elapsed().as_secs_f64(),
             answer.consistent,
+            answer.supers.len(),
             answer.partitions,
             answer.solves,
         );
     }
-    let mut out = EngineOut { inconsistent: !answer.consistent, ..EngineOut::default() };
-    if answer.consistent {
-        for (full, supers) in &answer.supers {
-            let subject = short_of[full].clone();
-            let row = match supers {
-                None => vec!["owl:Nothing".to_string()],
-                Some(supers) => supers.iter().map(|s| short_of[s].clone()).collect(),
-            };
-            out.subsumptions.insert(subject, row);
+    let export = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    if !answer.consistent {
+        if export {
+            model_export::record_inconsistent();
         }
-        if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
-            model_export::record_declined("the finite-cover route exports no model".into());
+        return Ok(Some(ClassificationEvidence {
+            classification: Classification {
+                approximate: None,
+                consistent: false,
+                subsumptions: vec![],
+                unsatisfiable: vec![],
+                dropped: 0,
+            },
+            grouped_subsumptions: None,
+            consistency_certified: true,
+        }));
+    }
+    // The publication convention of `map_engine_out_to_evidence`: rows by
+    // full IRI, no self rows, unsatisfiable classes listed (not their rows).
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut unsat: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (class, supers) in answer.supers {
+        match supers {
+            None => {
+                unsat.insert(class);
+            }
+            Some(supers) => {
+                let row: Vec<String> = supers.into_iter().filter(|s| *s != class).collect();
+                if !row.is_empty() {
+                    grouped.entry(class).or_default().extend(row);
+                }
+            }
         }
     }
-    map_engine_out_to_evidence(out, meta, retain_grouped_output, true, timing).map(Some)
+    for row in grouped.values_mut() {
+        row.sort_unstable();
+        row.dedup();
+    }
+    if export {
+        model_export::record_declined("the finite-cover route exports no model".into());
+    }
+    let _ = retain_grouped_output;
+    timing_mark("output mapping done");
+    Ok(Some(ClassificationEvidence {
+        classification: Classification {
+            approximate: None,
+            consistent: true,
+            subsumptions: flatten_grouped_subsumptions(grouped),
+            unsatisfiable: unsat.into_iter().collect(),
+            dropped: 0,
+        },
+        grouped_subsumptions: None,
+        consistency_certified: true,
+    }))
 }
 
 fn map_engine_out_to_evidence(
