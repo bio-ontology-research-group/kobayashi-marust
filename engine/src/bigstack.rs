@@ -387,4 +387,50 @@ mod tests {
         let error = run("bigstack-absurd", usize::MAX >> 2, || ()).unwrap_err();
         assert!(error.contains("bigstack-absurd") && error.contains("MiB stack"), "{error}");
     }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn prepared_worker_starts_with_the_reexec_limit_and_the_nice_increment() {
+        let _test_env = crate::test_env::write();
+        let bytes = tableau_worker_stack_bytes();
+        let expected = child_stack_rlimit(bytes);
+        let mut current = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_STACK, &mut current) }, 0);
+        let parent_nice = unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) };
+        let mut command = std::process::Command::new("/bin/sh");
+        command.arg("-c").arg("ulimit -S -s; cut -d' ' -f19 /proc/self/stat");
+        prepare_worker_command(&mut command, Some(bytes), Some(3));
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        let mut lines = text.lines();
+        let soft = lines.next().unwrap().trim().to_string();
+        let child_nice: i32 = lines.next().unwrap().trim().parse().unwrap();
+        // The same limit `ensure_main_stack` installs before re-executing,
+        // or the inherited one when it would not raise it.
+        let want = expected.map_or(current.rlim_cur, |limit| limit.rlim_cur);
+        if want == libc::RLIM_INFINITY {
+            assert_eq!(soft, "unlimited");
+        } else {
+            assert_eq!(soft, (want / 1024).to_string());
+        }
+        assert_eq!(child_nice, (parent_nice + 3).min(19));
+        // The parent keeps its own limit and niceness.
+        let mut after = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_STACK, &mut after) }, 0);
+        assert_eq!(after.rlim_cur, current.rlim_cur);
+        assert_eq!(unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) }, parent_nice);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn raised_limit_gives_the_worker_its_stack_without_reexecution() {
+        let _test_env = crate::test_env::write();
+        // `ensure_main_stack` re-executes only when the soft limit is below
+        // the request plus headroom; the prepared limit is exactly that.
+        let bytes = tableau_worker_stack_bytes();
+        if let Some(limit) = child_stack_rlimit(bytes) {
+            assert!(limit.rlim_cur as usize >= bytes.saturating_add(2 * HEADROOM));
+        }
+    }
 }

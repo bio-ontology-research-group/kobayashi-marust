@@ -157,4 +157,22 @@ mod tests {
         }
         release_transient_heap();
     }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn released_code_pages_fault_back_in() {
+        let _test_env = crate::test_env::write();
+        let (start, end) = super::own_code_mapping().expect("km code mapping");
+        assert!(start < end);
+        fn work(n: u64) -> u64 {
+            (0..n).fold(0u64, |acc, x| acc.wrapping_mul(31).wrapping_add(x))
+        }
+        let before = work(std::hint::black_box(10_000));
+        super::release_code_pages();
+        // Code runs again after its pages were dropped, with the same result.
+        assert_eq!(work(std::hint::black_box(10_000)), before);
+        let live: Vec<u8> = vec![7; 1 << 20];
+        super::release_code_pages();
+        assert!(live.iter().all(|&b| b == 7));
+    }
 }
