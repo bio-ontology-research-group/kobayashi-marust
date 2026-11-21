@@ -143,3 +143,24 @@ fn nominal_excluded_from_untriggerable_definition_is_inconsistent() {
     assert_eq!(stdout.lines().next(), Some("CONSISTENT 0"), "{stdout}");
 }
 
+
+/// Two individuals with different values of a restricted data property are
+/// different (HermiT: `O + SameIndividual(a b)` is inconsistent). One value
+/// is asserted, the other comes from a class (`d0 value 2`) or the
+/// restriction comes from the TBox (`A ⊑ ≤1 d1`). The model plan of
+/// `--different` merged the two individuals without meeting the clash,
+/// because neither of its structures carries the asserted literal as a
+/// valued successor, and published no `DIFFERENT` row.
+#[test]
+fn asserted_data_values_keep_restricted_individuals_different() {
+    for (case, row) in [
+        ("different-functional-value-from-class", "DIFFERENT\t:a3\t:a5"),
+        ("different-at-most-one-data-value", "DIFFERENT\t:a0\t:a3"),
+    ] {
+        let output = km(&fixture(&format!("{case}.ofn")), &["--realize", "--different"]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{case}: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(stdout.lines().any(|line| line == "CONSISTENT 1"), "{case}: {stdout}");
+        assert!(stdout.lines().any(|line| line == row), "{case}: {stdout}");
+    }
+}
