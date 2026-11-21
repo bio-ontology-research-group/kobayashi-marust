@@ -281,6 +281,75 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         true
     }
 
+    /// The blocker's restrictions on `role` that the optimized blocking tests
+    /// B2 (universals) and B3/B5 (at-most) read: the entries of its `role`
+    /// reapply queue, plus every concept of its label whose role is `role`.
+    ///
+    /// Konclude reads the reapply queue alone (cpp 18514, 18567). A concept
+    /// enters that queue only when its rule is applied, so a blocker whose
+    /// universal or at-most restriction was not yet applied (still queued,
+    /// or never processed because the node is saturation cached) passed B2
+    /// and B3 vacuously and c-blocked a node it may not block. With
+    /// `A ⊑ ∃r.Self`, functional `r`, `B ⊑ ∃r.A`, `A ⊑ ∃r⁻.B`, a
+    /// saturation-cached `D` node with an empty `r` queue but `≤1 r` in its
+    /// label blocked the `D` successor of `B`, and the bridge lost `B ⊑ A`.
+    /// The label holds every such restriction, applied or not, so B2 and B3
+    /// see them all; the queue entries keep any extended descriptor.
+    fn optimized_blocking_blocker_role_restrictions(
+        &mut self,
+        w_pred_node: NodeId,
+        role: RoleId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Vec<ConDescId> {
+        let mut out: Vec<ConDescId> = Vec::new();
+        let mut reapply_qu_it = calc_alg_context
+            .process_context_mut()
+            .node_role_reapply_iterator(w_pred_node, role, false);
+        while reapply_qu_it.has_next() {
+            let reapply_con_des = reapply_qu_it.next(calc_alg_context.process_context(), true);
+            if reapply_con_des.is_none() {
+                continue;
+            }
+            out.push(
+                calc_alg_context
+                    .process_context()
+                    .reapply_con_desc(reapply_con_des)
+                    .get_concept_descriptor(),
+            );
+        }
+        let label = calc_alg_context
+            .process_context()
+            .node(w_pred_node)
+            .use_reapply_con_label_set;
+        if label.is_none() {
+            return out;
+        }
+        let mut label_it = calc_alg_context
+            .process_context()
+            .label_set(label)
+            .get_concept_label_set_iterator(false, false, false);
+        while label_it.has_next() {
+            let con_des = label_it.next(true, calc_alg_context.process_context());
+            if con_des.is_none() {
+                continue;
+            }
+            let concept = calc_alg_context.process_context().con_desc(con_des).get_concept();
+            if calc_alg_context.ontology_arenas().concept(concept).get_role() != role {
+                continue;
+            }
+            let duplicate = out.iter().any(|&known| {
+                let d = calc_alg_context.process_context().con_desc(known);
+                d.get_concept() == concept
+                    && d.is_negated()
+                        == calc_alg_context.process_context().con_desc(con_des).is_negated()
+            });
+            if !duplicate {
+                out.push(con_des);
+            }
+        }
+        out
+    }
+
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::isLabelConceptOptimizedBlocking`.
     ///
     /// KONCLUDE-PORT-NOTE[api]: the B2 test now uses the live
@@ -372,18 +441,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .edge(link)
                 .get_link_role();
             // B2, (ALL r. C) in w'
-            let mut reapply_qu_it = calc_alg_context
-                .process_context_mut()
-                .node_role_reapply_iterator(w_pred_node, role, false);
-            while reapply_qu_it.has_next() && blocked {
-                let reapply_con_des = reapply_qu_it.next(calc_alg_context.process_context(), true);
-                if reapply_con_des.is_none() {
-                    continue;
+            let blocker_restrictions =
+                self.optimized_blocking_blocker_role_restrictions(w_pred_node, role, calc_alg_context);
+            for &con_des in &blocker_restrictions {
+                if !blocked {
+                    break;
                 }
-                let con_des = calc_alg_context
-                    .process_context()
-                    .reapply_con_desc(reapply_con_des)
-                    .get_concept_descriptor();
                 let concept = calc_alg_context
                     .process_context()
                     .con_desc(con_des)
@@ -486,19 +549,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .process_context()
                     .edge(link)
                     .get_link_role();
-                let mut reapply_qu_it = calc_alg_context
-                    .process_context_mut()
-                    .node_role_reapply_iterator(w_pred_node, role, false);
-                while reapply_qu_it.has_next() && blocked {
-                    let reapply_con_des =
-                        reapply_qu_it.next(calc_alg_context.process_context(), true);
-                    if reapply_con_des.is_none() {
-                        continue;
+                let blocker_restrictions =
+                    self.optimized_blocking_blocker_role_restrictions(w_pred_node, role, calc_alg_context);
+                for &con_des in &blocker_restrictions {
+                    if !blocked {
+                        break;
                     }
-                    let con_des = calc_alg_context
-                        .process_context()
-                        .reapply_con_desc(reapply_con_des)
-                        .get_concept_descriptor();
                     let concept = calc_alg_context
                         .process_context()
                         .con_desc(con_des)

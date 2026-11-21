@@ -55,10 +55,13 @@ fn realization_with_different_rows_keeps_unsatisfiable_classes() {
 
 /// `A ⊑ ∃r.Self` with `r` functional: the self edge fills `A`'s only
 /// `r`-slot, so `B ⊑ ∃r.A` and `A ⊑ ∃r⁻.B` make `B` and `A` equivalent
-/// (HermiT). With the core blocking concept marks (1ba05c77) the native
-/// bridge lost `B ⊑ A` and `B ⊑ G`.
+/// (HermiT). With the core blocking concept marks (1ba05c77) the linked
+/// candidate search offered a saturation-cached `D` node as blocker whose
+/// `≤1 r` had never been applied, so its `r` reapply queue was empty and the
+/// optimized blocking test passed B3 vacuously; the bridge lost `B ⊑ A` and
+/// `B ⊑ G`.
 #[test]
-fn self_restrictions_keep_the_unmarked_blocker_search() {
+fn optimized_blocking_reads_unapplied_blocker_restrictions() {
     let path = fixture("self-loop-functional.ofn");
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     for (key, _) in std::env::vars() {
