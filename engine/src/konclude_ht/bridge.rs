@@ -845,7 +845,24 @@ impl DatatypeRelationIndex {
 /// union of the values that imply it then satisfies every helper clause in
 /// every model of the datatype map, so the helpers add no consequence over
 /// the source vocabulary.
+#[cfg(test)]
 fn linear_value_encoding_exact(tin: &TInput) -> bool {
+    let mut parsed_atomic: crate::fxhash::FxHashMap<
+        usize,
+        crate::frontend::datatypes::ParsedBridgeAtomic,
+    > = Default::default();
+    for (idx, name) in tin.concepts.iter().enumerate() {
+        if let Some(p) = crate::frontend::datatypes::ParsedBridgeAtomic::of(name) {
+            parsed_atomic.insert(idx, p);
+        }
+    }
+    linear_value_encoding_exact_with_parsed(tin, &parsed_atomic)
+}
+
+fn linear_value_encoding_exact_with_parsed(
+    tin: &TInput,
+    parsed_atomic: &crate::fxhash::FxHashMap<usize, crate::frontend::datatypes::ParsedBridgeAtomic>,
+) -> bool {
     use crate::frontend::datatypes as dt;
     macro_rules! defer {
         ($reason:literal) => {{
@@ -881,7 +898,7 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
                 if t == ht && aux(*helper) && name(*range) == crate::frontend::sorts::DATA_SORT => {}
             ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: range, t: ht }])
                 if t == ht && aux(*helper) && dt::value_aux_digit(name(*helper)).is_none()
-                    && !aux(*range) && dt::bridge_tbox_atomic_name(name(*range)) =>
+                    && !aux(*range) && parsed_atomic.contains_key(range) =>
                 profile_includes.push((*helper, *range)),
             ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: sup, t: ht }])
                 if std::env::var_os("KM_GROUND_RULE_HAS_RULES").is_some() && t == ht && aux(*helper) && !aux(*sup) =>
@@ -891,9 +908,9 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
             {
                 match (dt::value_aux_digit(name(*left)), dt::value_aux_digit(name(*right))) {
                     (Some((p, a)), Some((q, b))) if p == q && a != b => {}
-                    (None, None) if aux(*left) && !aux(*right) && dt::bridge_tbox_atomic_name(name(*right)) =>
+                    (None, None) if aux(*left) && !aux(*right) && parsed_atomic.contains_key(right) =>
                         profile_excludes.push((*left, *right)),
-                    (None, None) if aux(*right) && !aux(*left) && dt::bridge_tbox_atomic_name(name(*left)) =>
+                    (None, None) if aux(*right) && !aux(*left) && parsed_atomic.contains_key(left) =>
                         profile_excludes.push((*right, *left)),
                     // A helper (index digit or membership profile) disjoint
                     // from a concept that is not a helper: the two-sorted
@@ -909,15 +926,30 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
         }
     }
     for (helper, range) in profile_includes {
+        let Some(range_p) = parsed_atomic.get(&range) else {
+            defer!("a membership profile includes a range one of its values is not in");
+        };
         for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
-            if dt::bridge_exact_atomic_subsumed(name(value), name(range)) != Some(true) {
+            let subsumed = if value == range {
+                Some(true)
+            } else {
+                parsed_atomic.get(&value).and_then(|val_p| val_p.subsumed(range_p))
+            };
+            if subsumed != Some(true) {
                 defer!("a membership profile includes a range one of its values is not in");
             }
         }
     }
     for (helper, range) in profile_excludes {
+        let Some(range_p) = parsed_atomic.get(&range) else {
+            defer!("a membership profile excludes a range one of its values is in");
+        };
         for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
-            if dt::bridge_exact_atomic_disjoint(name(value), name(range)) != Some(true) {
+            if parsed_atomic
+                .get(&value)
+                .and_then(|val_p| val_p.disjoint(range_p))
+                != Some(true)
+            {
                 defer!("a membership profile excludes a range one of its values is in");
             }
         }
@@ -1688,12 +1720,19 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     if tin.data_roles.iter().any(|&role| role >= tin.roles.len()) {
         defer!("a source data-property role index is invalid");
     }
-    if !source_mode
-        || datatype_ids.iter().any(|&concept| {
-            !crate::frontend::datatypes::bridge_tbox_atomic_name(&tin.concepts[concept])
-        })
-    {
+    if !source_mode {
         defer!("source mode is disabled or a datatype symbol is not in the exact atomic map");
+    }
+    let mut parsed_atomic: crate::fxhash::FxHashMap<
+        usize,
+        crate::frontend::datatypes::ParsedBridgeAtomic,
+    > = crate::fxhash::FxHashMap::default();
+    for &concept in &datatype_ids {
+        let Some(p) = crate::frontend::datatypes::ParsedBridgeAtomic::of(&tin.concepts[concept])
+        else {
+            defer!("source mode is disabled or a datatype symbol is not in the exact atomic map");
+        };
+        parsed_atomic.insert(concept, p);
     }
 
     let role_index: HashMap<&str, usize> = tin
@@ -1702,6 +1741,13 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .enumerate()
         .map(|(index, name)| (name.as_str(), index))
         .collect();
+    let concept_index: crate::fxhash::FxHashMap<&str, usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .map(|(index, name)| (name.as_str(), index))
+        .collect();
+    let mut lazy_relations: Option<DatatypeRelationIndex> = None;
     let mut role_ranges: HashMap<usize, Vec<&str>> = HashMap::default();
     let mut role_existentials: Vec<(usize, &str)> = Vec::new();
     // Collect before walking local restrictions: source order is irrelevant.
@@ -1913,12 +1959,15 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                         let separated = !crate::routing::ground_rule_zero_rules_mode()
                             && crate::frontend::datatypes::bridge_exact_atomic_disjoint(old, datatype)
                                 == Some(true)
-                            && tin
-                                .concepts
-                                .iter()
-                                .position(|c| c == old)
-                                .zip(tin.concepts.iter().position(|c| c == datatype))
-                                .is_some_and(|(a, b)| DatatypeRelationIndex::for_input(tin).separated(a, b));
+                            && concept_index
+                                .get(old)
+                                .copied()
+                                .zip(concept_index.get(datatype).copied())
+                                .is_some_and(|(a, b)| {
+                                    lazy_relations
+                                        .get_or_insert_with(|| DatatypeRelationIndex::for_input(tin))
+                                        .separated(a, b)
+                                });
                         if !separated {
                             defer!("one data role has multiple atomic ranges");
                         }
@@ -1980,6 +2029,8 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             }
         }
     }
+    role_existentials.sort_unstable();
+    role_existentials.dedup();
     for &(role, datatype) in &role_existentials {
         if crate::frontend::datatypes::is_data_property_probe_value(datatype) {
             if role_ranges.get(&role).is_some_and(|ranges_for_role| {
@@ -2006,12 +2057,15 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                         || std::env::var_os("KM_GROUND_RULE_HAS_RULES").is_some())
                     && crate::frontend::datatypes::bridge_exact_atomic_disjoint(datatype, range)
                         == Some(true)
-                    && tin
-                        .concepts
-                        .iter()
-                        .position(|c| c == datatype)
-                        .zip(tin.concepts.iter().position(|c| c == range))
-                        .is_some_and(|(a, b)| DatatypeRelationIndex::for_input(tin).separated(a, b)))
+                    && concept_index
+                        .get(datatype)
+                        .copied()
+                        .zip(concept_index.get(range).copied())
+                        .is_some_and(|(a, b)| {
+                            lazy_relations
+                                .get_or_insert_with(|| DatatypeRelationIndex::for_input(tin))
+                                .separated(a, b)
+                        }))
             {
                 if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                     eprintln!(
@@ -2415,18 +2469,16 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .iter()
         .filter(|&&concept| !tin.concepts[concept].starts_with("__dt__val__"))
     {
-        let Some(family) =
-            crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[concept])
-        else {
+        let Some(family) = parsed_atomic.get(&concept).map(|p| p.family) else {
             defer!("a datatype range has no exact atomic family");
         };
         ranges.entry(family).or_default().push(concept);
     }
 
-    if !linear_value_encoding_exact(tin) {
+    if !linear_value_encoding_exact_with_parsed(tin, &parsed_atomic) {
         return false;
     }
-    let relations = DatatypeRelationIndex::for_input(tin);
+    let relations = lazy_relations.unwrap_or_else(|| DatatypeRelationIndex::for_input(tin));
     // An admitted complement `¬A` needs its disjointness `¬A ∧ A → ⊥` and
     // its excluded middle `→ ¬A ∨ A`. A node that carries only complements
     // is realized by a fresh IRI, which lies in every admitted complement and
@@ -2444,11 +2496,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let complements: Vec<(usize, usize)> = datatype_ids.iter().filter_map(|&concept| {
             let operand = dt::bridge_exact_complement_operand(&tin.concepts[concept])?;
             mentioned(concept).then(|| {
-                (concept, tin.concepts.iter().position(|name| *name == operand).unwrap_or(usize::MAX))
+                (concept, concept_index.get(operand.as_str()).copied().unwrap_or(usize::MAX))
             })
         }).collect();
         if !complements.is_empty() {
-            if datatype_ids.iter().any(|&concept| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("anyURI")) {
+            if datatype_ids.iter().any(|&concept| parsed_atomic.get(&concept).map(|p| p.family) == Some("anyURI")) {
                 defer!("a data complement next to an anyURI range");
             }
             for &(complement, operand) in &complements {
@@ -2475,38 +2527,40 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let Some(member) = datatype_ids.iter().copied().find(|&c| tin.concepts[c] == local) else {
             defer!("a local datatype restriction symbol is absent from TInput concepts");
         };
+        let member_p = &parsed_atomic[&member];
         for &other in &datatype_ids {
+            let other_p = &parsed_atomic[&other];
             if other == member
-                || dt::bridge_tbox_atomic_family(&tin.concepts[other]) == Some("literal")
+                || other_p.family == "literal"
                 || dt::is_data_property_probe_value(&tin.concepts[other])
             {
                 continue;
             }
             let (left, right) = (local, tin.concepts[other].as_str());
             let mut decided = false;
-            if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
+            if member_p.subsumed(other_p) == Some(true) {
                 decided = true;
                 if !relations.includes(member, other) {
                     defer!("a local datatype restriction lacks an inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_subsumed(right, left) == Some(true) {
+            if other_p.subsumed(member_p) == Some(true) {
                 decided = true;
                 if !relations.includes(other, member) {
                     defer!("a local datatype restriction lacks a reverse inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_disjoint(left, right) == Some(true) {
+            if member_p.disjoint(other_p) == Some(true) {
                 decided = true;
                 if !relations.separated(member, other) {
                     defer!("a local datatype restriction lacks a disjointness clause");
                 }
             }
-            let ieee = dt::bridge_ieee_range(left) && dt::bridge_ieee_range(right)
-                && dt::bridge_tbox_atomic_family(left) == dt::bridge_tbox_atomic_family(right)
+            let ieee = member_p.is_ieee_range && other_p.is_ieee_range
+                && member_p.family == other_p.family
                 && datatype_ids.iter().any(|&c| dt::bridge_ieee_facet_range(&tin.concepts[c])
-                    && dt::bridge_tbox_atomic_family(&tin.concepts[c]) == dt::bridge_tbox_atomic_family(left));
-            let decimal = dt::bridge_decimal_range(left) && dt::bridge_decimal_range(right);
+                    && parsed_atomic[&c].family == member_p.family);
+            let decimal = member_p.is_decimal_range && other_p.is_decimal_range;
             if !decided && !ieee && !decimal {
                 if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                     eprintln!("BRIDGE-DATATYPE-DEFER: local={left} other={right}");
@@ -2587,6 +2641,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             })
         }
     };
+    let finite_ranges: &[usize] = ranges.get("finite").map(Vec::as_slice).unwrap_or(&[]);
     for &value in &values {
         if crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[value]) {
             if !relations.singletons.contains(&value) {
@@ -2603,48 +2658,54 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         {
             defer!("a datatype value lacks its singleton equality clause");
         }
-        let Some(family) =
-            crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[value])
-        else {
+        let Some(val_p) = parsed_atomic.get(&value) else {
             defer!("a datatype value has no exact atomic family");
         };
+        let family = val_p.family;
         // Preserve the existing atomic-family obligation. Finite enumerations
         // additionally need an exact decision for every present literal value,
         // including values from other families.
         if let Some(family_ranges) = ranges.get(family) {
             for &range in family_ranges {
+                let range_p = &parsed_atomic[&range];
                 // IEEE facet intervals need not contain every value of their
                 // width; their exact pairwise evidence is checked below.
-                if crate::frontend::datatypes::bridge_facet_range(&tin.concepts[range]) {
+                if range_p.is_facet_range {
                     continue;
                 }
                 // A value outside a named range of its family (e.g. `0` and
                 // `positiveInteger`) needs its exact disjointness clause.
-                if crate::frontend::datatypes::bridge_exact_atomic_disjoint(
-                    &tin.concepts[value], &tin.concepts[range]) == Some(true)
-                    && crate::frontend::datatypes::bridge_exact_atomic_subsumed(
-                        &tin.concepts[value], &tin.concepts[range]) == Some(false)
+                let is_subsumed = if value == range {
+                    Some(true)
+                } else {
+                    val_p.subsumed(range_p)
+                };
+                if val_p.disjoint(range_p) == Some(true)
+                    && is_subsumed == Some(false)
                 {
                     if !relations.separated(value, range) {
                         defer!("a datatype value lacks its exclusion from a present family range");
                     }
                     continue;
                 }
-                if crate::frontend::datatypes::bridge_tbox_finite_values(&tin.concepts[range]).is_none()
+                if !range_p.has_tbox_finite_values
                     && !relations.includes(value, range) {
                     defer!("a datatype value lacks membership in its present family range");
                 }
             }
         }
-        for &range in ranges.values().flatten().filter(|&&range|
-            crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[range]) == Some("finite")) {
-            if crate::frontend::datatypes::bridge_exact_atomic_subsumed(
-                &tin.concepts[value], &tin.concepts[range]) == Some(true) {
+        for &range in finite_ranges {
+            let range_p = &parsed_atomic[&range];
+            let is_subsumed = if value == range {
+                Some(true)
+            } else {
+                val_p.subsumed(range_p)
+            };
+            if is_subsumed == Some(true) {
                 if !relations.includes(value, range) {
                     defer!("a datatype value lacks its exact range membership");
                 }
-            } else if crate::frontend::datatypes::bridge_exact_atomic_disjoint(
-                &tin.concepts[value], &tin.concepts[range]) == Some(true) {
+            } else if val_p.disjoint(range_p) == Some(true) {
                 if !relations.separated(value, range) {
                     defer!("a datatype value lacks its exact range exclusion");
                 }
@@ -2718,7 +2779,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     }
 
     for &range in ranges.values().flatten() {
-        if crate::frontend::datatypes::bridge_tbox_finite_values(&tin.concepts[range]).is_none() {
+        if !parsed_atomic[&range].has_tbox_finite_values {
             continue;
         }
         let covered = tin.clauses.iter().any(|clause| {
@@ -2736,7 +2797,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         if !covered { defer!("a finite datatype range lacks its exact value cover"); }
     }
 
-    if !tbox_extension_evidence_exact(tin, &datatype_ids, &relations) {
+    if !tbox_extension_evidence_exact(tin, &datatype_ids, &relations, &parsed_atomic) {
         return false;
     }
     if !decimal_cells_exact(tin, &datatype_ids, &relations) {
@@ -2832,10 +2893,12 @@ fn body_sensitive_datatype_names(tin: &TInput) -> std::collections::HashSet<&str
     // A node carrying an admitted complement `¬A` must be realized outside
     // `A`, and a node without `¬A` carries `A` (excluded middle): `A` is read
     // in both directions, exactly as a body-sensitive range.
+    let concept_set: crate::fxhash::FxHashSet<&str> =
+        tin.concepts.iter().map(String::as_str).collect();
     for name in &tin.concepts {
         if let Some(operand) = crate::frontend::datatypes::bridge_exact_complement_operand(name) {
-            if let Some(present) = tin.concepts.iter().find(|other| **other == operand) {
-                out.insert(present.as_str());
+            if let Some(&present) = concept_set.get(operand.as_str()) {
+                out.insert(present);
             }
         }
     }
@@ -3317,6 +3380,7 @@ fn tbox_extension_evidence_exact(
     tin: &TInput,
     datatype_ids: &[usize],
     relations: &DatatypeRelationIndex,
+    parsed: &crate::fxhash::FxHashMap<usize, crate::frontend::datatypes::ParsedBridgeAtomic>,
 ) -> bool {
     use crate::frontend::datatypes as dt;
     macro_rules! defer {
@@ -3331,13 +3395,13 @@ fn tbox_extension_evidence_exact(
     let is_extension = |concept: usize| {
         let name = &tin.concepts[concept];
         !dt::bridge_exact_atomic_name(name)
-            && dt::bridge_tbox_atomic_name(name)
+            && parsed.contains_key(&concept)
             && !dt::is_data_property_probe_value(name)
     };
     if !datatype_ids.iter().any(|&concept| is_extension(concept)) {
         return true;
     }
-    let literal = |concept: usize| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("literal");
+    let literal = |concept: usize| parsed.get(&concept).map(|p| p.family) == Some("literal");
     let probe_value = |concept: usize| dt::is_data_property_probe_value(&tin.concepts[concept]);
     let sensitive = body_sensitive_datatype_names(tin);
     if datatype_ids.iter().any(|&concept| literal(concept) && sensitive.contains(tin.concepts[concept].as_str())) {
@@ -3345,10 +3409,6 @@ fn tbox_extension_evidence_exact(
     }
     let included = |left: usize, right: usize| relations.includes(left, right);
     let separated = |left: usize, right: usize| relations.separated(left, right);
-    let parsed: HashMap<usize, dt::ParsedBridgeAtomic> = datatype_ids
-        .iter()
-        .filter_map(|&concept| dt::ParsedBridgeAtomic::of(&tin.concepts[concept]).map(|p| (concept, p)))
-        .collect();
     let keyed_values: HashSet<usize> = datatype_ids
         .iter()
         .copied()
@@ -3629,7 +3689,7 @@ struct NativeAboxRoleValue {
 /// One value of Konclude's `FULL_CONCEPT_SET_LABEL`. Completion writeback must
 /// retain the cache-value determinism bit; replaying a branch-dependent value
 /// with the base dependency would turn one model choice into an entailment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct NativeAboxConceptValue {
     concept: ConceptId,
     negated: bool,
@@ -3649,11 +3709,11 @@ enum NativeAboxAssociationOrigin {
 struct NativeAboxRepresentativeEntry {
     individual_tag: Cint64,
     /// FULL_CONCEPT_SET_LABEL.
-    concepts: Vec<(ConceptId, bool)>,
+    concepts: std::sync::Arc<Vec<(ConceptId, bool)>>,
     /// Exact cache values, including the deterministic/non-deterministic
     /// identifier. `None` means that label family was not serialized and keeps
     /// the association fail-closed.
-    concept_values: Option<Vec<NativeAboxConceptValue>>,
+    concept_values: Option<std::sync::Arc<Vec<NativeAboxConceptValue>>>,
     /// COMBINED_INSTANTIATED_ROLE_SET_LABEL.
     instantiated_roles: Vec<RoleId>,
     instantiated_role_values: Option<Vec<NativeAboxRoleValue>>,
@@ -3926,10 +3986,13 @@ impl NativeAboxRepresentativeCache {
         // Incomplete saturation labels are not replayed as base facts. Until
         // completion replaces them, even a complete neighbour cannot justify
         // skipping the asserted edges that supply those omitted constraints.
+        let mut checked_arcs: crate::fxhash::FxHashSet<usize> = crate::fxhash::FxHashSet::default();
         self.entries.values().all(|entry| {
             entry.association_origin != Some(NativeAboxAssociationOrigin::IndividualSaturation)
-                || entry.concept_values.as_ref()
-                    .is_some_and(|values| values.iter().all(|value| value.deterministic))
+                || entry.concept_values.as_ref().is_some_and(|values| {
+                    let ptr = std::sync::Arc::as_ptr(values) as usize;
+                    !checked_arcs.insert(ptr) || values.iter().all(|value| value.deterministic)
+                })
         })
     }
 }
@@ -4515,26 +4578,76 @@ fn full_absorption_trigger(
         } else if (!negated && op_code == op::CCOR)
             || (negated && matches!(op_code, op::CCAND | op::CCEQ))
         {
-            let mut alternatives = Vec::new();
-            for operand in operands {
-                let trigger = full_absorption_trigger(
-                    b,
-                    (operand.target, operand.negated ^ negated),
-                    role_inverses,
-                    caches,
-                )?;
-                alternatives.push(trigger);
-            }
-            if alternatives.len() <= 1 {
-                alternatives.into_iter().next()
+            if operands.len() <= 1 {
+                if let Some(operand) = operands.into_iter().next() {
+                    full_absorption_trigger(
+                        b,
+                        (operand.target, operand.negated ^ negated),
+                        role_inverses,
+                        caches,
+                    )
+                } else {
+                    None
+                }
             } else {
+                enum OrAlt {
+                    Nominal(super::model::IndividualId),
+                    Trigger(AbsorptionTrigger),
+                }
+                let mut alternatives = Vec::with_capacity(operands.len());
+                for operand in operands {
+                    let op_neg = operand.negated ^ negated;
+                    if !op_neg
+                        && b.ctx
+                            .ontology_arenas()
+                            .concept(operand.target)
+                            .get_operator_code()
+                            == op::CCNOMINAL
+                    {
+                        let individual = b
+                            .ctx
+                            .ontology_arenas()
+                            .concept(operand.target)
+                            .get_nominal_individual();
+                        if individual.is_none() {
+                            return None;
+                        }
+                        alternatives.push(OrAlt::Nominal(individual));
+                    } else {
+                        let trigger = full_absorption_trigger(
+                            b,
+                            (operand.target, op_neg),
+                            role_inverses,
+                            caches,
+                        )?;
+                        alternatives.push(OrAlt::Trigger(trigger));
+                    }
+                }
                 let implied = b.implication_trigger();
-                let complexity_sum: Cint64 =
-                    alternatives.iter().map(|trigger| trigger.complexity).sum();
                 let trigger_count = alternatives.len() as Cint64;
-                for trigger in alternatives {
-                    if !b.add_unfolding(trigger.concept, implied, false) {
-                        return None;
+                let mut complexity_sum: Cint64 = 0;
+                for alt in alternatives {
+                    match alt {
+                        OrAlt::Nominal(individual) => {
+                            complexity_sum += 1;
+                            let assertion = ConceptAssertion {
+                                target: implied,
+                                negated: false,
+                            };
+                            let individual = b.ctx.ontology_arenas_mut().individual_mut(individual);
+                            if !individual
+                                .get_assertion_concept_linker()
+                                .contains(&assertion)
+                            {
+                                individual.add_assertion_concept_linker(assertion);
+                            }
+                        }
+                        OrAlt::Trigger(trigger) => {
+                            complexity_sum += trigger.complexity;
+                            if !b.add_unfolding(trigger.concept, implied, false) {
+                                return None;
+                            }
+                        }
                     }
                 }
                 // Exact C++ `(triggerComplexity + 1) / triggerCount`.
@@ -6909,11 +7022,39 @@ fn bridge_tinput_with_trigger_absorption(
         let mut seen_inclusions = crate::fxhash::FxHashSet::default();
         let mut forced_subclass_names = crate::fxhash::FxHashSet::default();
         let mut equivalence_name_counts: HashMap<&str, usize> = HashMap::default();
+        let mut unique_equivalence_defs: HashMap<&str, &SourceConcept> = HashMap::default();
+        for axiom in &tin.source_axioms {
+            if axiom.kind == crate::json_io::SourceAxiomKind::Equivalent {
+                for (named_side, def_side) in
+                    [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                {
+                    if let SourceConcept::Name(name) = named_side {
+                        let count = equivalence_name_counts.entry(name.as_str()).or_default();
+                        *count += 1;
+                        if *count == 1 {
+                            unique_equivalence_defs.insert(name.as_str(), def_side);
+                        } else {
+                            unique_equivalence_defs.remove(name.as_str());
+                        }
+                    }
+                }
+            }
+        }
+        let is_redundant_equiv_conjunct_subclass =
+            |name: &str, right: &SourceConcept| -> bool {
+                let Some(&def) = unique_equivalence_defs.get(name) else {
+                    return false;
+                };
+                right == def
+                    || matches!(def, SourceConcept::And(conjuncts) if conjuncts.contains(right))
+            };
         for axiom in &tin.source_axioms {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
                     if let SourceConcept::Name(name) = &axiom.left {
-                        forced_subclass_names.insert(name.as_str());
+                        if !is_redundant_equiv_conjunct_subclass(name.as_str(), &axiom.right) {
+                            forced_subclass_names.insert(name.as_str());
+                        }
                     }
                 }
                 crate::json_io::SourceAxiomKind::Disjoint => {
@@ -6923,13 +7064,7 @@ fn bridge_tinput_with_trigger_absorption(
                         }
                     }
                 }
-                crate::json_io::SourceAxiomKind::Equivalent => {
-                    for side in [&axiom.left, &axiom.right] {
-                        if let SourceConcept::Name(name) = side {
-                            *equivalence_name_counts.entry(name.as_str()).or_default() += 1;
-                        }
-                    }
-                }
+                crate::json_io::SourceAxiomKind::Equivalent => {}
             }
         }
         fn collect_source_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
@@ -7167,15 +7302,7 @@ fn bridge_tinput_with_trigger_absorption(
                         &nominal_by_name,
                         &mut concept_cache,
                     ) {
-                        if full_absorption_trigger(
-                            &mut b,
-                            built,
-                            &role_inverses,
-                            &mut trigger_caches,
-                        )
-                        .is_none()
-                            && b.add_equivalent_definition(host, built.0, built.1)
-                        {
+                        if b.add_equivalent_definition(host, built.0, built.1) {
                             preinstalled_cceq.insert(axiom_index, (host, definition, name));
                         }
                     }
@@ -7185,6 +7312,13 @@ fn bridge_tinput_with_trigger_absorption(
         for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        if !forced_subclass_names.contains(name.as_str())
+                            && is_redundant_equiv_conjunct_subclass(name.as_str(), &axiom.right)
+                        {
+                            continue;
+                        }
+                    }
                     encode!(&axiom.left, &axiom.right);
                 }
                 crate::json_io::SourceAxiomKind::Equivalent => {
@@ -7226,6 +7360,7 @@ fn bridge_tinput_with_trigger_absorption(
                         };
                         equivalent_definition_names.push(name.to_string());
                         let triggerable = preinstalled.is_none()
+                            && !non_triggerable_hosts.contains(name)
                             && full_absorption_trigger(
                                 &mut b,
                                 built,
@@ -7271,13 +7406,15 @@ fn bridge_tinput_with_trigger_absorption(
                                     ) else {
                                         continue;
                                     };
-                                    let part_triggerable = full_absorption_trigger(
-                                        &mut b,
-                                        part_built,
-                                        &role_inverses,
-                                        &mut trigger_caches,
-                                    )
-                                    .is_some();
+                                    let part_triggerable =
+                                        syntactically_triggerable(part, true, &non_triggerable_hosts)
+                                            && full_absorption_trigger(
+                                                &mut b,
+                                                part_built,
+                                                &role_inverses,
+                                                &mut trigger_caches,
+                                            )
+                                            .is_some();
                                     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                                         eprintln!(
                                             "BRIDGE-EQ-CANDIDATE-PART {name}: triggerable={part_triggerable} {part:?}"
@@ -10375,6 +10512,16 @@ fn install_native_nominal_backend_replay(
     let saturation_labels_replayable = cache.as_ref()
         .is_some_and(NativeAboxRepresentativeCache::saturation_labels_replayable)
         && !precomputation_replay_disabled(bridged);
+    let empty_det_arc = std::sync::Arc::new(Vec::new());
+    let empty_val_arc = std::sync::Arc::new(Vec::new());
+    let mut shared_concept_cache: HashMap<
+        (usize, bool),
+        (
+            std::sync::Arc<Vec<(ConceptId, bool)>>,
+            std::sync::Arc<Vec<(ConceptId, bool, bool)>>,
+        ),
+    > = HashMap::default();
+    let mut well_formed_cache: HashMap<(usize, usize), bool> = HashMap::default();
     for seed in &bridged.nominal_seeds {
         let association_entry = cache
             .as_ref()
@@ -10385,7 +10532,7 @@ fn install_native_nominal_backend_replay(
         // association header and version, however, and writeback must compare
         // against it exactly.
         let replay_entry = association_entry.filter(|entry|
-            native_cache_entry_covers_seed(entry, seed));
+            native_cache_entry_covers_seed_cached(entry, seed, Some(&mut well_formed_cache)));
         // Positive nominal concepts are not cache values, so the deterministic
         // labels below are a closure only together with the nominal concepts of
         // the deterministic same individuals. When that set is unknown, or one
@@ -10393,22 +10540,41 @@ fn install_native_nominal_backend_replay(
         // assertions then re-derive the whole closure.
         let deterministic_same_nominal_concepts =
             replay_entry.and_then(|entry| native_deterministic_same_nominal_concepts(bridged, entry, seed));
-        let deterministic_cached_concepts = replay_entry
-            .filter(|_| deterministic_same_nominal_concepts.is_some())
-            .and_then(|entry| entry.concept_values.as_ref())
-            .into_iter()
-            .flatten()
-            .filter(|value| value.deterministic)
-            .map(|value| (value.concept, value.negated))
-            .collect();
         let replay_closed = deterministic_same_nominal_concepts.is_some();
+        let (deterministic_cached_concepts, cached_concept_values) =
+            if let Some(values_arc) = replay_entry.and_then(|entry| entry.concept_values.as_ref()) {
+                let key = (std::sync::Arc::as_ptr(values_arc) as usize, replay_closed);
+                if let Some(cached) = shared_concept_cache.get(&key) {
+                    (std::sync::Arc::clone(&cached.0), std::sync::Arc::clone(&cached.1))
+                } else {
+                    let det = if replay_closed {
+                        std::sync::Arc::new(
+                            values_arc
+                                .iter()
+                                .filter(|value| value.deterministic)
+                                .map(|value| (value.concept, value.negated))
+                                .collect(),
+                        )
+                    } else {
+                        std::sync::Arc::clone(&empty_det_arc)
+                    };
+                    let all = std::sync::Arc::new(
+                        values_arc
+                            .iter()
+                            .map(|value| (value.concept, value.negated, value.deterministic))
+                            .collect(),
+                    );
+                    shared_concept_cache
+                        .insert(key, (std::sync::Arc::clone(&det), std::sync::Arc::clone(&all)));
+                    (det, all)
+                }
+            } else {
+                (
+                    std::sync::Arc::clone(&empty_det_arc),
+                    std::sync::Arc::clone(&empty_val_arc),
+                )
+            };
         let deterministic_same_nominal_concepts = deterministic_same_nominal_concepts.unwrap_or_default();
-        let cached_concept_values = replay_entry
-            .and_then(|entry| entry.concept_values.as_ref())
-            .into_iter()
-            .flatten()
-            .map(|value| (value.concept, value.negated, value.deterministic))
-            .collect();
         let mut cached_neighbour_roles: Vec<(Cint64, RoleId, bool, bool)> = replay_entry
             .into_iter()
             .flat_map(|entry| entry.neighbour_role_combinations.iter())
@@ -10515,10 +10681,81 @@ fn initialize_native_nominal_state_for_tags(
     }
     let base_tp = ctx.get_or_create_base_dependency_track_point();
     let top = ctx.processing_data_box().ontology_top_concept();
+    let allow_delayed_concept_set_init = selected_tags.is_none()
+        && std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_none()
+        && algo.conf_allow_backend_successor_expansion_blocking
+        && algo.conf_allow_backend_neighbour_expansion_blocking;
+    let mut seen_shared_concept_sets: HashMap<usize, bool> = HashMap::default();
+    let mut materialized_any = false;
+    let saturation_labels_replayable = {
+        let cache = bridged.native_representative_cache.borrow();
+        cache
+            .as_ref()
+            .is_some_and(|c| !c.association_write_aborted && c.saturation_labels_replayable())
+    };
+    let mut well_formed_cache: HashMap<(usize, usize), bool> = HashMap::default();
     for seed in &bridged.nominal_seeds {
         if selected_tags.is_some_and(|tags| !tags.contains(&seed.individual_tag)) {
             continue;
         }
+        if allow_delayed_concept_set_init && seed.role_assertions.is_empty() {
+            if let Some(group_delayable) = algo
+                .native_nominal_backend_replay
+                .get(&seed.individual_tag)
+                .filter(|replay| {
+                    replay.association_present
+                        && replay.expansion_blocking_candidate
+                        && replay.neighbour_expansion_blocking_candidate
+                        && !replay.deterministic_cached_concepts.is_empty()
+                        && replay.cached_neighbour_roles.is_empty()
+                        && !replay.has_reusable_elements
+                        && replay.deterministic_same_nominal_concepts.is_empty()
+                })
+                .and_then(|replay| {
+                    let group_ptr =
+                        std::sync::Arc::as_ptr(&replay.deterministic_cached_concepts) as usize;
+                    let delayable = if let Some(&delayable) = seen_shared_concept_sets.get(&group_ptr)
+                    {
+                        delayable
+                    } else {
+                        let has_singleton = bridged.singleton_concepts.iter().any(|sc| {
+                            replay
+                                .deterministic_cached_concepts
+                                .binary_search_by_key(&(sc.raw, false), |(c, neg)| (c.raw, *neg))
+                                .is_ok()
+                        });
+                        let d = !has_singleton;
+                        seen_shared_concept_sets.insert(group_ptr, d);
+                        d
+                    };
+                    if materialized_any {
+                        Some(delayable)
+                    } else {
+                        None
+                    }
+                })
+            {
+                if group_delayable {
+                    let existing = ctx
+                        .processing_data_box()
+                        .individual_process_node_vector()
+                        .get_data(-seed.individual_tag);
+                    if existing.is_none() {
+                        let node = algo.allocate_delayed_backend_nominal_individual(
+                            -seed.individual_tag,
+                            seed.individual,
+                            base_tp,
+                            ctx,
+                        );
+                        if node.is_none() {
+                            return false;
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
+        materialized_any = true;
         let mut node = algo.get_up_to_date_individual_by_id(-seed.individual_tag, ctx);
         if node.is_none()
             || ctx.process_context().node(node).nominal_individual() != seed.individual
@@ -10534,6 +10771,10 @@ fn initialize_native_nominal_state_for_tags(
         if algo
             .native_nominal_backend_replay
             .contains_key(&seed.individual_tag)
+            && !ctx
+                .process_context()
+                .node(node)
+                .is_nominal_individual_representative_backend_data_loaded()
         {
             if !replay_native_representative_cache(algo, ctx, bridged, seed, node, base_tp) {
                 return false;
@@ -10597,7 +10838,15 @@ fn initialize_native_nominal_state_for_tags(
             .native_nominal_backend_replay
             .contains_key(&seed.individual_tag)
         {
-            let _ = try_establish_native_backend_expansion_blocking(algo, ctx, bridged, seed, node);
+            let _ = try_establish_native_backend_expansion_blocking_cached(
+                algo,
+                ctx,
+                bridged,
+                seed,
+                node,
+                Some(saturation_labels_replayable),
+                Some(&mut well_formed_cache),
+            );
         }
     }
     true
@@ -10878,6 +11127,7 @@ struct RetainedLeafCounts {
     fallback_unsat: usize,
     /// Alternative 1 taken: a STOP, a poisoned search or a withheld witness.
     fallback_unknown: usize,
+    consecutive_fallbacks: usize,
     drops: usize,
 }
 
@@ -12172,6 +12422,14 @@ fn write_completed_native_representative_associations(
     let mut deterministic_same_index = None;
     let mut nondeterministic_same_index = None;
     let mut assertion_journal = None;
+    let mut shared_completion_labels: HashMap<
+        std::sync::Arc<Vec<NativeAboxConceptValue>>,
+        (
+            std::sync::Arc<Vec<(ConceptId, bool)>>,
+            std::sync::Arc<Vec<NativeAboxConceptValue>>,
+        ),
+    > = HashMap::default();
+    let mut well_formed_cache: HashMap<(usize, usize), bool> = HashMap::default();
     for seed in &bridged.nominal_seeds {
         let Some(original) = native_exact_nominal_process_node(ctx, seed.individual_tag) else {
             if selected_individuals.contains(&seed.individual_tag) {
@@ -12184,6 +12442,18 @@ fn write_completed_native_representative_associations(
             // is not a touched association for nominal tag zero.
             continue;
         };
+        if ctx
+            .process_context()
+            .node(original)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENPROCESSINGDELAYING,
+            )
+        {
+            if selected_individuals.contains(&seed.individual_tag) {
+                return None;
+            }
+            continue;
+        }
         let deterministic_node = native_completion_merge_target(ctx, original, true)?;
         let extraction_node = native_completion_merge_target(ctx, deterministic_node, false)?;
         let deterministic_representative_tag =
@@ -12191,21 +12461,37 @@ fn write_completed_native_representative_associations(
         let extraction_representative_tag = native_completion_nominal_tag(ctx, extraction_node)?;
         let representative_same_individual_merging =
             deterministic_representative_tag != seed.individual_tag;
-        let (concept_values, descriptor_count) =
+        let (raw_concept_values, descriptor_count) =
             native_completion_label_values(ctx, extraction_node, deterministic_node)?;
-        let concepts = concept_values
-            .iter()
-            .map(|value| (value.concept, value.negated))
-            .collect();
         let role_metadata =
             native_completion_role_metadata(
                 ctx,
                 extraction_node,
-                &concept_values,
+                &raw_concept_values,
                 bridged,
                 seed,
                 &mut assertion_journal,
             )?;
+        let raw_values_arc = std::sync::Arc::new(raw_concept_values);
+        let (concepts, concept_values) =
+            if let Some(cached) = shared_completion_labels.get(&raw_values_arc) {
+                (std::sync::Arc::clone(&cached.0), std::sync::Arc::clone(&cached.1))
+            } else {
+                let concepts_arc = std::sync::Arc::new(
+                    raw_values_arc
+                        .iter()
+                        .map(|value| (value.concept, value.negated))
+                        .collect(),
+                );
+                shared_completion_labels.insert(
+                    std::sync::Arc::clone(&raw_values_arc),
+                    (
+                        std::sync::Arc::clone(&concepts_arc),
+                        std::sync::Arc::clone(&raw_values_arc),
+                    ),
+                );
+                (concepts_arc, raw_values_arc)
+            };
         let deterministic_different_individuals = native_completion_different_individuals(
             ctx,
             deterministic_node,
@@ -12298,7 +12584,8 @@ fn write_completed_native_representative_associations(
         // individual cannot be skipped because its task would otherwise be
         // falsely reported as having discharged the association.
         let typed_complete = entry.complete_for_precomputation();
-        let seed_covered = native_cache_entry_covers_seed(&entry, seed);
+        let seed_covered =
+            native_cache_entry_covers_seed_cached(&entry, seed, Some(&mut well_formed_cache));
         let complete = typed_complete && seed_covered;
         if !complete {
             if selected_individuals.contains(&seed.individual_tag) {
@@ -12648,6 +12935,22 @@ fn snapshot_native_consistency_nominal_nondeterministic_prefix(
 ) -> Option<HashMap<Cint64, Vec<(ConceptId, bool)>>> {
     let mut snapshot = HashMap::with_capacity_and_hasher(bridged.nominal_seeds.len(), Default::default());
     for seed in &bridged.nominal_seeds {
+        let existing = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-seed.individual_tag);
+        if existing.is_some()
+            && existing.index() < ctx.process_context().node_count()
+            && ctx
+                .process_context()
+                .node(existing)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENPROCESSINGDELAYING,
+                )
+        {
+            snapshot.insert(seed.individual_tag, Vec::new());
+            continue;
+        }
         let node = algo.get_up_to_date_individual_by_id(-seed.individual_tag, ctx);
         if node.is_none() {
             return None;
@@ -14097,15 +14400,70 @@ fn write_native_abox_representative_cache(
     }
     let mut cache = NativeAboxRepresentativeCache::default();
     let mut saturation_journal = None;
+    type SharedLabelData = (
+        std::sync::Arc<Vec<(ConceptId, bool)>>,
+        Vec<RoleId>,
+        Vec<NativeAboxRoleValue>,
+        Vec<(RoleId, Cint64)>,
+        Vec<(RoleId, Cint64)>,
+        bool,
+    );
+    let mut shared_label_by_key: HashMap<
+        (
+            super::saturation::satellites::ConceptSaturationDescriptorId,
+            Vec<(ConceptId, bool)>,
+        ),
+        SharedLabelData,
+    > = HashMap::default();
+    let mut tail_concepts_by_head: HashMap<
+        super::saturation::satellites::ConceptSaturationDescriptorId,
+        Vec<(ConceptId, bool)>,
+    > = HashMap::default();
+    let mut shared_label_by_concepts: HashMap<
+        std::sync::Arc<Vec<(ConceptId, bool)>>,
+        SharedLabelData,
+    > = HashMap::default();
+    let mut shared_values_by_concepts: HashMap<
+        (usize, bool),
+        std::sync::Arc<Vec<NativeAboxConceptValue>>,
+    > = HashMap::default();
     for &(individual_tag, node) in nodes {
         if node.is_none() || node.index() >= ctx.process_context().sat_node_count() {
             return None;
         }
-        let (direct_flags, indirect_flags) = {
+        let (direct_flags, indirect_flags, label_head, copy_head) = {
             let saturation_node = ctx.process_context().sat_node(node);
+            let label = saturation_node.reapply_con_sat_label_set;
+            let head = if label.is_some() {
+                ctx.process_context()
+                    .reapply_con_sat_label_set(label)
+                    .get_concept_saturation_description_linker()
+            } else {
+                super::saturation::satellites::ConceptSaturationDescriptorId::NONE
+            };
+            let copy_node = saturation_node.get_copy_individual_node();
+            let c_head = if copy_node.is_some()
+                && copy_node.index() < ctx.process_context().sat_node_count()
+            {
+                let cl = ctx
+                    .process_context()
+                    .sat_node(copy_node)
+                    .reapply_con_sat_label_set;
+                if cl.is_some() {
+                    ctx.process_context()
+                        .reapply_con_sat_label_set(cl)
+                        .get_concept_saturation_description_linker()
+                } else {
+                    super::saturation::satellites::ConceptSaturationDescriptorId::NONE
+                }
+            } else {
+                super::saturation::satellites::ConceptSaturationDescriptorId::NONE
+            };
             (
                 saturation_node.direct_status_flags.get_flags(),
                 saturation_node.indirect_status_flags.get_flags(),
+                head,
+                c_head,
             )
         };
         if direct_flags & F::INDSATFLAGCLASHED != 0 || indirect_flags & F::INDSATFLAGCLASHED != 0 {
@@ -14114,54 +14472,160 @@ fn write_native_abox_representative_cache(
             return Some(cache);
         }
 
-        let concepts = native_cache_label_concepts(ctx, node)?;
-        let mut existential_roles: BTreeSet<Cint64> = BTreeSet::new();
-        let mut existential_max: BTreeMap<Cint64, Cint64> = BTreeMap::new();
-        let mut at_most: BTreeMap<Cint64, Cint64> = BTreeMap::new();
-        for &(concept, negated) in &concepts {
-            if concept.is_none()
-                || concept.index() >= ctx.ontology_arenas().concept_count() as usize
-            {
+        let mut prefix_concepts = Vec::new();
+        let mut descriptor = label_head;
+        let mut walked = 0usize;
+        let max_desc = ctx.process_context().con_sat_desc_count();
+        while descriptor.is_some() && !(copy_head.is_some() && descriptor == copy_head) {
+            if descriptor.index() >= max_desc || walked > max_desc {
                 return None;
             }
-            let concept_ref = ctx.ontology_arenas().concept(concept);
-            let operator = concept_ref.get_operator_code();
-            let role = concept_ref.get_role();
-            if role.is_some()
-                && ((!negated
-                    && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF | CCATLEAST))
-                    || (negated && matches!(operator, CCALL | CCAQALL | CCATMOST)))
-            {
-                existential_roles.insert(role.raw);
-                let cardinality = if (!negated
-                    && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF))
-                    || (negated && matches!(operator, CCALL | CCAQALL))
-                {
-                    1
-                } else if !negated && operator == CCATLEAST {
-                    concept_ref.get_parameter().max(0)
-                } else {
-                    concept_ref.get_parameter().saturating_add(1).max(0)
-                };
-                existential_max
-                    .entry(role.raw)
-                    .and_modify(|current| *current = (*current).max(cardinality))
-                    .or_insert(cardinality);
-            }
-            let bound = if !negated && operator == CCATMOST {
-                Some(concept_ref.get_parameter())
-            } else if negated && operator == CCATLEAST {
-                Some(concept_ref.get_parameter().saturating_sub(1))
-            } else {
-                None
-            };
-            if let (Some(bound), true) = (bound, role.is_some()) {
-                at_most
-                    .entry(role.raw)
-                    .and_modify(|current| *current = (*current).min(bound))
-                    .or_insert(bound);
-            }
+            let data = ctx.process_context().con_sat_desc(descriptor);
+            prefix_concepts.push((data.get_concept(), data.get_negation()));
+            descriptor = data.get_next_concept_desciptor();
+            walked += 1;
         }
+        prefix_concepts.sort_unstable_by_key(|(concept, negated)| (concept.raw, *negated));
+        prefix_concepts.dedup();
+        let tail_head = if copy_head.is_some() && descriptor == copy_head {
+            copy_head
+        } else {
+            super::saturation::satellites::ConceptSaturationDescriptorId::NONE
+        };
+        let lookup_key = (tail_head, prefix_concepts);
+
+        let (
+            concepts,
+            existential_roles,
+            existential_role_values,
+            at_most_cardinalities,
+            existential_max_cardinalities,
+            label_has_positive_self,
+        ) = if let Some(cached) = shared_label_by_key.get(&lookup_key) {
+            (
+                std::sync::Arc::clone(&cached.0),
+                cached.1.clone(),
+                cached.2.clone(),
+                cached.3.clone(),
+                cached.4.clone(),
+                cached.5,
+            )
+        } else {
+            let mut raw_concepts = lookup_key.1.clone();
+            if tail_head.is_some() {
+                if let Some(tail) = tail_concepts_by_head.get(&tail_head) {
+                    raw_concepts.extend_from_slice(tail);
+                } else {
+                    let mut tail = Vec::new();
+                    let mut d = tail_head;
+                    let mut w = 0usize;
+                    while d.is_some() {
+                        if d.index() >= max_desc || w > max_desc {
+                            return None;
+                        }
+                        let data = ctx.process_context().con_sat_desc(d);
+                        tail.push((data.get_concept(), data.get_negation()));
+                        d = data.get_next_concept_desciptor();
+                        w += 1;
+                    }
+                    tail.sort_unstable_by_key(|(concept, negated)| (concept.raw, *negated));
+                    tail.dedup();
+                    raw_concepts.extend_from_slice(&tail);
+                    tail_concepts_by_head.insert(tail_head, tail);
+                }
+                raw_concepts.sort_unstable_by_key(|(concept, negated)| (concept.raw, *negated));
+                raw_concepts.dedup();
+            }
+            let raw_arc = std::sync::Arc::new(raw_concepts);
+            let shared_data = if let Some(existing) = shared_label_by_concepts.get(&raw_arc) {
+                existing.clone()
+            } else {
+                let mut existential_roles_set: BTreeSet<Cint64> = BTreeSet::new();
+                let mut existential_max: BTreeMap<Cint64, Cint64> = BTreeMap::new();
+                let mut at_most: BTreeMap<Cint64, Cint64> = BTreeMap::new();
+                let mut has_pos_self = false;
+                for &(concept, negated) in raw_arc.iter() {
+                    if concept.is_none()
+                        || concept.index() >= ctx.ontology_arenas().concept_count() as usize
+                    {
+                        return None;
+                    }
+                    let concept_ref = ctx.ontology_arenas().concept(concept);
+                    let operator = concept_ref.get_operator_code();
+                    if !negated && operator == CCSELF {
+                        has_pos_self = true;
+                    }
+                    let role = concept_ref.get_role();
+                    if role.is_some()
+                        && ((!negated
+                            && matches!(
+                                operator,
+                                CCSOME | CCAQSOME | CCVALUE | CCSELF | CCATLEAST
+                            ))
+                            || (negated && matches!(operator, CCALL | CCAQALL | CCATMOST)))
+                    {
+                        existential_roles_set.insert(role.raw);
+                        let cardinality = if (!negated
+                            && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF))
+                            || (negated && matches!(operator, CCALL | CCAQALL))
+                        {
+                            1
+                        } else if !negated && operator == CCATLEAST {
+                            concept_ref.get_parameter().max(0)
+                        } else {
+                            concept_ref.get_parameter().saturating_add(1).max(0)
+                        };
+                        existential_max
+                            .entry(role.raw)
+                            .and_modify(|current| *current = (*current).max(cardinality))
+                            .or_insert(cardinality);
+                    }
+                    let bound = if !negated && operator == CCATMOST {
+                        Some(concept_ref.get_parameter())
+                    } else if negated && operator == CCATLEAST {
+                        Some(concept_ref.get_parameter().saturating_sub(1))
+                    } else {
+                        None
+                    };
+                    if let (Some(bound), true) = (bound, role.is_some()) {
+                        at_most
+                            .entry(role.raw)
+                            .and_modify(|current| *current = (*current).min(bound))
+                            .or_insert(bound);
+                    }
+                }
+                let existential_roles_vec: Vec<RoleId> =
+                    existential_roles_set.into_iter().map(RoleId::new).collect();
+                let existential_role_values_vec: Vec<NativeAboxRoleValue> = existential_roles_vec
+                    .iter()
+                    .map(|&role| NativeAboxRoleValue {
+                        role,
+                        inversed: false,
+                        deterministic: true,
+                    })
+                    .collect();
+                let at_most_vec: Vec<(RoleId, Cint64)> = at_most
+                    .into_iter()
+                    .map(|(role, cardinality)| (RoleId::new(role), cardinality))
+                    .collect();
+                let existential_max_vec: Vec<(RoleId, Cint64)> = existential_max
+                    .into_iter()
+                    .map(|(role, cardinality)| (RoleId::new(role), cardinality))
+                    .collect();
+                let data = (
+                    std::sync::Arc::clone(&raw_arc),
+                    existential_roles_vec,
+                    existential_role_values_vec,
+                    at_most_vec,
+                    existential_max_vec,
+                    has_pos_self,
+                );
+                shared_label_by_concepts.insert(raw_arc, data.clone());
+                data
+            };
+            shared_label_by_key.insert(lookup_key, shared_data.clone());
+            shared_data
+        };
 
         let mut instantiated_role_orientations: BTreeSet<(Cint64, bool)> = BTreeSet::new();
         let mut neighbour_roles: BTreeMap<Cint64, BTreeSet<(Cint64, bool)>> = BTreeMap::new();
@@ -14322,21 +14786,36 @@ fn write_native_abox_representative_cache(
             neighbour_roles.entry(other).or_default().insert((role, negated));
         }
 
-        let (completely_handled, completely_propagated) =
+        let (raw_completely_handled, completely_propagated) =
             native_abox_association_status(direct_flags, indirect_flags);
+        let completely_handled = raw_completely_handled && !label_has_positive_self;
         let status_incomplete = !completely_handled;
         // The saturation substrate does not retain per-descriptor dependency
         // track points. Only a completely handled association certifies its
         // final label. Values from an insufficient association remain
         // metadata and must not be replayed as branch-zero facts.
-        let concept_values = concepts
-            .iter()
-            .map(|&(concept, negated)| NativeAboxConceptValue {
-                concept,
-                negated,
-                deterministic: completely_handled,
-            })
-            .collect();
+        let concepts_ptr = std::sync::Arc::as_ptr(&concepts) as usize;
+        let concept_values = if let Some(cached) =
+            shared_values_by_concepts.get(&(concepts_ptr, completely_handled))
+        {
+            std::sync::Arc::clone(cached)
+        } else {
+            let values_arc = std::sync::Arc::new(
+                concepts
+                    .iter()
+                    .map(|&(concept, negated)| NativeAboxConceptValue {
+                        concept,
+                        negated,
+                        deterministic: completely_handled,
+                    })
+                    .collect(),
+            );
+            shared_values_by_concepts.insert(
+                (concepts_ptr, completely_handled),
+                std::sync::Arc::clone(&values_arc),
+            );
+            values_arc
+        };
         let deterministic_same_individuals = Vec::new();
         let deterministic_same_label_identity =
             native_individual_label_identity(&deterministic_same_individuals);
@@ -14371,33 +14850,16 @@ fn write_native_abox_representative_cache(
             .iter()
             .map(|value| value.role)
             .collect();
-        let existential_roles: Vec<RoleId> =
-            existential_roles.into_iter().map(RoleId::new).collect();
         let entry = NativeAboxRepresentativeEntry {
             individual_tag,
             concepts,
             concept_values: Some(concept_values),
             instantiated_role_values: Some(instantiated_role_values),
             instantiated_roles,
-            existential_role_values: Some(
-                existential_roles
-                    .iter()
-                    .map(|&role| NativeAboxRoleValue {
-                        role,
-                        inversed: false,
-                        deterministic: true,
-                    })
-                    .collect(),
-            ),
+            existential_role_values: Some(existential_role_values),
             existential_roles,
-            at_most_cardinalities: at_most
-                .into_iter()
-                .map(|(role, cardinality)| (RoleId::new(role), cardinality))
-                .collect(),
-            existential_max_cardinalities: existential_max
-                .into_iter()
-                .map(|(role, cardinality)| (RoleId::new(role), cardinality))
-                .collect(),
+            at_most_cardinalities,
+            existential_max_cardinalities,
             indirect_nominal_connections: indirect_nominals.into_iter().collect(),
             neighbour_role_combinations: neighbour_roles
                 .into_iter()
@@ -14460,6 +14922,14 @@ fn native_cache_entry_covers_seed(
     entry: &NativeAboxRepresentativeEntry,
     seed: &NominalSeed,
 ) -> bool {
+    native_cache_entry_covers_seed_cached(entry, seed, None)
+}
+
+fn native_cache_entry_covers_seed_cached(
+    entry: &NativeAboxRepresentativeEntry,
+    seed: &NominalSeed,
+    well_formed_cache: Option<&mut HashMap<(usize, usize), bool>>,
+) -> bool {
     let sorted_roles = |roles: &[RoleId]| {
         roles.iter().all(|role| role.is_some())
             // The same role may occur once in each orientation. The typed
@@ -14519,13 +14989,32 @@ fn native_cache_entry_covers_seed(
                 .all(|pair| (pair[0].0.raw, pair[0].1) < (pair[1].0.raw, pair[1].1))
     });
     let concept_values_well_formed = entry.concept_values.as_ref().is_some_and(|values| {
-        values.windows(2).all(|pair| {
-            (pair[0].concept.raw, pair[0].negated, pair[0].deterministic)
-                < (pair[1].concept.raw, pair[1].negated, pair[1].deterministic)
-        }) && values
-            .iter()
-            .map(|value| (value.concept, value.negated))
-            .eq(entry.concepts.iter().copied())
+        let key = (
+            std::sync::Arc::as_ptr(&entry.concepts) as usize,
+            std::sync::Arc::as_ptr(values) as usize,
+        );
+        if let Some(cache) = well_formed_cache {
+            if let Some(&cached) = cache.get(&key) {
+                return cached;
+            }
+            let ok = values.windows(2).all(|pair| {
+                (pair[0].concept.raw, pair[0].negated, pair[0].deterministic)
+                    < (pair[1].concept.raw, pair[1].negated, pair[1].deterministic)
+            }) && values
+                .iter()
+                .map(|value| (value.concept, value.negated))
+                .eq(entry.concepts.iter().copied());
+            cache.insert(key, ok);
+            ok
+        } else {
+            values.windows(2).all(|pair| {
+                (pair[0].concept.raw, pair[0].negated, pair[0].deterministic)
+                    < (pair[1].concept.raw, pair[1].negated, pair[1].deterministic)
+            }) && values
+                .iter()
+                .map(|value| (value.concept, value.negated))
+                .eq(entry.concepts.iter().copied())
+        }
     });
     let role_values_well_formed = |roles: &[RoleId], values: &Option<Vec<NativeAboxRoleValue>>| {
         values.as_ref().is_some_and(|values| {
@@ -14699,6 +15188,18 @@ fn try_establish_native_backend_expansion_blocking(
     seed: &NominalSeed,
     node: NodeId,
 ) -> bool {
+    try_establish_native_backend_expansion_blocking_cached(algo, ctx, bridged, seed, node, None, None)
+}
+
+fn try_establish_native_backend_expansion_blocking_cached(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    seed: &NominalSeed,
+    node: NodeId,
+    saturation_labels_replayable_cached: Option<bool>,
+    well_formed_cache: Option<&mut HashMap<(usize, usize), bool>>,
+) -> bool {
     if precomputation_replay_disabled(bridged)
         || node.is_none()
         || node.index() >= ctx.process_context().node_count()
@@ -14720,13 +15221,18 @@ fn try_establish_native_backend_expansion_blocking(
         let Some(cache) = cache.as_ref() else {
             return false;
         };
-        if cache.association_write_aborted || !cache.saturation_labels_replayable() {
+        if cache.association_write_aborted {
             return false;
         }
         let Some(entry) = cache.entries.get(&seed.individual_tag) else {
             return false;
         };
-        if !native_cache_entry_covers_seed(entry, seed) {
+        if !saturation_labels_replayable_cached
+            .unwrap_or_else(|| cache.saturation_labels_replayable())
+        {
+            return false;
+        }
+        if !native_cache_entry_covers_seed_cached(entry, seed, well_formed_cache) {
             return false;
         }
         if entry.reusable_for_full_completion()
@@ -15037,6 +15543,10 @@ fn extract_saturation_outcome(
     let mut unknown_unprocessed = 0usize;
     let mut unknown_eq_candidate = 0usize;
     let trust_insufficient = std::env::var_os("KM_HT_TRUST_INSUFFICIENT").is_some();
+    let mut shared_label_subsumers: HashMap<
+        super::saturation::satellites::ConceptSaturationDescriptorId,
+        (Vec<usize>, bool),
+    > = HashMap::default();
     for (i, &named) in bridged.named.iter().enumerate() {
         let base_node =
             super::saturation::algorithm::SaturationTaskHandleAlgorithm::s07_concept_reference_node(
@@ -15105,28 +15615,95 @@ fn extract_saturation_outcome(
             .sat_node(resolved)
             .reapply_con_sat_label_set;
         if label.is_some() {
-            let mut des = ctx
+            let head = ctx
                 .process_context()
                 .reapply_con_sat_label_set(label)
                 .get_concept_saturation_description_linker();
-            while des.is_some() {
-                let (concept, negated) = {
-                    let d = ctx.process_context().con_sat_desc(des);
-                    (d.get_concept(), d.get_negation())
-                };
-                let op_code = ctx.ontology_arenas().concept(concept).get_operator_code();
-                eq_candidate_present |= op_code == op::CCEQCAND;
-                if !negated {
-                    if let Some(&idx) = named_index.get(&concept) {
-                        if idx != i {
-                            subs.push(idx);
+            if head.is_some() {
+                let copy_node = ctx
+                    .process_context()
+                    .sat_node(resolved)
+                    .get_copy_individual_node();
+                if copy_node.is_some()
+                    && copy_node.index() < ctx.process_context().sat_node_count()
+                {
+                    let copy_label = ctx
+                        .process_context()
+                        .sat_node(copy_node)
+                        .reapply_con_sat_label_set;
+                    if copy_label.is_some() {
+                        let copy_head = ctx
+                            .process_context()
+                            .reapply_con_sat_label_set(copy_label)
+                            .get_concept_saturation_description_linker();
+                        if copy_head.is_some() && !shared_label_subsumers.contains_key(&copy_head) {
+                            let mut copy_subs = Vec::new();
+                            let mut copy_eq = false;
+                            let mut d = copy_head;
+                            while d.is_some() {
+                                if let Some((cached_s, cached_e)) = shared_label_subsumers.get(&d) {
+                                    copy_eq |= *cached_e;
+                                    copy_subs.extend_from_slice(cached_s);
+                                    break;
+                                }
+                                let (concept, negated, next) = {
+                                    let desc = ctx.process_context().con_sat_desc(d);
+                                    (
+                                        desc.get_concept(),
+                                        desc.get_negation(),
+                                        desc.get_next_concept_desciptor(),
+                                    )
+                                };
+                                let op_code =
+                                    ctx.ontology_arenas().concept(concept).get_operator_code();
+                                copy_eq |= op_code == op::CCEQCAND;
+                                if !negated {
+                                    if let Some(&idx) = named_index.get(&concept) {
+                                        copy_subs.push(idx);
+                                    }
+                                }
+                                d = next;
+                            }
+                            copy_subs.sort_unstable();
+                            copy_subs.dedup();
+                            shared_label_subsumers.insert(copy_head, (copy_subs, copy_eq));
                         }
                     }
                 }
-                des = ctx
-                    .process_context()
-                    .con_sat_desc(des)
-                    .get_next_concept_desciptor();
+                if let Some((cached_subs, cached_eq)) = shared_label_subsumers.get(&head) {
+                    eq_candidate_present = *cached_eq;
+                    subs.extend(cached_subs.iter().copied().filter(|&idx| idx != i));
+                } else {
+                    let mut label_subs = Vec::new();
+                    let mut des = head;
+                    while des.is_some() {
+                        if let Some((cached_subs, cached_eq)) = shared_label_subsumers.get(&des) {
+                            eq_candidate_present |= *cached_eq;
+                            label_subs.extend_from_slice(cached_subs);
+                            break;
+                        }
+                        let (concept, negated, next) = {
+                            let d = ctx.process_context().con_sat_desc(des);
+                            (
+                                d.get_concept(),
+                                d.get_negation(),
+                                d.get_next_concept_desciptor(),
+                            )
+                        };
+                        let op_code = ctx.ontology_arenas().concept(concept).get_operator_code();
+                        eq_candidate_present |= op_code == op::CCEQCAND;
+                        if !negated {
+                            if let Some(&idx) = named_index.get(&concept) {
+                                label_subs.push(idx);
+                            }
+                        }
+                        des = next;
+                    }
+                    label_subs.sort_unstable();
+                    label_subs.dedup();
+                    subs.extend(label_subs.iter().copied().filter(|&idx| idx != i));
+                    shared_label_subsumers.insert(head, (label_subs, eq_candidate_present));
+                }
             }
         }
         subs.sort_unstable();
@@ -15264,12 +15841,18 @@ fn saturation_refuses_self_terminology(
     bridged: &Bridged,
     native_consistency_prefix: bool,
 ) -> bool {
+    if std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some() {
+        return saturation_refuses_terminology(ctx);
+    }
     if !saturation_refuses_terminology(ctx) {
         return false;
     }
-    bridged.has_native_nominals()
-        || native_consistency_prefix
-        || std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some()
+    native_consistency_prefix
+        || (bridged.has_native_nominals()
+            && bridged
+                .nominal_seeds
+                .iter()
+                .any(|seed| !seed.role_assertions.is_empty()))
 }
 
 /// Whether the terminology has a SELF concept that can create a self edge,
@@ -15610,6 +16193,13 @@ fn source_named_subsumer_closure_seeded_rows(
     tin: &TInput,
     seed_pairs: &[(usize, usize)],
 ) -> Vec<Vec<u32>> {
+    source_named_subsumer_closure_seeded_rows_with_initial_len(tin, seed_pairs).0
+}
+
+fn source_named_subsumer_closure_seeded_rows_with_initial_len(
+    tin: &TInput,
+    seed_pairs: &[(usize, usize)],
+) -> (Vec<Vec<u32>>, Vec<usize>) {
     let index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -15794,18 +16384,33 @@ fn source_named_subsumer_closure_seeded_rows(
         list.sort_unstable();
         list.dedup();
     }
+    let initial_adj_len: Vec<usize> = adj.iter().map(Vec::len).collect();
     for owners in &mut direct_key_owners {
         owners.sort_unstable();
         owners.dedup();
     }
 
+    let need_subs = !providers.is_empty();
     let mut supers: Vec<Vec<u32>> = vec![Vec::new(); n_named];
-    let mut subs: Vec<Vec<u32>> = vec![Vec::new(); n_named];
-    let mut upper: Vec<Vec<u32>> = vec![Vec::new(); n_named];
-    let mut key_subjects: Vec<Vec<u32>> = vec![Vec::new(); keys.len()];
+    let mut subs: Vec<Vec<u32>> = if need_subs {
+        vec![Vec::new(); n_named]
+    } else {
+        Vec::new()
+    };
+    let mut upper: Vec<Vec<u32>> = if need_subs {
+        vec![Vec::new(); n_named]
+    } else {
+        Vec::new()
+    };
+    let mut key_subjects: Vec<Vec<u32>> = if need_subs {
+        vec![Vec::new(); keys.len()]
+    } else {
+        Vec::new()
+    };
     let mut seen: Vec<u32> = vec![0; n_named];
     let mut epoch: u32 = 0;
     let mut stack: Vec<u32> = Vec::new();
+    let mut non_universal_supers: Vec<Vec<u32>> = Vec::new();
     let next_epoch = |seen: &mut Vec<u32>, epoch: &mut u32| -> u32 {
         *epoch = epoch.wrapping_add(1);
         if *epoch == 0 {
@@ -15818,11 +16423,54 @@ fn source_named_subsumer_closure_seeded_rows(
         // Propagate the current facts to a fixpoint: transitivity of the pair
         // relation, and inheritance of a superclass's conjuncts by its
         // subclasses (`N ⊑ M ⊑ D` ⇒ `N ⊑ D`).
-        for v in &mut subs {
-            v.clear();
+        let active_count = adj.iter().filter(|list| !list.is_empty()).count();
+        let mut in_deg = vec![0usize; n_named];
+        for list in &adj {
+            for &v in list {
+                if (v as usize) < n_named {
+                    in_deg[v as usize] += 1;
+                }
+            }
+        }
+        // Any target `w` that already appears in `adj[u]` for every active
+        // `u != w` is marked `seen[w] = ep` in `u`'s direct-neighbour seeding
+        // loop before the stack DFS begins (`seen[u] = ep` when `u == w`).
+        // Scanning `w` inside `supers[vi]` or `adj[vi]` during the stack DFS
+        // can therefore never observe `seen[w] != ep`, so omitting universal
+        // targets from those secondary expansion lists is an exact graph
+        // identity.
+        let universal: Vec<bool> = (0..n_named)
+            .map(|w| {
+                active_count > 1
+                    && in_deg[w] + usize::from(!adj[w].is_empty()) == active_count
+            })
+            .collect();
+        let any_universal = universal.iter().any(|&u| u);
+        let non_universal_adj: Vec<Vec<u32>> = if any_universal {
+            adj.iter()
+                .map(|list| {
+                    list.iter()
+                        .copied()
+                        .filter(|&w| (w as usize) < n_named && !universal[w as usize])
+                        .collect()
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if any_universal && non_universal_supers.len() < n_named {
+            non_universal_supers.resize_with(n_named, Vec::new);
+        }
+        if need_subs {
+            for v in &mut subs {
+                v.clear();
+            }
         }
         for u in 0..n_named {
             supers[u].clear();
+            if any_universal {
+                non_universal_supers[u].clear();
+            }
             if adj[u].is_empty() {
                 continue;
             }
@@ -15838,20 +16486,43 @@ fn source_named_subsumer_closure_seeded_rows(
             while let Some(v) = stack.pop() {
                 let vi = v as usize;
                 supers[u].push(v);
-                subs[vi].push(u as u32);
+                if any_universal && !universal[vi] {
+                    non_universal_supers[u].push(v);
+                }
+                if need_subs {
+                    subs[vi].push(u as u32);
+                }
                 if vi < u {
-                    let v_len = supers[vi].len();
+                    let v_len = if any_universal {
+                        non_universal_supers[vi].len()
+                    } else {
+                        supers[vi].len()
+                    };
                     for idx in 0..v_len {
-                        let w = supers[vi][idx];
+                        let w = if any_universal {
+                            non_universal_supers[vi][idx]
+                        } else {
+                            supers[vi][idx]
+                        };
                         let wi = w as usize;
                         if seen[wi] != ep {
                             seen[wi] = ep;
                             supers[u].push(w);
-                            subs[wi].push(u as u32);
+                            if any_universal && !universal[wi] {
+                                non_universal_supers[u].push(w);
+                            }
+                            if need_subs {
+                                subs[wi].push(u as u32);
+                            }
                         }
                     }
                 } else {
-                    for &w in &adj[vi] {
+                    let v_adj = if any_universal {
+                        &non_universal_adj[vi]
+                    } else {
+                        &adj[vi]
+                    };
+                    for &w in v_adj {
                         let wi = w as usize;
                         if wi < n_named && seen[wi] != ep {
                             seen[wi] = ep;
@@ -15862,7 +16533,7 @@ fn source_named_subsumer_closure_seeded_rows(
             }
             supers[u].sort_unstable();
         }
-        if !providers.is_empty() {
+        if need_subs {
             for u in &mut upper {
                 u.clear();
             }
@@ -15936,8 +16607,12 @@ fn source_named_subsumer_closure_seeded_rows(
         if !derived {
             break;
         }
+        for list in &mut adj {
+            list.sort_unstable();
+            list.dedup();
+        }
     }
-    supers
+    (supers, initial_adj_len)
 }
 
 fn source_named_subsumer_closure(tin: &TInput) -> crate::fxhash::FxHashSet<(usize, usize)> {
@@ -16668,7 +17343,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // finished, unpoisoned completion (`native_nominal_consistency`).
             // A refusal here is known before any state is mutated.
             let conditional_full_schedule =
-                card_nominal_profile && !saturation_refuses_terminology(&ctx);
+                card_nominal_profile && !saturation_refuses_self_terminology(&ctx, &bridged, false);
             if progress && card_nominal_profile && !conditional_full_schedule {
                 eprintln!("BRIDGE-NOMINAL-CONSISTENCY: saturation refuses SELF; completion-only schedule");
             }
@@ -17418,13 +18093,25 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // labels emitted unconditionally); those subjects stay in the
             // residue below, where every candidate pair is re-derived by the
             // completion path before it may reach the output.
+            let has_pending_residue = pending
+                .iter()
+                .any(|&s| s < n_named && !outcome.label_certified(s));
+            let mut seen_certified = vec![false; n_named];
             for &s in &pending {
-                if !outcome.label_certified(s) {
+                if s >= n_named || seen_certified[s] || !outcome.label_certified(s) {
                     continue;
                 }
+                seen_certified[s] = true;
                 for &c in &outcome.known_subsumers[s] {
-                    if c != s && universe.contains(&c) && saturation_known_pairs.insert((s, c)) {
-                        out.subsumptions.push((s, c));
+                    if c != s && universe.contains(&c) {
+                        let is_new = if has_pending_residue {
+                            saturation_known_pairs.insert((s, c))
+                        } else {
+                            !saturation_known_pairs.contains(&(s, c))
+                        };
+                        if is_new {
+                            out.subsumptions.push((s, c));
+                        }
                     }
                 }
             }
@@ -17469,38 +18156,57 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // SCHEDULING unconditionally; only certified labels (see
             // `SaturationOutcome::label_certified`) may enter the trusted
             // subsumer sets that `certain_subsumer` accepts without a probe.
-            for &(sub, sup) in &saturation_known_pairs {
-                if sub < n_named && sup < n_named && sub != sup {
-                    if let Err(pos) = outcome.known_subsumers[sub].binary_search(&sup) {
-                        outcome.known_subsumers[sub].insert(pos, sup);
+            if !pending.is_empty() {
+                for &(sub, sup) in &saturation_known_pairs {
+                    if sub < n_named && sup < n_named && sub != sup {
+                        if let Err(pos) = outcome.known_subsumers[sub].binary_search(&sup) {
+                            outcome.known_subsumers[sub].insert(pos, sup);
+                        }
                     }
                 }
             }
             let known_subsumers_entailed: Vec<bool> = (0..n_named)
                 .map(|subject| outcome.label_certified(subject))
                 .collect();
+            let empty_verdict;
+            let empty_certain;
+            let empty_known;
+            let (kpset_verdict, kpset_certain, kpset_known) = if pending.is_empty() {
+                empty_verdict = vec![None; n_named];
+                empty_certain = vec![None; n_named];
+                empty_known = vec![Vec::new(); n_named];
+                (&empty_verdict, &empty_certain, &empty_known)
+            } else {
+                (
+                    &outcome.sat_verdict,
+                    &outcome.certain_subsumers,
+                    &outcome.known_subsumers,
+                )
+            };
             let mut state = classifier.initialize_synchronous_kpset_from_saturation_data(
                 &bridged.named,
-                &outcome.sat_verdict,
-                &outcome.certain_subsumers,
-                &outcome.known_subsumers,
+                kpset_verdict,
+                kpset_certain,
+                kpset_known,
                 &known_subsumers_entailed,
                 &pending,
                 ctx.ontology_arenas().concepts(),
             );
-            for &(sub, sup) in &saturation_known_pairs {
-                if sub < n_named
-                    && sup < n_named
-                    && sub != sup
-                    && !known_subsumers_entailed[sub]
-                    && state.item_ids[sub].is_some()
-                    && state.item_ids[sup].is_some()
-                {
-                    if let Some(item) = state
-                        .ontology_item
-                        .get_concept_satisfiable_test_item_mut(state.item_ids[sub])
+            if !pending.is_empty() {
+                for &(sub, sup) in &saturation_known_pairs {
+                    if sub < n_named
+                        && sup < n_named
+                        && sub != sup
+                        && !known_subsumers_entailed[sub]
+                        && state.item_ids[sub].is_some()
+                        && state.item_ids[sup].is_some()
                     {
-                        item.add_subsuming_concept_item(state.item_ids[sup]);
+                        if let Some(item) = state
+                            .ontology_item
+                            .get_concept_satisfiable_test_item_mut(state.item_ids[sub])
+                        {
+                            item.add_subsuming_concept_item(state.item_ids[sup]);
+                        }
                     }
                 }
             }
@@ -17790,7 +18496,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // `saturation_known_pairs` is final from here on. Index it by subject once
     // so propagating a refuted candidate visits only that subject's known
     // supers instead of scanning every known pair.
-    let known_supers_by_sub: HashMap<usize, Vec<usize>> = {
+    let known_supers_by_sub: HashMap<usize, Vec<usize>> = if pending.is_empty() {
+        HashMap::default()
+    } else {
         let mut index: HashMap<usize, Vec<usize>> = HashMap::default();
         for &(sub, sup) in &saturation_known_pairs {
             index.entry(sub).or_default().push(sup);
@@ -17871,7 +18579,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     };
     // Scheduling only: stop trying the leaf once alternative 1 was taken at
     // least 256 times and on more than half of the attempts (each fallback
-    // costs the attempt, the resuming job and a rebuild of the leaf).
+    // costs the attempt, the resuming job and a rebuild of the leaf). The
+    // round-2 caps (16 consecutive fallbacks, 32 drops) were dropped in
+    // engine10 round 5: together with the singleton batch split they made
+    // nominal-cover realization probes overrun the bounded bridge budget.
     let leaf_useful = || {
         let counts = leaf_counts.get();
         !leaf_disabled.get()
@@ -18232,6 +18943,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     let accepted = attempt.is_some() && retained_leaf_verdict_accepted(algo, ctx, unsat);
                     leaf_update(&|c| {
                         c.attempts += 1;
+                        if accepted {
+                            c.consecutive_fallbacks = 0;
+                        } else {
+                            c.consecutive_fallbacks += 1;
+                        }
                         match (accepted, unsat, attempt.is_some()) {
                             (true, false, _) => c.accepted_sat += 1,
                             (true, true, _) => c.accepted_root_cancel += 1,
@@ -18593,13 +19309,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 // a universal over has_part to every one of them, about 880
                 // nodes and 0.09 s per full batch on 1,374 subjects).
                 let mut refuted: HashSet<usize> = HashSet::default();
-                for chunk in batch.chunks(batch_chunk) {
-                    if chunk.len() < 2 {
-                        continue;
-                    }
+                for chunk in batch.chunks(batch_chunk).filter(|c| c.len() >= 2) {
                     // Only a satisfiable batch verdict is used, and that one is
                     // accepted on the leaf (docs/HYBRID-CB-HT.md §16); any other
-                    // verdict just leaves the pairs to their own probes.
+                    // verdict falls back or leaves the pairs to their own probes.
                     let on_leaf = leaf_reuse && leaf_useful();
                     leaf_job.set(on_leaf);
                     let restored = renew(algo, ctx, false);
@@ -18609,13 +19322,28 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     let mut seeds: Vec<(ConceptId, bool)> = vec![(bridged.named[s], false)];
                     seeds.extend(chunk.iter().map(|&c| (bridged.named[c], true)));
                     let mut batch_root = None;
-                    let t_batch = phase_timing.then(std::time::Instant::now);
-                    let (ins0, bt0, bo0) = (algo.stat_con_des_insertion_count, algo.or_backtrack_count, algo.or_branch_open_count);
-                    let verdict = bridged_unsat_rooted(algo, ctx, &bridged, &mut id_batch, &seeds, &mut batch_root);
+                    let mut t_batch = phase_timing.then(std::time::Instant::now);
+                    let (mut ins0, mut bt0, mut bo0) = (
+                        algo.stat_con_des_insertion_count,
+                        algo.or_backtrack_count,
+                        algo.or_branch_open_count,
+                    );
+                    let mut verdict = bridged_unsat_rooted(
+                        algo,
+                        ctx,
+                        &bridged,
+                        &mut id_batch,
+                        &seeds,
+                        &mut batch_root,
+                    );
+                    let backtracks = algo.or_backtrack_count - bt0;
                     if progress {
                         eprintln!(
                             "BRIDGE-BATCH-REFUTATION {} candidates={} of {} verdict={:?}",
-                            tin.concepts[s], chunk.len(), batch.len(), verdict.map(|unsat| if unsat { "unsat" } else { "sat" })
+                            tin.concepts[s],
+                            chunk.len(),
+                            batch.len(),
+                            verdict.map(|unsat| if unsat { "unsat" } else { "sat" })
                         );
                     }
                     if let Some(t) = t_batch {
@@ -18626,11 +19354,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             t.elapsed().as_secs_f64(),
                             ctx.process_context().node_count(),
                             algo.stat_con_des_insertion_count - ins0,
-                            algo.or_backtrack_count - bt0,
+                            backtracks,
                             algo.or_branch_open_count - bo0,
                         );
                     }
-                    let leaf_batch_ok = !leaf_job_ran.get() || retained_leaf_verdict_accepted(algo, ctx, false);
+                    let leaf_batch_ok =
+                        !leaf_job_ran.get() || retained_leaf_verdict_accepted(algo, ctx, false);
                     if verdict == Some(false) && leaf_batch_ok {
                         refuted.extend(chunk.iter().copied());
                         if export_active
@@ -18850,10 +19579,14 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 leaf_job.set(false);
                 restored?;
                 if leaf_job_ran.get() {
+                    algo.empty_alternative_witnesses =
+                        std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                    algo.empty_alternative_witness_requests.clear();
+                    algo.stop_on_unknown_empty_alternative_witness = true;
                     let mut id_leaf: i64 = probe_start_id;
-                    let parked = algo.saturation_cached_absorbed_disjunction_count;
+                    let mut parked = algo.saturation_cached_absorbed_disjunction_count;
                     let mut leaf_root = None;
-                    let verdict = bridged_unsat_rooted(
+                    let mut verdict = bridged_unsat_rooted(
                         algo,
                         ctx,
                         &bridged,
@@ -18861,9 +19594,55 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         &[(bridged.named[s], false), (bridged.named[c], true)],
                         &mut leaf_root,
                     );
-                    let accepted = verdict.is_some_and(|unsat| retained_leaf_verdict_accepted(algo, ctx, unsat));
+                    let mut accepted = verdict.is_some_and(|unsat| retained_leaf_verdict_accepted(algo, ctx, unsat));
+                    let mut leaf_witness_rounds = 0usize;
+                    while !accepted
+                        && !algo.empty_alternative_witness_requests.is_empty()
+                        && leaf_witness_rounds < 16
+                    {
+                        leaf_witness_rounds += 1;
+                        let requests = std::mem::take(&mut algo.empty_alternative_witness_requests);
+                        probe_empty_alternative_witnesses(
+                            tin,
+                            trigger_absorb,
+                            ctx,
+                            requests,
+                            &empty_alternative_witnesses,
+                            progress.then_some(s),
+                        );
+                        leaf_job.set(true);
+                        let restored = renew(algo, ctx, false);
+                        leaf_job.set(false);
+                        if restored.is_none() || !leaf_job_ran.get() {
+                            break;
+                        }
+                        algo.empty_alternative_witnesses =
+                            std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                        algo.empty_alternative_witness_requests.clear();
+                        algo.stop_on_unknown_empty_alternative_witness = true;
+                        id_leaf = probe_start_id;
+                        parked = algo.saturation_cached_absorbed_disjunction_count;
+                        leaf_root = None;
+                        verdict = bridged_unsat_rooted(
+                            algo,
+                            ctx,
+                            &bridged,
+                            &mut id_leaf,
+                            &[(bridged.named[s], false), (bridged.named[c], true)],
+                            &mut leaf_root,
+                        );
+                        accepted = verdict
+                            .is_some_and(|unsat| retained_leaf_verdict_accepted(algo, ctx, unsat));
+                    }
+                    algo.stop_on_unknown_empty_alternative_witness = false;
+                    algo.empty_alternative_witness_requests.clear();
                     leaf_update(&|counts| {
                         counts.attempts += 1;
+                        if accepted {
+                            counts.consecutive_fallbacks = 0;
+                        } else {
+                            counts.consecutive_fallbacks += 1;
+                        }
                         match (accepted, verdict) {
                             (true, Some(false)) => counts.accepted_sat += 1,
                             (true, _) => counts.accepted_root_cancel += 1,
@@ -18883,6 +19662,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 accepted
             } else {
             renew(algo, ctx, false)?;
+            algo.empty_alternative_witnesses =
+                std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+            algo.empty_alternative_witness_requests.clear();
+            algo.stop_on_unknown_empty_alternative_witness = true;
             let mut id2: i64 = probe_start_id;
             // Model harvesting needs a materialized model, as in the read-off:
             // SAT caching may park disjunctions without expanding them, which
@@ -18890,9 +19673,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // turns the parking off; forcing that here made probes up to 4x
             // dearer (ore_ont_5260), so keep the configured parking and use
             // the model only when the probe parked no disjunction at all.
-            let parked_before = algo.saturation_cached_absorbed_disjunction_count;
+            let mut parked_before = algo.saturation_cached_absorbed_disjunction_count;
             let mut model_root = None;
-            let v = bridged_unsat_rooted(
+            let mut v = bridged_unsat_rooted(
                 algo,
                 ctx,
                 &bridged,
@@ -18900,6 +19683,40 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 &[(bridged.named[s], false), (bridged.named[c], true)],
                 &mut model_root,
             );
+            let mut witness_rounds = 0usize;
+            while v.is_none()
+                && !algo.empty_alternative_witness_requests.is_empty()
+                && witness_rounds < 64
+            {
+                witness_rounds += 1;
+                let requests = std::mem::take(&mut algo.empty_alternative_witness_requests);
+                probe_empty_alternative_witnesses(
+                    tin,
+                    trigger_absorb,
+                    ctx,
+                    requests,
+                    &empty_alternative_witnesses,
+                    progress.then_some(s),
+                );
+                renew(algo, ctx, false)?;
+                algo.empty_alternative_witnesses =
+                    std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                algo.empty_alternative_witness_requests.clear();
+                algo.stop_on_unknown_empty_alternative_witness = true;
+                id2 = probe_start_id;
+                parked_before = algo.saturation_cached_absorbed_disjunction_count;
+                model_root = None;
+                v = bridged_unsat_rooted(
+                    algo,
+                    ctx,
+                    &bridged,
+                    &mut id2,
+                    &[(bridged.named[s], false), (bridged.named[c], true)],
+                    &mut model_root,
+                );
+            }
+            algo.stop_on_unknown_empty_alternative_witness = false;
+            algo.empty_alternative_witness_requests.clear();
             (v, parked_before, model_root)
             };
             if v.is_none() && algo.completeness_poisoned && cow_confirm {
@@ -19203,12 +20020,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     }
     if source_definition_closure && out.subsumptions.len() > initial_out_subsumptions_len {
         let before = out.subsumptions.len();
-        let closed = source_named_subsumer_closure_seeded_rows(
+        let (closed, initial_adj_len) = source_named_subsumer_closure_seeded_rows_with_initial_len(
             tin,
             &out.subsumptions[initial_out_subsumptions_len..],
         );
         for (sub, row) in closed.into_iter().enumerate() {
-            if !subject_set.contains(&sub) {
+            if !subject_set.contains(&sub) || row.len() == initial_adj_len[sub] {
                 continue;
             }
             for sup_u32 in row {
@@ -27334,7 +28151,7 @@ mod tests {
         let _test_env = crate::test_env::read();
         let mut entry = NativeAboxRepresentativeEntry {
             individual_tag: 1,
-            concept_values: Some(Vec::new()),
+            concept_values: Some(std::sync::Arc::new(Vec::new())),
             completely_saturated: true,
             completely_handled: true,
             completely_propagated: true,
@@ -27388,11 +28205,11 @@ mod tests {
         let _test_env = crate::test_env::read();
         let base = NativeAboxRepresentativeEntry {
             individual_tag: 1,
-            concept_values: Some(vec![NativeAboxConceptValue {
+            concept_values: Some(std::sync::Arc::new(vec![NativeAboxConceptValue {
                 concept: ConceptId::new(0),
                 negated: false,
                 deterministic: true,
-            }]),
+            }])),
             completely_handled: true,
             ..Default::default()
         };
@@ -27403,15 +28220,17 @@ mod tests {
         assert!(!base.has_nondeterministic_neighbour_roles());
 
         let mut nondeterministic_concept = base.clone();
-        nondeterministic_concept
-            .concept_values
-            .as_mut()
-            .expect("concept values")
-            .push(NativeAboxConceptValue {
-                concept: ConceptId::new(1),
-                negated: false,
-                deterministic: false,
-            });
+        std::sync::Arc::make_mut(
+            nondeterministic_concept
+                .concept_values
+                .as_mut()
+                .expect("concept values"),
+        )
+        .push(NativeAboxConceptValue {
+            concept: ConceptId::new(1),
+            negated: false,
+            deterministic: false,
+        });
         assert!(nondeterministic_concept.has_reusable_elements());
 
         // The 86-of-198 slot in the Stage-2 trace: a neighbour-role value the
@@ -27534,7 +28353,9 @@ mod tests {
                 .entries
                 .get_mut(&seed.individual_tag)
                 .expect("nominal association");
-            let values = entry.concept_values.as_mut().expect("concept values");
+            let values = std::sync::Arc::make_mut(
+                entry.concept_values.as_mut().expect("concept values"),
+            );
             assert!(!values.is_empty(), "no published concept value to flip");
             let flipped = values[0];
             assert!(flipped.deterministic);
@@ -34290,5 +35111,166 @@ mod bridge_equivalent_non_candidate_tests {
                 "{sub_name} ⊑ {sup_name} must be derived"
             );
         }
+    }
+
+    #[test]
+    fn cct_nominal_forwards_to_dependent_abox_representative_nodes() {
+        let _test_env = crate::test_env::write();
+        let _nom = crate::test_env::EnvVar::set("KM_NOMINALS", "1");
+        let _full = crate::test_env::EnvVar::set("KM_HT_NATIVE_FULL", "1");
+        let _ddb = crate::test_env::EnvVar::set("KM_HT_DDB", "1");
+        // Both :a and :b are asserted instances of :Holder, where :Holder ⊑ {:a}.
+        // The unattached ABox template node for :Holder queues CCT_NOMINAL and
+        // forwards it to the dependent representative nodes for :a and :b.
+        // Representative :a is sufficient (its nominal matches {:a}), while
+        // representative :b is marked insufficient so completion runs and merges
+        // :b = :a, entailing :ProbeB ⊑ :TagA.
+        let text = "Prefix(:=<http://example.org/cctnom#>)\n\
+            Ontology(\n\
+              Declaration(Class(:Holder))\n\
+              Declaration(Class(:TagA))\n\
+              Declaration(Class(:ProbeB))\n\
+              Declaration(NamedIndividual(:a))\n\
+              Declaration(NamedIndividual(:b))\n\
+              ClassAssertion(:Holder :a)\n\
+              ClassAssertion(:TagA :a)\n\
+              ClassAssertion(:Holder :b)\n\
+              SubClassOf(:Holder ObjectOneOf(:a))\n\
+              EquivalentClasses(:ProbeB ObjectOneOf(:b))\n\
+            )";
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let projected = crate::orchestrate::race::native_nominal_bridge_clauses(
+            &fr.clauses,
+            &fr.nominal_abox,
+            &fr.definers,
+            true,
+            false,
+        );
+        let mut tin = crate::orchestrate::cb_to_ht::convert(
+            &projected,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        tin.nominal_abox = fr.nominal_abox;
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+        assert!(res.consistent);
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "ProbeB"), id(&tin.concepts, "TagA"))),
+            "CCT_NOMINAL insufficiency on :b must merge :b = :a and entail ProbeB ⊑ TagA"
+        );
+    }
+
+    #[test]
+    fn redundant_equivalence_conjunct_subclass_axiom_preserves_full_absorption_and_non_triggerable_guard() {
+        let _test_env = crate::test_env::write();
+        // :Def ≡ :A ⊓ :B accompanied by redundant SubClassOf(:Def :A), and
+        // :Complex ≡ :A ⊓ ∃:r.:B accompanied by redundant SubClassOf(:Complex :A).
+        let text = "Prefix(:=<http://example.org/redeq#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(Class(:B))\n\
+              Declaration(Class(:Def))\n\
+              Declaration(Class(:Complex))\n\
+              Declaration(Class(:Sub1))\n\
+              Declaration(Class(:Sub2))\n\
+              Declaration(Class(:Target1))\n\
+              Declaration(Class(:Target2))\n\
+              Declaration(ObjectProperty(:r))\n\
+              EquivalentClasses(:Def ObjectIntersectionOf(:A :B))\n\
+              SubClassOf(:Def :A)\n\
+              SubClassOf(:Def :Target1)\n\
+              SubClassOf(:Sub1 :A)\n\
+              SubClassOf(:Sub1 :B)\n\
+              EquivalentClasses(:Complex ObjectIntersectionOf(:A ObjectSomeValuesFrom(:r :B)))\n\
+              SubClassOf(:Complex :A)\n\
+              SubClassOf(:Complex :Target2)\n\
+              SubClassOf(:Sub2 :A)\n\
+              SubClassOf(:Sub2 ObjectSomeValuesFrom(:r :B))\n\
+            )";
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+        assert!(res.consistent);
+        for (sub_name, sup_name) in [
+            ("Sub1", "Def"),
+            ("Sub1", "Target1"),
+            ("Sub2", "Complex"),
+            ("Sub2", "Target2"),
+        ] {
+            assert!(
+                res.subsumptions
+                    .contains(&(id(&tin.concepts, sub_name), id(&tin.concepts, sup_name))),
+                "{sub_name} ⊑ {sup_name} must be derived"
+            );
+        }
+    }
+
+    #[test]
+    fn source_named_subsumer_closure_compact_rows_match_transitive_closure() {
+        let _test_env = crate::test_env::read();
+        let text = "Prefix(:=<http://example.org/sclose#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(Class(:B))\n\
+              Declaration(Class(:C))\n\
+              Declaration(Class(:D))\n\
+              SubClassOf(:B :C)\n\
+              EquivalentClasses(:C :D)\n\
+            )";
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        let a = id(&tin.concepts, "A");
+        let b = id(&tin.concepts, "B");
+        let c = id(&tin.concepts, "C");
+        let d = id(&tin.concepts, "D");
+        let (rows, _) =
+            source_named_subsumer_closure_seeded_rows_with_initial_len(&tin, &[(a, b)]);
+        for sup in [b as u32, c as u32, d as u32] {
+            assert!(rows[a].contains(&sup), "A must reach {sup}");
+        }
+        assert!(rows[c].contains(&(d as u32)), "C must reach D");
+        assert!(rows[d].contains(&(c as u32)), "D must reach C");
+        assert!(!rows[c].contains(&(a as u32)));
     }
 }

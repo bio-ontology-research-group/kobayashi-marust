@@ -1189,7 +1189,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   }
         //   return upToDateIndi;
         //
-        let up_to_date_indi = calc_alg_context.get_up_to_date_individual_by_id(indi_id);
+        let mut up_to_date_indi = calc_alg_context.get_up_to_date_individual_by_id(indi_id);
         if up_to_date_indi.is_some() {
             // HIT: the individual-node vector already holds this individual — on a
             // retained class job that is EVERY ABox individual, COW-referenced
@@ -1219,6 +1219,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if undecided_association {
                 self.native_reuse_lazy_lookup_hit_count += 1;
             }
+            if calc_alg_context
+                .process_context()
+                .node(up_to_date_indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENPROCESSINGDELAYING,
+                )
+            {
+                up_to_date_indi =
+                    self.get_localized_individual(up_to_date_indi, false, calc_alg_context);
+                self.materialize_delayed_backend_nominal_individual_if_needed(
+                    up_to_date_indi,
+                    calc_alg_context,
+                );
+            }
             return up_to_date_indi;
         }
         if indi_id > 0 {
@@ -1226,15 +1240,32 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         let individual_id = -indi_id;
-        let mut individual = calc_alg_context
-            .ontology_arenas()
-            .individual_iter()
-            .enumerate()
-            .find_map(|(idx, indi)| {
-                (indi.get_individual_id() == individual_id)
-                    .then_some(IndividualId::new(idx as Cint64))
-            })
-            .unwrap_or(IndividualId::NONE);
+        let mut individual = {
+            let arenas = calc_alg_context.ontology_arenas();
+            let count = arenas.individual_count();
+            let mut found = IndividualId::NONE;
+            for probe in [individual_id, individual_id - 1] {
+                if probe >= 0 && probe < count {
+                    let cand = IndividualId::new(probe);
+                    if arenas.individual(cand).get_individual_id() == individual_id {
+                        found = cand;
+                        break;
+                    }
+                }
+            }
+            if found.is_some() {
+                found
+            } else {
+                arenas
+                    .individual_iter()
+                    .enumerate()
+                    .find_map(|(idx, indi)| {
+                        (indi.get_individual_id() == individual_id)
+                            .then_some(IndividualId::new(idx as Cint64))
+                    })
+                    .unwrap_or(IndividualId::NONE)
+            }
+        };
         if individual.is_none() {
             individual =
                 self.create_new_temporary_nominal_individual(individual_id, calc_alg_context);
@@ -1342,7 +1373,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     break;
                 }
             }
-            for &(concept, negated) in &replay.deterministic_cached_concepts {
+            for &(concept, negated) in replay.deterministic_cached_concepts.iter() {
                 self.add_concept_to_individual_skip_and_processing(
                     concept,
                     negated,
@@ -1682,6 +1713,205 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `addConceptToIndividual`. cpp 26725–26753.
     /// KONCLUDE-PORT-NOTE[ownership]: `CConcept* addingConcept` → `ConceptId`;
     /// `CIndividualProcessNode*& processIndi` → `&mut NodeId`.
+    pub(crate) fn allocate_delayed_backend_nominal_individual(
+        &mut self,
+        indi_id: Cint64,
+        individual: IndividualId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> NodeId {
+        self.track_individual_referred_dependence(indi_id, calc_alg_context);
+        let localiced_indi = calc_alg_context
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        let role_assertion_creation_id = calc_alg_context
+            .processing_data_box_mut()
+            .next_role_assertion_creation_id(true);
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(localiced_indi)
+            .set_dependency_track_point(dep_track_point)
+            .set_nominal_individual(individual)
+            .set_individual_type(IndividualType::Nominal)
+            .set_individual_node_id(indi_id)
+            .set_role_assertion_creation_id(role_assertion_creation_id)
+            .set_nominal_individual_triples_assertions(true)
+            .set_nominal_individual_representative_backend_data_loaded(true)
+            .add_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENPROCESSINGDELAYING,
+            );
+        calc_alg_context
+            .processing_data_box_mut()
+            .individual_process_node_vector_mut()
+            .set_local_data(indi_id, localiced_indi);
+        localiced_indi
+    }
+
+    pub(crate) fn materialize_delayed_backend_nominal_individual_if_needed(
+        &mut self,
+        mut localiced_indi: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if localiced_indi.is_none()
+            || localiced_indi.index() >= calc_alg_context.process_context().node_count()
+            || !calc_alg_context
+                .process_context()
+                .node(localiced_indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENPROCESSINGDELAYING,
+                )
+        {
+            return;
+        }
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(localiced_indi)
+            .clear_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENPROCESSINGDELAYING
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+            );
+        let (individual, indi_id) = {
+            let node_ref = calc_alg_context.process_context().node(localiced_indi);
+            (node_ref.nominal_individual(), node_ref.individual_node_id())
+        };
+        if individual.is_none() || indi_id >= 0 {
+            return;
+        }
+        let individual_id = -indi_id;
+        let dep_track_point = calc_alg_context.get_or_create_base_dependency_track_point();
+        let top = calc_alg_context.processing_data_box().ontology_top_concept();
+        let nominal_concept = calc_alg_context
+            .ontology_arenas()
+            .individual(individual)
+            .get_individual_nominal_concept();
+        if nominal_concept.is_some() {
+            let mut target = localiced_indi;
+            self.add_concept_to_individual(
+                nominal_concept,
+                false,
+                &mut target,
+                dep_track_point,
+                true,
+                true,
+                calc_alg_context,
+            );
+        }
+        if top.is_some() {
+            let mut target = localiced_indi;
+            self.add_concept_to_individual(
+                top,
+                false,
+                &mut target,
+                dep_track_point,
+                false,
+                true,
+                calc_alg_context,
+            );
+        }
+        if let Some(replay) = self
+            .native_nominal_backend_replay
+            .get(&individual_id)
+            .cloned()
+        {
+            for &(concept, negated) in &replay.asserted_concepts {
+                self.add_concept_to_individual(
+                    concept,
+                    negated,
+                    &mut localiced_indi,
+                    dep_track_point,
+                    false,
+                    true,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    break;
+                }
+            }
+            for &(concept, negated) in replay.deterministic_cached_concepts.iter() {
+                self.add_concept_to_individual_skip_and_processing(
+                    concept,
+                    negated,
+                    localiced_indi,
+                    dep_track_point,
+                    true,
+                    false,
+                    false,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    break;
+                }
+            }
+            for &concept in &replay.deterministic_same_nominal_concepts {
+                if calc_alg_context.has_pending_signal() {
+                    break;
+                }
+                let mut target = localiced_indi;
+                self.add_concept_to_individual(
+                    concept,
+                    false,
+                    &mut target,
+                    dep_track_point,
+                    true,
+                    true,
+                    calc_alg_context,
+                );
+            }
+            let native_expansion_blocked = !calc_alg_context.has_pending_signal()
+                && replay.expansion_blocking_candidate
+                && self.conf_allow_backend_successor_expansion_blocking
+                && !calc_alg_context
+                    .process_context()
+                    .node(localiced_indi)
+                    .has_processing_restriction_flags(
+                        IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+                    )
+                && self.native_replay_concepts_synchronized(
+                    localiced_indi,
+                    &replay,
+                    calc_alg_context,
+                );
+            let native_neighbour_blocked = !calc_alg_context.has_pending_signal()
+                && replay.neighbour_expansion_blocking_candidate
+                && self.conf_allow_backend_neighbour_expansion_blocking
+                && !calc_alg_context
+                    .process_context()
+                    .node(localiced_indi)
+                    .has_processing_restriction_flags(
+                        IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+                    );
+            if native_neighbour_blocked {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(localiced_indi)
+                    .add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+                            | IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+                    );
+            }
+            if native_expansion_blocked {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(localiced_indi)
+                    .add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+                            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+                            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
+                    );
+            }
+            self.activate_backend_individual_expansion_reuse(localiced_indi, calc_alg_context);
+        }
+    }
+
     pub fn add_concept_to_individual(
         &mut self,
         adding_concept: ConceptId,
@@ -1692,6 +1922,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         allow_initalization: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        self.materialize_delayed_backend_nominal_individual_if_needed(
+            *process_indi,
+            calc_alg_context,
+        );
         // With dependency building ON, an untracked insertion would poison
         // every clash analysis it later participates in (tracking ERROR) —
         // substitute the INDEPENDENT base dependency track point, exactly
@@ -1876,6 +2110,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         allow_initalization: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> ConDescId {
+        self.materialize_delayed_backend_nominal_individual_if_needed(
+            *process_indi,
+            calc_alg_context,
+        );
         let con_pro_queue = calc_alg_context
             .process_context_mut()
             .node_concept_processing_queue(*process_indi, true);

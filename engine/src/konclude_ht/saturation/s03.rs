@@ -706,11 +706,54 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                             .get_concept_count(),
                                     );
                                 }
+                                let shared_copy_head = if copied_node.is_some()
+                                    && calc_alg_context
+                                        .process_context()
+                                        .sat_node(disjunction_node)
+                                        .get_copy_individual_node()
+                                        == copied_node
+                                {
+                                    let copied_label = calc_alg_context
+                                        .process_context()
+                                        .sat_node(copied_node)
+                                        .reapply_con_sat_label_set;
+                                    let target_label = calc_alg_context
+                                        .process_context()
+                                        .sat_node(*process_indi)
+                                        .reapply_con_sat_label_set;
+                                    if copied_label.is_some() && target_label.is_some() {
+                                        let candidate = calc_alg_context
+                                            .process_context()
+                                            .reapply_con_sat_label_set(copied_label)
+                                            .get_concept_saturation_description_linker();
+                                        if candidate.is_some() {
+                                            let desc = calc_alg_context
+                                                .process_context()
+                                                .con_sat_desc(candidate);
+                                            if Self::sat_label_set_contains_concept_get_negation(
+                                                target_label,
+                                                desc.get_concept(),
+                                                calc_alg_context,
+                                            ) == Some(desc.get_negation())
+                                            {
+                                                candidate
+                                            } else {
+                                                ConceptSaturationDescriptorId::NONE
+                                            }
+                                        } else {
+                                            ConceptSaturationDescriptorId::NONE
+                                        }
+                                    } else {
+                                        ConceptSaturationDescriptorId::NONE
+                                    }
+                                } else {
+                                    ConceptSaturationDescriptorId::NONE
+                                };
                                 let mut descriptor = calc_alg_context
                                     .process_context()
                                     .reapply_con_sat_label_set(disjunction_label)
                                     .get_concept_saturation_description_linker();
-                                while descriptor.is_some() {
+                                while descriptor.is_some() && descriptor != shared_copy_head {
                                     let (adding_concept, adding_negation, next) = {
                                         let value = calc_alg_context
                                             .process_context()

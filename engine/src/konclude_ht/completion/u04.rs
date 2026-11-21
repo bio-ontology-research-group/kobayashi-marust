@@ -368,6 +368,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         skip_function: TableauRuleFunction,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        self.materialize_delayed_backend_nominal_individual_if_needed(
+            process_indi,
+            calc_alg_context,
+        );
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
 
         if super::bridge_watch_tag()

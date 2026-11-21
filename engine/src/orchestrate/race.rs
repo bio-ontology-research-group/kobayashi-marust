@@ -2708,15 +2708,16 @@ fn prepare_ht_with_input(
         // card arm rides along (certified production portfolio), the worker must
         // instead hand a bridge defer off to the card path, so this stays unset.
         cmd.env("KM_HT_BRIDGE_ONLY", "1");
-        // A bridge-exclusive worker either publishes the bridge taxonomy or
-        // defers; it has no validated tableau fallback. When publication does
-        // not require the proxy-ABox post-filter, retain concept names once and
-        // carry relation endpoints through the strict versioned binary handoff.
-        // Proxy-filtered workers keep JSON so their established certificate
-        // check and output rewrite below remain unchanged.
-        if proxy_abox_certificate.is_none() && !crate::tableau::ht_lean_certification_requested() {
-            cmd.env("KM_HT_BRIDGE_OUTPUT_BINARY", "1");
-        }
+    }
+    if bridge_candidate
+        && proxy_abox_certificate.is_none()
+        && !crate::tableau::ht_lean_certification_requested()
+    {
+        // When publication does not require the proxy-ABox post-filter, retain
+        // concept names once and carry bridge relation endpoints through the
+        // strict versioned binary handoff. Mixed workers still fall back to JSON
+        // if the bridge arm defers to their secondary certified specialist arm.
+        cmd.env("KM_HT_BRIDGE_OUTPUT_BINARY", "1");
     }
     // A bridge worker that also carries another arm (the certified portfolio's
     // card fallback) records which arm produced its answer. Only an answer

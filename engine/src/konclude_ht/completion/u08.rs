@@ -2008,8 +2008,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let direct_lookup =
             sub_count.saturating_mul(self.map_comparison_direct_lookup_factor) < super_count;
 
+        let tp_level = |tp: TrackPointId, ctx: &CalculationAlgorithmContextBase| -> Cint64 {
+            if tp.is_some() {
+                ctx.process_context().track_point(tp).get_branching_tag()
+            } else {
+                0
+            }
+        };
+        let mut best_clash: Option<(Cint64, ConDescId, TrackPointId, ConDescId, TrackPointId)> =
+            None;
+        // `KM_CLASH_SET_COMPARE=<file>`: also collect the explanation the
+        // function gave before engine10 and count the calls where it differs
+        // from the single minimum-level pair (docs/V1.7.0-SPEED.md 4(a)).
+        let mut old_pairs: Option<Vec<(ConDescId, TrackPointId, ConDescId, TrackPointId)>> =
+            clash_set_compare::enabled().then(Vec::new);
+        let mut settled = false;
         if direct_lookup {
-            let mut found_clash = false;
             for (tag, sub_con_des, sub_tp, sub_negated) in sub_entries {
                 let (super_con_des, super_tp, super_negated) = {
                     let pc = calc_alg_context.process_context();
@@ -2030,57 +2044,80 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     )
                 };
                 if super_con_des.is_some() && sub_negated != super_negated {
-                    *clash_descriptors = self.create_clashed_concept_descriptor(
-                        *clash_descriptors,
-                        &mut sub_indi,
-                        sub_con_des,
-                        sub_tp,
-                        calc_alg_context,
-                    );
-                    *clash_descriptors = self.create_clashed_concept_descriptor(
-                        *clash_descriptors,
-                        &mut super_indi,
-                        super_con_des,
-                        super_tp,
-                        calc_alg_context,
-                    );
-                    found_clash = true;
+                    if let Some(pairs) = old_pairs.as_mut() {
+                        // Before engine10 this branch explained the clash by
+                        // every opposite pair.
+                        pairs.push((sub_con_des, sub_tp, super_con_des, super_tp));
+                    }
+                    if settled {
+                        continue;
+                    }
+                    let lvl = tp_level(sub_tp, calc_alg_context)
+                        .max(tp_level(super_tp, calc_alg_context));
+                    if best_clash.is_none_or(|(best_lvl, _, _, _, _)| lvl < best_lvl) {
+                        best_clash = Some((lvl, sub_con_des, sub_tp, super_con_des, super_tp));
+                        if lvl <= 0 {
+                            settled = true;
+                            if old_pairs.is_none() {
+                                break;
+                            }
+                        }
+                    }
                 }
             }
-            return found_clash;
+        } else {
+            let super_entries = snapshot(super_set, calc_alg_context);
+            let mut sub_pos = 0usize;
+            let mut super_pos = 0usize;
+            while sub_pos < sub_entries.len() && super_pos < super_entries.len() {
+                let (sub_tag, sub_con_des, sub_tp, sub_negated) = sub_entries[sub_pos];
+                let (super_tag, super_con_des, super_tp, super_negated) = super_entries[super_pos];
+                if sub_tag < super_tag {
+                    sub_pos += 1;
+                } else if super_tag < sub_tag {
+                    super_pos += 1;
+                } else {
+                    if sub_negated != super_negated {
+                        if let Some(pairs) = old_pairs.as_mut() {
+                            // Before engine10 this branch explained the clash
+                            // by the first opposite pair in tag order.
+                            if pairs.is_empty() {
+                                pairs.push((sub_con_des, sub_tp, super_con_des, super_tp));
+                            }
+                        }
+                        let lvl = tp_level(sub_tp, calc_alg_context)
+                            .max(tp_level(super_tp, calc_alg_context));
+                        if best_clash.is_none_or(|(best_lvl, _, _, _, _)| lvl < best_lvl) {
+                            best_clash = Some((lvl, sub_con_des, sub_tp, super_con_des, super_tp));
+                            if lvl <= 0 {
+                                break;
+                            }
+                        }
+                    }
+                    sub_pos += 1;
+                    super_pos += 1;
+                }
+            }
         }
-
-        let super_entries = snapshot(super_set, calc_alg_context);
-        let mut sub_pos = 0usize;
-        let mut super_pos = 0usize;
-        while sub_pos < sub_entries.len() && super_pos < super_entries.len() {
-            let (sub_tag, sub_con_des, sub_tp, sub_negated) = sub_entries[sub_pos];
-            let (super_tag, super_con_des, super_tp, super_negated) = super_entries[super_pos];
-            if sub_tag < super_tag {
-                sub_pos += 1;
-            } else if super_tag < sub_tag {
-                super_pos += 1;
-            } else {
-                if sub_negated != super_negated {
-                    *clash_descriptors = self.create_clashed_concept_descriptor(
-                        *clash_descriptors,
-                        &mut sub_indi,
-                        sub_con_des,
-                        sub_tp,
-                        calc_alg_context,
-                    );
-                    *clash_descriptors = self.create_clashed_concept_descriptor(
-                        *clash_descriptors,
-                        &mut super_indi,
-                        super_con_des,
-                        super_tp,
-                        calc_alg_context,
-                    );
-                    return true;
-                }
-                sub_pos += 1;
-                super_pos += 1;
-            }
+        if let Some(pairs) = old_pairs.as_ref() {
+            clash_set_compare::record(best_clash.map(|(_, a, b, c, d)| (a, b, c, d)), pairs);
+        }
+        if let Some((_, sub_con_des, sub_tp, super_con_des, super_tp)) = best_clash {
+            *clash_descriptors = self.create_clashed_concept_descriptor(
+                *clash_descriptors,
+                &mut sub_indi,
+                sub_con_des,
+                sub_tp,
+                calc_alg_context,
+            );
+            *clash_descriptors = self.create_clashed_concept_descriptor(
+                *clash_descriptors,
+                &mut super_indi,
+                super_con_des,
+                super_tp,
+                calc_alg_context,
+            );
+            return true;
         }
         false
     }
@@ -4988,25 +5025,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .ontology_arenas()
             .individual(indi)
             .get_individual_id();
-        // Konclude materialises a nominal target on demand through
-        // `getUpToDateIndividual`; its representative-cache jobs queue only
-        // selected roots and let NOMINAL references load further named nodes
-        // lazily. Rust's conservative authoritative task initializes the
-        // complete ABox, but ordinary classification probes can still reach a
-        // named node through this generic lazy path.
-        if self
-            .get_up_to_date_individual_by_id(nominal_id, calc_alg_context)
-            .is_none()
-        {
-            calc_alg_context.raise_stop(false);
-            return;
-        }
-        let nominal_node = self.get_corrected_nominal_individual_node(nominal_id, calc_alg_context);
-        if nominal_node.is_none() {
-            calc_alg_context.raise_stop(false);
-            return;
-        }
-
         // Follow a prior forced merge of the currently processed node. The
         // nominal target helper already performs the same correction by id.
         let mut current = calc_alg_context.get_up_to_date_individual(*process_indi);
@@ -5027,6 +5045,49 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return;
         }
         *process_indi = current;
+
+        // Materializing a delayed named individual installs its positive
+        // singleton `{a}` at `nominal_tag`, which immediately clashes with
+        // `current`'s `¬{a}` in `ht_main_labels_clash_at_tag` below and returns
+        // without adding a distinct edge. Keep the delayed target unmaterialized
+        // until a positive reference or role link touches it.
+        if negate {
+            let existing = calc_alg_context.get_up_to_date_individual_by_id(nominal_id);
+            if existing.is_some()
+                && existing != current
+                && !calc_alg_context
+                    .process_context()
+                    .node(existing)
+                    .has_merged_into_individual_node_id()
+                && calc_alg_context
+                    .process_context()
+                    .node(existing)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKENPROCESSINGDELAYING,
+                    )
+            {
+                return;
+            }
+        }
+
+        // Konclude materialises a nominal target on demand through
+        // `getUpToDateIndividual`; its representative-cache jobs queue only
+        // selected roots and let NOMINAL references load further named nodes
+        // lazily. Rust's conservative authoritative task initializes the
+        // complete ABox, but ordinary classification probes can still reach a
+        // named node through this generic lazy path.
+        if self
+            .get_up_to_date_individual_by_id(nominal_id, calc_alg_context)
+            .is_none()
+        {
+            calc_alg_context.raise_stop(false);
+            return;
+        }
+        let nominal_node = self.get_corrected_nominal_individual_node(nominal_id, calc_alg_context);
+        if nominal_node.is_none() {
+            calc_alg_context.raise_stop(false);
+            return;
+        }
 
         let raise_nominal_clash =
             |this: &mut Self, current: &mut NodeId, ctx: &mut CalculationAlgorithmContextBase| {
@@ -5175,5 +5236,65 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             distinct_dep_track_point,
             calc_alg_context,
         );
+    }
+}
+
+/// Test mode for the single-pair clash explanation of
+/// `ht_label_concept_clash_set_with_descriptors`. With
+/// `KM_CLASH_SET_COMPARE=<file>` each process appends one line
+/// `clash-set-compare pid=<pid> clashes=<n> differ=<m>` at exit, where
+/// `clashes` counts calls that found a clash and `differ` those where the
+/// pre-engine10 explanation (every opposite pair on the direct-lookup branch,
+/// the first pair on the sorted walk) is not exactly the chosen pair. Both
+/// versions return the same boolean in every call.
+pub(crate) mod clash_set_compare {
+    use super::{ConDescId, TrackPointId};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::OnceLock;
+
+    static CLASHES: AtomicU64 = AtomicU64::new(0);
+    static DIFFER: AtomicU64 = AtomicU64::new(0);
+    static PATH: OnceLock<Option<std::ffi::OsString>> = OnceLock::new();
+
+    extern "C" fn dump() {
+        if let Some(Some(path)) = PATH.get() {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let _ = writeln!(
+                    file,
+                    "clash-set-compare pid={} clashes={} differ={}",
+                    std::process::id(),
+                    CLASHES.load(Ordering::Relaxed),
+                    DIFFER.load(Ordering::Relaxed)
+                );
+            }
+        }
+    }
+
+    pub(crate) fn enabled() -> bool {
+        PATH.get_or_init(|| {
+            let path = std::env::var_os("KM_CLASH_SET_COMPARE");
+            if path.is_some() {
+                // SAFETY: `dump` is a plain `extern "C" fn` without arguments.
+                unsafe {
+                    libc::atexit(dump);
+                }
+            }
+            path
+        })
+        .is_some()
+    }
+
+    pub(crate) fn record(
+        chosen: Option<(ConDescId, TrackPointId, ConDescId, TrackPointId)>,
+        old: &[(ConDescId, TrackPointId, ConDescId, TrackPointId)],
+    ) {
+        assert_eq!(chosen.is_some(), !old.is_empty(), "clash verdicts differ");
+        if let Some(chosen) = chosen {
+            CLASHES.fetch_add(1, Ordering::Relaxed);
+            if old.len() != 1 || old[0] != chosen {
+                DIFFER.fetch_add(1, Ordering::Relaxed);
+            }
+        }
     }
 }

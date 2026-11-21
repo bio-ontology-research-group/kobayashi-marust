@@ -317,10 +317,10 @@ pub struct OrBranchLearningStats {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NativeNominalBackendReplay {
     pub asserted_concepts: Vec<(ConceptId, bool)>,
-    pub deterministic_cached_concepts: Vec<(ConceptId, bool)>,
+    pub deterministic_cached_concepts: std::sync::Arc<Vec<(ConceptId, bool)>>,
     /// Complete FULL_CONCEPT_SET values as
     /// `(concept, negated, deterministic)`, sorted by that key.
-    pub cached_concept_values: Vec<(ConceptId, bool, bool)>,
+    pub cached_concept_values: std::sync::Arc<Vec<(ConceptId, bool, bool)>>,
     /// Positive own nominal excluded by Konclude's concept-set
     /// synchronization test.
     pub own_nominal_concept: ConceptId,
@@ -397,8 +397,8 @@ impl Default for NativeNominalBackendReplay {
     fn default() -> Self {
         NativeNominalBackendReplay {
             asserted_concepts: Vec::new(),
-            deterministic_cached_concepts: Vec::new(),
-            cached_concept_values: Vec::new(),
+            deterministic_cached_concepts: std::sync::Arc::new(Vec::new()),
+            cached_concept_values: std::sync::Arc::new(Vec::new()),
             own_nominal_concept: ConceptId::NONE,
             role_assertions: Vec::new(),
             cached_neighbour_roles: Vec::new(),

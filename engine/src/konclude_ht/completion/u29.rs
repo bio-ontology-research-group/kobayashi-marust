@@ -1387,17 +1387,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         self.cancellation_root_task(calc_alg_context);
                     } else {
                         self.ddb_root_cancel_withheld_count += 1;
-                        if !unknown_witnesses.is_empty()
-                            && self.stop_on_unknown_empty_alternative_witness
-                        {
-                            // The driver can probe these operands; ask it to
-                            // (a STOP, never a verdict) instead of searching on.
+                        if !unknown_witnesses.is_empty() {
                             for key in unknown_witnesses {
                                 if !self.empty_alternative_witness_requests.contains(&key) {
                                     self.empty_alternative_witness_requests.push(key);
                                 }
                             }
-                            self.empty_alternative_witness_stop = true;
+                            if self.stop_on_unknown_empty_alternative_witness {
+                                // The driver can probe these operands; ask it to
+                                // (a STOP, never a verdict) instead of searching on.
+                                self.empty_alternative_witness_stop = true;
+                            }
                         }
                     }
                 }
