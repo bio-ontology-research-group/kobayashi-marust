@@ -5566,9 +5566,8 @@ fn rules_consistency(
     let out_path = tmpfile::TempPath::new(".rulescons.json");
     // The worker's stderr is kept so that a failure reports its reason.
     let err_path = tmpfile::TempPath::new(".rulescons.err");
-    let mut cmd = Command::new(&tab_prog);
-    cmd.args(&tab_pre)
-        .stdin(Stdio::piped())
+    let mut cmd = engine_run::worker_command(&tab_prog, &tab_pre, None, true);
+    cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path())?)
         .stderr(File::create(err_path.path())?)
         .env("KM_RULES_CONSISTENCY", "1");

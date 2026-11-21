@@ -192,6 +192,91 @@ fn main_stack_extent(soft_limit: usize) -> Option<(usize, usize)> {
     Some((top, usable))
 }
 
+/// The main-thread stack the `km tableau` worker asks [`ensure_main_stack`]
+/// for: `KM_TAB_STACK_MB` (default 2048 MiB), at least [`DEEP_STACK`].
+pub fn tableau_worker_stack_bytes() -> usize {
+    let stack_mb = std::env::var("KM_TAB_STACK_MB")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(2048);
+    (stack_mb << 20).max(DEEP_STACK)
+}
+
+/// The `RLIMIT_STACK` that [`ensure_main_stack`]`(bytes)` installs before it
+/// re-executes the process, or `None` when it would not raise the limit (the
+/// soft limit already suffices, or the hard limit forbids the raise).
+/// Computed in the parent, so that a spawned worker can start with this limit
+/// and skip its own re-execution.
+#[cfg(target_os = "linux")]
+pub fn child_stack_rlimit(bytes: usize) -> Option<libc::rlimit> {
+    let want = bytes.saturating_add(2 * HEADROOM);
+    let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    if unsafe { libc::getrlimit(libc::RLIMIT_STACK, &mut limit) } != 0 {
+        return None;
+    }
+    let soft = if limit.rlim_cur == libc::RLIM_INFINITY { usize::MAX } else { limit.rlim_cur as usize };
+    let hard_allows = limit.rlim_max == libc::RLIM_INFINITY || limit.rlim_max as usize >= want;
+    if !hard_allows || soft >= want {
+        return None;
+    }
+    Some(libc::rlimit { rlim_cur: want as libc::rlim_t, rlim_max: limit.rlim_max })
+}
+
+/// Prepare a worker `command` so that the child starts with what two extra
+/// programs gave it before: the `nice` increment of a `nice -n N` wrapper,
+/// and (for a worker that calls [`ensure_main_stack`]`(bytes)` first thing,
+/// `deep_stack = Some(bytes)`) the larger `RLIMIT_STACK` that the worker's
+/// own re-execution installs. Both are set in the forked child just before
+/// `exec`, so the kernel lays out the worker's image with the stack gap the
+/// re-execution would have produced and `ensure_main_stack` returns at once.
+/// The worker's code, input, final limit and niceness are unchanged; one or
+/// two `execve` calls of the whole binary are saved. When the parent cannot
+/// compute the limit, the worker re-executes itself as before. Call it on a
+/// command that has only its program and arguments set: the measurement
+/// switch `KM_NO_WORKER_PREEXEC=1` rebuilds it as `nice -n N program args`.
+#[cfg(unix)]
+pub fn prepare_worker_command(command: &mut std::process::Command, deep_stack: Option<usize>, nice: Option<i32>) {
+    use std::os::unix::process::CommandExt as _;
+    #[cfg(target_os = "linux")]
+    let limit = deep_stack.and_then(child_stack_rlimit);
+    #[cfg(not(target_os = "linux"))]
+    let limit: Option<libc::rlimit> = {
+        let _ = deep_stack;
+        None
+    };
+    if limit.is_none() && nice.is_none() {
+        return;
+    }
+    // Measurement switch: the `nice` program and the worker's re-execution
+    // as before.
+    if std::env::var_os("KM_NO_WORKER_PREEXEC").is_some_and(|v| !v.is_empty() && v != "0") {
+        if let Some(increment) = nice {
+            let program = command.get_program().to_os_string();
+            let args: Vec<std::ffi::OsString> = command.get_args().map(|a| a.to_os_string()).collect();
+            let mut wrapped = std::process::Command::new("nice");
+            wrapped.arg("-n").arg(increment.to_string()).arg(program).args(args);
+            *command = wrapped;
+        }
+        return;
+    }
+    // Only async-signal-safe system calls run between fork and exec. As with
+    // `nice(1)`, a failed priority change does not stop the program.
+    unsafe {
+        command.pre_exec(move || {
+            if let Some(increment) = nice {
+                let _ = libc::nice(increment);
+            }
+            if let Some(limit) = limit {
+                let _ = libc::setrlimit(libc::RLIMIT_STACK, &limit);
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(unix))]
+pub fn prepare_worker_command(_command: &mut std::process::Command, _deep_stack: Option<usize>, _nice: Option<i32>) {}
+
 /// Give this process's main thread at least `bytes` (+ headroom) of stack
 /// that the kernel commits page by page as it grows, and record it so that
 /// [`run`] executes deep work inline on the main thread.
