@@ -101,8 +101,8 @@ impl<T> std::fmt::Debug for Id<T> {
 /// id for the object's whole life. `truncate_to` rewinds allocation on backtrack
 /// (the pool-reset analogue) — callers must ensure no live id past the watermark
 /// survives, exactly as Konclude relies on the branch structure to guarantee.
-pub struct Arena<T> {
-    items: ChunkStore<T>,
+pub struct Arena<T, S: ArenaStore<T> = Vec<T>> {
+    items: S,
     /// Use bounded geometric growth for exceptionally large append-only pools.
     /// `Vec` normally doubles at capacity, which can request multiple GiB at
     /// once for saturation arenas containing tens of millions of records.
@@ -124,6 +124,106 @@ pub struct Arena<T> {
 /// Elements per chunk of `ChunkStore` beyond the first (2^16).
 const CHUNK_SHIFT: usize = 16;
 const CHUNK_LEN: usize = 1 << CHUNK_SHIFT;
+
+/// Backing storage of an `Arena`. `Vec<T>` (the default) keeps every item in
+/// one contiguous allocation; `ChunkStore<T>` keeps items in fixed chunks that
+/// never move. Ids, epochs and iteration are the same for both.
+pub trait ArenaStore<T>:
+    Default + std::ops::Index<usize, Output = T> + std::ops::IndexMut<usize>
+{
+    type Iter<'a>: Iterator<Item = &'a T> + DoubleEndedIterator + ExactSizeIterator
+    where
+        Self: 'a,
+        T: 'a;
+    fn len(&self) -> usize;
+    fn push(&mut self, v: T);
+    fn pop(&mut self) -> Option<T>;
+    fn truncate(&mut self, len: usize);
+    fn clear(&mut self);
+    fn capacity(&self) -> usize;
+    /// Bounded growth for tight arenas: at most 25 % spare room at a time.
+    fn reserve_tight_for_push(&mut self);
+    fn iter(&self) -> Self::Iter<'_>;
+}
+
+impl<T> ArenaStore<T> for Vec<T> {
+    type Iter<'a> = std::slice::Iter<'a, T> where T: 'a;
+    #[inline]
+    fn len(&self) -> usize {
+        <[T]>::len(self)
+    }
+    #[inline]
+    fn push(&mut self, v: T) {
+        Vec::push(self, v)
+    }
+    #[inline]
+    fn pop(&mut self) -> Option<T> {
+        Vec::pop(self)
+    }
+    #[inline]
+    fn truncate(&mut self, len: usize) {
+        Vec::truncate(self, len)
+    }
+    #[inline]
+    fn clear(&mut self) {
+        Vec::clear(self)
+    }
+    #[inline]
+    fn capacity(&self) -> usize {
+        Vec::capacity(self)
+    }
+    #[inline]
+    fn reserve_tight_for_push(&mut self) {
+        if Vec::len(self) == Vec::capacity(self) {
+            let additional = (Vec::capacity(self) / 4).max(4_096);
+            self.reserve_exact(additional);
+        }
+    }
+    #[inline]
+    fn iter(&self) -> std::slice::Iter<'_, T> {
+        <[T]>::iter(self)
+    }
+}
+
+impl<T> ArenaStore<T> for ChunkStore<T> {
+    type Iter<'a> = ChunkIter<'a, T> where T: 'a;
+    #[inline]
+    fn len(&self) -> usize {
+        ChunkStore::len(self)
+    }
+    #[inline]
+    fn push(&mut self, v: T) {
+        ChunkStore::push(self, v)
+    }
+    #[inline]
+    fn pop(&mut self) -> Option<T> {
+        ChunkStore::pop(self)
+    }
+    #[inline]
+    fn truncate(&mut self, len: usize) {
+        ChunkStore::truncate(self, len)
+    }
+    #[inline]
+    fn clear(&mut self) {
+        ChunkStore::clear(self)
+    }
+    #[inline]
+    fn capacity(&self) -> usize {
+        ChunkStore::capacity(self)
+    }
+    #[inline]
+    fn reserve_tight_for_push(&mut self) {
+        ChunkStore::reserve_tight_for_push(self)
+    }
+    #[inline]
+    fn iter(&self) -> ChunkIter<'_, T> {
+        ChunkStore::iter(self)
+    }
+}
+
+/// An arena whose items live in fixed chunks (see `ChunkStore`), for the few
+/// very large saturation pools. Every other arena keeps one `Vec`.
+pub type ChunkedArena<T> = Arena<T, ChunkStore<T>>;
 
 /// Arena backing store: chunk 0 grows like a `Vec` up to `CHUNK_LEN`
 /// elements, every later chunk is allocated once with exactly `CHUNK_LEN`
@@ -208,10 +308,6 @@ impl<T> ChunkStore<T> {
     pub fn iter(&self) -> ChunkIter<'_, T> {
         ChunkIter { store: self, front: 0, back: self.len }
     }
-    #[cfg(test)]
-    fn first_chunk_ptr(&self) -> *const T {
-        self.chunks.first().map_or(std::ptr::null(), |chunk| chunk.as_ptr())
-    }
 }
 
 impl<T> Default for ChunkStore<T> {
@@ -283,10 +379,10 @@ pub struct EpochJournalFrame<T> {
     saves: Vec<(usize, T)>,
 }
 
-impl<T> Default for Arena<T> {
+impl<T, S: ArenaStore<T>> Default for Arena<T, S> {
     fn default() -> Self {
         Arena {
-            items: ChunkStore::new(),
+            items: S::default(),
             tight_growth: false,
             wm_stack: Vec::new(),
             open_depth: 0,
@@ -303,6 +399,22 @@ impl<T> Arena<T> {
     /// IDs, indexing, epoch rollback, and object lifetime are identical to
     /// `new`; only unused capacity and reallocation granularity differ.
     pub fn new_tight() -> Self {
+        Self::with_tight_growth()
+    }
+}
+
+impl<T> ChunkedArena<T> {
+    pub fn new_chunked() -> Self {
+        Self::default()
+    }
+    /// `new_tight` for a chunked arena: the first chunk grows by at most 25 %.
+    pub fn new_tight_chunked() -> Self {
+        Self::with_tight_growth()
+    }
+}
+
+impl<T, S: ArenaStore<T>> Arena<T, S> {
+    fn with_tight_growth() -> Self {
         Arena {
             tight_growth: true,
             ..Self::default()
@@ -404,13 +516,13 @@ impl<T> Arena<T> {
     pub fn clear_releasing_capacity(&mut self) {
         let tight_growth = self.tight_growth;
         *self = if tight_growth {
-            Self::new_tight()
+            Self::with_tight_growth()
         } else {
-            Self::new()
+            Self::default()
         };
     }
     #[inline]
-    pub fn iter(&self) -> ChunkIter<'_, T> {
+    pub fn iter(&self) -> S::Iter<'_> {
         self.items.iter()
     }
 
@@ -497,7 +609,7 @@ impl<T> Arena<T> {
     }
 }
 
-impl<T: Clone> Arena<T> {
+impl<T: Clone, S: ArenaStore<T>> Arena<T, S> {
     /// Open a JOURNALED epoch: allocations are dropped on pop AND in-place
     /// mutations of pre-epoch slots are rolled back (first-touch clone).
     #[inline]
@@ -643,7 +755,7 @@ mod tests {
         assert!(arena.epoch_open());
         assert!(!arena.journal_stack.is_empty());
         let items_capacity = arena.items.capacity();
-        let items_ptr = arena.items.first_chunk_ptr();
+        let items_ptr = arena.items.as_ptr();
 
         arena.clear_preserving_capacity();
 
@@ -651,7 +763,7 @@ mod tests {
         assert!(!arena.epoch_open());
         assert!(arena.journal_stack.is_empty());
         assert_eq!(arena.items.capacity(), items_capacity);
-        assert_eq!(arena.items.first_chunk_ptr(), items_ptr);
+        assert_eq!(arena.items.as_ptr(), items_ptr);
 
         let id = arena.push(7);
         assert_eq!(id.index(), 0, "reused arenas restart their id space");
@@ -687,7 +799,11 @@ mod tests {
         let _test_env = crate::test_env::read();
         let chunk = super::CHUNK_LEN;
         for tight in [false, true] {
-            let mut arena: Arena<usize> = if tight { Arena::new_tight() } else { Arena::new() };
+            let mut arena: super::ChunkedArena<usize> = if tight {
+                super::ChunkedArena::new_tight_chunked()
+            } else {
+                super::ChunkedArena::new_chunked()
+            };
             let mut model: Vec<usize> = Vec::new();
             for value in 0..(3 * chunk + 17) {
                 assert_eq!(arena.push(value).index(), value);

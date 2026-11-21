@@ -64,7 +64,7 @@ fn saturation_label_copy_threshold() -> usize {
     })
 }
 
-use super::super::model::substrate::{Arena, Cint64, Id, NegLink, INVALID};
+use super::super::model::substrate::{Arena, ChunkedArena, Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
 
 use super::analized_concept_expansion::{
@@ -632,13 +632,13 @@ pub struct ProcessContext {
     /// `CRoleSaturationProcessLinker` pool.
     role_sat_proc_linkers: Arena<RoleSaturationProcessLinker>,
     /// `CBackwardSaturationPropagationLink` pool.
-    backward_sat_prop_links: Arena<BackwardSaturationPropagationLink>,
+    backward_sat_prop_links: ChunkedArena<BackwardSaturationPropagationLink>,
     /// `CBackwardSaturationPropagationReapplyDescriptor` pool.
     backward_sat_prop_reapply_descs: Arena<BackwardSaturationPropagationReapplyDescriptor>,
     /// `CRoleBackwardSaturationPropagationHash` pool.
     role_backward_sat_prop_hashes: Arena<RoleBackwardSaturationPropagationHash>,
     /// `CSaturationSuccessorData` pool.
-    sat_succ_datas: Arena<SaturationSuccessorData>,
+    sat_succ_datas: ChunkedArena<SaturationSuccessorData>,
     /// Shared immutable creation-role list cells of `sat_succ_datas`
     /// (`CXNegLinker<CRole*>` chains). Follows that pool's epochs and clears.
     sat_succ_creation_role_cells: Arena<CreationRoleCell>,
@@ -647,7 +647,7 @@ pub struct ProcessContext {
     /// `CIndividualSaturationSuccessorLinkDataLinker` pool.
     indi_sat_succ_link_data_linkers: Arena<IndividualSaturationSuccessorLinkDataLinker>,
     /// `CLinkedRoleSaturationSuccessorData` pool.
-    linked_role_sat_succ_datas: Arena<LinkedRoleSaturationSuccessorData>,
+    linked_role_sat_succ_datas: ChunkedArena<LinkedRoleSaturationSuccessorData>,
     /// `CLinkedRoleSaturationSuccessorHash` pool.
     linked_role_sat_succ_hashes: Arena<LinkedRoleSaturationSuccessorHash>,
     /// `CIndividualSaturationProcessNodeExtensionData` pool.
@@ -883,14 +883,14 @@ impl ProcessContext {
             con_sat_descs: Arena::new_tight(),
             con_sat_proc_linkers: Arena::new_tight(),
             role_sat_proc_linkers: Arena::new_tight(),
-            backward_sat_prop_links: Arena::new_tight(),
+            backward_sat_prop_links: ChunkedArena::new_tight_chunked(),
             backward_sat_prop_reapply_descs: Arena::new_tight(),
             role_backward_sat_prop_hashes: Arena::new_tight(),
-            sat_succ_datas: Arena::new_tight(),
+            sat_succ_datas: ChunkedArena::new_tight_chunked(),
             sat_succ_creation_role_cells: Arena::new_tight(),
             sat_succ_ext_datas: Arena::new_tight(),
             indi_sat_succ_link_data_linkers: Arena::new_tight(),
-            linked_role_sat_succ_datas: Arena::new_tight(),
+            linked_role_sat_succ_datas: ChunkedArena::new_tight_chunked(),
             linked_role_sat_succ_hashes: Arena::new_tight(),
             indi_sat_node_ext_datas: Arena::new_tight(),
             sat_indi_node_succ_ext_datas: Arena::new_tight(),
