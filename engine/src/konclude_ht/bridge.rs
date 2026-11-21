@@ -18578,14 +18578,14 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         leaf_counts.set(counts);
     };
     // Scheduling only: stop trying the leaf once alternative 1 was taken at
-    // least 256 times and on more than half of the attempts, or after 16
-    // consecutive fallbacks / 32 leaf drops (each fallback drops the leaf and
-    // forces a full consistency rebuild on the next leaf attempt).
+    // least 256 times and on more than half of the attempts (each fallback
+    // costs the attempt, the resuming job and a rebuild of the leaf). The
+    // round-2 caps (16 consecutive fallbacks, 32 drops) were dropped in
+    // engine10 round 5: together with the singleton batch split they made
+    // nominal-cover realization probes overrun the bounded bridge budget.
     let leaf_useful = || {
         let counts = leaf_counts.get();
         !leaf_disabled.get()
-            && counts.drops < 32
-            && counts.consecutive_fallbacks < 16
             && (counts.fallbacks() < 256 || counts.fallbacks() * 2 <= counts.attempts)
     };
     let empty_alternative_witnesses: std::cell::RefCell<
@@ -19308,35 +19308,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 // definitions `S and some has_part.(P and not some q.D)` add
                 // a universal over has_part to every one of them, about 880
                 // nodes and 0.09 s per full batch on 1,374 subjects).
-                // Partition singleton-nominal candidates (`C ≡ {a}`) into their
-                // own chunks so a true TBox subsumer or disjunctive TBox cover
-                // does not poison a chunk of unrelated nominal probes.
-                let (singleton_batch, general_batch): (Vec<usize>, Vec<usize>) =
-                    batch.iter().copied().partition(|&c| {
-                        let concept = ctx.ontology_arenas().concept(bridged.named[c]);
-                        let ops = concept.get_operand_list();
-                        matches!(concept.get_operator_code(), op::CCSUB | op::CCEQ)
-                            && ops.len() == 1
-                            && !ops[0].negated
-                            && ctx
-                                .ontology_arenas()
-                                .concept(ops[0].target)
-                                .get_operator_code()
-                                == op::CCNOMINAL
-                    });
                 let mut refuted: HashSet<usize> = HashSet::default();
-                let mut pending_chunks: Vec<&[usize]> = singleton_batch
-                    .chunks(batch_chunk)
-                    .chain(general_batch.chunks(batch_chunk))
-                    .filter(|c| c.len() >= 2)
-                    .rev()
-                    .collect();
-                let mut allow_leaf_in_batch = leaf_reuse && leaf_useful();
-                while let Some(chunk) = pending_chunks.pop() {
+                for chunk in batch.chunks(batch_chunk).filter(|c| c.len() >= 2) {
                     // Only a satisfiable batch verdict is used, and that one is
                     // accepted on the leaf (docs/HYBRID-CB-HT.md §16); any other
                     // verdict falls back or leaves the pairs to their own probes.
-                    let on_leaf = allow_leaf_in_batch && leaf_reuse && leaf_useful();
+                    let on_leaf = leaf_reuse && leaf_useful();
                     leaf_job.set(on_leaf);
                     let restored = renew(algo, ctx, false);
                     leaf_job.set(false);
@@ -19359,44 +19336,6 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         &seeds,
                         &mut batch_root,
                     );
-                    if leaf_job_ran.get() {
-                        let accepted = verdict
-                            .is_some_and(|unsat| retained_leaf_verdict_accepted(algo, ctx, unsat));
-                        leaf_update(&|counts| {
-                            counts.attempts += 1;
-                            if accepted {
-                                counts.consecutive_fallbacks = 0;
-                            } else {
-                                counts.consecutive_fallbacks += 1;
-                            }
-                            match (accepted, verdict) {
-                                (true, Some(false)) => counts.accepted_sat += 1,
-                                (true, _) => counts.accepted_root_cancel += 1,
-                                (false, Some(true)) => counts.fallback_unsat += 1,
-                                _ => counts.fallback_unknown += 1,
-                            }
-                        });
-                        if !accepted {
-                            allow_leaf_in_batch = false;
-                            renew(algo, ctx, false)?;
-                            id_batch = probe_start_id;
-                            batch_root = None;
-                            t_batch = phase_timing.then(std::time::Instant::now);
-                            (ins0, bt0, bo0) = (
-                                algo.stat_con_des_insertion_count,
-                                algo.or_backtrack_count,
-                                algo.or_branch_open_count,
-                            );
-                            verdict = bridged_unsat_rooted(
-                                algo,
-                                ctx,
-                                &bridged,
-                                &mut id_batch,
-                                &seeds,
-                                &mut batch_root,
-                            );
-                        }
-                    }
                     let backtracks = algo.or_backtrack_count - bt0;
                     if progress {
                         eprintln!(
@@ -19449,14 +19388,6 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 }
                                 harvest_elapsed.set(harvest_elapsed.get() + t_harv.elapsed());
                             }
-                        }
-                    } else if verdict == Some(true) && chunk.len() >= 3 && backtracks <= 16 {
-                        let mid = chunk.len() / 2;
-                        if chunk[mid..].len() >= 2 {
-                            pending_chunks.push(&chunk[mid..]);
-                        }
-                        if chunk[..mid].len() >= 2 {
-                            pending_chunks.push(&chunk[..mid]);
                         }
                     }
                 }
