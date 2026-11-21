@@ -3069,7 +3069,33 @@ pub(super) fn from_exported_model(
         }
     }
 
-    if different_requested {
+    // An element of the exported model that holds several individuals whose
+    // sameness is not proved (`same_comp`) is a choice of that model, not an
+    // entailment: with `⊤ ⊑ {a8, a9}` the model puts `a0, a2, ...` into the
+    // element of `a9`. Every element-level argument below reads an element as
+    // one individual: `DifferentIndividuals(a9, a3)` made the two elements
+    // different and printed `DIFFERENT a0 a8` and 13 more rows that are not
+    // entailed (nc8302_0001; 2,225 rows in 750 cover cases). Then every pair
+    // goes to the exact probe instead.
+    let unproved_element_merge = (0..n_elems).any(|u| {
+        elem_inds[u].len() > 1 && {
+            let c0 = same_comp.get(elem_inds[u][0].as_str());
+            elem_inds[u][1..].iter().any(|ind| same_comp.get(ind.as_str()) != c0)
+        }
+    });
+    if different_requested && unproved_element_merge {
+        for a in 0..individuals.len() {
+            for b in (a + 1)..individuals.len() {
+                plan.residual_different_pairs.insert((a, b));
+            }
+        }
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!(
+                "KM_TIMING abox_rows: model elements merge individuals not proved same; {} pairs to the probes",
+                plan.residual_different_pairs.len()
+            );
+        }
+    } else if different_requested {
         let pair_key = |u: usize, v: usize| -> (usize, usize) { (u.min(v), u.max(v)) };
         let mut diff: HashSet<(usize, usize)> = HashSet::new();
 
@@ -6090,6 +6116,7 @@ mod tests {
             ("bare_individual", BARE_INDIVIDUAL),
             ("bare_but_constrained", BARE_BUT_CONSTRAINED),
             ("g8301_366", G8301_366),
+            ("nc8302_0001", NC8302_0001),
         ];
         let _test_env = crate::test_env::write();
         let _env = crate::routing::EnvironmentGuard::capture();
@@ -6120,6 +6147,10 @@ mod tests {
                     "f4104_41" => assert_eq!(values.len(), 6480, "{name}"),
                     "g8301_366" => assert!(
                         different.iter().any(|[a, b]| short(a) == "a2" && short(b) == "a4"),
+                        "{name}: {different:?}"
+                    ),
+                    "nc8302_0001" => assert!(
+                        !different.iter().any(|[a, b]| short(a) == "a0" && short(b) == "a8"),
                         "{name}: {different:?}"
                     ),
                     "bare_individual" => {
@@ -6190,6 +6221,50 @@ ClassAssertion(:D :a1)
 ObjectPropertyAssertion(:r2 :a4 :a7)
 ClassAssertion(ObjectSomeValuesFrom(:r2 ObjectHasValue(:r0 :a1)) :a7)
 ClassAssertion(:E :a4)
+)
+"#;
+    /// `⊤ ⊑ {a8, a9}`: the exported model puts `a0` into the element of `a9`
+    /// and `a8` with `a3`; `a9 != a3` is asserted, but `a0 != a8` is not
+    /// entailed (HermiT: `O + SameIndividual(a0 a8)` is consistent).
+    const NC8302_0001: &str = r#"Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/nc1>
+Declaration(Class(:B))
+Declaration(Class(:C))
+Declaration(Class(:V0))
+Declaration(Class(:V1))
+Declaration(Class(:V2))
+Declaration(Class(:V3))
+Declaration(ObjectProperty(:s0))
+Declaration(ObjectProperty(:s1))
+Declaration(ObjectProperty(:s2))
+Declaration(ObjectProperty(:s3))
+Declaration(ObjectProperty(:c0))
+Declaration(ObjectProperty(:c1))
+Declaration(NamedIndividual(:a0))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+Declaration(NamedIndividual(:a3))
+Declaration(NamedIndividual(:a4))
+Declaration(NamedIndividual(:a5))
+Declaration(NamedIndividual(:a6))
+Declaration(NamedIndividual(:a7))
+Declaration(NamedIndividual(:a8))
+Declaration(NamedIndividual(:a9))
+EquivalentClasses(:V1 ObjectHasValue(:s1 :a9))
+ClassAssertion(:C :a8)
+ObjectPropertyAssertion(:s1 :a2 :a6)
+ClassAssertion(ObjectHasValue(ObjectInverseOf(:s2) :a0) :a2)
+ObjectPropertyAssertion(:c0 :a4 :a8)
+SubClassOf(owl:Thing ObjectOneOf(:a8 :a9))
+EquivalentClasses(:V0 ObjectHasValue(:s1 :a5))
+DifferentIndividuals(:a9 :a3)
+SubObjectPropertyOf(ObjectPropertyChain(:s1 :s1) :c0)
+ObjectPropertyAssertion(:c1 :a2 :a7)
+ClassAssertion(ObjectMinCardinality(1 ObjectInverseOf(:s3) ObjectMinCardinality(1 :s0)) :a0)
+EquivalentClasses(:V2 ObjectHasValue(:s1 :a4))
+SubClassOf(ObjectMinCardinality(3 ObjectInverseOf(:s0) ObjectAllValuesFrom(:s3 :B)) :C)
+EquivalentClasses(:V3 ObjectHasValue(:s1 :a2))
 )
 "#;
     const G7001_0022: &str = r#"Prefix(:=<http://ex.org/>)

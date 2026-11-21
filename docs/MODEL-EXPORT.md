@@ -284,6 +284,16 @@ entailed inequalities:
      `g7001_0022.ofn` that are not entailed (`O ∪ {a0 = a2}` is consistent).
      A pair whose clash cannot rest on such terms is `Undecided` and goes to
      the exact probe.
+   - **Elements that merge individuals by choice (2026-11-22).** The
+     element-level arguments read an element of `M_0` as one individual. An
+     exported model may put several individuals into one element although
+     their sameness is not entailed (a nominal cover `⊤ ⊑ {a8, a9}` forces a
+     choice). An explicit `DifferentIndividuals(a9, a3)` then made the two
+     elements different and every pair of their members was printed
+     (`nc8302_0001.ofn`: 14 rows, 2 entailed; 2,225 rows not entailed in 750
+     cover cases, all checked with `O + SameIndividual(a b)`). When some
+     element holds individuals that `same_comp` does not prove equal, every
+     pair now goes to the exact probe.
    - **Proved differences hold between classes (2026-11-22).** During the
      merge test an element of the union-find stands for its whole class. A
      merge of two classes clashes when any member of one is proved different
