@@ -5826,4 +5826,193 @@ mod tests {
             assert_values_without_realize(&format!("{name}_pad"), axioms, expect, true);
         }
     }
+
+    /// Regressions from the DIFFERENT soundness work (2026-11-21). The model
+    /// path must equal the exact probe path, with and without `--realize`:
+    /// `g7001_0022` (a reused Skolem witness gave both functions of
+    /// `≥ 2 s0.D` one element, and every merge with `a2` "clashed"),
+    /// `g7002_0026` (domain `{a1}` forces `a0 = a1`) and `f4104_41`
+    /// (`⊤ ⊑ =1 s3` with domain `{a0}` makes every individual `a0`).
+    #[test]
+    fn model_plan_matches_probes_on_skolem_witness_and_nominal_merge_cases() {
+        let cases: &[(&str, &str)] = &[
+            ("g7001_0022", G7001_0022),
+            ("g7002_0026", G7002_0026),
+            ("f4104_41", F4104_41),
+        ];
+        let _test_env = crate::test_env::write();
+        let _env = crate::routing::EnvironmentGuard::capture();
+        std::env::set_var("KM_ROUTE", "auto");
+        std::env::set_var("KM_THREADS", "1");
+        let cfg = Config::from_env();
+        let short = |s: &str| s.rsplit([':', '/', '#']).next().unwrap_or(s).to_string();
+        for (name, ofn) in cases {
+            let path = TempPath::new(&format!("-{name}.ofn"));
+            std::fs::write(path.path(), ofn).unwrap();
+            for mode in [None, Some(TypeMode::All)] {
+                let model_ext =
+                    classify_extended(&cfg, path.path(), mode, false, false, false, true, true).unwrap();
+                let probe_ext = {
+                    let _g = crate::routing::EnvironmentGuard::capture();
+                    std::env::set_var("KM_ABOX_PROBES_ONLY", "1");
+                    classify_extended(&cfg, path.path(), mode, false, false, false, true, true).unwrap()
+                };
+                assert_eq!(model_ext.abox.values, probe_ext.abox.values, "VALUE on {name} {mode:?}");
+                assert_eq!(model_ext.abox.different, probe_ext.abox.different, "DIFFERENT on {name} {mode:?}");
+                let values = model_ext.abox.values.clone().unwrap_or_default();
+                let different = model_ext.abox.different.clone().unwrap_or_default();
+                match *name {
+                    "g7001_0022" => assert!(different.is_empty(), "{name}: {different:?}"),
+                    "g7002_0026" => assert!(values
+                        .iter()
+                        .any(|[r, a, b]| short(r) == "t0" && short(a) == "a1" && short(b) == "a0")),
+                    _ => assert_eq!(values.len(), 6480, "{name}"),
+                }
+            }
+        }
+    }
+
+    const G7001_0022: &str = r#"Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/g>
+Declaration(ObjectProperty(:s0))
+Declaration(ObjectProperty(:s1))
+Declaration(ObjectProperty(:s2))
+Declaration(ObjectProperty(:s3))
+Declaration(ObjectProperty(:t0))
+Declaration(ObjectProperty(:t1))
+Declaration(ObjectProperty(:ti))
+Declaration(ObjectProperty(:c0))
+Declaration(ObjectProperty(:c1))
+Declaration(ObjectProperty(:c2))
+Declaration(NamedIndividual(:a0))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:D))
+Declaration(Class(:E))
+InverseObjectProperties(:t0 :ti)
+ObjectPropertyDomain(:s3 :B)
+SubObjectPropertyOf(ObjectInverseOf(:s3) :c0)
+SubObjectPropertyOf(:s0 :c1)
+SubClassOf(:A ObjectUnionOf(ObjectComplementOf(:E) ObjectMinCardinality(2 ObjectInverseOf(:s1) :E)))
+SubClassOf(:E ObjectComplementOf(:B))
+ObjectPropertyAssertion(:s1 :a1 :a0)
+ClassAssertion(:E :a0)
+ClassAssertion(ObjectMinCardinality(2 :s0 :D) :a2)
+ClassAssertion(ObjectMaxCardinality(1 :s3) :a2)
+)
+"#;
+    const G7002_0026: &str = r#"Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/g>
+Declaration(ObjectProperty(:s0))
+Declaration(ObjectProperty(:s1))
+Declaration(ObjectProperty(:s2))
+Declaration(ObjectProperty(:s3))
+Declaration(ObjectProperty(:t0))
+Declaration(ObjectProperty(:t1))
+Declaration(ObjectProperty(:ti))
+Declaration(ObjectProperty(:c0))
+Declaration(ObjectProperty(:c1))
+Declaration(ObjectProperty(:c2))
+Declaration(NamedIndividual(:a0))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+Declaration(NamedIndividual(:a3))
+Declaration(NamedIndividual(:a4))
+Declaration(NamedIndividual(:a5))
+Declaration(NamedIndividual(:a6))
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:D))
+Declaration(Class(:E))
+SymmetricObjectProperty(:s0)
+ObjectPropertyDomain(:ti ObjectSomeValuesFrom(:t1 :D))
+SubObjectPropertyOf(ObjectPropertyChain(ObjectInverseOf(:s2) :s1) :c0)
+ObjectPropertyDomain(:t1 ObjectOneOf(:a1))
+SubClassOf(ObjectUnionOf(:A :A) :A)
+SubClassOf(:A :E)
+SubClassOf(:E :A)
+EquivalentClasses(:E ObjectIntersectionOf(:E :A))
+DifferentIndividuals(:a2 :a6)
+ObjectPropertyAssertion(:s1 :a5 :a4)
+ObjectPropertyAssertion(:t0 :a0 :a1)
+ObjectPropertyAssertion(:s0 :a2 :a6)
+ObjectPropertyAssertion(:s1 :a1 :a5)
+ObjectPropertyAssertion(:t1 :a0 :a3)
+)
+"#;
+    const F4104_41: &str = r#"Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/f>
+Declaration(ObjectProperty(:s0))
+Declaration(ObjectProperty(:s1))
+Declaration(ObjectProperty(:s2))
+Declaration(ObjectProperty(:s3))
+Declaration(ObjectProperty(:c0))
+Declaration(ObjectProperty(:c1))
+Declaration(ObjectProperty(:p0))
+Declaration(ObjectProperty(:p1))
+Declaration(ObjectProperty(:p2))
+Declaration(ObjectProperty(:p3))
+Declaration(ObjectProperty(:p4))
+Declaration(ObjectProperty(:p5))
+Declaration(ObjectProperty(:p6))
+Declaration(ObjectProperty(:p7))
+Declaration(ObjectProperty(:p8))
+Declaration(ObjectProperty(:p9))
+Declaration(NamedIndividual(:a0))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+Declaration(NamedIndividual(:a3))
+Declaration(NamedIndividual(:a4))
+Declaration(NamedIndividual(:a5))
+Declaration(NamedIndividual(:z0))
+Declaration(NamedIndividual(:z1))
+Declaration(NamedIndividual(:z2))
+Declaration(NamedIndividual(:z3))
+Declaration(NamedIndividual(:z4))
+Declaration(NamedIndividual(:z5))
+Declaration(NamedIndividual(:z6))
+Declaration(NamedIndividual(:z7))
+Declaration(NamedIndividual(:z8))
+Declaration(NamedIndividual(:z9))
+Declaration(NamedIndividual(:z10))
+Declaration(NamedIndividual(:z11))
+Declaration(NamedIndividual(:z12))
+Declaration(NamedIndividual(:z13))
+Declaration(NamedIndividual(:z14))
+Declaration(NamedIndividual(:z15))
+Declaration(NamedIndividual(:z16))
+Declaration(NamedIndividual(:z17))
+Declaration(NamedIndividual(:z18))
+Declaration(NamedIndividual(:z19))
+Declaration(NamedIndividual(:z20))
+Declaration(NamedIndividual(:z21))
+Declaration(NamedIndividual(:z22))
+Declaration(NamedIndividual(:z23))
+Declaration(NamedIndividual(:z24))
+Declaration(NamedIndividual(:z25))
+Declaration(NamedIndividual(:z26))
+Declaration(NamedIndividual(:z27))
+Declaration(NamedIndividual(:z28))
+Declaration(NamedIndividual(:z29))
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:D))
+ObjectPropertyAssertion(:c0 :a5 :a1)
+ObjectPropertyAssertion(:c1 :a5 :a4)
+ObjectPropertyDomain(:s3 ObjectOneOf(:a0))
+InverseObjectProperties(:s1 :s0)
+ClassAssertion(ObjectMaxCardinality(1 :s0) :a5)
+SubClassOf(owl:Thing ObjectExactCardinality(1 :s3))
+TransitiveObjectProperty(:c0)
+SubClassOf(:B :D)
+FunctionalObjectProperty(:s2)
+ClassAssertion(ObjectHasValue(:s2 :a0) :a5)
+ObjectPropertyAssertion(:p0 :z0 :z1)
+)
+"#;
 }
