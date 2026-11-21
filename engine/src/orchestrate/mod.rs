@@ -5593,6 +5593,7 @@ fn rules_consistency(
     // order and never the set of matches (docs/DL-SAFE-RULES.md, "One join
     // order for both rule probes").
     cmd.env("KM_RULE_JOIN_ORDER", "1");
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: "tableau".into(),
         source: e,

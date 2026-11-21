@@ -61,6 +61,55 @@ pub fn release_before_worker_wait() {
     }
 }
 
+/// The `r-x` mapping of this program's own code: the mapping in
+/// `/proc/self/maps` that contains this function. Read once.
+#[cfg(target_os = "linux")]
+fn own_code_mapping() -> Option<(usize, usize)> {
+    static RANGE: std::sync::OnceLock<Option<(usize, usize)>> = std::sync::OnceLock::new();
+    *RANGE.get_or_init(|| {
+        let here = own_code_mapping as fn() -> Option<(usize, usize)> as usize;
+        let maps = std::fs::read_to_string("/proc/self/maps").ok()?;
+        maps.lines().find_map(|line| {
+            let mut fields = line.split_whitespace();
+            let (start, end) = fields.next()?.split_once('-')?;
+            let perms = fields.next()?;
+            let (start, end) = (usize::from_str_radix(start, 16).ok()?, usize::from_str_radix(end, 16).ok()?);
+            // Only a read-only, executable, private file mapping: its pages
+            // are never written, so the file always holds their contents.
+            (start <= here && here < end && perms == "r-xp").then_some((start, end))
+        })
+    })
+}
+
+/// Unmap the resident pages of this program's code before the supervisor
+/// starts a worker and waits for it.
+///
+/// The code is a private, read-only mapping of the `km` file: the kernel
+/// shares its pages with every km process through the page cache, but the
+/// resident set of each process counts every code page that process has
+/// touched (10 to 11 MiB of the supervisor's 12 MiB on small inputs). The
+/// process-tree measurement adds the resident sets of the supervisor and of
+/// the worker, so the shared code is counted twice while the supervisor only
+/// waits. `madvise(MADV_DONTNEED)` drops the supervisor's page-table entries
+/// for its code; the pages stay in the page cache, and any code the
+/// supervisor runs afterwards is mapped again on first use (a minor fault,
+/// the same as after the kernel reclaims code pages under memory pressure).
+/// No data mapping is touched, so no state changes. Linux only;
+/// `KM_NO_CODE_RELEASE=1` turns it off for measurement.
+pub fn release_code_pages() {
+    #[cfg(target_os = "linux")]
+    {
+        if switched_on(std::env::var_os("KM_NO_CODE_RELEASE").as_deref()) {
+            return;
+        }
+        if let Some((start, end)) = own_code_mapping() {
+            unsafe {
+                libc::madvise(start as *mut libc::c_void, end - start, libc::MADV_DONTNEED);
+            }
+        }
+    }
+}
+
 /// Turn transparent huge pages off for this process and every process it
 /// starts (E4). With THP `always`, mimalloc's sparse 64 KiB pages each pull
 /// in a 2 MiB huge page and every km process carries 20 to 30 MiB of extra

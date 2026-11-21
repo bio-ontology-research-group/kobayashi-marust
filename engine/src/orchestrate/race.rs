@@ -256,6 +256,7 @@ fn spawn_tableau(
         model_out.push(".model");
         cmd.env("KM_WORKER_MODEL_OUT", model_out);
     }
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().ok()?;
     // feed the TInput on a background thread (ignore broken pipe if the tableau
     // exits before draining — the small TInput never deadlocks)
@@ -473,6 +474,7 @@ fn spawn_elc_cert(
         model_out.push(".model");
         cmd.env("KM_WORKER_MODEL_OUT", model_out);
     }
+    crate::mem::release_code_pages();
     let child = cmd.spawn().ok()?;
     Some((child, out_path))
 }
@@ -2958,6 +2960,7 @@ impl PreparedHt {
             model_out.push(".model");
             cmd.env("KM_WORKER_MODEL_OUT", model_out);
         }
+        crate::mem::release_code_pages();
         let mut child = cmd.spawn().ok()?;
         if let Some(stderr) = child.stderr.take() {
             forward_ht_worker_errors(stderr);

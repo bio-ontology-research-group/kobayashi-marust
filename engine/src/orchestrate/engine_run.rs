@@ -225,6 +225,7 @@ pub(crate) fn status_cancellable(cmd: &mut std::process::Command) -> Option<std:
     if CANCEL.load(Ordering::SeqCst) {
         return None;
     }
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().ok()?;
     let pid = child.id();
     register(pid);
@@ -367,6 +368,7 @@ pub fn run_engine(
         cmd.env("KM_WORKER_MODEL_OUT", model_out);
     }
 
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: bin_name.clone(),
         source: e,
