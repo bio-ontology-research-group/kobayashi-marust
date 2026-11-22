@@ -4037,6 +4037,19 @@ pub(super) fn from_exported_model(
                     let Some(indices) = role_rules_by_role.get(r) else {
                         continue;
                     };
+                    // The rbox closure puts a reflexive property's loop on every
+                    // element, data values included. A reflexive property
+                    // relates objects only, so such a loop is no edge and must
+                    // not meet the sort clash `r(x, y) ∧ D(x) → ⊥`.
+                    if u == v
+                        && refl_set.contains(r.as_str())
+                        && c_overrides
+                            .get(&u)
+                            .unwrap_or(&base_c[u])
+                            .contains(crate::frontend::sorts::DATA_SORT)
+                    {
+                        continue;
+                    }
                     for &idx in indices {
                         let rr = &role_rules[idx];
                         if rr.self_only && u != v {

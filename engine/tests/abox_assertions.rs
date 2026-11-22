@@ -279,3 +279,19 @@ fn data_restriction_on_an_asserted_value_keeps_individuals_different() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a0\t:a3"), "{stdout}");
 }
+
+/// Campaign case new_1026_68, reduced: a reflexive property `t` next to data
+/// values. The rbox closure of the `--different` model plan puts a `t` loop on
+/// every element, data values included, and the Horn pair test met the sort
+/// clash `t(x, y) ∧ D(x) → ⊥` on those loops as soon as a merge touched a data
+/// value: km published `DIFFERENT a0 a4` (in most runs; the order of the
+/// merge decides). HermiT finds no pair different.
+#[test]
+fn reflexive_loops_on_data_values_make_no_pair_different() {
+    for _ in 0..4 {
+        let output = km(&fixture("different-reflexive-data-loop.ofn"), &["--realize", "--values", "--different"]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert!(!stdout.lines().any(|line| line.starts_with("DIFFERENT\t")), "{stdout}");
+    }
+}
