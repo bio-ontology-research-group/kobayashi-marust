@@ -190,3 +190,125 @@ fn nominal_on_an_abox_template_keeps_representatives_insufficient() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     assert!(stdout.lines().any(|line| line == "SAME\t:a3\t:a5"), "{stdout}");
 }
+
+/// Campaign case missed_1026_16, reduced. `C ⊑ ≤2 r.⊤` gives the definer of
+/// `⊤` the object-only rule `O(x) → Q(x)` and the clash `Q(x) ∧ D(x) → ⊥`.
+/// The model plan of `--different` dropped the object guard, so `Q` reached
+/// the data values of `a4`; merging any two individuals merged those values
+/// under the functional `d0` and met the clash, and km reported every pair of
+/// individuals different. HermiT: no pair among `a0`, `a1`, `a4` is
+/// different.
+#[test]
+fn object_only_rules_keep_off_data_values_in_different_rows() {
+    let output = km(&fixture("different-object-guard-data-value.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "CONSISTENT 1"), "{stdout}");
+    for row in ["DIFFERENT\t:a0\t:a1", "DIFFERENT\t:a0\t:a4", "DIFFERENT\t:a1\t:a4"] {
+        assert!(!stdout.lines().any(|line| line == row), "{row}: {stdout}");
+    }
+}
+
+/// Campaign case missed_1027_15, reduced: `a0` and `a5` have different `d1`
+/// values and only `G ⊑ ≤1 d1` counts them. The value projection gives the
+/// two values different digits that clash on `G` only, but the model plan
+/// read different digits as different individuals and published
+/// `DIFFERENT a0 a5`; HermiT finds `a0 = a5` consistent. With `d1`
+/// functional the two are different.
+#[test]
+fn guarded_value_digits_do_not_make_individuals_different() {
+    for (case, different) in [("different-guarded-value-digits", false), ("different-functional-value-digits", true)] {
+        let output = km(&fixture(&format!("{case}.ofn")), &["--realize", "--values", "--different"]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{case}: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(stdout.lines().any(|line| line == "CONSISTENT 1"), "{case}: {stdout}");
+        assert_eq!(stdout.lines().any(|line| line == "DIFFERENT\t:a0\t:a5"), different, "{case}: {stdout}");
+    }
+}
+
+/// Campaign case new_1077_75, reduced by hand: `s0` and `s1` are disjoint,
+/// `s0(a3, a3)`, `s1(a1, a2)` and `a2 = a3`. The model plan's disjoint-role
+/// rule paired the loop's element with itself and published
+/// `DIFFERENT a2 a3` next to `SAME a2 a3`. HermiT: `a2 = a3`, and `a1` is
+/// different from both.
+#[test]
+fn disjoint_role_loop_keeps_same_individuals_together() {
+    let output = km(&fixture("different-disjoint-role-loop.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "SAME\t:a2\t:a3"), "{stdout}");
+    assert!(!stdout.lines().any(|line| line == "DIFFERENT\t:a2\t:a3"), "{stdout}");
+    for row in ["DIFFERENT\t:a1\t:a2", "DIFFERENT\t:a1\t:a3"] {
+        assert!(stdout.lines().any(|line| line == row), "{row}: {stdout}");
+    }
+}
+
+/// Campaign case e9_1023_68, reduced: `s0` is symmetric, `a1 : A` with
+/// `s0(a1, a5)` and `A ⊑ ∀s0.≥2 s0.A`, so `a5` has two `s0` successors, and
+/// `a4 : B` with `B ⊑ ≤1 s0`. HermiT: `a4 ≠ a5`. The model reused existing
+/// successors for the two Skolem terms of `a5`, so the pair test had no
+/// witnesses for their inequality, merged them under `≤1 s0` unchecked and
+/// reported the pair not different.
+#[test]
+fn reused_skolem_successors_leave_the_pair_to_the_exact_probe() {
+    let output = km(&fixture("different-reused-skolem-successors.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a4\t:a5"), "{stdout}");
+}
+
+/// Campaign case new_1002_70, reduced by hand: `¬d2(a1, 1)` and `d2(a2, 1)`,
+/// so `a1 ≠ a2` (HermiT). The model plan of `--different` reads no negative
+/// data assertion, merged the two and reported the pair not different.
+#[test]
+fn negative_data_assertion_keeps_individuals_different() {
+    let output = km(&fixture("different-negative-data-assertion.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a1\t:a2"), "{stdout}");
+}
+
+/// Campaign case new_1041_62, reduced by hand: `a0 : C` with
+/// `C ⊑ ≤0 d0.[2, 4]` and `d0(a3, 4)`, so `a0 ≠ a3` (HermiT). The model plan
+/// of `--different` checks no data restriction on a merge and reported the
+/// pair not different.
+#[test]
+fn data_restriction_on_an_asserted_value_keeps_individuals_different() {
+    let output = km(&fixture("different-data-restriction-value.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a0\t:a3"), "{stdout}");
+}
+
+/// Campaign case new_1026_68, reduced: a reflexive property `t` next to data
+/// values. The rbox closure of the `--different` model plan puts a `t` loop on
+/// every element, data values included, and the Horn pair test met the sort
+/// clash `t(x, y) ∧ D(x) → ⊥` on those loops as soon as a merge touched a data
+/// value: km published `DIFFERENT a0 a4` (in most runs; the order of the
+/// merge decides). HermiT finds no pair different.
+#[test]
+fn reflexive_loops_on_data_values_make_no_pair_different() {
+    // The second input (campaign case new_2016_28, reduced) makes `t` also
+    // transitive with an inverse, so the loops include `ti` and the internal
+    // roles of the transitive closure, not only `t`.
+    for case in ["different-reflexive-data-loop", "different-transitive-reflexive-data-loop"] {
+        for _ in 0..4 {
+            let output = km(&fixture(&format!("{case}.ofn")), &["--realize", "--values", "--different"]);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "{case}: {}", String::from_utf8_lossy(&output.stderr));
+            assert!(!stdout.lines().any(|line| line.starts_with("DIFFERENT\t")), "{case}: {stdout}");
+        }
+    }
+}
+
+/// Campaign case new_2012_75, reduced: `a0 : A` with `A ⊑ ≥2 s5.C` and
+/// `C ⊑ {a1, a3}`, so `a1` and `a3` are the two successors and `a1 ≠ a3`
+/// (HermiT). The pair test merged `a1` and `a3`, which carry no restriction,
+/// and never revisited `a0`, whose two successors the merge joined.
+#[test]
+fn merging_two_successors_revisits_their_min_cardinality() {
+    let output = km(&fixture("different-min-cardinality-into-nominals.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a1\t:a3"), "{stdout}");
+}

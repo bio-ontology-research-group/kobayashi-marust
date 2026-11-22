@@ -119,6 +119,36 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .concept(concept)
             .get_operator_code();
 
+        if !con_negation && self.value_singletons.contains(&concept) {
+            // KM-BRIDGE: a value singleton merges every node that carries it
+            // (u02 `ht_apply_singleton_merges`); saturation has no such merge.
+            // A node is a sound summary as long as no merge can happen: one
+            // carrier per singleton, standing for one successor. A second
+            // carrier, or a carrier counted twice by an at-least restriction
+            // (as Konclude treats a nominal, cpp 7020-7026), makes the nodes
+            // involved insufficient, and completion decides. Without it,
+            // `A ⊑ ≥2 d` over a one-value range of `d` came out satisfiable.
+            let node = *process_indi;
+            let mut insufficient: Vec<SatNodeId> = calc_alg_context
+                .process_context()
+                .sat_node(node)
+                .get_multiple_cardinality_ancestor_nodes_linker()
+                .to_vec();
+            let first = *self.singleton_first_carrier.entry(concept).or_insert(node);
+            if first != node {
+                insufficient.push(first);
+                insufficient.push(node);
+            }
+            self.singleton_carriers.insert(node);
+            for target in insufficient {
+                self.update_direct_adding_individual_status_flags(
+                    target,
+                    super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+            }
+        }
         if !con_negation {
             match con_op_code {
                 CCDATATYPE => {
