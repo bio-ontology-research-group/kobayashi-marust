@@ -11286,17 +11286,6 @@ fn repair_certify(
             }
             let mut inter: Option<HashSet<u32>> = None;
             for (st, _) in &pass_states {
-                if debug && std::env::var_os("KM_ELC_DEBUG_PASS_LABELS").is_some() {
-                    let mut names: Vec<String> =
-                        st.sub_super[c].iter().map(|&d| it.debug_name(d)).collect();
-                    names.sort();
-                    let edges: Vec<String> = st.edges[c]
-                        .iter()
-                        .map(|(r, t)| format!("{}->{}:{:?}", it.name(*r), it.debug_name(*t),
-                            st.sub_super[*t as usize].iter().map(|&d| it.debug_name(d)).collect::<Vec<_>>()))
-                        .collect();
-                    eprintln!("KM_ELC_CERT pass label {}: {:?} edges {:?}", it.debug_name(c as u32), names, edges);
-                }
                 if st.sub_super[c].contains(&BOTTOM) {
                     continue;
                 }
