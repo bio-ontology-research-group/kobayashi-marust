@@ -200,7 +200,10 @@ fn ore12128_reduction_with_the_cache_and_without_the_self_gate() {
         env.push(("KM_BRIDGE_SAT_REFUSE_SELF", "1"));
         assert_eq!(normalise(&classify(&path, &env)), want, "{route:?}");
         env.push(("KM_HT_SATEXP_ABSORB_LEGACY", "replay"));
-        // As in the absorption control: the former blocker candidate order.
+        // The functional roles as domain concepts (be0663f9) change the
+        // schedule and hide the miss; the control restores the former
+        // encoding (`⊤ ⊑ ≤1 R`) and blocker candidate order.
+        env.push(("KM_BRIDGE_FUNCTIONAL_ON_TOP", "1"));
         env.push(("KM_HT_NO_CORE_BLOCKING_MARK", "1"));
         assert_ne!(
             normalise(&classify(&path, &env)),
@@ -227,6 +230,9 @@ fn self_gate_negative_control_misses_merge1708() {
         let mut env = with_release(route);
         assert_eq!(normalise(&classify(&path, &env)), want, "{route:?}");
         env.push(("KM_BRIDGE_SELF_SATEXP_NO_GATE", "1"));
+        // As in the replay control: the former functional encoding and
+        // blocker candidate order.
+        env.push(("KM_BRIDGE_FUNCTIONAL_ON_TOP", "1"));
         env.push(("KM_HT_NO_CORE_BLOCKING_MARK", "1"));
         assert_ne!(
             normalise(&classify(&path, &env)),
