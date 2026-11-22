@@ -397,6 +397,11 @@ pub struct Sig {
     /// with `everyEdge`). `grounded_label` then holds every concept a source
     /// clause reads on a neighbour (`grounded_label_concepts`).
     pub individual_labels_every_edge: bool,
+    /// r-Succ is on only for the labels of individuals: the ontology alone
+    /// does not enable it (`clause_enables_rsucc`), so central labels stay out
+    /// of the r-Succ pool and the root-edge offers, as without r-Succ. The
+    /// wire then lists no central reach concepts.
+    pub rsucc_labels_only: bool,
 }
 
 impl Sig {
