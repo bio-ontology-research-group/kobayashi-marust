@@ -631,9 +631,23 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             }
         }
         "DisjointClasses" => {
+            // The operands form a set (OWL 2 structural specification; the
+            // OWL API stores a set): `DisjointClasses(B D D)` is
+            // `DisjointClasses(B D)`, not `D ⊓ D ⊑ ⊥`, which made D
+            // unsatisfiable on every route. A set with one member left
+            // (`DisjointClasses(A A)`) follows the OWL API, whose
+            // `OWLDataFactoryImpl.getOWLDisjointClassesAxiom` (4.5.29) adds
+            // `owl:Thing` to it, so `A` is unsatisfiable, as in Protégé
+            // and HermiT (docs/V1.7.0-LENIENT-INPUT.md, section 2.7).
             let mut cs = Vec::new();
             for a in &args {
-                cs.push(cls(reg, a)?);
+                let c = cls(reg, a)?;
+                if !cs.contains(&c) {
+                    cs.push(c);
+                }
+            }
+            if cs.len() == 1 {
+                cs.push(Concept::Top);
             }
             for k in 0..cs.len() {
                 for l in (k + 1)..cs.len() {
@@ -650,9 +664,13 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // unsatisfiability). Desugared here into the two axiom kinds the
             // clausifier already handles.
             let a = cls(reg, op(&args, 0)?)?;
+            // The disjoint operands form a set, as in DisjointClasses.
             let mut cs = Vec::new();
             for arg in &args[1..] {
-                cs.push(cls(reg, arg)?);
+                let c = cls(reg, arg)?;
+                if !cs.contains(&c) {
+                    cs.push(c);
+                }
             }
             o.add(Axiom::EquivalentClasses(a, mk_or(cs.iter().cloned())));
             for k in 0..cs.len() {
@@ -805,10 +823,18 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             }
         }
         "DifferentIndividuals" => {
-            let ids: Vec<String> = args
-                .iter()
-                .map(|a| reg.short(a.as_atom().unwrap_or("")))
-                .collect();
+            // A set of individuals: `DifferentIndividuals(a a b)` does not
+            // make `a` different from itself.
+            let mut ids: Vec<String> = Vec::new();
+            for a in &args {
+                let id = reg.short(a.as_atom().unwrap_or(""));
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+            if ids.len() < 2 {
+                o.note_vacuous_abox_axiom("DifferentIndividuals");
+            }
             for k in 0..ids.len() {
                 for l in (k + 1)..ids.len() {
                     o.add(Axiom::DifferentIndividuals(ids[k].clone(), ids[l].clone()));
@@ -931,7 +957,10 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         "DisjointObjectProperties" => {
             // An inverted operand used to become the empty role name.
             let operands: Vec<&Node> = args.iter().copied().collect();
-            let roles = property_axiom_roles(reg, &operands, o)?;
+            let mut roles = property_axiom_roles(reg, &operands, o)?;
+            // A set of properties: a repeated operand is not disjoint from itself.
+            let mut seen = Vec::new();
+            roles.retain(|r| if seen.contains(r) { false } else { seen.push(r.clone()); true });
             for left in 0..roles.len() {
                 for right in (left + 1)..roles.len() {
                     o.add(Axiom::DisjointRoles(
@@ -979,10 +1008,13 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             }
         }
         "DisjointDataProperties" => {
-            let ps: Vec<String> = args
-                .iter()
-                .map(|a| reg.short(a.as_atom().unwrap_or("")))
-                .collect();
+            let mut ps: Vec<String> = Vec::new();
+            for a in &args {
+                let p = reg.short(a.as_atom().unwrap_or(""));
+                if !ps.contains(&p) {
+                    ps.push(p);
+                }
+            }
             for i in 0..ps.len() {
                 for j in (i + 1)..ps.len() {
                     o.add(Axiom::DisjointRoles(ps[i].clone(), ps[j].clone()));
