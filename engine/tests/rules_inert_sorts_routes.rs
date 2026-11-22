@@ -42,6 +42,21 @@ fn released(stderr: &str, marker: &str) -> Option<Vec<String>> {
     Some(names.split(',').map(str::to_string).collect())
 }
 
+/// Since v1.7.0 the default schedule answers these rule ontologies by the
+/// ground-rule reduction (docs/V1.7.0-RULES-SHOIQ.md) and never starts the
+/// batch rule checker; `KM_RULES_ROUTE_FIRST=1` restores the v1.6.5 rules
+/// route, the path under test.
+const RULES_ROUTE: (&str, &str) = ("KM_RULES_ROUTE_FIRST", "1");
+
+/// `batch` on the rules route; the default schedule must give the same rows.
+fn rules_batch(source: &str, extra: &[(&str, &str)]) -> (String, String) {
+    let (default_out, _) = batch(source, extra);
+    let routed: Vec<(&str, &str)> = extra.iter().copied().chain([RULES_ROUTE]).collect();
+    let (out, err) = batch(source, &routed);
+    assert_eq!(out, default_out, "the rules route and the ground-rule reduction disagree");
+    (out, err)
+}
+
 fn batch(source: &str, extra: &[(&str, &str)]) -> (String, String) {
     let dir = scratch_dir();
     let path = dir.join("input.ofn");
@@ -100,13 +115,13 @@ fn incremental(commands: &[serde_json::Value], extra: &[(&str, &str)]) -> (Vec<s
 #[test]
 fn incremental_and_batch_rule_checkers_release_the_same_definers() {
     let revision = revised();
-    let (_, batch_err) = batch(&revision, &[]);
+    let (_, batch_err) = rules_batch(&revision, &[]);
     let batch_released = released(&batch_err, "KM_TIMING rules-consistency released")
         .unwrap_or_else(|| panic!("the batch checker released nothing:\n{batch_err}"));
     assert!(!batch_released.is_empty());
     // The batch route converts the assertions in its second frontend pass;
     // requesting the conversion up front gives the same checker input.
-    let (_, converted_err) = batch(&revision, &[("KM_DATA_ASSERTION_AS_CLASS", "1")]);
+    let (_, converted_err) = rules_batch(&revision, &[("KM_DATA_ASSERTION_AS_CLASS", "1")]);
     assert_eq!(released(&converted_err, "KM_TIMING rules-consistency released"), Some(batch_released.clone()));
 
     let commands = [
@@ -126,7 +141,7 @@ fn incremental_and_batch_rule_checkers_release_the_same_definers() {
     let (kept_rows, kept_err) = incremental(&commands, &keep);
     assert!(released(&kept_err, "KM_TIMING incremental rules-consistency released").is_none(), "{kept_err}");
     assert_eq!(kept_rows[1]["result"], rows[1]["result"]);
-    let (_, kept_batch_err) = batch(&revision, &keep);
+    let (_, kept_batch_err) = rules_batch(&revision, &keep);
     assert!(released(&kept_batch_err, "KM_TIMING rules-consistency released").is_none());
 }
 
@@ -165,14 +180,14 @@ fn rule_checker_worker_runs_without_reserving_its_deep_stack() {
     // the release has nothing left to release and the worker input is the
     // same (118 clauses) either way. Keep the release on the path under test.
     let polarity_off = [("KM_NO_POLARITY_DEFINERS", "1")];
-    let (unlimited_out, unlimited_err) = batch(INCONSISTENT_FIXTURE, &polarity_off);
+    let (unlimited_out, unlimited_err) = rules_batch(INCONSISTENT_FIXTURE, &polarity_off);
     assert!(released(&unlimited_err, "KM_TIMING rules-consistency released").is_some(), "{unlimited_err}");
     let dir = scratch_dir();
     let path = dir.join("input.ofn");
     std::fs::write(&path, INCONSISTENT_FIXTURE).unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     command.arg("classify").arg("--lines").arg(&path).env("KM_TIMING", "1");
-    command.env("KM_NO_POLARITY_DEFINERS", "1");
+    command.env("KM_NO_POLARITY_DEFINERS", "1").env(RULES_ROUTE.0, RULES_ROUTE.1);
     unsafe {
         command.pre_exec(|| {
             let limit = libc::rlimit { rlim_cur: 3 << 30, rlim_max: 3 << 30 };

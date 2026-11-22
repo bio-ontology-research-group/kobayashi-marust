@@ -22,6 +22,16 @@ pub(super) fn take_cached_grounded(path: &Path, project_data_abox: bool) -> Opti
     })
 }
 
+/// Whether the grounded source cached for `path` (by [`automatic_candidate`])
+/// came from an ontology with DL-safe rules.
+pub(super) fn cached_grounded_has_rules(path: &Path) -> bool {
+    CACHED_GROUNDED.with(|slot| {
+        slot.borrow().as_ref().is_some_and(|(cached_path, project, grounded)| {
+            cached_path == path && !*project && grounded.source_rules > 0
+        })
+    })
+}
+
 fn cache_grounded(path: Option<&Path>, project_data_abox: bool, grounded: GroundedRuleSource) {
     if let Some(path) = path {
         CACHED_GROUNDED.with(|slot| {

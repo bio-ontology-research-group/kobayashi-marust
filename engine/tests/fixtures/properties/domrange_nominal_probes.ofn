@@ -1,0 +1,13 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/t>
+Declaration(ObjectProperty(<urn:t#r>)) Declaration(ObjectProperty(<urn:t#s>))
+Declaration(NamedIndividual(<urn:t#a>)) Declaration(NamedIndividual(<urn:t#b>))
+Declaration(Class(<urn:p#F>)) Declaration(Class(<urn:p#Pr>)) Declaration(Class(<urn:p#Ps>)) Declaration(Class(<urn:p#Pri>)) Declaration(Class(<urn:p#Psi>))
+ObjectPropertyDomain(<urn:t#r> ObjectOneOf(<urn:t#a>))
+ObjectPropertyRange(<urn:t#r> ObjectOneOf(<urn:t#b>))
+ObjectPropertyAssertion(<urn:t#s> <urn:t#a> <urn:t#b>)
+EquivalentClasses(<urn:p#Pr> ObjectSomeValuesFrom(<urn:t#r> <urn:p#F>))
+EquivalentClasses(<urn:p#Ps> ObjectSomeValuesFrom(<urn:t#s> <urn:p#F>))
+EquivalentClasses(<urn:p#Pri> ObjectSomeValuesFrom(ObjectInverseOf(<urn:t#r>) <urn:p#F>))
+EquivalentClasses(<urn:p#Psi> ObjectSomeValuesFrom(ObjectInverseOf(<urn:t#s>) <urn:p#F>))
+)
