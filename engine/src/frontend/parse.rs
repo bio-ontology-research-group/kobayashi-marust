@@ -634,13 +634,20 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // The operands form a set (OWL 2 structural specification; the
             // OWL API stores a set): `DisjointClasses(B D D)` is
             // `DisjointClasses(B D)`, not `D ⊓ D ⊑ ⊥`, which made D
-            // unsatisfiable on every route.
+            // unsatisfiable on every route. A set with one member left
+            // (`DisjointClasses(A A)`) follows the OWL API, whose
+            // `OWLDataFactoryImpl.getOWLDisjointClassesAxiom` (4.5.29) adds
+            // `owl:Thing` to it, so `A` is unsatisfiable, as in Protégé
+            // and HermiT (docs/V1.7.0-LENIENT-INPUT.md, section 2.7).
             let mut cs = Vec::new();
             for a in &args {
                 let c = cls(reg, a)?;
                 if !cs.contains(&c) {
                     cs.push(c);
                 }
+            }
+            if cs.len() == 1 {
+                cs.push(Concept::Top);
             }
             for k in 0..cs.len() {
                 for l in (k + 1)..cs.len() {
@@ -824,6 +831,9 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 if !ids.contains(&id) {
                     ids.push(id);
                 }
+            }
+            if ids.len() < 2 {
+                o.note_vacuous_abox_axiom("DifferentIndividuals");
             }
             for k in 0..ids.len() {
                 for l in (k + 1)..ids.len() {

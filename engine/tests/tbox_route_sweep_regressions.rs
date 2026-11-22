@@ -153,6 +153,38 @@ fn repeated_disjointness_operands_form_a_set() {
     }
 }
 
+/// A one-element operand set after removing repeats follows OWL API 4.5.29
+/// (and so Protégé and HermiT): `DisjointClasses(A A)` gets `owl:Thing` added
+/// and makes `A` unsatisfiable; the other n-ary axioms have no effect.
+#[test]
+fn singleton_operand_sets_follow_the_owl_api() {
+    let cases: &[(&str, &[&str], &[(&str, &str)])] = &[
+        ("DisjointClasses(:A :A)", &["A"], &[]),
+        ("DisjointClasses(:A :A :A)", &["A"], &[]),
+        ("DisjointUnion(:C :A :A)", &[], &[("A", "C"), ("C", "A")]),
+        ("DisjointObjectProperties(:r :r)\nSubClassOf(:A ObjectSomeValuesFrom(:r :C))", &[], &[]),
+        ("DisjointDataProperties(:d :d)\nSubClassOf(:A DataSomeValuesFrom(:d xsd:integer))", &[], &[]),
+        ("EquivalentClasses(:C :C)", &[], &[]),
+        ("EquivalentObjectProperties(:r :r)", &[], &[]),
+        ("SameIndividual(:a :a)\nClassAssertion(:A :a)", &[], &[]),
+        ("DifferentIndividuals(:a :a)\nClassAssertion(:A :a)", &[], &[]),
+    ];
+    for (axioms, unsat, subs) in cases {
+        let text = ontology(
+            &["A", "C"],
+            &["r"],
+            &format!(
+                "Declaration(DataProperty(:d))\nDeclaration(NamedIndividual(:a))\n{axioms}"
+            ),
+        )
+        .replace(
+            "Prefix(owl:",
+            "Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\nPrefix(owl:",
+        );
+        assert_eq!(classify(&text, None), expected(unsat, subs), "{axioms}");
+    }
+}
+
 /// `DifferentIndividuals(a a b)` does not make `a` different from itself, so
 /// the ontology stays consistent.
 #[test]
