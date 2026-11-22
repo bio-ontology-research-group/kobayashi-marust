@@ -492,7 +492,14 @@ pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError>
             worker_model_payload: None,
         });
     }
-    let mut out: EngineOut = serde_json::from_reader(reader)?;
+    // Read the whole worker document, then parse the slice: serde_json's
+    // streaming reader parses byte by byte through `IoRead` and took 1.5 s of
+    // the 2.2 s output mapping on ore_ont_11085 (a 1.6 GB answer). The bytes
+    // and the parsed value are the same either way.
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes)?;
+    let mut out: EngineOut = serde_json::from_slice(&bytes)?;
+    drop(bytes);
     out.worker_model_path = worker_model_path;
     Ok(out)
 }
