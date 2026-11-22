@@ -110,6 +110,26 @@ fn shared_data_values_keep_nominal_intersections_unsatisfiable() {
     }
 }
 
+/// A functional data property `d0` has two different values on one
+/// individual, so both inputs are inconsistent (HermiT). Object merges made
+/// that individual a node the bridge reuses as its own successor; the
+/// saturation-caching attempt on it failed, but the stored blocking data
+/// marked the whole label as confirmed, so the next retest re-confirmed the
+/// node as saturation cached and its merged value successor never met the
+/// clash. The automatic route reaches the bridge through the ground-rule
+/// data-source path; the forced bridge must agree.
+#[test]
+fn declined_saturation_cache_keeps_functional_value_clash() {
+    for case in ["declined-saturation-cache-merged-values", "declined-saturation-cache-nominal-values"] {
+        for env in [&[][..], &[("KM_ROUTE", "ht_bridge")][..]] {
+            let output = km_env(&fixture(&format!("{case}.ofn")), &[], env);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "{case} {env:?}: {}", String::from_utf8_lossy(&output.stderr));
+            assert_eq!(stdout.lines().next(), Some("CONSISTENT 0"), "{case} {env:?}: {stdout}");
+        }
+    }
+}
+
 /// `c` has the `k`-value 2 and `k` is functional, so `c` is in
 /// `=1 k.xsd:integer`, hence in `C`, against `{c} ⊑ ¬C`: inconsistent
 /// (HermiT). The native bridge made `C` a lazily unfolded definition
@@ -121,4 +141,52 @@ fn nominal_excluded_from_untriggerable_definition_is_inconsistent() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.lines().next(), Some("CONSISTENT 0"), "{stdout}");
+}
+
+
+/// Two individuals with different values of a restricted data property are
+/// different (HermiT: `O + SameIndividual(a b)` is inconsistent). One value
+/// is asserted, the other comes from a class (`d0 value 2`) or the
+/// restriction comes from the TBox (`A ⊑ ≤1 d1`). The model plan of
+/// `--different` merged the two individuals without meeting the clash,
+/// because neither of its structures carries the asserted literal as a
+/// valued successor, and published no `DIFFERENT` row.
+#[test]
+fn asserted_data_values_keep_restricted_individuals_different() {
+    for (case, row) in [
+        ("different-functional-value-from-class", "DIFFERENT\t:a3\t:a5"),
+        ("different-at-most-one-data-value", "DIFFERENT\t:a0\t:a3"),
+    ] {
+        let output = km(&fixture(&format!("{case}.ofn")), &["--realize", "--different"]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{case}: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(stdout.lines().any(|line| line == "CONSISTENT 1"), "{case}: {stdout}");
+        assert!(stdout.lines().any(|line| line == row), "{case}: {stdout}");
+    }
+}
+
+/// Probe classes `P ≡ {a}` (as `--realize` adds them) put a nominal on an
+/// ABox template node. A CCT_NOMINAL shortcut kept the template's
+/// insufficiency from its representatives, which then never ran their own
+/// cardinality checks: the first two inputs are inconsistent and the third
+/// entails `a3 = a5` (HermiT), yet km reported them consistent, or omitted
+/// the `SAME` row.
+#[test]
+fn nominal_on_an_abox_template_keeps_representatives_insufficient() {
+    for case in ["template-nominal-at-most-probe", "template-nominal-functional-merge"] {
+        for (options, env) in [
+            (&[][..], &[("KM_ROUTE", "ht_bridge")][..]),
+            (&["--realize"][..], &[][..]),
+            (&["--realize", "--values", "--different"][..], &[][..]),
+        ] {
+            let output = km_env(&fixture(&format!("{case}.ofn")), options, env);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "{case} {options:?}: {}", String::from_utf8_lossy(&output.stderr));
+            assert_eq!(stdout.lines().next(), Some("CONSISTENT 0"), "{case} {options:?} {env:?}: {stdout}");
+        }
+    }
+    let output = km(&fixture("template-nominal-symmetric-same.ofn"), &["--realize"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "SAME\t:a3\t:a5"), "{stdout}");
 }

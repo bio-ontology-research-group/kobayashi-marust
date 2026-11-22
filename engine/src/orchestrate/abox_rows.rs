@@ -3364,6 +3364,45 @@ pub(super) fn from_exported_model(
             Undecided,
         }
 
+        // Individuals with an asserted value of a data property that a
+        // functional or at-most clause restricts. Neither structure carries
+        // the asserted literal as a valued data successor (the model's data
+        // elements carry no literal class on the routes that rewrite data
+        // assertions as classes), so a merge that joins such an individual
+        // with a different value of that property looked clash-free and the
+        // plan published "not different" without a probe: `Functional(d0)`,
+        // `d0(a3, 1)`, `(d0 value 2)(a5)` lost `DIFFERENT a3 a5`, and
+        // `A ⊑ ≤1 d1`, `A(a0)`, `d1(a3, 2)`, `d1(a3, 3)` lost `DIFFERENT a0 a3`.
+        // A merge that touches one of them is not decided here; the exact
+        // residual probe decides it.
+        // Clause roles and source property tokens use different spellings
+        // (short frontend names, full IRIs); accept a match in any of them.
+        let mut restricted_data_roles: HashSet<String> = func_data_props.clone();
+        for qf in &qual_func_rules {
+            restricted_data_roles.insert(qf.role.clone());
+            if let Some(spelled) = f_res.iri_map.get(&qf.role) {
+                restricted_data_roles.insert(spelled.clone());
+                restricted_data_roles.insert(expand_tok(spelled));
+            }
+        }
+        let mut restricted_data_elem = vec![false; n_elems];
+        for (u, p, _) in &closed_data_assertions {
+            let short = resolve_role_short(p);
+            let restricted = restricted_data_roles.contains(p)
+                || restricted_data_roles.contains(&short)
+                || full_to_short.get(p.as_str()).is_some_and(|s| restricted_data_roles.contains(*s))
+                || meta.iri_map.get(p).is_some_and(|s| restricted_data_roles.contains(s));
+            if *u < n_elems && restricted {
+                restricted_data_elem[*u] = true;
+            }
+        }
+        if std::env::var_os("KM_DIFF_TRACE").is_some() {
+            eprintln!(
+                "KM_DIFF_TRACE restricted data roles {restricted_data_roles:?} closed {closed_data_assertions:?} elements {:?}",
+                (0..n_elems).filter(|&u| restricted_data_elem[u]).collect::<Vec<_>>()
+            );
+        }
+
         let clash_trace = std::env::var_os("KM_DIFF_TRACE").is_some();
         macro_rules! horn_clash {
             () => {{
@@ -3519,6 +3558,9 @@ pub(super) fn from_exported_model(
                     }
                 }
             }
+            if restricted_data_elem[u] || restricted_data_elem[v] {
+                return PairVerdict::Undecided;
+            }
             PairVerdict::NotDifferent
         };
 
@@ -3579,6 +3621,9 @@ pub(super) fn from_exported_model(
             // Members of each union-find class with more than one element.
             let mut class_members: HashMap<usize, Vec<usize>> = HashMap::new();
             let mut elem_has_non_refl: Vec<bool> = has_non_refl_edge.clone();
+            // Roots whose class contains an individual of `restricted_data_elem`.
+            let mut restricted_roots: HashSet<usize> = HashSet::new();
+            let mut merged_restricted_data = false;
             // The step bound only guards against a runaway loop. A merge that
             // has not reached its fixpoint within it proves nothing either way:
             // falling through used to return `NotDifferent` for an unsaturated
@@ -3646,6 +3691,13 @@ pub(super) fn from_exported_model(
                             .any(|(_, r, _)| !base_e.contains(&(drop_el, r.clone(), drop_el)))
                     {
                         need_rbox_reclose = true;
+                    }
+                    let restricted = |x: usize, roots: &HashSet<usize>| {
+                        (x < n_elems && restricted_data_elem[x]) || roots.contains(&x)
+                    };
+                    if restricted(keep, &restricted_roots) || restricted(drop_el, &restricted_roots) {
+                        merged_restricted_data = true;
+                        restricted_roots.insert(keep);
                     }
                     uf[drop_el] = keep;
                     let drop_c: HashSet<String> = c_overrides
@@ -4235,6 +4287,9 @@ pub(super) fn from_exported_model(
                     }
                 }
             }
+            if merged_restricted_data {
+                return PairVerdict::Undecided;
+            }
             PairVerdict::NotDifferent
         };
 
@@ -4275,6 +4330,11 @@ pub(super) fn from_exported_model(
         );
         let mut graph_sig_id: Vec<Option<usize>> = vec![None; n_elems];
         let mut graph_sig_to_id: HashMap<GraphSigKey, usize> = HashMap::new();
+        for u in 0..n_elems {
+            if restricted_data_elem[u] {
+                special_ind[u] = true;
+            }
+        }
         for &u in &ind_elems {
             let mut m_c: Vec<String> = elem_classes[u]
                 .iter()
@@ -4290,7 +4350,7 @@ pub(super) fn from_exported_model(
             h_c.sort();
             let mut n_c: Vec<String> = elem_neg_classes[u].iter().cloned().collect();
             n_c.sort();
-            if !has_non_refl_edge[u] {
+            if !has_non_refl_edge[u] && !restricted_data_elem[u] {
                 let key = (m_c.clone(), h_c.clone(), n_c.clone(), Vec::new());
                 let next_id = sig_to_id.len();
                 let id = *sig_to_id.entry(key).or_insert(next_id);

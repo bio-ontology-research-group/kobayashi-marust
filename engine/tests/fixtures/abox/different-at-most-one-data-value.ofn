@@ -1,0 +1,11 @@
+Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex.org/f>
+Declaration(Class(:A))
+Declaration(DataProperty(:d1))
+ClassAssertion(:A :a0)
+DataPropertyAssertion(:d1 :a3 "2"^^xsd:integer)
+DataPropertyAssertion(:d1 :a3 "3"^^xsd:integer)
+SubClassOf(:A DataMaxCardinality(1 :d1))
+)

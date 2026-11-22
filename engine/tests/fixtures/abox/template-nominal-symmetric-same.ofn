@@ -1,0 +1,8 @@
+Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/f>
+Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a3)) Declaration(NamedIndividual(:a4)) Declaration(NamedIndividual(:a5))
+SymmetricObjectProperty(:r)
+FunctionalObjectProperty(:r)
+ObjectPropertyAssertion(:r :a4 :a5)
+ObjectPropertyAssertion(:r :a3 :a4)
+)

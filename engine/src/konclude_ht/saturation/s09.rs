@@ -398,6 +398,136 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         }
     }
 
+    /// Whether the forwarded CCT_NOMINAL shortcut is sound for an unattached
+    /// ABox template node: its saturated label holds no concept whose test
+    /// depends on the role edges of the nodes that copy the template.
+    ///
+    /// The shortcut marks only the template insufficient, not its dependent
+    /// representatives, and forwards the nominal check alone. A representative
+    /// relies on the template for the critical tests of its copied label (the
+    /// at-most test of a substituted node is skipped), and those tests stop at
+    /// the template once it is insufficient. With an at-most, universal,
+    /// self, disjunction or value restriction on an object role in the
+    /// template's label (or on a data role while a representative carries a
+    /// data value) that loses answers: `⊤ ⊑ ≤1 r.G`, `r(a5,a4)`, `r(a5,a1)`, `G(a4)`, `G(a1)`,
+    /// disjoint `C(a4)`, `F(a1)` and the probe `P5 ≡ {a5}` came out
+    /// consistent (78bbeb27). Such a template stays insufficient for its
+    /// dependents too, as before 78bbeb27. Labels of atoms, conjunctions,
+    /// existentials, nominals and implication triggers keep the shortcut
+    /// (ore_ont_10949: `C_i ⊑ {a_i}`).
+    fn template_label_free_of_edge_restrictions(
+        &mut self,
+        node: SatNodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        use super::super::model::op;
+        let mut role_restriction = false;
+        {
+            let pc = calc_alg_context.process_context();
+            let label = pc.sat_node(node).reapply_con_sat_label_set;
+            if label.is_none() {
+                return false;
+            }
+            let arenas = calc_alg_context.ontology_arenas();
+            let mut descriptor = pc
+                .reapply_con_sat_label_set(label)
+                .get_concept_saturation_description_linker();
+            let mut walked = 0usize;
+            while descriptor.is_some() {
+                walked += 1;
+                if walked > pc.con_sat_desc_count() {
+                    return false;
+                }
+                let d = pc.con_sat_desc(descriptor);
+                let negated = d.get_negation();
+                let code = arenas.concept(d.get_concept()).get_operator_code();
+                let plain = if negated {
+                    matches!(code, op::CCATOM | op::CCSUB | op::CCBOTTOM)
+                } else {
+                    matches!(
+                        code,
+                        op::CCATOM
+                            | op::CCSUB
+                            | op::CCTOP
+                            | op::CCAND
+                            | op::CCSOME
+                            | op::CCNOMINAL
+                            | op::CCIMPLTRIG
+                            | op::CCIMPL
+                            | op::CCEQ
+                            | op::CCBRANCHTRIG
+                            | op::CCDATATYPE
+                            | op::CCDATALITERAL
+                    )
+                };
+                // Universal and at-most restrictions constrain only the
+                // edges of a node.
+                let edge_restriction = matches!(
+                    (negated, code),
+                    (false, op::CCALL)
+                        | (false, op::CCATMOST)
+                        | (true, op::CCSOME)
+                        | (true, op::CCATLEAST)
+                        | (false, op::CCIMPLALL)
+                        | (false, op::CCAQALL)
+                        | (false, op::CCIMPLAQALL)
+                        | (false, op::CCBRANCHALL)
+                        | (false, op::CCBRANCHAQALL)
+                );
+                if !plain && !edge_restriction {
+                    return false;
+                }
+                role_restriction |= edge_restriction;
+                descriptor = d.get_next_concept_desciptor();
+            }
+        }
+        if !role_restriction {
+            return true;
+        }
+        // With a universal or at-most restriction in the template, every
+        // representative that depends on it must be free of edges: no
+        // linked successor or predecessor and no data value. Such a
+        // restriction then holds at the representative without a test.
+        let mut stack = vec![node];
+        let mut seen = crate::fxhash::FxHashSet::default();
+        while let Some(current) = stack.pop() {
+            if !seen.insert(current) {
+                continue;
+            }
+            let dependents: Vec<SatNodeId> = calc_alg_context
+                .process_context()
+                .sat_node(current)
+                .get_copy_depending_individual_node_linker()
+                .iter()
+                .map(|link| link.target)
+                .collect();
+            for mut dependent in dependents {
+                if calc_alg_context.process_context().sat_node(dependent).has_data_value_applied() {
+                    return false;
+                }
+                self.collect_linked_successor_nodes(&mut dependent, calc_alg_context, INVALID);
+                let linked = IndividualSaturationProcessNode::get_linked_role_successor_hash_in_context(
+                    calc_alg_context.process_context_mut(),
+                    dependent,
+                    false,
+                );
+                if linked.is_some() {
+                    let pc = calc_alg_context.process_context();
+                    let any_edge = pc
+                        .linked_role_sat_succ_hash(linked)
+                        .role_succ_data_hash
+                        .values()
+                        .any(|&data| data.is_some() && pc.linked_role_sat_succ_data(data).succ_count > 0);
+                    if any_edge {
+                        return false;
+                    }
+                }
+                stack.push(dependent);
+            }
+        }
+        true
+    }
+
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::checkCriticalConceptsForNode`
     /// (cpp 3002–3189). The per-node critical-concept dispatch: drains the node's
     /// per-type critical-concept queues (FORALL, ATMOST, VALUE, NOMINAL, DISJUNCTION,
@@ -677,7 +807,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     calc_alg_context,
                 ) {
                     self.insufficient_nominal_count += 1;
-                    if unattached_abox_template {
+                    if unattached_abox_template
+                        && self.template_label_free_of_edge_restrictions(
+                            *indi_proc_sat_node,
+                            calc_alg_context,
+                        )
+                    {
                         self.update_direct_not_dependent_adding_individual_status_flags(
                             *indi_proc_sat_node,
                             IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,

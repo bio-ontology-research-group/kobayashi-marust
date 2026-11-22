@@ -1,0 +1,84 @@
+//! The saturation merges all successors of a functional role into one node by
+//! extending a copy base with the labels of the other successors. The
+//! extension map holds one polarity per concept, so two successors with `B, ¬C`
+//! and `¬B, C` (neither polarity in the base) lost the clash: with
+//! `A ⊑ ∃s.B ⊓ ∃s.C ⊓ ∃r.A`, `B ⊓ C ⊑ ⊥`, `s ⊑ r` and `r` functional, the
+//! base `A` was extended with `¬B, C` only and the native bridge reported `A`
+//! satisfiable (HermiT: unsatisfiable). The automatic route used that answer
+//! for `--realize --different`.
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/bridge_functional_merge")
+        .join(name)
+}
+
+fn unsat_rows(path: &Path, options: &[&str], env: &[(&str, &str)]) -> Vec<String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
+    for (key, _) in std::env::vars() {
+        if key.starts_with("KM_") {
+            command.env_remove(key);
+        }
+    }
+    command.env("KM_THREADS", "1");
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    let output = command.arg("classify").arg("--lines").args(options).arg(path).output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    assert!(output.status.success(), "{}: {}", path.display(), String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "CONSISTENT 1"), "{stdout}");
+    let mut rows: Vec<String> =
+        stdout.lines().filter(|line| line.starts_with("UNSAT\t")).map(str::to_string).collect();
+    rows.sort();
+    rows
+}
+
+#[test]
+fn functional_merge_of_opposite_polarities_stays_unsatisfiable() {
+    let path = fixture("opposite-polarity.ofn");
+    assert_eq!(unsat_rows(&path, &[], &[("KM_ROUTE", "ht_bridge")]), ["UNSAT\t:A"]);
+    assert_eq!(unsat_rows(&path, &[], &[]), ["UNSAT\t:A"]);
+}
+
+#[test]
+fn realization_with_different_rows_keeps_unsatisfiable_classes() {
+    // A fuzz case whose realization route answers from the native bridge.
+    let path = fixture("fuzz-v303-10.ofn");
+    let expected = ["UNSAT\t:A", "UNSAT\t:E"];
+    assert_eq!(unsat_rows(&path, &[], &[("KM_ROUTE", "ht_bridge")]), expected);
+    assert_eq!(unsat_rows(&path, &["--realize", "--different"], &[]), expected);
+    assert_eq!(unsat_rows(&path, &["--realize"], &[]), expected);
+}
+
+/// `A ⊑ ∃r.Self` with `r` functional: the self edge fills `A`'s only
+/// `r`-slot, so `B ⊑ ∃r.A` and `A ⊑ ∃r⁻.B` make `B` and `A` equivalent
+/// (HermiT). With the core blocking concept marks (1ba05c77) the linked
+/// candidate search offered a saturation-cached `D` node as blocker whose
+/// `≤1 r` had never been applied, so its `r` reapply queue was empty and the
+/// optimized blocking test passed B3 vacuously; the bridge lost `B ⊑ A` and
+/// `B ⊑ G`.
+#[test]
+fn optimized_blocking_reads_unapplied_blocker_restrictions() {
+    let path = fixture("self-loop-functional.ofn");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
+    for (key, _) in std::env::vars() {
+        if key.starts_with("KM_") {
+            command.env_remove(key);
+        }
+    }
+    let output = command
+        .env("KM_THREADS", "1")
+        .env("KM_ROUTE", "ht_bridge")
+        .args(["classify", "--lines"])
+        .arg(&path)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    for row in ["SUB\t:A\t:B", "SUB\t:A\t:G", "SUB\t:B\t:A", "SUB\t:B\t:G"] {
+        assert!(stdout.lines().any(|line| line == row), "{row}: {stdout}");
+    }
+}
