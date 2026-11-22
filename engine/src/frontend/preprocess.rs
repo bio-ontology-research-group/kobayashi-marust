@@ -428,10 +428,35 @@ fn forall_transitivity_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLCla
     for l in &universe {
         lit_supers.insert(l.clone(), supers(l));
     }
+    // Edges exist only where a clause creates them: an existential head
+    // `l(x, f(x))` (or `l(f(x), x)`) or a ground role atom. Propagation is
+    // needed over T itself (the engine lifts an edge to the super-roles of
+    // its own direction) and over every created literal below T.
+    let mut generated: HashSet<RoleLit> = HashSet::default();
+    for c in tbox {
+        for h in &c.head {
+            if let Atom::Role(l, a, b) = h {
+                // An edge is walked in both directions (forward from its
+                // source, backward from its target), so both literals count.
+                if !(matches!(a, Term::Var(_)) && matches!(b, Term::Var(_))) {
+                    generated.insert((l.clone(), false));
+                    generated.insert((l.clone(), true));
+                }
+            }
+        }
+        for at in &c.body {
+            if let Atom::Role(l, a, b) = at {
+                if matches!(a, Term::Ind(_)) || matches!(b, Term::Ind(_)) {
+                    generated.insert((l.clone(), false));
+                    generated.insert((l.clone(), true));
+                }
+            }
+        }
+    }
     let subs_of = |t: &RoleLit| -> Vec<RoleLit> {
         let mut v: Vec<RoleLit> = lit_supers
             .iter()
-            .filter(|(_, ups)| ups.contains(t))
+            .filter(|(l, ups)| ups.contains(t) && (*l == t || generated.contains(*l)))
             .map(|(l, _)| l.clone())
             .collect();
         v.sort();
@@ -507,8 +532,24 @@ fn forall_transitivity_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLCla
         if gamma.is_empty() {
             continue;
         }
-        for (t, ups) in &trans_supers {
-            if !ups.contains(&lit) {
+        // The transitive literals below R, keeping only the maximal ones and
+        // one per equivalence class: for T ⊑* T' (both transitive, both
+        // ⊑* R) every T-path is a T'-path, so the marker of T' covers T.
+        let below: Vec<&RoleLit> = trans_supers.iter().filter(|(_, ups)| ups.contains(&lit)).map(|(t, _)| t).collect();
+        let above = |a: &RoleLit, b: &RoleLit| -> bool {
+            lit_supers.get(a).is_some_and(|ups| ups.contains(b))
+        };
+        let kept: HashSet<RoleLit> = below
+            .iter()
+            .filter(|t| {
+                !below.iter().any(|u| {
+                    u != *t && above(t, u) && (!above(u, t) || *u < **t)
+                })
+            })
+            .map(|t| (*t).clone())
+            .collect();
+        for (t, _) in &trans_supers {
+            if !kept.contains(t) {
                 continue;
             }
             let key = (t.clone(), on_far.clone(), head.clone());
