@@ -5579,9 +5579,16 @@ pub struct Ht {
     /// KM_HT_CARD_RECOG: propagation-based `≤n` RECOGNITION. Replaces the frontend's
     /// per-node `⊤→Q∨NQ` excluded-middle recognition (which branches on every node
     /// and causes disjunction non-convergence on cardinality giants) with a
-    /// deterministic counting rule run at `Scan::Sat` (`card_recog_step`). The
+    /// counting decision taken at `Scan::Sat` (`card_recog_candidate`). The
     /// clausal excluded middle is dropped by cb_to_ht when this is set.
     card_recog: bool,
+    /// Concept pairs that occur together in the head of a body-free clause:
+    /// a `≤n` marker and its `≥(n+1)` partner with their excluded middle still
+    /// in the clause set (cb_to_ht drops it only in its two-disjunct shape; a
+    /// sorted input keeps `⊤ → Q ∨ NQ ∨ __data__`). The search branches on
+    /// that clause itself, so recognition leaves those markers alone. Built on
+    /// first use.
+    card_recog_em_pairs: Option<HashSet<(C, C)>>,
     /// KM_HT_PHASE: label-keyed phase saving. `phase[c]` = was concept `c` true in
     /// the most recent clash-free model. `order_disjuncts` tries a disjunct whose
     /// concept was last-true first, so each per-query witness rebuild warm-starts
@@ -18771,6 +18778,7 @@ impl Ht {
             cert_exact_cardinality_markers: HashSet::default(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             card_recog: std::env::var_os("KM_NO_HT_CARD_RECOG").is_none(),
+            card_recog_em_pairs: None,
             pc_tainted: Vec::new(),
             pc_candidates: Vec::new(),
             pc_unsat_candidates: Vec::new(),
@@ -19016,6 +19024,7 @@ impl Ht {
             .extend(defs.values().map(|definition| definition.role));
         self.card_defs = defs;
         self.cert_card_defs_override = None;
+        self.card_recog_em_pairs = None;
         self.card = true;
     }
 
@@ -20927,7 +20936,7 @@ impl Ht {
     }
 
     /// Is `filler` IMPOSSIBLE at node `s` — would asserting it clash given the
-    /// current (saturated) model? Used by `card_recog_step` to qualify an otherwise
+    /// current (saturated) model? Used by `card_recog_candidate` to qualify an otherwise
     /// unqualified `≤n` successor as `¬filler` (so it does not count toward the
     /// bound). Tentatively adds `filler`, propagates the consequences, reads the
     /// clash, then backtracks to leave the model exactly as it was. Returns the
@@ -20955,33 +20964,84 @@ impl Ht {
         result
     }
 
-    /// KM_HT_CARD_RECOG: propagation-based `≤n` RECOGNITION. Run only at a saturated
-    /// model (`Scan::Sat`), where every node's `r.F`-successor count is FINAL. For
-    /// each `≤n role.filler` marker `Q` (a `Max` `card_def`) and each canonical node
-    /// `v` not already carrying `Q`, count `v`'s distinct `role`-successors: those
-    /// provably carrying `filler` (definite), those carrying `¬filler` (excluded),
-    /// and the still-unqualified rest. If `definite + unqualified ≤ n`, then AT MOST
-    /// `n` of them can be the filler in any extension, so `≤n role.filler` holds and
-    /// we DERIVE `Q` deterministically (no branch). This replaces the frontend's
-    /// `⊤→Q∨NQ` excluded middle (dropped by cb_to_ht under the same flag), which
-    /// branched on every node. Sound: deriving `Q` only enables the first-class `≤n`
-    /// enforcement (`card_max`) + the recognition chains, both of which already hold
-    /// for a node that satisfies `≤n`; any later branch that pushes the count over
-    /// `n` clashes against that enforcement with `Q`'s conservative dep, so
-    /// backjumping stays correct. Monotone (markers are only ever added), so it
-    /// reaches a fixpoint. Returns true iff it derived a new marker.
-    fn card_recog_step(&mut self) -> bool {
+    /// KM_HT_CARD_RECOG: propagation-based `≤n` RECOGNITION, run only at a
+    /// saturated model (`Scan::Sat`). For each `≤n role.filler` marker `Q` (a
+    /// `Max` `card_def`) and each canonical node `v` carrying neither `Q` nor
+    /// its partner, count `v`'s distinct `role`-successors: those provably
+    /// carrying `filler` (definite), those carrying `¬filler` (excluded), and the
+    /// still-unqualified rest. If `definite + unqualified ≤ n`, the model
+    /// satisfies `≤n role.filler` at `v` as it stands. This replaces the
+    /// frontend's `⊤→Q∨NQ` excluded middle (dropped by cb_to_ht under the same
+    /// flag), which branched on every node at every step; the decision is now
+    /// taken only at complete models, where the count already favours `Q`.
+    ///
+    /// The count holds only for the successors the model has now; a later
+    /// branch can add successors, and the marker's consequences can clash
+    /// (with `F ⊓ E ⊑ ⊥`, `≤1 s0 ⊑ E`, a node `F` without successors got the
+    /// marker, then `E`, then a clash with no decision behind it, so `F` came
+    /// out unsatisfiable; tbox sweep htcard_min.ofn). The derivation is
+    /// therefore a decision: this returns the first `(node, marker, partner,
+    /// dep)` to decide, and `branch_recog` tries the marker and then its
+    /// `≥(n+1)` partner, the two sides of the dropped excluded middle. A
+    /// marker without a partner had no excluded middle to replace and is not
+    /// derived: it holds only where a clause puts it.
+    fn card_recog_candidate(&mut self) -> Option<(Node, C, C, DepSet)> {
         if self.card_defs.is_empty() {
-            return false;
+            return None;
         }
-        let maxdefs: Vec<(C, CardDef)> = self
+        let maxdefs: Vec<(C, CardDef, C)> = self
             .card_defs
             .iter()
             .filter(|(_, d)| d.kind == CardKind::Max)
-            .map(|(&c, &d)| (c, d))
+            .filter_map(|(&c, &d)| {
+                let partner = self
+                    .card_defs
+                    .iter()
+                    .filter(|(_, p)| {
+                        p.kind == CardKind::Min
+                            && p.n == d.n + 1
+                            && p.role == d.role
+                            && p.filler == d.filler
+                    })
+                    .map(|(&pc, _)| pc)
+                    .min()?;
+                Some((c, d, partner))
+            })
             .collect();
         if maxdefs.is_empty() {
-            return false;
+            return None;
+        }
+        if self.card_recog_em_pairs.is_none() {
+            let mut pairs = HashSet::default();
+            for (clause, _, _) in &self.index.clauses {
+                if !clause.body.is_empty() {
+                    continue;
+                }
+                let heads: Vec<C> = clause
+                    .head
+                    .iter()
+                    .filter_map(|atom| match atom {
+                        Atom::Concept { lit, .. } if !lit.neg => Some(lit.c),
+                        _ => None,
+                    })
+                    .collect();
+                for &a in &heads {
+                    for &b in &heads {
+                        if a != b {
+                            pairs.insert((a, b));
+                        }
+                    }
+                }
+            }
+            self.card_recog_em_pairs = Some(pairs);
+        }
+        let em_pairs = self.card_recog_em_pairs.as_ref().expect("built above");
+        let maxdefs: Vec<(C, CardDef, C)> = maxdefs
+            .into_iter()
+            .filter(|(marker, _, partner)| !em_pairs.contains(&(*marker, *partner)))
+            .collect();
+        if maxdefs.is_empty() {
+            return None;
         }
         let nn = self.ext.num_nodes();
         if std::env::var_os("KM_HT_RECOG_DBG").is_some() {
@@ -20992,19 +21052,20 @@ impl Ht {
                 nn
             );
         }
-        let mut made = false;
         for raw in 0..nn {
             let v = self.ext.resolve(raw);
             // canonical nodes only (a merged victim is dead; its survivor is visited).
             if v != raw || self.ext.merged[v].is_some() {
                 continue;
             }
-            for &(marker, def) in &maxdefs {
+            for &(marker, def, partner) in &maxdefs {
                 let qlit = CLit {
                     neg: false,
                     c: marker,
                 };
-                if self.ext.has_concept(v, qlit) {
+                if self.ext.has_concept(v, qlit)
+                    || self.ext.has_concept(v, CLit { neg: false, c: partner })
+                {
                     continue;
                 }
                 let comp = CLit {
@@ -21076,12 +21137,47 @@ impl Ht {
                         if could <= def.n { "DERIVE" } else { "skip" }
                     );
                 }
-                if could <= def.n && self.ext.add_concept(v, qlit, &dep) {
-                    made = true;
+                if could <= def.n {
+                    return Some((v, marker, partner, dep));
                 }
             }
         }
-        made
+        None
+    }
+
+    /// Decide a `≤n` recognition marker found by `card_recog_candidate`: the
+    /// marker first, then its `≥(n+1)` partner, with the dependency-directed
+    /// backjumping of `branch_choose`. Sound: `≤n r.F ⊔ ≥(n+1) r.F` holds at
+    /// every element, so the two branches cover every model, and each branch
+    /// only adds a concept whose enforcement rules are the ordinary ones.
+    fn branch_recog(&mut self, v: Node, marker: C, partner: C, base: &DepSet, depth: Level) -> Out {
+        let level = depth + 1;
+        self.branch_pushes += 1;
+        let mut fail = dep_empty();
+        for &c in &[marker, partner] {
+            self.disjunct_tries += 1;
+            let mark = self.ext.mark();
+            let dep = dep_add(base, level);
+            self.ext.add_concept(v, CLit { neg: false, c }, &dep);
+            let sub = self.dfs(level);
+            match sub {
+                Out::Sat => return Out::Sat,
+                Out::Restart => {
+                    self.ext.backtrack_to(mark);
+                    return Out::Restart;
+                }
+                Out::Conflict(cd) => {
+                    self.backtracks += 1;
+                    self.ext.backtrack_to(mark);
+                    if !dep_contains(&cd, level) {
+                        self.backjumps += 1;
+                        return Out::Conflict(cd);
+                    }
+                    fail = dep_union(&fail, &cd);
+                }
+            }
+        }
+        Out::Conflict(dep_remove(&fail, level))
     }
 
     /// KM_HT_CARD choose branch (Konclude `applyAutomatChooseRule`): a `≤n`-counted
@@ -21609,13 +21705,14 @@ impl Ht {
                             return self.branch_merge(mid, depth);
                         }
                     }
-                    // KM_HT_CARD_RECOG: derive any ≤n recognition marker that now
-                    // provably holds at this saturated model (deterministic, no
-                    // branch). A newly derived marker fires recognition chains and
-                    // ≤n enforcement, so re-propagate and re-scan before declaring
-                    // the model complete.
-                    if self.card_recog && self.card_recog_step() {
-                        continue;
+                    // KM_HT_CARD_RECOG: decide a ≤n recognition marker that holds
+                    // in this saturated model, marker first, then its ≥(n+1)
+                    // partner (`branch_recog`). Each branch re-propagates and
+                    // re-scans before the model counts as complete.
+                    if self.card_recog {
+                        if let Some((v, marker, partner, dep)) = self.card_recog_candidate() {
+                            return self.branch_recog(v, marker, partner, &dep, depth);
+                        }
                     }
                     return Out::Sat;
                 }

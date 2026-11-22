@@ -3472,6 +3472,15 @@ impl Tableau {
             let mut hy: Vec<CLit> = Vec::new();
             for a in &cl.head {
                 match a {
+                    // A negative head literal (from the complementary-definer
+                    // fold, `Q1 ⊑ ¬B`) made the caching checker refute
+                    // satisfiable seeds: `C ⊓ ¬Q1` came back unsatisfiable
+                    // under `⊤ ⊑ Q1 ⊔ B`, `B ⊑ ∃s0.A` (tbox sweep
+                    // bool20033_0082). Leave such inputs to the search-based
+                    // classification, which decides them correctly.
+                    Atom::Concept { lit, .. } if lit.neg => {
+                        fence!(ci, "negative head literal")
+                    }
                     Atom::Concept { lit, t } => {
                         if *t == 0 {
                             hx.push(*lit)
