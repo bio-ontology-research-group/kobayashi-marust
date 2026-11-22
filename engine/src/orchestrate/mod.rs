@@ -1036,6 +1036,23 @@ fn reference_force_enabled() -> bool {
     std::env::var("KM_REFERENCE_FORCE").as_deref() == Ok("1")
 }
 
+/// Whether the automatic schedule runs the bounded bridge-first attempts on
+/// `route` (see `classify_with_evidence_inner`). Those attempts carry
+/// data-property assertions themselves and re-run the full frontend when
+/// they decline, so only then may the frontend skip its `DataHasValue`
+/// conversion pass. A forced route never runs them: skipping the conversion
+/// there leaves the assertions uncarried and the route declines.
+pub(crate) fn bounded_bridge_first_scheduled(
+    automatic_requested: bool,
+    route: crate::routing::Route,
+    profile: &crate::frontend::profile::OntologyProfile,
+) -> bool {
+    automatic_requested
+        && !reference_force_enabled()
+        && !profile.atomic_class_abox_candidate
+        && crate::routing::bounded_bridge_first_candidate(route, profile)
+}
+
 /// Dispatch an isolated top-level mechanism. `None` means the explicitly
 /// requested historical portfolio; every other variant returns one worker's
 /// answer or an honest out-of-fragment/error result, never a fallback answer.
@@ -2431,7 +2448,52 @@ fn classify_with_evidence_inner(
         && !reference_force_enabled()
         && !crate::tableau::ht_lean_certification_requested()
     {
-        if let Some(mode) = data_source::automatic_candidate(ont)? {
+        let candidate = data_source::automatic_candidate(ont)?;
+        // A rule ontology under a certificate request takes the certified
+        // rules route (`ht_rules` and its certificate) first, as at v1.6.5;
+        // the ground-rule reduction answers only when that route declines.
+        let rules_first = candidate == Some("KM_GROUND_RULE_SOURCE")
+            && data_source::cached_grounded_has_rules(ont)
+            && rules_route_first_requested(|key| std::env::var_os(key));
+        let candidate = if rules_first && std::env::var_os(GROUND_RULE_SOURCE_DEFERRED_ENV).is_some() {
+            // The nested classification below: skip the reduction here.
+            None
+        } else if rules_first {
+            let counters = PublicationCounters::capture();
+            let rules_route = {
+                let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                std::env::set_var(GROUND_RULE_SOURCE_DEFERRED_ENV, "1");
+                classify_with_evidence_mode(initial_cfg, ont, retain_grouped_output)
+            };
+            match rules_route {
+                Ok(evidence) => return Ok(evidence),
+                // A decline or a worker past its time or memory limit: the
+                // schedule cannot answer. A failed or rejected worker can.
+                Err(error @ (OrchestrateError::OutOfFragment(_)
+                    | OrchestrateError::WorkerTimeout { .. }
+                    | OrchestrateError::WorkerMemoryLimit { .. })) => {
+                    counters.restore();
+                    let reason = match &error {
+                        OrchestrateError::OutOfFragment(reason) => reason.clone(),
+                        OrchestrateError::WorkerTimeout { bin, .. } => format!("worker {bin} exceeded its time limit"),
+                        OrchestrateError::WorkerMemoryLimit { bin, .. } => format!("worker {bin} exceeded its RSS limit"),
+                        _ => unreachable!(),
+                    };
+                    let detail = format!(
+                        "the rules route declined ({reason}); the ground-rule bridge answer has no rules certificate"
+                    );
+                    crate::lean_checkers::record_cannot_check("rules", "ground-rule-source", &detail);
+                    if std::env::var_os("KM_TIMING").is_some() || !crate::lean_checkers::active() {
+                        eprintln!("KM rules route: {detail}");
+                    }
+                    candidate
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            candidate
+        };
+        if let Some(mode) = candidate {
             if std::env::var_os("KM_TIMING").is_some() {
                 eprintln!("KM_TIMING automatic data source attempt: {mode}");
             }
@@ -2885,11 +2947,7 @@ fn classify_with_evidence_inner(
     // attempt first. The bridge is complete-answer-or-defer, so an answer is
     // publishable as is; any decline or budget expiry restores this call's
     // environment and continues with the unchanged schedule below.
-    if automatic_requested
-        && !reference_force_enabled()
-        && !meta.profile.atomic_class_abox_candidate
-        && crate::routing::bounded_bridge_first_candidate(selected_route, &meta.profile)
-    {
+    if bounded_bridge_first_scheduled(automatic_requested, selected_route, &meta.profile) {
         // The historical attempt runs first and unchanged. Only when it
         // declines on a source with data-property assertions does a second,
         // separately bounded attempt carry those assertions to the bridge as
@@ -4239,6 +4297,27 @@ fn finite_cover_enabled() -> bool {
 /// `--export-model` (`KM_EXPORT_MODEL_ACTIVE` without the realization's own
 /// ABox-only capture `KM_EXPORT_ABOX_ONLY`, after which realization runs its
 /// exact probe path when no model is recorded).
+/// Set by the rules-first schedule for its nested classification, which
+/// must not try the ground-rule reduction again.
+const GROUND_RULE_SOURCE_DEFERRED_ENV: &str = "KM_GROUND_RULE_SOURCE_DEFERRED";
+
+/// Whether a rule ontology takes the certified rules route before the
+/// ground-rule reduction (docs/V1.7.0-RULES-SHOIQ.md): whenever certificates
+/// are consumed (the modes of [`finite_cover_certificate_mode`], an HT
+/// certificate request, or a rules-route or inert-sort certificate request),
+/// and on request with `KM_RULES_ROUTE_FIRST=1`. Default runs keep the
+/// faster ground-rule reduction.
+fn rules_route_first_requested(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    let set = |key: &str| env(key).is_some_and(|v| !v.is_empty());
+    finite_cover_certificate_mode(&env)
+        || crate::tableau::HT_LEAN_CERTIFICATION_ENV.iter().any(|key| set(key))
+        || set("KM_RULES_LEAN_CERT")
+        || set("KM_RULES_LEAN_CHECKER")
+        || set("KM_RULES_INERT_CERT")
+        || set("KM_RULES_INERT_LEAN_CHECKER")
+        || env("KM_RULES_ROUTE_FIRST").is_some_and(|v| v != "0")
+}
+
 fn finite_cover_certificate_mode(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
     let set = |key: &str| env(key).is_some_and(|v| !v.is_empty());
     set(crate::lean_checkers::DIR_ENV)

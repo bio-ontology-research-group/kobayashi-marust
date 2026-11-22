@@ -55,8 +55,34 @@ fn top_rows_match_hermit_and_keep_the_taxonomy() {
         let top = stdout(&km(&source, &["--lines", "--top"]));
         assert_eq!(top_rows(&top), expected(case), "{case}");
         let taxonomy: Vec<&str> = top.lines().filter(|line| !line.starts_with("TOP\t")).collect();
-        assert_eq!(taxonomy, plain.lines().collect::<Vec<_>>(), "{case}");
+        assert_eq!(taxonomy, without_unsat_sub_rows(&plain), "{case}");
     }
+}
+
+/// The plain taxonomy in the row convention of the extended outputs
+/// (docs/V1.7.0-SPEED.md 4(c3)): for a consistent ontology, no `SUB` row
+/// whose subclass has an `UNSAT` row. Plain `classify` keeps those rows.
+fn without_unsat_sub_rows(plain: &str) -> Vec<&str> {
+    let unsat: BTreeSet<&str> = plain.lines().filter_map(|line| line.strip_prefix("UNSAT\t")).collect();
+    plain
+        .lines()
+        .filter(|line| {
+            let fields: Vec<&str> = line.split('\t').collect();
+            !(fields.len() == 3 && fields[0] == "SUB" && unsat.contains(fields[1]))
+        })
+        .collect()
+}
+
+/// `top-unsat` (`A ⊑ ⊥`, `A ⊑ E`): plain `classify` prints `SUB :A :E`,
+/// `--top` prints only `UNSAT :A` for `A`.
+#[test]
+fn top_output_prints_no_sub_row_of_an_unsatisfiable_class() {
+    let source = fixture("top-unsat.ofn");
+    let plain = stdout(&km(&source, &["--lines"]));
+    assert!(plain.lines().any(|line| line == "SUB\t:A\t:E"), "{plain}");
+    let top = stdout(&km(&source, &["--lines", "--top"]));
+    assert!(top.lines().any(|line| line == "UNSAT\t:A"), "{top}");
+    assert!(!top.lines().any(|line| line.starts_with("SUB\t:A\t")), "{top}");
 }
 
 #[test]

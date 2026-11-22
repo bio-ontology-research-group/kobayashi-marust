@@ -5254,10 +5254,10 @@ pub(crate) mod clash_set_compare {
 
     static CLASHES: AtomicU64 = AtomicU64::new(0);
     static DIFFER: AtomicU64 = AtomicU64::new(0);
-    static PATH: OnceLock<Option<std::ffi::OsString>> = OnceLock::new();
+    static ENABLED: OnceLock<bool> = OnceLock::new();
 
     extern "C" fn dump() {
-        if let Some(Some(path)) = PATH.get() {
+        if let Some(path) = super::super::clash_set_compare_path() {
             use std::io::Write;
             if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
                 let _ = writeln!(
@@ -5272,17 +5272,16 @@ pub(crate) mod clash_set_compare {
     }
 
     pub(crate) fn enabled() -> bool {
-        PATH.get_or_init(|| {
-            let path = std::env::var_os("KM_CLASH_SET_COMPARE");
-            if path.is_some() {
+        *ENABLED.get_or_init(|| {
+            let enabled = super::super::clash_set_compare_path().is_some();
+            if enabled {
                 // SAFETY: `dump` is a plain `extern "C" fn` without arguments.
                 unsafe {
                     libc::atexit(dump);
                 }
             }
-            path
+            enabled
         })
-        .is_some()
     }
 
     pub(crate) fn record(
