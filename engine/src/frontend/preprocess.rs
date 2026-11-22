@@ -339,14 +339,15 @@ type RoleLit = (String, bool);
 /// with a fresh marker `M` read as `∀T.(¬⋀D ⊔ ⋁C)`:
 ///
 ///   Γ(x) → M(x)
-///   M(x) ∧ T(x,y) ∧ ⋀D(y) → ⋁C(y)
-///   M(x) ∧ T(x,y) → M(y)
+///   M(x) ∧ L(x,y) ∧ ⋀D(y) → ⋁C(y)      for every literal L ⊑* T
+///   M(x) ∧ L(x,y) → M(y)                for every literal L ⊑* T
 ///
-/// where `T(x,y)` is `t(x,y)` for `T = t` and `t(y,x)` for `T = t⁻`.
+/// where `L(x,y)` is `l(x,y)` for `L = l` and `l(y,x)` for `L = l⁻`
+/// (written as `l(x,y)` with the marker moving from y to x).
 /// Soundness: every model of the clauses extends to the marker by
 /// `M := ∀T.(¬⋀D ⊔ ⋁C)`. The first clause holds because `T ⊑* R` and the
-/// original clause, the second by definition, and the third because `T` is
-/// transitive (`∀T.E ⊑ ∀T.∀T.E`). So the clauses are a conservative
+/// original clause, the second because `L ⊑* T` and the definition, and the
+/// third because `L ⊑* T` and `T` is transitive (`∀T.E ⊑ ∀T.∀T.E ⊑ ∀L.∀T.E`). So the clauses are a conservative
 /// extension and no answer over the source signature changes except by
 /// completeness. Completeness: these are the propagations the standard
 /// elimination of transitive roles adds (`∀R.E ⊑ ∀T.∀T.E` for transitive
@@ -410,6 +411,32 @@ fn forall_transitivity_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLCla
     // For each transitive literal, the literals above it.
     let trans_supers: Vec<(RoleLit, HashSet<RoleLit>)> =
         transitive.iter().map(|t| (t.clone(), supers(t))).collect();
+    // Every literal below each transitive literal: the engine labels an edge
+    // with the super-roles of its own direction only, so a T-edge reached
+    // through an inverse inclusion (s2 ⊑ s0⁻, s0 ⊑ ti, ti symmetric) is not
+    // seen as T on the existential's edge. The propagation clauses are
+    // therefore emitted for every sub-literal L ⊑* T in L's own name.
+    let mut universe: HashSet<RoleLit> = HashSet::default();
+    for (k, vs) in &up {
+        universe.insert(k.clone());
+        universe.extend(vs.iter().cloned());
+    }
+    for t in &transitive {
+        universe.insert(t.clone());
+    }
+    let mut lit_supers: HashMap<RoleLit, HashSet<RoleLit>> = HashMap::default();
+    for l in &universe {
+        lit_supers.insert(l.clone(), supers(l));
+    }
+    let subs_of = |t: &RoleLit| -> Vec<RoleLit> {
+        let mut v: Vec<RoleLit> = lit_supers
+            .iter()
+            .filter(|(_, ups)| ups.contains(t))
+            .map(|(l, _)| l.clone())
+            .collect();
+        v.sort();
+        v
+    };
     let x = var_x();
     let y = var_y();
     let rename = |t: &Term, cx: &Term| -> Term { if t == cx { x.clone() } else { y.clone() } };
@@ -484,13 +511,6 @@ fn forall_transitivity_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLCla
             if !ups.contains(&lit) {
                 continue;
             }
-            let t_atom = |from: &Term, to: &Term| -> Atom {
-                if t.1 {
-                    Atom::Role(t.0.clone(), to.clone(), from.clone())
-                } else {
-                    Atom::Role(t.0.clone(), from.clone(), to.clone())
-                }
-            };
             let key = (t.clone(), on_far.clone(), head.clone());
             let next = markers.len();
             let (m, fresh) = match markers.get(&key) {
@@ -504,15 +524,28 @@ fn forall_transitivity_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLCla
             // Γ(x) → M(x)
             out.push(clause(gamma.clone(), [Atom::Concept(m.clone(), x.clone())]));
             if fresh {
-                // M(x) ∧ T(x,y) ∧ ⋀D(y) → ⋁C(y)
-                let mut body2 = vec![Atom::Concept(m.clone(), x.clone()), t_atom(&x, &y)];
-                body2.extend(on_far.iter().cloned());
-                out.push(clause(body2, head.iter().cloned()));
-                // M(x) ∧ T(x,y) → M(y)
-                out.push(clause(
-                    [Atom::Concept(m.clone(), x.clone()), t_atom(&x, &y)],
-                    [Atom::Concept(m.clone(), y.clone())],
-                ));
+                for l in subs_of(t) {
+                    // A literal L ⊑* T: its edge `l(x,y)` runs from x to y
+                    // for L = l and from y to x for L = l⁻ (the same clause
+                    // read with the variables swapped, so no reversed atom).
+                    let edge = Atom::Role(l.0.clone(), x.clone(), y.clone());
+                    let (from, to) = if l.1 { (&y, &x) } else { (&x, &y) };
+                    let at = |a: &Atom| -> Atom {
+                        match a {
+                            Atom::Concept(n, _) => Atom::Concept(n.clone(), to.clone()),
+                            other => other.clone(),
+                        }
+                    };
+                    // M(from) ∧ L(from,to) ∧ ⋀D(to) → ⋁C(to)
+                    let mut body2 = vec![Atom::Concept(m.clone(), from.clone()), edge.clone()];
+                    body2.extend(on_far.iter().map(at));
+                    out.push(clause(body2, head.iter().map(at)));
+                    // M(from) ∧ L(from,to) → M(to)
+                    out.push(clause(
+                        [Atom::Concept(m.clone(), from.clone()), edge],
+                        [Atom::Concept(m.clone(), to.clone())],
+                    ));
+                }
             }
         }
     }
