@@ -324,7 +324,7 @@ type RoleLit = (String, bool);
 /// transitivity encoding for SHI, as in the CB calculus papers).
 ///
 /// The clause stream carries a universal as `Γ(x) ∧ R(x,y) ∧ ⋀D(y) → ⋁C(y)`
-/// (or with `R(y,x)`, the universal over `R⁻`). The raw transitivity axioms
+/// (a universal over an inverse uses the `__inv__R` name). The raw transitivity axioms
 /// `T(x,y) ∧ T(y,z) → T(x,z)` are filtered from the stream (they bloat the
 /// CB contexts), and the transitivity recognitions above cover only
 /// `∃`-consumers, so a universal over a role with a transitive sub-role was
@@ -429,7 +429,15 @@ fn forall_transitivity_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLCla
         if far != *a && far != *b {
             continue;
         }
-        let near = if far == *b { a.clone() } else { b.clone() };
+        // Only the universal form `Γ(x) ∧ R(x,y) → C(y)` with a guard Γ: the
+        // `∃`-consumer form (head on the role's source) is the business of
+        // the recognitions above, and keeping it out leaves EL clause streams
+        // (which have no universals) unchanged. An unguarded universal (a
+        // range) already holds at every element, so it needs no marker.
+        if far != *b {
+            continue;
+        }
+        let near = a.clone();
         if !c.head.iter().all(|h| matches!(h, Atom::Concept(_, t) if *t == far)) {
             continue;
         }
@@ -440,7 +448,7 @@ fn forall_transitivity_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLCla
         }) {
             continue;
         }
-        let lit: RoleLit = (r.to_string(), far == *a);
+        let lit: RoleLit = (r.to_string(), false);
         let gamma: Vec<Atom> = c
             .body
             .iter()
@@ -469,6 +477,9 @@ fn forall_transitivity_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLCla
             })
             .collect();
         head.sort();
+        if gamma.is_empty() {
+            continue;
+        }
         for (t, ups) in &trans_supers {
             if !ups.contains(&lit) {
                 continue;
