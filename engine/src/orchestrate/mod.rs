@@ -766,14 +766,17 @@ fn nominal_cb_clause_input(
 /// offers its labels as `B(y)` hypotheses, `rsucc_reach`; the ground context
 /// does not), so the clash is never found and the arm answers consistent.
 /// `Some(reason)` when the clause set can need such a step, with margin: a
-/// ground term (an individual or nominal), a role atom from a neighbour to
+/// ground term (an individual or nominal), a Skolem function, a role atom from a neighbour to
 /// the centre (in a body, or in a head reversing a role, as inverse and
 /// symmetric properties do), and a concept atom other than a sort on a
 /// neighbour variable in some body. Then the CB arm gives no answer.
 /// `KM_NOMINAL_CB_NO_PREDECESSOR_GUARD=1` lifts the guard (diagnostic).
 fn nominal_cb_predecessor_gap(bytes: &[u8]) -> Result<Option<String>, CbInputError> {
+    // Without a Skolem function no context has a successor, so no successor
+    // reads a predecessor (a role chain over named individuals only, say).
     if std::env::var_os("KM_NOMINAL_CB_NO_PREDECESSOR_GUARD").is_some()
         || !contains_bytes(bytes, br#""kind":"ind""#)
+        || !contains_bytes(bytes, br#""kind":"fun""#)
     {
         return Ok(None);
     }
