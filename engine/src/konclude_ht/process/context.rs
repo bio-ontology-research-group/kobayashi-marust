@@ -64,7 +64,7 @@ fn saturation_label_copy_threshold() -> usize {
     })
 }
 
-use super::super::model::substrate::{Arena, Cint64, Id, NegLink, INVALID};
+use super::super::model::substrate::{Arena, ChunkedArena, Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
 
 use super::analized_concept_expansion::{
@@ -253,7 +253,8 @@ use super::blocking_hash::{
 };
 // --- W4.5 saturation-layer per-test satellites (saturation::satellites) ---
 use super::super::saturation::satellites::{
-    BackwardSaturationPropagationLink, BackwardSaturationPropagationLinkId,
+    BackwardSaturationPropagationLink, BackwardSaturationPropagationLinkId, CompactCreationRoleLinks,
+    CreationRoleCell, CreationRoleList,
     BackwardSaturationPropagationReapplyDescriptor,
     BackwardSaturationPropagationReapplyDescriptorId, ConceptSaturationDescriptor,
     ConceptSaturationDescriptorId, ConceptSaturationDescriptorReapplyData,
@@ -631,19 +632,22 @@ pub struct ProcessContext {
     /// `CRoleSaturationProcessLinker` pool.
     role_sat_proc_linkers: Arena<RoleSaturationProcessLinker>,
     /// `CBackwardSaturationPropagationLink` pool.
-    backward_sat_prop_links: Arena<BackwardSaturationPropagationLink>,
+    backward_sat_prop_links: ChunkedArena<BackwardSaturationPropagationLink>,
     /// `CBackwardSaturationPropagationReapplyDescriptor` pool.
     backward_sat_prop_reapply_descs: Arena<BackwardSaturationPropagationReapplyDescriptor>,
     /// `CRoleBackwardSaturationPropagationHash` pool.
     role_backward_sat_prop_hashes: Arena<RoleBackwardSaturationPropagationHash>,
     /// `CSaturationSuccessorData` pool.
-    sat_succ_datas: Arena<SaturationSuccessorData>,
+    sat_succ_datas: ChunkedArena<SaturationSuccessorData>,
+    /// Shared immutable creation-role list cells of `sat_succ_datas`
+    /// (`CXNegLinker<CRole*>` chains). Follows that pool's epochs and clears.
+    sat_succ_creation_role_cells: Arena<CreationRoleCell>,
     /// `CSaturationSuccessorExtensionData` pool.
     sat_succ_ext_datas: Arena<SaturationSuccessorExtensionData>,
     /// `CIndividualSaturationSuccessorLinkDataLinker` pool.
     indi_sat_succ_link_data_linkers: Arena<IndividualSaturationSuccessorLinkDataLinker>,
     /// `CLinkedRoleSaturationSuccessorData` pool.
-    linked_role_sat_succ_datas: Arena<LinkedRoleSaturationSuccessorData>,
+    linked_role_sat_succ_datas: ChunkedArena<LinkedRoleSaturationSuccessorData>,
     /// `CLinkedRoleSaturationSuccessorHash` pool.
     linked_role_sat_succ_hashes: Arena<LinkedRoleSaturationSuccessorHash>,
     /// `CIndividualSaturationProcessNodeExtensionData` pool.
@@ -879,13 +883,14 @@ impl ProcessContext {
             con_sat_descs: Arena::new_tight(),
             con_sat_proc_linkers: Arena::new_tight(),
             role_sat_proc_linkers: Arena::new_tight(),
-            backward_sat_prop_links: Arena::new_tight(),
+            backward_sat_prop_links: ChunkedArena::new_tight_chunked(),
             backward_sat_prop_reapply_descs: Arena::new_tight(),
             role_backward_sat_prop_hashes: Arena::new_tight(),
-            sat_succ_datas: Arena::new_tight(),
+            sat_succ_datas: ChunkedArena::new_tight_chunked(),
+            sat_succ_creation_role_cells: Arena::new_tight(),
             sat_succ_ext_datas: Arena::new_tight(),
             indi_sat_succ_link_data_linkers: Arena::new_tight(),
-            linked_role_sat_succ_datas: Arena::new_tight(),
+            linked_role_sat_succ_datas: ChunkedArena::new_tight_chunked(),
             linked_role_sat_succ_hashes: Arena::new_tight(),
             indi_sat_node_ext_datas: Arena::new_tight(),
             sat_indi_node_succ_ext_datas: Arena::new_tight(),
@@ -987,6 +992,7 @@ impl ProcessContext {
             return;
         }
         self.sat_succ_datas.clear_releasing_capacity();
+        self.sat_succ_creation_role_cells.clear_releasing_capacity();
         self.con_sat_descs.clear_releasing_capacity();
         self.backward_sat_prop_links.clear_releasing_capacity();
         self.imp_reapply_con_sat_descs.clear_releasing_capacity();
@@ -1223,6 +1229,7 @@ impl ProcessContext {
             .clear_preserving_capacity();
         self.sat_nominal_handling_datas.clear_preserving_capacity();
         self.sat_succ_datas.clear_preserving_capacity();
+        self.sat_succ_creation_role_cells.clear_preserving_capacity();
         self.sat_successor_all_concept_ext_datas
             .clear_preserving_capacity();
         self.sat_successor_concept_extension_maps
@@ -3476,6 +3483,7 @@ impl ProcessContext {
         self.sat_nominal_dependent_node_hashes.push_epoch();
         self.sat_nominal_handling_datas.push_epoch();
         self.sat_succ_datas.push_epoch();
+        self.sat_succ_creation_role_cells.push_epoch();
         self.sat_successor_all_concept_ext_datas.push_epoch();
         self.sat_successor_concept_extension_maps.push_epoch();
         self.sat_successor_functional_concept_ext_datas.push_epoch();
@@ -3689,6 +3697,7 @@ impl ProcessContext {
         self.sat_nominal_dependent_node_hashes.pop_epoch();
         self.sat_nominal_handling_datas.pop_epoch();
         self.sat_succ_datas.pop_epoch();
+        self.sat_succ_creation_role_cells.pop_epoch();
         self.sat_successor_all_concept_ext_datas.pop_epoch();
         self.sat_successor_concept_extension_maps.pop_epoch();
         self.sat_successor_functional_concept_ext_datas.pop_epoch();
@@ -3857,6 +3866,7 @@ impl ProcessContext {
         self.sat_nominal_dependent_node_hashes.coalesce_epochs_to(target_depth);
         self.sat_nominal_handling_datas.coalesce_epochs_to(target_depth);
         self.sat_succ_datas.coalesce_epochs_to(target_depth);
+        self.sat_succ_creation_role_cells.coalesce_epochs_to(target_depth);
         self.sat_successor_all_concept_ext_datas.coalesce_epochs_to(target_depth);
         self.sat_successor_concept_extension_maps.coalesce_epochs_to(target_depth);
         self.sat_successor_functional_concept_ext_datas.coalesce_epochs_to(target_depth);
@@ -4752,6 +4762,7 @@ impl ProcessContext {
             role_backward_sat_prop_hashes
         );
         row!("sat_succ_datas", sat_succ_datas);
+        row!("sat_succ_creation_role_cells", sat_succ_creation_role_cells);
         row!("sat_succ_ext_datas", sat_succ_ext_datas);
         row!(
             "indi_sat_succ_link_data_linkers",
@@ -4862,22 +4873,11 @@ impl ProcessContext {
             ));
         };
 
-        let mut creation_role_vectors = HashSet::default();
-        let (len, capacity) = self
-            .sat_succ_datas
-            .iter()
-            .filter_map(|data| {
-                let (ptr, len, capacity) = data.creation_role_linker.diagnostic_heap_storage()?;
-                creation_role_vectors.insert(ptr).then_some((len, capacity))
-            })
-            .fold((0usize, 0usize), |acc, item| {
-                (acc.0 + item.0, acc.1 + item.1)
-            });
         add(
             "sat_succ_creation_roles",
-            len,
-            capacity,
-            std::mem::size_of::<NegLink<RoleId>>(),
+            self.sat_succ_creation_role_cells.len(),
+            self.sat_succ_creation_role_cells.capacity(),
+            std::mem::size_of::<CreationRoleCell>(),
         );
 
         // Interned maps share their allocation through Arc. Count each backing
@@ -5146,6 +5146,10 @@ impl ProcessContext {
             &mut other.role_backward_sat_prop_hashes,
         );
         swap(&mut self.sat_succ_datas, &mut other.sat_succ_datas);
+        swap(
+            &mut self.sat_succ_creation_role_cells,
+            &mut other.sat_succ_creation_role_cells,
+        );
         swap(&mut self.sat_succ_ext_datas, &mut other.sat_succ_ext_datas);
         swap(
             &mut self.indi_sat_succ_link_data_linkers,
@@ -7589,7 +7593,7 @@ impl ProcessContext {
             succ_data.value_nominal_connection = prev.value_nominal_connection;
             succ_data.value_nominal_id = prev.value_nominal_id;
             succ_data.succ_indi_node = prev.succ_indi_node;
-            succ_data.creation_role_linker = prev.creation_role_linker.clone();
+            succ_data.creation_role_linker = prev.creation_role_linker;
             self.sat_succ_data_mut(prev_succ_data).active_count = 0;
         }
         succ_data.next_link = self
@@ -7604,6 +7608,116 @@ impl ProcessContext {
         succ_data
     }
 
+    /// The roles of a shared creation-role list, head first (the order the
+    /// former per-record vector kept: newest addition first).
+    #[inline]
+    pub fn creation_roles_iter(
+        &self,
+        list: CreationRoleList,
+    ) -> impl Iterator<Item = NegLink<RoleId>> + '_ {
+        let mut cursor = list;
+        std::iter::from_fn(move || {
+            if cursor.is_empty() {
+                return None;
+            }
+            let cell = self
+                .sat_succ_creation_role_cells
+                .get(Id::new(cursor.0 as Cint64 - 1));
+            cursor = cell.next;
+            Some(cell.link())
+        })
+    }
+    /// An owned copy of a creation-role list, for callers that mutate the
+    /// context while they walk it.
+    #[inline]
+    pub fn creation_roles(&self, list: CreationRoleList) -> CompactCreationRoleLinks {
+        let mut out = CompactCreationRoleLinks::new();
+        out.extend(self.creation_roles_iter(list));
+        out
+    }
+    /// `creation_roles` of one successor record.
+    #[inline]
+    pub fn sat_succ_creation_roles(
+        &self,
+        succ_data: SaturationSuccessorDataId,
+    ) -> CompactCreationRoleLinks {
+        self.creation_roles(self.sat_succ_data(succ_data).creation_role_linker)
+    }
+    #[inline]
+    fn creation_role_cons(
+        &mut self,
+        link: NegLink<RoleId>,
+        next: CreationRoleList,
+    ) -> CreationRoleList {
+        let id = self
+            .sat_succ_creation_role_cells
+            .push(CreationRoleCell::new(link, next));
+        CreationRoleList(u32::try_from(id.raw + 1).expect("creation-role cell pool fits in u32"))
+    }
+    /// Build a list holding `links` in order (`links[0]` at the head).
+    pub fn creation_role_list_from(&mut self, links: &[NegLink<RoleId>]) -> CreationRoleList {
+        links
+            .iter()
+            .rev()
+            .fold(CreationRoleList::EMPTY, |next, &link| self.creation_role_cons(link, next))
+    }
+    /// Konclude's `initNegLinker(role,false)->append(mCreationRoleLinker)`:
+    /// put `link` in front of the record's list. The rest stays shared.
+    pub fn sat_succ_prepend_creation_role(
+        &mut self,
+        succ_data: SaturationSuccessorDataId,
+        link: NegLink<RoleId>,
+    ) {
+        let head = self.sat_succ_data(succ_data).creation_role_linker;
+        let head = self.creation_role_cons(link, head);
+        self.sat_succ_data_mut(succ_data).creation_role_linker = head;
+    }
+    /// Append `link` at the end of the record's list (test setup).
+    pub fn sat_succ_push_creation_role(
+        &mut self,
+        succ_data: SaturationSuccessorDataId,
+        link: NegLink<RoleId>,
+    ) {
+        let mut links = self.sat_succ_creation_roles(succ_data).to_vec();
+        links.push(link);
+        let head = self.creation_role_list_from(&links);
+        self.sat_succ_data_mut(succ_data).creation_role_linker = head;
+    }
+    /// Negate the first non-negated entry for `role` in the record's list.
+    /// Konclude flips that linker in place; the port copies the entries in
+    /// front of it, so lists shared with older records keep their content.
+    pub fn sat_succ_negate_first_creation_role(
+        &mut self,
+        succ_data: SaturationSuccessorDataId,
+        role: RoleId,
+    ) {
+        let head = self.sat_succ_data(succ_data).creation_role_linker;
+        let mut prefix: smallvec::SmallVec<[NegLink<RoleId>; 4]> = smallvec::SmallVec::new();
+        let mut cursor = head;
+        while !cursor.is_empty() {
+            let cell = *self
+                .sat_succ_creation_role_cells
+                .get(Id::new(cursor.0 as Cint64 - 1));
+            let link = cell.link();
+            if link.target == role && !link.negated {
+                let mut new_head = self.creation_role_cons(
+                    NegLink {
+                        target: role,
+                        negated: true,
+                    },
+                    cell.next,
+                );
+                for &front in prefix.iter().rev() {
+                    new_head = self.creation_role_cons(front, new_head);
+                }
+                self.sat_succ_data_mut(succ_data).creation_role_linker = new_head;
+                return;
+            }
+            prefix.push(link);
+            cursor = cell.next;
+        }
+    }
+
     /// Port of `CLinkedRoleSaturationSuccessorHash::hasActiveCreationRole`.
     pub fn saturation_successor_data_has_active_creation_role(
         &self,
@@ -7612,9 +7726,7 @@ impl ProcessContext {
     ) -> bool {
         succ_data.is_some()
             && self
-                .sat_succ_data(succ_data)
-                .creation_role_linker
-                .iter()
+                .creation_roles_iter(self.sat_succ_data(succ_data).creation_role_linker)
                 .any(|link| !link.negated && link.target == creation_role)
     }
 
@@ -7653,9 +7765,8 @@ impl ProcessContext {
         }
         match creation_role {
             None => true,
-            Some(creation_role) => succ
-                .creation_role_linker
-                .iter()
+            Some(creation_role) => self
+                .creation_roles_iter(succ.creation_role_linker)
                 .any(|link| !link.negated && link.target == creation_role),
         }
     }
@@ -7686,15 +7797,15 @@ impl ProcessContext {
             let succ_ref = self.sat_succ_data_mut(succ_data);
             succ_ref.extension = true;
             succ_ref.succ_indi_node = succ_node;
-            if !creation_role_already_exists {
-                succ_ref.creation_role_linker.insert(
-                    0,
-                    NegLink {
-                        target: creation_role,
-                        negated: false,
-                    },
-                );
-            }
+        }
+        if !creation_role_already_exists {
+            self.sat_succ_prepend_creation_role(
+                succ_data,
+                NegLink {
+                    target: creation_role,
+                    negated: false,
+                },
+            );
         }
         let old_count = self.sat_succ_data(succ_data).succ_count;
         let link_count_diff = if old_count < link_count {
@@ -7735,15 +7846,15 @@ impl ProcessContext {
             succ_ref.extension = false;
             succ_ref.value_nominal_connection = false;
             succ_ref.succ_indi_node = succ_node;
-            if !creation_role_already_exists {
-                succ_ref.creation_role_linker.insert(
-                    0,
-                    NegLink {
-                        target: creation_role,
-                        negated: false,
-                    },
-                );
-            }
+        }
+        if !creation_role_already_exists {
+            self.sat_succ_prepend_creation_role(
+                succ_data,
+                NegLink {
+                    target: creation_role,
+                    negated: false,
+                },
+            );
         }
         let old_count = self.sat_succ_data(succ_data).succ_count;
         let link_count_diff = if old_count < link_count {
@@ -7783,15 +7894,15 @@ impl ProcessContext {
             succ_ref.value_nominal_connection = true;
             succ_ref.value_nominal_id = nominal_id;
             succ_ref.succ_indi_node = SatNodeId::NONE;
-            if !creation_role_already_exists {
-                succ_ref.creation_role_linker.insert(
-                    0,
-                    NegLink {
-                        target: creation_role,
-                        negated: false,
-                    },
-                );
-            }
+        }
+        if !creation_role_already_exists {
+            self.sat_succ_prepend_creation_role(
+                succ_data,
+                NegLink {
+                    target: creation_role,
+                    negated: false,
+                },
+            );
         }
         let old_count = self.sat_succ_data(succ_data).succ_count;
         let link_count_diff = if old_count < 1 { 1 - old_count } else { 0 };
@@ -7821,14 +7932,7 @@ impl ProcessContext {
             return false;
         }
         self.sat_succ_data_mut(succ_data).active_count -= 1;
-        if let Some(link) = self
-            .sat_succ_data_mut(succ_data)
-            .creation_role_linker
-            .iter_mut()
-            .find(|link| link.target == creation_role && !link.negated)
-        {
-            link.negated = true;
-        }
+        self.sat_succ_negate_first_creation_role(succ_data, creation_role);
         if self.sat_succ_data(succ_data).active_count <= 0 {
             let old_count = self.sat_succ_data(succ_data).succ_count;
             self.linked_role_sat_succ_data_mut(role_succ_data)

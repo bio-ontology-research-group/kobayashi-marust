@@ -2308,7 +2308,7 @@ mod tests {
         assert_eq!(ctx.sat_succ_data(succ_data).get_active_count(), 1);
         assert!(ctx.sat_succ_data(succ_data).extension);
         assert_eq!(
-            ctx.sat_succ_data(succ_data).creation_role_linker,
+            ctx.sat_succ_creation_roles(succ_data),
             vec![NegLink {
                 target: creation_role,
                 negated: false
@@ -2328,13 +2328,74 @@ mod tests {
         assert_eq!(ctx.sat_succ_data(succ_data).get_successor_count(), 0);
         assert_eq!(ctx.sat_succ_data(succ_data).get_active_count(), 0);
         assert_eq!(
-            ctx.sat_succ_data(succ_data).creation_role_linker,
+            ctx.sat_succ_creation_roles(succ_data),
             vec![NegLink {
                 target: creation_role,
                 negated: true
             }]
             .into()
         );
+    }
+
+    /// Shared creation-role lists keep the value semantics of the former
+    /// per-record copies: each `forceNewCreation` record sees the list its
+    /// predecessor had plus its own additions (newest first); negating a role
+    /// in the newest record leaves the lists of older records unchanged; and
+    /// branch rollback restores the pre-epoch list.
+    #[test]
+    fn sat1_shared_creation_role_lists_keep_per_record_values() {
+        let _test_env = crate::test_env::read();
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(901));
+        let succ_node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(902));
+        let role = RoleId::new(41);
+        let (r1, r2, r3) = (RoleId::new(43), RoleId::new(47), RoleId::new(53));
+        let link = |target, negated| NegLink { target, negated };
+        let hash = IndividualSaturationProcessNode::get_linked_role_successor_hash_in_context(
+            &mut ctx, node, true,
+        );
+        let d1 = ctx.linked_role_successor_hash_add_linked_successor(hash, role, succ_node, r1, 1);
+        let d2 = ctx.linked_role_successor_hash_add_linked_successor(hash, role, succ_node, r2, 1);
+        let d3 = ctx.linked_role_successor_hash_add_linked_successor(hash, role, succ_node, r1, 1);
+        let d4 = ctx.linked_role_successor_hash_add_linked_successor(hash, role, succ_node, r3, 1);
+        assert_eq!(ctx.sat_succ_creation_roles(d1).to_vec(), vec![link(r1, false)]);
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d2).to_vec(),
+            vec![link(r2, false), link(r1, false)]
+        );
+        assert_eq!(ctx.sat_succ_creation_roles(d3), ctx.sat_succ_creation_roles(d2));
+        let d4_roles = vec![link(r3, false), link(r2, false), link(r1, false)];
+        assert_eq!(ctx.sat_succ_creation_roles(d4).to_vec(), d4_roles);
+
+        assert!(ctx.linked_role_successor_hash_deactivate_linked_successor(
+            hash, role, succ_node, r2
+        ));
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d4).to_vec(),
+            vec![link(r3, false), link(r2, true), link(r1, false)]
+        );
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d3).to_vec(),
+            vec![link(r2, false), link(r1, false)],
+            "older records keep their own list"
+        );
+
+        ctx.push_branch_epoch();
+        assert!(ctx.linked_role_successor_hash_deactivate_linked_successor(
+            hash, role, succ_node, r1
+        ));
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d4).to_vec(),
+            vec![link(r3, false), link(r2, true), link(r1, true)]
+        );
+        ctx.pop_branch_epoch();
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d4).to_vec(),
+            vec![link(r3, false), link(r2, true), link(r1, false)]
+        );
+        let from = ctx.creation_role_list_from(&d4_roles);
+        assert_eq!(ctx.creation_roles(from).to_vec(), d4_roles);
+        assert!(ctx.creation_roles(super::super::super::saturation::satellites::CreationRoleList::EMPTY).is_empty());
     }
 
     #[test]

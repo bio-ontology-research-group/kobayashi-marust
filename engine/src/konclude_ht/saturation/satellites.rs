@@ -728,6 +728,47 @@ impl IntoIterator for CompactCreationRoleLinks {
     }
 }
 
+/// Head of a creation-role list held in the process context's cell pool
+/// (`ProcessContext::creation_roles`). Konclude keeps `mCreationRoleLinker` as
+/// a pointer to a linker chain, and a successor record created by
+/// `forceNewCreation` takes over its predecessor's chain pointer, so the
+/// records of one successor share one chain. The port shares cells the same
+/// way, but keeps cells immutable: adding a role puts one new cell in front,
+/// and negating a role copies only the cells in front of it. Each record
+/// therefore sees exactly the list it saw when it owned a private copy.
+/// `0` is the empty list; otherwise the value is the cell index plus one.
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+pub struct CreationRoleList(pub(crate) u32);
+
+impl CreationRoleList {
+    pub const EMPTY: Self = CreationRoleList(0);
+    #[inline]
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
+
+/// One immutable cell of a shared creation-role list.
+#[derive(Copy, Clone, Debug)]
+pub struct CreationRoleCell {
+    /// Role id plus one (so `RoleId::NONE` is representable).
+    pub(crate) role: u32,
+    pub(crate) negated: bool,
+    pub(crate) next: CreationRoleList,
+}
+
+impl CreationRoleCell {
+    #[inline]
+    pub fn new(link: NegLink<RoleId>, next: CreationRoleList) -> Self {
+        let role = u32::try_from(link.target.raw + 1).expect("role id fits in u32");
+        CreationRoleCell { role, negated: link.negated, next }
+    }
+    #[inline]
+    pub fn link(&self) -> NegLink<RoleId> {
+        NegLink { target: RoleId::new(self.role as Cint64 - 1), negated: self.negated }
+    }
+}
+
 /// Port of `CSaturationSuccessorData`.
 ///
 /// A per-successor record in a `CLinkedRoleSaturationSuccessorData`'s
@@ -750,8 +791,9 @@ pub struct SaturationSuccessorData {
     pub succ_indi_node: SatNodeId,
     /// `mNextLink`.
     pub next_link: SaturationSuccessorDataId,
-    /// `mCreationRoleLinker` (`CXNegLinker<CRole*>*` → negated-role chain).
-    pub creation_role_linker: CompactCreationRoleLinks,
+    /// `mCreationRoleLinker` (`CXNegLinker<CRole*>*`): the head of a shared,
+    /// immutable list in the context's cell pool (see `CreationRoleList`).
+    pub creation_role_linker: CreationRoleList,
 }
 
 impl Default for SaturationSuccessorData {
@@ -764,7 +806,7 @@ impl Default for SaturationSuccessorData {
             value_nominal_id: 0,
             succ_indi_node: SatNodeId::NONE,
             next_link: SaturationSuccessorDataId::NONE,
-            creation_role_linker: CompactCreationRoleLinks::new(),
+            creation_role_linker: CreationRoleList::EMPTY,
         }
     }
 }
