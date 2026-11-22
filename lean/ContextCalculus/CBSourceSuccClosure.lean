@@ -115,13 +115,30 @@ def sourceReachPredicates (reachConcepts : List Nat)
               some predicate else none
         | _ => none).eraseDups
 
+/-- `sourceReachPredicates` per edge: the central reach facts on every edge
+and, on a grounded edge `f(o)`, also the labels of `o`
+(`CBRSuccClosure.offeredOver`). -/
+def sourceEdgeReachPredicates (reachConcepts : List Nat)
+    (order : DecodedSourceFiniteOrder production) (root : Bool)
+    (retained : List FCL) (edge : FTerm) : List FPred :=
+  ((List.range retained.length).flatMap fun clauseIndex =>
+    match retained[clauseIndex]? with
+    | none => []
+    | some clause =>
+      (order.maximalHeadIndices root clause.head).filterMap fun headIndex =>
+        match (clause.head[headIndex]? : Option FLit) with
+        | some (.P predicate) =>
+            if CBRSuccClosure.offeredOver reachConcepts edge predicate then
+              some predicate else none
+        | _ => none).eraseDups
+
 def sourceRSuccOffers
     (reachConcepts : List Nat) (order : DecodedSourceFiniteOrder production)
     (context : DecodedSourceLiveContext production ordinary rootArena) :
     List RSuccOffer :=
   context.successors.flatMap fun edge =>
-    (sourceReachPredicates reachConcepts order context.rootDomain
-      context.retained).map fun predicate => {
+    (sourceEdgeReachPredicates reachConcepts order context.rootDomain
+      context.retained edge.label).map fun predicate => {
         edge := { label := edge.label, targetIndex := edge.targetIndex.val }
         sourcePredicate := predicate
         pushed := forwardPredicate edge.label (parentOfEdge edge.label) predicate

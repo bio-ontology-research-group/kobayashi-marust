@@ -48,6 +48,21 @@ def isCentralReach (reachConcepts : List Nat) : FPred → Bool
   | .concept concept (.var 0) => decide (concept ∈ reachConcepts)
   | _ => false
 
+/-- A label `B(o)` of an individual, offered over the grounded successor edge
+`f(o)` of that individual only.  The nominal ground context holds the labels
+of an individual on its constant; a successor `f(o)` reads them as labels of
+its predecessor `y` (KM's `rsucc_offered_over`). -/
+def isGroundedLabel (reachConcepts : List Nat) (edge : FTerm) : FPred → Bool
+  | .concept concept (.const individual) =>
+      match edge with
+      | .app _ (.const parent) => decide (parent = individual ∧ concept ∈ reachConcepts)
+      | _ => false
+  | _ => false
+
+/-- Whether the edge labelled `edge` carries the reach fact `predicate`. -/
+def offeredOver (reachConcepts : List Nat) (edge : FTerm) (predicate : FPred) : Bool :=
+  isCentralReach reachConcepts predicate || isGroundedLabel reachConcepts edge predicate
+
 /-- Ordered-unique maximal central reach facts, matching `rsucc_reach_tail`
 folded over the append-only terminal pool. -/
 def reachPredicates (reachConcepts : List Nat)
@@ -60,6 +75,23 @@ def reachPredicates (reachConcepts : List Nat)
         match (clause.head[headIndex]? : Option FLit) with
         | some (FLit.P predicate) =>
             if isCentralReach reachConcepts predicate then some predicate else none
+        | _ => none).eraseDups
+
+/-- Ordered-unique maximal reach facts that the edge labelled `edge`
+carries: the central reach facts (`reachPredicates`) on every edge, and on a
+grounded edge `f(o)` also the labels of `o`.  KM folds both kinds over one
+append-only pool and filters them per edge. -/
+def edgeReachPredicates (reachConcepts : List Nat)
+    (order : DecodedFiniteLiteralOrderDocument) (retained : List FCL)
+    (edge : FTerm) : List FPred :=
+  ((List.range retained.length).flatMap fun clauseIndex =>
+    match retained[clauseIndex]? with
+    | none => []
+    | some clause =>
+      (order.maximalHeadIndices clause.head).filterMap fun headIndex =>
+        match (clause.head[headIndex]? : Option FLit) with
+        | some (FLit.P predicate) =>
+            if offeredOver reachConcepts edge predicate then some predicate else none
         | _ => none).eraseDups
 
 structure RSuccOffer where
@@ -85,11 +117,19 @@ theorem forwardPredicate_root_label (individual concept : Nat) :
       .concept concept (.var (-1)) := by
   simp [parentOfEdge, forwardPredicate, forwardTerm]
 
+/-- A grounded-edge offer of the label `B(o)` pushes `B(y)`. -/
+theorem forwardPredicate_grounded_label (function individual concept : Nat) :
+    forwardPredicate (.app function (.const individual))
+        (parentOfEdge (.app function (.const individual)))
+        (.concept concept (.const individual)) =
+      .concept concept (.var (-1)) := by
+  simp [parentOfEdge, forwardPredicate, forwardTerm]
+
 def rSuccOffers (coverage : DecodedPredSendCoverageDocument)
     (reachConcepts : List Nat) (order : DecodedFiniteLiteralOrderDocument)
     (sourceIndex : Nat) (retained : List FCL) : List RSuccOffer :=
   (outgoingEdges coverage sourceIndex).flatMap fun edge =>
-    (reachPredicates reachConcepts order retained).map fun predicate => {
+    (edgeReachPredicates reachConcepts order retained edge.label).map fun predicate => {
       edge
       sourcePredicate := predicate
       pushed := forwardPredicate edge.label (parentOfEdge edge.label) predicate
@@ -100,7 +140,7 @@ theorem mem_rSuccOffers_iff {coverage : DecodedPredSendCoverageDocument}
     {sourceIndex : Nat} {retained : List FCL} {offer : RSuccOffer} :
     offer ∈ rSuccOffers coverage reachConcepts order sourceIndex retained ↔
       ∃ edge ∈ outgoingEdges coverage sourceIndex,
-        ∃ predicate ∈ reachPredicates reachConcepts order retained,
+        ∃ predicate ∈ edgeReachPredicates reachConcepts order retained edge.label,
           offer = {
             edge := edge
             sourcePredicate := predicate
@@ -116,5 +156,6 @@ theorem rSuccOffer_valid {D : Type} (model : TModel D) (offer : RSuccOffer) :
 #print axioms mem_rSuccOffers_iff
 #print axioms rSuccOffer_valid
 #print axioms forwardPredicate_root_label
+#print axioms forwardPredicate_grounded_label
 
 end ContextCalculus.CBRSuccClosure
