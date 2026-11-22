@@ -5582,6 +5582,13 @@ pub struct Ht {
     /// counting decision taken at `Scan::Sat` (`card_recog_candidate`). The
     /// clausal excluded middle is dropped by cb_to_ht when this is set.
     card_recog: bool,
+    /// Concept pairs that occur together in the head of a body-free clause:
+    /// a `≤n` marker and its `≥(n+1)` partner with their excluded middle still
+    /// in the clause set (cb_to_ht drops it only in its two-disjunct shape; a
+    /// sorted input keeps `⊤ → Q ∨ NQ ∨ __data__`). The search branches on
+    /// that clause itself, so recognition leaves those markers alone. Built on
+    /// first use.
+    card_recog_em_pairs: Option<HashSet<(C, C)>>,
     /// KM_HT_PHASE: label-keyed phase saving. `phase[c]` = was concept `c` true in
     /// the most recent clash-free model. `order_disjuncts` tries a disjunct whose
     /// concept was last-true first, so each per-query witness rebuild warm-starts
@@ -18771,6 +18778,7 @@ impl Ht {
             cert_exact_cardinality_markers: HashSet::default(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             card_recog: std::env::var_os("KM_NO_HT_CARD_RECOG").is_none(),
+            card_recog_em_pairs: None,
             pc_tainted: Vec::new(),
             pc_candidates: Vec::new(),
             pc_unsat_candidates: Vec::new(),
@@ -19016,6 +19024,7 @@ impl Ht {
             .extend(defs.values().map(|definition| definition.role));
         self.card_defs = defs;
         self.cert_card_defs_override = None;
+        self.card_recog_em_pairs = None;
         self.card = true;
     }
 
@@ -20998,6 +21007,38 @@ impl Ht {
                     .min()?;
                 Some((c, d, partner))
             })
+            .collect();
+        if maxdefs.is_empty() {
+            return None;
+        }
+        if self.card_recog_em_pairs.is_none() {
+            let mut pairs = HashSet::default();
+            for (clause, _, _) in &self.index.clauses {
+                if !clause.body.is_empty() {
+                    continue;
+                }
+                let heads: Vec<C> = clause
+                    .head
+                    .iter()
+                    .filter_map(|atom| match atom {
+                        Atom::Concept { lit, .. } if !lit.neg => Some(lit.c),
+                        _ => None,
+                    })
+                    .collect();
+                for &a in &heads {
+                    for &b in &heads {
+                        if a != b {
+                            pairs.insert((a, b));
+                        }
+                    }
+                }
+            }
+            self.card_recog_em_pairs = Some(pairs);
+        }
+        let em_pairs = self.card_recog_em_pairs.as_ref().expect("built above");
+        let maxdefs: Vec<(C, CardDef, C)> = maxdefs
+            .into_iter()
+            .filter(|(marker, _, partner)| !em_pairs.contains(&(*marker, *partner)))
             .collect();
         if maxdefs.is_empty() {
             return None;
