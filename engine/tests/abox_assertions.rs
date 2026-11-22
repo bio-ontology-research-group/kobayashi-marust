@@ -288,10 +288,15 @@ fn data_restriction_on_an_asserted_value_keeps_individuals_different() {
 /// merge decides). HermiT finds no pair different.
 #[test]
 fn reflexive_loops_on_data_values_make_no_pair_different() {
-    for _ in 0..4 {
-        let output = km(&fixture("different-reflexive-data-loop.ofn"), &["--realize", "--values", "--different"]);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-        assert!(!stdout.lines().any(|line| line.starts_with("DIFFERENT\t")), "{stdout}");
+    // The second input (campaign case new_2016_28, reduced) makes `t` also
+    // transitive with an inverse, so the loops include `ti` and the internal
+    // roles of the transitive closure, not only `t`.
+    for case in ["different-reflexive-data-loop", "different-transitive-reflexive-data-loop"] {
+        for _ in 0..4 {
+            let output = km(&fixture(&format!("{case}.ofn")), &["--realize", "--values", "--different"]);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "{case}: {}", String::from_utf8_lossy(&output.stderr));
+            assert!(!stdout.lines().any(|line| line.starts_with("DIFFERENT\t")), "{case}: {stdout}");
+        }
     }
 }
