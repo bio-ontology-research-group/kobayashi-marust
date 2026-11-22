@@ -1,0 +1,13 @@
+Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex.org/n>
+Declaration(Class(:A))
+Declaration(Class(:F))
+Declaration(DataProperty(:d0))
+FunctionalDataProperty(:d0)
+SubClassOf(:F DataSomeValuesFrom(:d0 DatatypeRestriction(xsd:integer xsd:minInclusive "0"^^xsd:integer xsd:maxInclusive "2"^^xsd:integer)))
+DataPropertyAssertion(:d0 :a2 "3"^^xsd:integer)
+ClassAssertion(:A :a1)
+SubClassOf(:A :F)
+)
