@@ -268,3 +268,30 @@ fn data_key_behind_a_nominal_query_is_found_or_counted() {
     assert!(answer.subsumptions.contains(&expected) || answer.dropped > 0,
         "Pb ⊑ B missing with DROPPED 0");
 }
+
+/// Campaign case new_1023_84, reduced: a key on `A`, an irreflexive `r` and
+/// one `r` edge between two different individuals. HermiT: consistent. The
+/// rule worker matched the irreflexivity body `r(x, x)` against the edge
+/// `r(a, b)` (its unbound-source scan bound `x` twice without comparing the
+/// ends), so every rule route answered inconsistent.
+#[test]
+fn irreflexive_role_with_a_key_keeps_an_edge_between_individuals() {
+    let text = ontology(&[
+        object_key(),
+        format!("IrreflexiveObjectProperty({})", iri("r")),
+        format!("ObjectPropertyAssertion({} {} {})", iri("r"), iri("a"), iri("b")),
+    ]);
+    for route in [None, Some("production_all"), Some("ht_rules")] {
+        let answer = classify(&text, route).expect("answer");
+        assert!(answer.consistent, "{route:?}: irreflexive r(a, b) reported inconsistent");
+    }
+    let text = ontology(&[
+        object_key(),
+        format!("IrreflexiveObjectProperty({})", iri("r")),
+        format!("ObjectPropertyAssertion({} {} {})", iri("r"), iri("a"), iri("a")),
+    ]);
+    for route in [None, Some("production_all"), Some("ht_rules")] {
+        let answer = classify(&text, route).expect("answer");
+        assert!(!answer.consistent, "{route:?}: irreflexive r(a, a) reported consistent");
+    }
+}
