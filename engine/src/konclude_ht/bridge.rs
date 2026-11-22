@@ -8933,7 +8933,14 @@ fn bridge_tinput_with_trigger_absorption(
     // automata and propagation-direction passes. The linked candidate-hash
     // blocker search reads these marks; without them every label set lacks a
     // core descriptor and the search falls back to the linear candidate scan.
-    let core_blocking_marked = mark_core_blocking_concepts(ctx);
+    // `KM_HT_NO_CORE_BLOCKING_MARK=1` leaves the marks out (the candidate
+    // order before 1ba05c77), so the negative controls of
+    // tests/bridge_satcache.rs keep reproducing their historical misses.
+    let core_blocking_marked = if std::env::var_os("KM_HT_NO_CORE_BLOCKING_MARK").is_some() {
+        0
+    } else {
+        mark_core_blocking_concepts(ctx)
+    };
     bridge_phase!("core-blocking-marker");
     if std::env::var_os("KM_HT_STATS").is_some() {
         eprintln!("bridge [core-blocking] marked={core_blocking_marked}");

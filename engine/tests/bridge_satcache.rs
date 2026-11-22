@@ -167,6 +167,10 @@ fn negative_control_with_the_former_absorption_misses_each() {
         // The blocking fix of docs/HYBRID-CB-HT.md section 25 (sat578) also
         // recovers sat1096min, so the control switches it off too.
         ("KM_HT_NO_SAT578_FIX", "1"),
+        // The core blocking marks (1ba05c77) change which blocker candidate
+        // is tested first and hide the misses; the control restores the
+        // former candidate order.
+        ("KM_HT_NO_CORE_BLOCKING_MARK", "1"),
     ]);
     for path in fixtures() {
         let got = normalise(&classify(&path, &env));
@@ -196,6 +200,8 @@ fn ore12128_reduction_with_the_cache_and_without_the_self_gate() {
         env.push(("KM_BRIDGE_SAT_REFUSE_SELF", "1"));
         assert_eq!(normalise(&classify(&path, &env)), want, "{route:?}");
         env.push(("KM_HT_SATEXP_ABSORB_LEGACY", "replay"));
+        // As in the absorption control: the former blocker candidate order.
+        env.push(("KM_HT_NO_CORE_BLOCKING_MARK", "1"));
         assert_ne!(
             normalise(&classify(&path, &env)),
             want,
@@ -221,6 +227,7 @@ fn self_gate_negative_control_misses_merge1708() {
         let mut env = with_release(route);
         assert_eq!(normalise(&classify(&path, &env)), want, "{route:?}");
         env.push(("KM_BRIDGE_SELF_SATEXP_NO_GATE", "1"));
+        env.push(("KM_HT_NO_CORE_BLOCKING_MARK", "1"));
         assert_ne!(
             normalise(&classify(&path, &env)),
             want,
