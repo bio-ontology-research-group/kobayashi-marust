@@ -3906,7 +3906,7 @@ mod tests {
         assert_eq!(succ.succ_count, 1);
         assert_eq!(succ.active_count, 1);
         assert_eq!(
-            succ.creation_role_linker,
+            ctx.process_context().creation_roles(succ.creation_role_linker),
             vec![NegLink {
                 target: role,
                 negated: false

@@ -251,7 +251,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 (
                     link_ref.value_nominal_connection,
                     link_ref.succ_indi_node,
-                    link_ref.creation_role_linker.clone(),
+                    calc_alg_context.process_context().creation_roles(link_ref.creation_role_linker),
                     link_ref.succ_count,
                     link_ref.next_link,
                 )
@@ -977,7 +977,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     linked_succ_data_ref.value_nominal_connection,
                                     linked_succ_data_ref.succ_count,
                                     linked_succ_data_ref.succ_indi_node,
-                                    linked_succ_data_ref.creation_role_linker.clone(),
+                                    calc_alg_context.process_context().creation_roles(linked_succ_data_ref.creation_role_linker),
                                 )
                             };
                             if active_count >= 1 && !value_nominal_connection {
@@ -1358,7 +1358,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         .sat_succ_data(active_linked_succ);
                     (
                         active_ref.succ_indi_node,
-                        active_ref.creation_role_linker.clone(),
+                        calc_alg_context.process_context().creation_roles(active_ref.creation_role_linker),
                     )
                 };
                 if succ_indi_node.is_some() {
@@ -2047,13 +2047,12 @@ mod tests {
         {
             let succ_ref = ctx.process_context_mut().sat_succ_data_mut(succ);
             succ_ref.succ_indi_node = succ_node;
-            succ_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: creation_role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ, super::super::super::model::substrate::NegLink {
+                target: creation_role,
+                negated: false,
+            });
         ctx.process_context_mut()
             .linked_role_sat_succ_data_mut(succ_data)
             .set_last_successor_link_data(succ);
@@ -2149,13 +2148,12 @@ mod tests {
         {
             let succ_ref = ctx.process_context_mut().sat_succ_data_mut(succ);
             succ_ref.succ_indi_node = succ_node;
-            succ_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ, super::super::super::model::substrate::NegLink {
+                target: role,
+                negated: false,
+            });
         {
             let succ_data_ref = ctx
                 .process_context_mut()
@@ -2739,23 +2737,21 @@ mod tests {
             let succ_a_ref = ctx.process_context_mut().sat_succ_data_mut(succ_a);
             succ_a_ref.set_next(succ_b);
             succ_a_ref.succ_indi_node = succ_node_a;
-            succ_a_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ_a, super::super::super::model::substrate::NegLink {
+                target: role,
+                negated: false,
+            });
         {
             let succ_b_ref = ctx.process_context_mut().sat_succ_data_mut(succ_b);
             succ_b_ref.succ_indi_node = succ_node_b;
-            succ_b_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ_b, super::super::super::model::substrate::NegLink {
+                target: role,
+                negated: false,
+            });
         {
             let succ_data_ref = ctx
                 .process_context_mut()
@@ -2862,23 +2858,21 @@ mod tests {
             let succ_a_ref = ctx.process_context_mut().sat_succ_data_mut(succ_a);
             succ_a_ref.set_next(succ_b);
             succ_a_ref.succ_indi_node = succ_node_a;
-            succ_a_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: creation_role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ_a, super::super::super::model::substrate::NegLink {
+                target: creation_role,
+                negated: false,
+            });
         {
             let succ_b_ref = ctx.process_context_mut().sat_succ_data_mut(succ_b);
             succ_b_ref.succ_indi_node = succ_node_b;
-            succ_b_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: creation_role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ_b, super::super::super::model::substrate::NegLink {
+                target: creation_role,
+                negated: false,
+            });
         {
             let succ_data_ref = ctx
                 .process_context_mut()

@@ -462,6 +462,7 @@ pub fn run_elc() {
     die_with_supervisor();
     use crate::elcomplete;
     use std::time::Instant;
+    elcomplete::ELC_WORKER_PROCESS.store(true, std::sync::atomic::Ordering::Relaxed);
     let timing = std::env::var("KM_ELC_TIMING").is_ok();
     let t0 = Instant::now();
     // Raw bytes + `from_slice` skips full-buffer UTF-8 validation (matters on the
@@ -544,15 +545,8 @@ pub fn run_elc() {
                 && out.subsumptions.len() >= 1_000
                 && std::env::var_os("KM_ELC_OUTPUT_BINARY").is_some()
                 && std::env::var_os("KM_NO_ELC_OUTPUT_BINARY").is_none()
-                && {
-                    let compact_min_relations =
-                        std::env::var("KM_ELC_OUTPUT_BINARY_MIN_RELATIONS")
-                            .ok()
-                            .and_then(|value| value.parse::<usize>().ok())
-                            .unwrap_or(2_000_000);
-                    out.subsumptions.values().map(Vec::len).sum::<usize>()
-                        >= compact_min_relations
-                });
+                && out.subsumptions.values().map(Vec::len).sum::<usize>()
+                    >= elcomplete::elc_output_binary_min_relations());
             let write_result = if let Some(compact) = direct_compact.as_ref() {
                 crate::json_io::write_compact_elc_output_binary(&mut w, compact)
             } else if compact {

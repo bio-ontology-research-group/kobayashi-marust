@@ -4784,7 +4784,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                     continue;
                 }
 
-                for creation_role_linker in succ_data_ref.creation_role_linker.iter() {
+                for creation_role_linker in process_context.creation_roles_iter(succ_data_ref.creation_role_linker) {
                     if !creation_role_linker.negated && creation_role_linker.target == *role {
                         let mut next_successor_list = Vec::new();
                         let mut next_trivial_successor_propagated_concept_list = Vec::new();
@@ -5275,7 +5275,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 if succ_data_ref.get_active_count() < 1 {
                     continue;
                 }
-                for creation_role_linker in succ_data_ref.creation_role_linker.iter() {
+                for creation_role_linker in process_context.creation_roles_iter(succ_data_ref.creation_role_linker) {
                     if !creation_role_linker.negated && creation_role_linker.target == *role {
                         let ext_sat_indi_node = succ_data_ref.get_successor_individual_node();
                         if ext_sat_indi_node.is_none()
@@ -9007,7 +9007,7 @@ mod tests {
         succ_data
             .set_successor_individual_node(successor)
             .set_active_count(active_count);
-        succ_data.creation_role_linker = creation_roles.into();
+        succ_data.creation_role_linker = process_context.creation_role_list_from(&creation_roles);
         let succ_data = process_context.alloc_sat_succ_data(succ_data);
         process_context
             .linked_role_sat_succ_data_mut(role_data)

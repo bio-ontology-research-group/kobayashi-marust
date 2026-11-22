@@ -480,7 +480,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 super_data.value_nominal_connection,
                 super_data.active_count,
                 super_data.succ_count,
-                super_data.creation_role_linker.clone(),
+                calc_alg_context.process_context().creation_roles(super_data.creation_role_linker),
             )
         };
         if subset_value_nominal || super_value_nominal {
@@ -706,7 +706,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         succ_data_ref.succ_count,
                         succ_data_ref.succ_indi_node,
                         succ_data_ref.value_nominal_connection,
-                        succ_data_ref.creation_role_linker.clone(),
+                        calc_alg_context.process_context().creation_roles(succ_data_ref.creation_role_linker),
                     )
                 };
 
@@ -965,7 +965,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                         let d = calc_alg_context
                                             .process_context()
                                             .sat_succ_data(succ_role_data);
-                                        (d.active_count, d.creation_role_linker.clone())
+                                        (d.active_count, calc_alg_context.process_context().creation_roles(d.creation_role_linker))
                                     };
                                     if active_count <= 0 {
                                         ancestor_insufficient = false;
@@ -1143,7 +1143,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     succ_role_data.get_successor_count(),
                     succ_role_data.value_nominal_connection,
                     succ_role_data.get_successor_individual_node(),
-                    succ_role_data.creation_role_linker.clone(),
+                    calc_alg_context.process_context().creation_roles(succ_role_data.creation_role_linker),
                 )
             };
             if active_count < 1 {
@@ -1942,9 +1942,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             let super_data = process_context.sat_succ_data(super_indi_succ_data);
             (
                 subset_data.value_nominal_connection,
-                subset_data.creation_role_linker.clone(),
+                calc_alg_context.process_context().creation_roles(subset_data.creation_role_linker),
                 super_data.value_nominal_connection,
-                super_data.creation_role_linker.clone(),
+                calc_alg_context.process_context().creation_roles(super_data.creation_role_linker),
             )
         };
         if subset_value_nominal || super_value_nominal {
@@ -2037,9 +2037,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             let data2 = process_context.sat_succ_data(indi_succ_data2);
             (
                 data1.value_nominal_connection,
-                data1.creation_role_linker.clone(),
+                calc_alg_context.process_context().creation_roles(data1.creation_role_linker),
                 data2.value_nominal_connection,
-                data2.creation_role_linker.clone(),
+                calc_alg_context.process_context().creation_roles(data2.creation_role_linker),
             )
         };
         if value_nominal1 || value_nominal2 {
@@ -2939,13 +2939,16 @@ mod tests {
             let mut data = SaturationSuccessorData::new();
             data.set_successor_individual_node(indi)
                 .set_successor_count(1)
-                .set_active_count(1)
-                .creation_role_linker
-                .push(NegLink {
+                .set_active_count(1);
+            let id = ctx.process_context_mut().alloc_sat_succ_data(data);
+            ctx.process_context_mut().sat_succ_push_creation_role(
+                id,
+                NegLink {
                     target: inv_role,
                     negated: false,
-                });
-            ctx.process_context_mut().alloc_sat_succ_data(data)
+                },
+            );
+            id
         };
         {
             let anc_succ_data_ref = ctx
@@ -3674,26 +3677,32 @@ mod tests {
             data.set_successor_individual_node(node1)
                 .set_successor_count(1)
                 .set_active_count(1);
-            data.creation_role_linker.push(NegLink {
-                target: role_a,
-                negated: false,
-            });
-            ctx.process_context_mut().alloc_sat_succ_data(data)
+            let id = ctx.process_context_mut().alloc_sat_succ_data(data);
+            ctx.process_context_mut().sat_succ_push_creation_role(
+                id,
+                NegLink {
+                    target: role_a,
+                    negated: false,
+                },
+            );
+            id
         };
         let data2 = {
             let mut data = SaturationSuccessorData::new();
             data.set_successor_individual_node(node2)
                 .set_successor_count(1)
                 .set_active_count(1);
-            data.creation_role_linker.push(NegLink {
-                target: role_a,
-                negated: false,
-            });
-            data.creation_role_linker.push(NegLink {
-                target: role_b,
-                negated: false,
-            });
-            ctx.process_context_mut().alloc_sat_succ_data(data)
+            let id = ctx.process_context_mut().alloc_sat_succ_data(data);
+            for target in [role_a, role_b] {
+                ctx.process_context_mut().sat_succ_push_creation_role(
+                    id,
+                    NegLink {
+                        target,
+                        negated: false,
+                    },
+                );
+            }
+            id
         };
 
         let mut root_ref = root;
@@ -3706,10 +3715,9 @@ mod tests {
             )
         );
 
-        ctx.process_context_mut()
-            .sat_succ_data_mut(data1)
-            .creation_role_linker
-            .push(NegLink {
+        ctx.process_context_mut().sat_succ_push_creation_role(
+            data1,
+            NegLink {
                 target: role_b,
                 negated: false,
             });
