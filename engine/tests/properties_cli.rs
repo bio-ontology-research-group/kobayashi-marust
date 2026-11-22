@@ -147,3 +147,30 @@ fn range_run_individuals_stay_internal() {
     let types: Vec<&str> = both.lines().filter(|line| line.starts_with("TYPE\t")).collect();
     assert_eq!(types, ["TYPE\t:a\t:A", "TYPE\t:b\t:B", "TYPE\t:b\t:C"]);
 }
+
+/// The probe extension of `domrange_nominal` (`P_r ≡ ∃r.F`, `P_s ≡ ∃s.F`
+/// and the inverse probes) classified as a plain ontology. `P_r ⊑ P_s`
+/// holds only through the asserted edge `s(a, b)`: the domain `{a}` and the
+/// range `{b}` make every `r` pair `(a, b)`. The positive-ABox separability
+/// certificate ignored nominals in domains and ranges, so the automatic
+/// route classified the TBox without the ABox and lost both rows (v1.6.5
+/// too). HermiT 1.4.3 and the nominal routes give exactly these two rows.
+#[test]
+fn nominal_domain_ties_the_abox_to_the_taxonomy() {
+    let output = km(&fixture("domrange_nominal_probes.ofn"), &["--lines"]);
+    let rows: BTreeSet<String> = stdout(&output)
+        .lines()
+        .filter(|line| line.starts_with("SUB\t") || line.starts_with("DROPPED") || line.starts_with("CONSISTENT"))
+        .map(str::to_string)
+        .collect();
+    let expected: BTreeSet<String> = [
+        "CONSISTENT 1",
+        "DROPPED 0",
+        "SUB\turn:p#Pr\turn:p#Ps",
+        "SUB\turn:p#Pri\turn:p#Psi",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect();
+    assert_eq!(rows, expected);
+}

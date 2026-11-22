@@ -1203,25 +1203,30 @@ impl<'a> SourceProfileBuilder<'a> {
             self.expr.negation_disjunction = true;
         }
         self.expr.finish();
+        // A nominal in an object property domain or range is a concept-level
+        // nominal for the ABox certificates: `ObjectPropertyDomain(r {a})`
+        // with `r` read by a restriction ties a TBox entailment to the
+        // asserted edges of `a` (tests/fixtures/properties/domrange_nominal:
+        // `∃r.B ⊑ ∃s.B` holds only through `s(a, b)`).
+        let any_concept_nominal =
+            self.nominal_from_concept || !self.conditional_nominal_roles.is_empty();
         let positive_abox_tbox_separable = positive_abox_tbox_separable(
             &self.stats,
             &self.expr,
-            self.nominal_from_concept,
+            any_concept_nominal,
             identity_consistent,
         ) || top_identity_abox_tbox_separable(
             &self.stats,
             &self.expr,
             self.top_class_assertions,
-            self.nominal_from_concept || !self.conditional_nominal_roles.is_empty(),
+            any_concept_nominal,
         );
         let positive_el_abox_materializable = positive_el_abox_materializable(
             &self.stats,
             &self.expr,
-            self.nominal_from_concept,
+            any_concept_nominal,
             identity_consistent,
         );
-        let any_concept_nominal =
-            self.nominal_from_concept || !self.conditional_nominal_roles.is_empty();
         let disjoint_union_abox_candidate =
             disjoint_union_abox_candidate(&self.stats, &self.expr, any_concept_nominal);
         let mut separable_class_names =
