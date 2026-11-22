@@ -830,12 +830,17 @@ fn rsucc_reach_tail(arena: &[ContextClause], pool: &[u32], _sig: &Sig) -> Vec<Pr
 /// label over every edge, a label `B(o)` of an individual only over the
 /// grounded edges `f(o)` of that individual, where it arrives as `B(y)`, and
 /// only for a concept of `Sig::grounded_label` (`CBRSuccClosure.offeredOver`).
+/// With `Sig::individual_labels_every_edge` a label `B(o)` goes over every
+/// successor edge; over an edge whose parent is not `o` it arrives as `B(o)`
+/// (`CBRSuccClosure.forwardPredicate_individual_label`).
 fn rsucc_offered_over(sig: &Sig, f: Term, p: &Pred) -> bool {
     match *p {
         Pred::Concept { iri, t } if is_individual(t) => {
-            is_comp(f)
-                && comp_parts(f).1 == t
-                && sig.grounded_label.get(iri as usize).copied().unwrap_or(false)
+            (if sig.individual_labels_every_edge {
+                is_function(f)
+            } else {
+                is_comp(f) && comp_parts(f).1 == t
+            }) && sig.grounded_label.get(iri as usize).copied().unwrap_or(false)
         }
         _ => true,
     }
@@ -850,7 +855,12 @@ fn rsucc_offered_over(sig: &Sig, f: Term, p: &Pred) -> bool {
 /// A label of such a concept is the only kind a successor can use as a
 /// predecessor label (a body atom `B(v)` with `v` the predecessor), so the
 /// ground context offers no other (a hypothesis nothing reads is inert).
-fn grounded_label_concepts(clauses: &[OntologyClause], concepts: usize) -> Vec<bool> {
+///
+/// With `every_edge` (`Sig::individual_labels_every_edge`) a label `B(o)` can
+/// reach any element linked to `o`, so every concept a source clause reads on
+/// a neighbour joined to the centre by a role atom counts, in either
+/// direction.
+fn grounded_label_concepts(clauses: &[OntologyClause], concepts: usize, every_edge: bool) -> Vec<bool> {
     let mut out = vec![false; concepts];
     let mut dirs: HashSet<(Iri, bool)> = HashSet::default();
     let mut rules: Vec<(Iri, Iri, bool)> = Vec::new();
@@ -905,8 +915,8 @@ fn grounded_label_concepts(clauses: &[OntologyClause], concepts: usize) -> Vec<b
             }
             let reads = clause.body.iter().any(|q| match *q {
                 Pred::Role { iri: r, s, t } => {
-                    (is_central(s) && t == v && dirs.contains(&(r, false)))
-                        || (s == v && is_central(t) && dirs.contains(&(r, true)))
+                    (is_central(s) && t == v && (every_edge || dirs.contains(&(r, false))))
+                        || (s == v && is_central(t) && (every_edge || dirs.contains(&(r, true))))
                 }
                 _ => false,
             });
@@ -2733,7 +2743,9 @@ impl Context {
 fn rsucc_pool_eligible(sig: &Sig, clause: &ContextClause, ground: bool) -> bool {
     sig.rsucc
         && clause.max_head_predicates().any(|(p, _)| match p {
-            Pred::Concept { t, .. } => is_central(t) || (ground && is_individual(t)),
+            Pred::Concept { t, .. } => {
+                is_central(t) || ((ground || sig.individual_labels_every_edge) && is_individual(t))
+            }
             _ => false,
         })
 }
@@ -3882,6 +3894,19 @@ pub(crate) enum RetainedInsertBoundary {
 /// A clause with a role atom pointing into the central variable from another
 /// term (`R(y,x)`, `R(f(x),x)`, ...) can consume a parent label in a successor
 /// context, so `Engine::prepare` turns r-Succ on for its ontology.
+/// Whether a source clause names an individual (a nominal or an ABox fact).
+fn clause_mentions_individual(clause: &OntologyClause) -> bool {
+    let pred = |p: &Pred| match *p {
+        Pred::Concept { t, .. } => is_individual(t),
+        Pred::Role { s, t, .. } => is_individual(s) || is_individual(t),
+    };
+    clause.body.iter().any(pred)
+        || clause.head.iter().any(|literal| match literal {
+            Lit::P(p) => pred(p),
+            Lit::Eq { s, t } | Lit::Ineq { s, t } => is_individual(*s) || is_individual(*t),
+        })
+}
+
 fn clause_enables_rsucc(clause: &OntologyClause) -> bool {
     let backward_role = |p: &Pred| matches!(p, Pred::Role { s, t, .. } if *t == X && *s != X);
     clause.body.iter().any(backward_role)
@@ -4444,6 +4469,8 @@ pub struct CbLiveTerminalSnapshot {
     /// `Sig::grounded_label` as ids: concepts whose labels on an individual
     /// the ground context offers over that individual's grounded edges.
     pub grounded_label_concept_ids: Vec<Iri>,
+    /// `Sig::individual_labels_every_edge` (`IndividualLabels.everyEdge`).
+    pub individual_labels_every_edge: bool,
     pub ordinary_clause_arena: Vec<CbLiveClause>,
     pub root_clause_arena: Vec<CbLiveClause>,
     pub pending_messages: usize,
@@ -4647,7 +4674,18 @@ impl Engine {
         // for these ontologies without requiring an external tuning flag.
         sig.rsucc = std::env::var_os("KM_RSUCC").is_some()
             || ont_clauses.iter().any(clause_enables_rsucc);
-        sig.grounded_label = grounded_label_concepts(&ont_clauses, sig.concept_names.len());
+        // The r-Succ offer of individual labels over every edge
+        // (arXiv:1805.01396, `Su^r`); KM_RSUCC_INDIVIDUAL_LABELS=1 turns it on.
+        sig.individual_labels_every_edge = std::env::var_os("KM_RSUCC_INDIVIDUAL_LABELS").is_some_and(|v| v != "0");
+        sig.grounded_label =
+            grounded_label_concepts(&ont_clauses, sig.concept_names.len(), sig.individual_labels_every_edge);
+        if sig.individual_labels_every_edge
+            && !sig.rsucc
+            && sig.grounded_label.iter().any(|&g| g)
+            && ont_clauses.iter().any(clause_mentions_individual)
+        {
+            sig.rsucc = true;
+        }
         let mut ont_clauses = ont_clauses;
         let domain_singleton_units =
             if domain_singleton { add_domain_singleton_equalities(&mut ont_clauses) } else { 0 };
@@ -10436,6 +10474,7 @@ impl Engine {
             rsucc_enabled: self.sig.rsucc,
             reach_concept_ids,
             grounded_label_concept_ids,
+            individual_labels_every_edge: self.sig.rsucc && self.sig.individual_labels_every_edge,
             ordinary_clause_arena: self.cc_arena[0].iter().map(Into::into).collect(),
             root_clause_arena: self.cc_arena[1].iter().map(Into::into).collect(),
             pending_messages: self.msgs.len(),

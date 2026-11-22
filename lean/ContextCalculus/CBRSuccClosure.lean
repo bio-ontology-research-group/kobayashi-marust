@@ -48,20 +48,34 @@ def isCentralReach (reachConcepts : List Nat) : FPred → Bool
   | .concept concept (.var 0) => decide (concept ∈ reachConcepts)
   | _ => false
 
-/-- A label `B(o)` of an individual, offered over the grounded successor edge
-`f(o)` of that individual only, for a concept of `groundedConcepts`.  The
-nominal ground context holds the labels of an individual on its constant; a
-successor `f(o)` reads them as labels of its predecessor `y` (KM's
-`rsucc_offered_over`, with `groundedConcepts` its `Sig::grounded_label`). -/
-def isGroundedLabel (groundedConcepts : List Nat) (edge : FTerm) : FPred → Bool
+/-- The labels of individuals that r-Succ offers.  `concepts` is KM's
+`Sig::grounded_label`.  With `everyEdge` off, a label `B(o)` goes over the
+grounded successor edge `f(o)` of that individual only; the nominal ground
+context holds the labels of an individual on its constant, and the successor
+`f(o)` reads them as labels of its predecessor `y`.  With `everyEdge` on, a
+label `B(o)` goes over every successor edge, as in the r-Succ rule of
+arXiv:1805.01396 (`Su^r` contains `B(o)`): a context that derived `B(o)` under
+its own hypotheses hands it to its successors, which read it on the constant
+`o` (`forwardPredicate_individual_label`). -/
+structure IndividualLabels where
+  concepts : List Nat := []
+  everyEdge : Bool := false
+deriving DecidableEq, Repr
+
+/-- Whether the edge labelled `edge` carries the label `B(o)` of an
+individual (KM's `rsucc_offered_over`).  Root edges (labelled by a constant)
+carry central reach facts only. -/
+def isGroundedLabel (labels : IndividualLabels) (edge : FTerm) : FPred → Bool
   | .concept concept (.const individual) =>
       match edge with
-      | .app _ (.const parent) => decide (parent = individual ∧ concept ∈ groundedConcepts)
+      | .app _ (.const parent) =>
+          decide (concept ∈ labels.concepts) && (labels.everyEdge || decide (parent = individual))
+      | .app _ _ => decide (concept ∈ labels.concepts) && labels.everyEdge
       | _ => false
   | _ => false
 
 /-- Whether the edge labelled `edge` carries the reach fact `predicate`. -/
-def offeredOver (reachConcepts groundedConcepts : List Nat) (edge : FTerm)
+def offeredOver (reachConcepts : List Nat) (groundedConcepts : IndividualLabels) (edge : FTerm)
     (predicate : FPred) : Bool :=
   isCentralReach reachConcepts predicate || isGroundedLabel groundedConcepts edge predicate
 
@@ -83,7 +97,7 @@ def reachPredicates (reachConcepts : List Nat)
 carries: the central reach facts (`reachPredicates`) on every edge, and on a
 grounded edge `f(o)` also the labels of `o`.  KM folds both kinds over one
 append-only pool and filters them per edge. -/
-def edgeReachPredicates (reachConcepts groundedConcepts : List Nat)
+def edgeReachPredicates (reachConcepts : List Nat) (groundedConcepts : IndividualLabels)
     (order : DecodedFiniteLiteralOrderDocument) (retained : List FCL)
     (edge : FTerm) : List FPred :=
   ((List.range retained.length).flatMap fun clauseIndex =>
@@ -128,8 +142,22 @@ theorem forwardPredicate_grounded_label (function individual concept : Nat) :
       .concept concept (.var (-1)) := by
   simp [parentOfEdge, forwardPredicate, forwardTerm]
 
+/-- Over an ordinary successor edge `f(t)` whose parent `t` is not the
+individual `o`, an offer of the label `B(o)` keeps the constant: the
+successor receives the hypothesis `B(o)`. -/
+theorem forwardPredicate_individual_label (function individual concept : Nat)
+    (parent : FTerm) (hparent : parent ≠ .const individual) :
+    forwardPredicate (.app function parent) (parentOfEdge (.app function parent))
+        (.concept concept (.const individual)) =
+      .concept concept (.const individual) := by
+  have h : (FTerm.const individual = parent) = False := by
+    apply propext; constructor
+    · intro e; exact hparent e.symm
+    · intro e; exact e.elim
+  simp [parentOfEdge, forwardPredicate, forwardTerm, h]
+
 def rSuccOffers (coverage : DecodedPredSendCoverageDocument)
-    (reachConcepts groundedConcepts : List Nat) (order : DecodedFiniteLiteralOrderDocument)
+    (reachConcepts : List Nat) (groundedConcepts : IndividualLabels) (order : DecodedFiniteLiteralOrderDocument)
     (sourceIndex : Nat) (retained : List FCL) : List RSuccOffer :=
   (outgoingEdges coverage sourceIndex).flatMap fun edge =>
     (edgeReachPredicates reachConcepts groundedConcepts order retained edge.label).map
@@ -140,7 +168,7 @@ def rSuccOffers (coverage : DecodedPredSendCoverageDocument)
     }
 
 theorem mem_rSuccOffers_iff {coverage : DecodedPredSendCoverageDocument}
-    {reachConcepts groundedConcepts : List Nat} {order : DecodedFiniteLiteralOrderDocument}
+    {reachConcepts : List Nat} {groundedConcepts : IndividualLabels} {order : DecodedFiniteLiteralOrderDocument}
     {sourceIndex : Nat} {retained : List FCL} {offer : RSuccOffer} :
     offer ∈ rSuccOffers coverage reachConcepts groundedConcepts order sourceIndex retained ↔
       ∃ edge ∈ outgoingEdges coverage sourceIndex,
@@ -162,5 +190,6 @@ theorem rSuccOffer_valid {D : Type} (model : TModel D) (offer : RSuccOffer) :
 #print axioms rSuccOffer_valid
 #print axioms forwardPredicate_root_label
 #print axioms forwardPredicate_grounded_label
+#print axioms forwardPredicate_individual_label
 
 end ContextCalculus.CBRSuccClosure

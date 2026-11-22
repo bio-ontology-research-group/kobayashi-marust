@@ -391,6 +391,12 @@ pub struct Sig {
     /// clause reads on a neighbour joined to the centre by an edge that can
     /// lead from a successor to its predecessor (`grounded_label_concepts`).
     pub grounded_label: Vec<bool>,
+    /// The r-Succ rule of arXiv:1805.01396 (`Su^r` contains `B(o)`): every
+    /// context offers its maximal labels `B(o)` on individuals over every
+    /// successor edge, keeping the constant (`CBRSuccClosure.IndividualLabels`
+    /// with `everyEdge`). `grounded_label` then holds every concept a source
+    /// clause reads on a neighbour (`grounded_label_concepts`).
+    pub individual_labels_every_edge: bool,
 }
 
 impl Sig {

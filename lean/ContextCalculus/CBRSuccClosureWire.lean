@@ -86,7 +86,7 @@ structure WireContextRSuccClosure where
 deriving FromJson, ToJson
 
 structure DecodedContextRSuccClosure (succ : DecodedSuccClosureDocument)
-    (reachConcepts groundedConcepts : List Nat) where
+    (reachConcepts : List Nat) (groundedConcepts : IndividualLabels) where
   sourceIndex : Fin (productionOf succ).contexts.length
   sourceId : Nat
   source_id_eq : ((productionOf succ).contexts.get sourceIndex).contextId = sourceId
@@ -96,7 +96,7 @@ structure DecodedContextRSuccClosure (succ : DecodedSuccClosureDocument)
       sourceIndex.val ((productionOf succ).contexts.get sourceIndex).retained
 
 def WireContextRSuccClosure.decode (succ : DecodedSuccClosureDocument)
-    (reachConcepts groundedConcepts : List Nat) (wire : WireContextRSuccClosure) :
+    (reachConcepts : List Nat) (groundedConcepts : IndividualLabels) (wire : WireContextRSuccClosure) :
     Except String (DecodedContextRSuccClosure succ reachConcepts groundedConcepts) := do
   if hsource : wire.source_context_index < (productionOf succ).contexts.length then
     let sourceIndex : Fin (productionOf succ).contexts.length :=
@@ -127,13 +127,15 @@ structure WireRSuccClosureDocument where
   that individual's grounded successor edges (KM's `Sig::grounded_label`);
   absent: none. -/
   grounded_label_concepts : Option (List Nat) := none
+  /-- Whether those labels go over every successor edge (`IndividualLabels.everyEdge`); absent: off. -/
+  individual_labels_every_edge : Option Bool := none
   contexts : List WireContextRSuccClosure
 deriving FromJson, ToJson
 
 structure DecodedRSuccClosureDocument where
   succ : DecodedSuccClosureDocument
   reachConcepts : List Nat
-  groundedConcepts : List Nat
+  groundedConcepts : IndividualLabels
   reach_nodup : reachConcepts.Nodup
   reach_bounded : ∀ concept ∈ reachConcepts,
     concept < (productionOf succ).bounds.concepts
@@ -153,13 +155,13 @@ def WireRSuccClosureDocument.decode (wire : WireRSuccClosureDocument) :
         concept < (productionOf succ).bounds.concepts then
       let contexts ← wire.contexts.mapM
         (WireContextRSuccClosure.decode succ wire.reach_concepts
-          (wire.grounded_label_concepts.getD []))
+          { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false })
       if hexact : contexts.map (·.sourceIndex.val) =
           List.range (productionOf succ).contexts.length then
         return {
           succ := succ
           reachConcepts := wire.reach_concepts
-          groundedConcepts := wire.grounded_label_concepts.getD []
+          groundedConcepts := { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false }
           reach_nodup := hnodup
           reach_bounded := hbounded
           contexts := contexts

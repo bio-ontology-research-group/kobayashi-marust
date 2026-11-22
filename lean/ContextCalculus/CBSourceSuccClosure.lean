@@ -118,7 +118,7 @@ def sourceReachPredicates (reachConcepts : List Nat)
 /-- `sourceReachPredicates` per edge: the central reach facts on every edge
 and, on a grounded edge `f(o)`, also the labels of `o`
 (`CBRSuccClosure.offeredOver`). -/
-def sourceEdgeReachPredicates (reachConcepts groundedConcepts : List Nat)
+def sourceEdgeReachPredicates (reachConcepts : List Nat) (groundedConcepts : CBRSuccClosure.IndividualLabels)
     (order : DecodedSourceFiniteOrder production) (root : Bool)
     (retained : List FCL) (edge : FTerm) : List FPred :=
   ((List.range retained.length).flatMap fun clauseIndex =>
@@ -133,7 +133,7 @@ def sourceEdgeReachPredicates (reachConcepts groundedConcepts : List Nat)
         | _ => none).eraseDups
 
 def sourceRSuccOffers
-    (reachConcepts groundedConcepts : List Nat) (order : DecodedSourceFiniteOrder production)
+    (reachConcepts : List Nat) (groundedConcepts : CBRSuccClosure.IndividualLabels) (order : DecodedSourceFiniteOrder production)
     (context : DecodedSourceLiveContext production ordinary rootArena) :
     List RSuccOffer :=
   context.successors.flatMap fun edge =>
@@ -146,7 +146,7 @@ def sourceRSuccOffers
 
 def rSuccClosedB
     (live : DecodedSourceLiveInsertionDerivationDocument)
-    (rsuccEnabled : Bool) (reachConcepts groundedConcepts : List Nat)
+    (rsuccEnabled : Bool) (reachConcepts : List Nat) (groundedConcepts : CBRSuccClosure.IndividualLabels)
     (order : DecodedSourceFiniteOrder live.production)
     (context : DecodedSourceLiveContext live.production
       live.ordinaryArena live.rootArena) : Bool :=
@@ -159,7 +159,7 @@ def rSuccClosedB
 
 theorem rSuccClosedB_sound
     (live : DecodedSourceLiveInsertionDerivationDocument)
-    (rsuccEnabled : Bool) (reachConcepts groundedConcepts : List Nat)
+    (rsuccEnabled : Bool) (reachConcepts : List Nat) (groundedConcepts : CBRSuccClosure.IndividualLabels)
     (order : DecodedSourceFiniteOrder live.production)
     (context : DecodedSourceLiveContext live.production
       live.ordinaryArena live.rootArena)
@@ -183,13 +183,15 @@ structure WireSourceSuccClosureDocument where
   /-- KM's `Sig::grounded_label` (`CBRSuccClosure.isGroundedLabel`); absent:
   none. -/
   grounded_label_concepts : Option (List Nat) := none
+  /-- Whether those labels go over every successor edge (`IndividualLabels.everyEdge`); absent: off. -/
+  individual_labels_every_edge : Option Bool := none
 deriving FromJson, ToJson
 
 structure DecodedSourceSuccClosureDocument where
   join3Closure : DecodedSourceJoin3ClosureDocument
   rsuccEnabled : Bool
   reachConcepts : List Nat
-  groundedConcepts : List Nat
+  groundedConcepts : CBRSuccClosure.IndividualLabels
   reach_nodup : reachConcepts.Nodup
   reach_bounded : ∀ concept ∈ reachConcepts,
     concept < join3Closure.hyperClosure.localClosure.live.production.bounds.concepts
@@ -217,13 +219,13 @@ def WireSourceSuccClosureDocument.decode
             wire.rsucc_enabled wire.reach_concepts context = true then
         if hrsucc : ∀ context ∈ live.contexts,
             rSuccClosedB live wire.rsucc_enabled wire.reach_concepts
-              (wire.grounded_label_concepts.getD [])
+              { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false }
               join3Closure.hyperClosure.order context = true then
           return {
             join3Closure
             rsuccEnabled := wire.rsucc_enabled
             reachConcepts := wire.reach_concepts
-            groundedConcepts := wire.grounded_label_concepts.getD []
+            groundedConcepts := { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false }
             reach_nodup := hnodup
             reach_bounded := hbounded
             direct_closed := hdirect
