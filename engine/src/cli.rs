@@ -5325,6 +5325,7 @@ fn cb_source_succ_closure_candidate(
         "join3_closure": {"version": 1, "hyper_closure": hyper},
         "rsucc_enabled": live.rsucc_enabled,
         "reach_concepts": live.reach_concept_ids,
+        "grounded_label_concepts": live.grounded_label_concept_ids,
     }))
 }
 
@@ -5601,6 +5602,7 @@ mod cb_derivation_candidate_tests {
             source_ontology: Vec::new(),
             rsucc_enabled: false,
             reach_concept_ids: Vec::new(),
+            grounded_label_concept_ids: Vec::new(),
             ordinary_clause_arena: Vec::new(),
             root_clause_arena: Vec::new(),
             pending_messages: 0,
@@ -5886,6 +5888,7 @@ mod cb_derivation_candidate_tests {
             source_ontology: vec![clause.clone()],
             rsucc_enabled: true,
             reach_concept_ids: Vec::new(),
+            grounded_label_concept_ids: Vec::new(),
             ordinary_clause_arena: vec![clause],
             root_clause_arena: Vec::new(),
             pending_messages: 0,
@@ -5973,6 +5976,7 @@ mod cb_derivation_candidate_tests {
             source_ontology: vec![clause.clone()],
             rsucc_enabled: true,
             reach_concept_ids: Vec::new(),
+            grounded_label_concept_ids: Vec::new(),
             ordinary_clause_arena: Vec::new(),
             root_clause_arena: vec![clause, ground_clause.clone()],
             pending_messages: 0,

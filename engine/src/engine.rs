@@ -828,13 +828,96 @@ fn rsucc_reach_tail(arena: &[ContextClause], pool: &[u32], _sig: &Sig) -> Vec<Pr
 
 /// Whether the reach fact `p` is offered over the edge labelled `f`: a central
 /// label over every edge, a label `B(o)` of an individual only over the
-/// grounded edges `f(o)` of that individual, where it arrives as `B(y)`
-/// (`CBRSuccClosure.edgeOffers`).
-fn rsucc_offered_over(f: Term, p: &Pred) -> bool {
+/// grounded edges `f(o)` of that individual, where it arrives as `B(y)`, and
+/// only for a concept of `Sig::grounded_label` (`CBRSuccClosure.offeredOver`).
+fn rsucc_offered_over(sig: &Sig, f: Term, p: &Pred) -> bool {
     match *p {
-        Pred::Concept { t, .. } if is_individual(t) => is_comp(f) && comp_parts(f).1 == t,
+        Pred::Concept { iri, t } if is_individual(t) => {
+            is_comp(f)
+                && comp_parts(f).1 == t
+                && sig.grounded_label.get(iri as usize).copied().unwrap_or(false)
+        }
         _ => true,
     }
+}
+
+/// The concepts a source clause reads on a neighbour `v` that a role atom of
+/// the same body joins to the centre along an edge that can lead from a
+/// successor to its predecessor. Edge directions: a Skolem head `S(x, f(x))`
+/// gives `S` from predecessor to successor, `S(f(x), x)` from successor to
+/// predecessor; a clause `R(x, y) → R'(x, y)` keeps the direction and
+/// `R(x, y) → R'(y, x)` turns it; a role head of any other clause gets both.
+/// A label of such a concept is the only kind a successor can use as a
+/// predecessor label (a body atom `B(v)` with `v` the predecessor), so the
+/// ground context offers no other (a hypothesis nothing reads is inert).
+fn grounded_label_concepts(clauses: &[OntologyClause], concepts: usize) -> Vec<bool> {
+    let mut out = vec![false; concepts];
+    let mut dirs: HashSet<(Iri, bool)> = HashSet::default();
+    let mut rules: Vec<(Iri, Iri, bool)> = Vec::new();
+    for clause in clauses {
+        let body_roles: Vec<(Iri, Term, Term)> = clause
+            .body
+            .iter()
+            .filter_map(|p| match *p {
+                Pred::Role { iri, s, t } => Some((iri, s, t)),
+                _ => None,
+            })
+            .collect();
+        for lit in &clause.head {
+            let Lit::P(Pred::Role { iri, s, t }) = *lit else { continue };
+            if is_central(s) && is_function(t) {
+                dirs.insert((iri, true));
+            } else if is_function(s) && is_central(t) {
+                dirs.insert((iri, false));
+            } else if let [(body, bs, bt)] = body_roles.as_slice() {
+                if *bs == s && *bt == t {
+                    rules.push((*body, iri, false));
+                } else if *bs == t && *bt == s {
+                    rules.push((*body, iri, true));
+                } else {
+                    dirs.insert((iri, true));
+                    dirs.insert((iri, false));
+                }
+            } else if !body_roles.is_empty() {
+                dirs.insert((iri, true));
+                dirs.insert((iri, false));
+            }
+        }
+    }
+    loop {
+        let before = dirs.len();
+        for &(body, head, flip) in &rules {
+            for forward in [true, false] {
+                if dirs.contains(&(body, forward)) {
+                    dirs.insert((head, forward != flip));
+                }
+            }
+        }
+        if dirs.len() == before {
+            break;
+        }
+    }
+    for clause in clauses {
+        for p in &clause.body {
+            let Pred::Concept { iri, t: v } = *p else { continue };
+            if is_central(v) || is_individual(v) || is_function(v) {
+                continue;
+            }
+            let reads = clause.body.iter().any(|q| match *q {
+                Pred::Role { iri: r, s, t } => {
+                    (is_central(s) && t == v && dirs.contains(&(r, false)))
+                        || (s == v && is_central(t) && dirs.contains(&(r, true)))
+                }
+                _ => false,
+            });
+            if reads {
+                if let Some(slot) = out.get_mut(iri as usize) {
+                    *slot = true;
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Fold a reach-tail (see [`rsucc_reach_tail`]) into a persistent ordered-unique
@@ -868,6 +951,7 @@ fn fold_reach_unique(acc: &mut Vec<Pred>, set: &mut HashSet<Pred>, tail: Vec<Pre
 /// `propagate_inner` and its invariance test so the test certifies the exact
 /// production the engine uses.
 fn rsucc_cross_step(
+    sig: &Sig,
     successors: &[(Term, usize)],
     reach: &[Pred],
     hwm: &mut HashMap<(Term, usize), usize>,
@@ -878,7 +962,7 @@ fn rsucc_cross_step(
     for &(f, target) in successors {
         let start = hwm.get(&(f, target)).copied().unwrap_or(0);
         for &p in &reach[start..nreach] {
-            if rsucc_offered_over(f, &p) && pushed.insert((f, target, p)) {
+            if rsucc_offered_over(sig, f, &p) && pushed.insert((f, target, p)) {
                 fired.push((f, target, p));
             }
         }
@@ -4357,6 +4441,9 @@ pub struct CbLiveTerminalSnapshot {
     pub source_ontology: Vec<CbLiveClause>,
     pub rsucc_enabled: bool,
     pub reach_concept_ids: Vec<Iri>,
+    /// `Sig::grounded_label` as ids: concepts whose labels on an individual
+    /// the ground context offers over that individual's grounded edges.
+    pub grounded_label_concept_ids: Vec<Iri>,
     pub ordinary_clause_arena: Vec<CbLiveClause>,
     pub root_clause_arena: Vec<CbLiveClause>,
     pub pending_messages: usize,
@@ -4560,6 +4647,7 @@ impl Engine {
         // for these ontologies without requiring an external tuning flag.
         sig.rsucc = std::env::var_os("KM_RSUCC").is_some()
             || ont_clauses.iter().any(clause_enables_rsucc);
+        sig.grounded_label = grounded_label_concepts(&ont_clauses, sig.concept_names.len());
         let mut ont_clauses = ont_clauses;
         let domain_singleton_units =
             if domain_singleton { add_domain_singleton_equalities(&mut ont_clauses) } else { 0 };
@@ -8049,8 +8137,10 @@ impl Engine {
                 // doc-comment).  Disjoint field borrows let it read `rsucc_reach`
                 // while mutating the two maps.
                 let fired = {
+                    let sig = &self.sig;
                     let ctx = &mut self.contexts[id];
                     rsucc_cross_step(
+                        sig,
                         &successors,
                         &ctx.rsucc_reach,
                         &mut ctx.rsucc_pair_reach_hwm,
@@ -10138,6 +10228,13 @@ impl Engine {
             .filter_map(|(iri, &reach)| (self.sig.rsucc || reach).then_some(iri as Iri))
             .collect();
         reach_concept_ids.sort_unstable();
+        let grounded_label_concept_ids: Vec<Iri> = self
+            .sig
+            .grounded_label
+            .iter()
+            .enumerate()
+            .filter_map(|(iri, &g)| (self.sig.rsucc && g).then_some(iri as Iri))
+            .collect();
 
         let contexts = self
             .contexts
@@ -10338,6 +10435,7 @@ impl Engine {
             source_ontology: self.ont.clauses.iter().map(Into::into).collect(),
             rsucc_enabled: self.sig.rsucc,
             reach_concept_ids,
+            grounded_label_concept_ids,
             ordinary_clause_arena: self.cc_arena[0].iter().map(Into::into).collect(),
             root_clause_arena: self.cc_arena[1].iter().map(Into::into).collect(),
             pending_messages: self.msgs.len(),
@@ -15316,6 +15414,7 @@ mod rsucc_rolechain_tests {
         for (succ, reach) in &rounds {
             full_fired.extend(full_round(succ, reach, &mut full_pushed));
             delta_fired.extend(rsucc_cross_step(
+                &Sig::default(),
                 succ,
                 reach,
                 &mut delta_hwm,
@@ -15400,6 +15499,7 @@ mod rsucc_rolechain_tests {
 
             // Reference: cross-step every round.
             u_fired.extend(rsucc_cross_step(
+                &Sig::default(),
                 &successors,
                 &u_reach,
                 &mut u_hwm,
@@ -15410,6 +15510,7 @@ mod rsucc_rolechain_tests {
             let reach_len = g_reach.len();
             if edges_grew || reach_len > offered {
                 g_fired.extend(rsucc_cross_step(
+                    &Sig::default(),
                     &successors,
                     &g_reach,
                     &mut g_hwm,

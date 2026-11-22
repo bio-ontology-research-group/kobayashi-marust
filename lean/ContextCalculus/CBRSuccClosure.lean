@@ -49,19 +49,21 @@ def isCentralReach (reachConcepts : List Nat) : FPred → Bool
   | _ => false
 
 /-- A label `B(o)` of an individual, offered over the grounded successor edge
-`f(o)` of that individual only.  The nominal ground context holds the labels
-of an individual on its constant; a successor `f(o)` reads them as labels of
-its predecessor `y` (KM's `rsucc_offered_over`). -/
-def isGroundedLabel (reachConcepts : List Nat) (edge : FTerm) : FPred → Bool
+`f(o)` of that individual only, for a concept of `groundedConcepts`.  The
+nominal ground context holds the labels of an individual on its constant; a
+successor `f(o)` reads them as labels of its predecessor `y` (KM's
+`rsucc_offered_over`, with `groundedConcepts` its `Sig::grounded_label`). -/
+def isGroundedLabel (groundedConcepts : List Nat) (edge : FTerm) : FPred → Bool
   | .concept concept (.const individual) =>
       match edge with
-      | .app _ (.const parent) => decide (parent = individual ∧ concept ∈ reachConcepts)
+      | .app _ (.const parent) => decide (parent = individual ∧ concept ∈ groundedConcepts)
       | _ => false
   | _ => false
 
 /-- Whether the edge labelled `edge` carries the reach fact `predicate`. -/
-def offeredOver (reachConcepts : List Nat) (edge : FTerm) (predicate : FPred) : Bool :=
-  isCentralReach reachConcepts predicate || isGroundedLabel reachConcepts edge predicate
+def offeredOver (reachConcepts groundedConcepts : List Nat) (edge : FTerm)
+    (predicate : FPred) : Bool :=
+  isCentralReach reachConcepts predicate || isGroundedLabel groundedConcepts edge predicate
 
 /-- Ordered-unique maximal central reach facts, matching `rsucc_reach_tail`
 folded over the append-only terminal pool. -/
@@ -81,7 +83,7 @@ def reachPredicates (reachConcepts : List Nat)
 carries: the central reach facts (`reachPredicates`) on every edge, and on a
 grounded edge `f(o)` also the labels of `o`.  KM folds both kinds over one
 append-only pool and filters them per edge. -/
-def edgeReachPredicates (reachConcepts : List Nat)
+def edgeReachPredicates (reachConcepts groundedConcepts : List Nat)
     (order : DecodedFiniteLiteralOrderDocument) (retained : List FCL)
     (edge : FTerm) : List FPred :=
   ((List.range retained.length).flatMap fun clauseIndex =>
@@ -91,7 +93,8 @@ def edgeReachPredicates (reachConcepts : List Nat)
       (order.maximalHeadIndices clause.head).filterMap fun headIndex =>
         match (clause.head[headIndex]? : Option FLit) with
         | some (FLit.P predicate) =>
-            if offeredOver reachConcepts edge predicate then some predicate else none
+            if offeredOver reachConcepts groundedConcepts edge predicate then some predicate
+            else none
         | _ => none).eraseDups
 
 structure RSuccOffer where
@@ -126,21 +129,23 @@ theorem forwardPredicate_grounded_label (function individual concept : Nat) :
   simp [parentOfEdge, forwardPredicate, forwardTerm]
 
 def rSuccOffers (coverage : DecodedPredSendCoverageDocument)
-    (reachConcepts : List Nat) (order : DecodedFiniteLiteralOrderDocument)
+    (reachConcepts groundedConcepts : List Nat) (order : DecodedFiniteLiteralOrderDocument)
     (sourceIndex : Nat) (retained : List FCL) : List RSuccOffer :=
   (outgoingEdges coverage sourceIndex).flatMap fun edge =>
-    (edgeReachPredicates reachConcepts order retained edge.label).map fun predicate => {
+    (edgeReachPredicates reachConcepts groundedConcepts order retained edge.label).map
+      fun predicate => {
       edge
       sourcePredicate := predicate
       pushed := forwardPredicate edge.label (parentOfEdge edge.label) predicate
     }
 
 theorem mem_rSuccOffers_iff {coverage : DecodedPredSendCoverageDocument}
-    {reachConcepts : List Nat} {order : DecodedFiniteLiteralOrderDocument}
+    {reachConcepts groundedConcepts : List Nat} {order : DecodedFiniteLiteralOrderDocument}
     {sourceIndex : Nat} {retained : List FCL} {offer : RSuccOffer} :
-    offer ∈ rSuccOffers coverage reachConcepts order sourceIndex retained ↔
+    offer ∈ rSuccOffers coverage reachConcepts groundedConcepts order sourceIndex retained ↔
       ∃ edge ∈ outgoingEdges coverage sourceIndex,
-        ∃ predicate ∈ edgeReachPredicates reachConcepts order retained edge.label,
+        ∃ predicate ∈ edgeReachPredicates reachConcepts groundedConcepts order retained
+            edge.label,
           offer = {
             edge := edge
             sourcePredicate := predicate

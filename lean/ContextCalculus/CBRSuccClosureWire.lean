@@ -86,25 +86,25 @@ structure WireContextRSuccClosure where
 deriving FromJson, ToJson
 
 structure DecodedContextRSuccClosure (succ : DecodedSuccClosureDocument)
-    (reachConcepts : List Nat) where
+    (reachConcepts groundedConcepts : List Nat) where
   sourceIndex : Fin (productionOf succ).contexts.length
   sourceId : Nat
   source_id_eq : ((productionOf succ).contexts.get sourceIndex).contextId = sourceId
   offers : List (DecodedRSuccCoverage succ sourceIndex)
   offers_exact : offers.map (·.offer) =
-    rSuccOffers (sendCoverageOf succ) reachConcepts succ.join3.hyper.literalOrder
+    rSuccOffers (sendCoverageOf succ) reachConcepts groundedConcepts succ.join3.hyper.literalOrder
       sourceIndex.val ((productionOf succ).contexts.get sourceIndex).retained
 
 def WireContextRSuccClosure.decode (succ : DecodedSuccClosureDocument)
-    (reachConcepts : List Nat) (wire : WireContextRSuccClosure) :
-    Except String (DecodedContextRSuccClosure succ reachConcepts) := do
+    (reachConcepts groundedConcepts : List Nat) (wire : WireContextRSuccClosure) :
+    Except String (DecodedContextRSuccClosure succ reachConcepts groundedConcepts) := do
   if hsource : wire.source_context_index < (productionOf succ).contexts.length then
     let sourceIndex : Fin (productionOf succ).contexts.length :=
       ⟨wire.source_context_index, hsource⟩
     let source := (productionOf succ).contexts.get sourceIndex
     if hid : source.contextId = wire.source_context_id then
       let offers ← wire.offers.mapM (WireRSuccCoverage.decode succ sourceIndex)
-      let expected := rSuccOffers (sendCoverageOf succ) reachConcepts
+      let expected := rSuccOffers (sendCoverageOf succ) reachConcepts groundedConcepts
         succ.join3.hyper.literalOrder sourceIndex.val source.retained
       if hexact : offers.map (·.offer) = expected then
         return {
@@ -123,16 +123,21 @@ structure WireRSuccClosureDocument where
   rsucc_enabled : Bool
   succ_closure : WireSuccClosureDocument
   reach_concepts : List Nat
+  /-- Concepts whose labels on an individual the ground context offers over
+  that individual's grounded successor edges (KM's `Sig::grounded_label`);
+  absent: none. -/
+  grounded_label_concepts : Option (List Nat) := none
   contexts : List WireContextRSuccClosure
 deriving FromJson, ToJson
 
 structure DecodedRSuccClosureDocument where
   succ : DecodedSuccClosureDocument
   reachConcepts : List Nat
+  groundedConcepts : List Nat
   reach_nodup : reachConcepts.Nodup
   reach_bounded : ∀ concept ∈ reachConcepts,
     concept < (productionOf succ).bounds.concepts
-  contexts : List (DecodedContextRSuccClosure succ reachConcepts)
+  contexts : List (DecodedContextRSuccClosure succ reachConcepts groundedConcepts)
   context_indices_exact : contexts.map (·.sourceIndex.val) =
     List.range (productionOf succ).contexts.length
 
@@ -147,12 +152,14 @@ def WireRSuccClosureDocument.decode (wire : WireRSuccClosureDocument) :
     if hbounded : ∀ concept ∈ wire.reach_concepts,
         concept < (productionOf succ).bounds.concepts then
       let contexts ← wire.contexts.mapM
-        (WireContextRSuccClosure.decode succ wire.reach_concepts)
+        (WireContextRSuccClosure.decode succ wire.reach_concepts
+          (wire.grounded_label_concepts.getD []))
       if hexact : contexts.map (·.sourceIndex.val) =
           List.range (productionOf succ).contexts.length then
         return {
           succ := succ
           reachConcepts := wire.reach_concepts
+          groundedConcepts := wire.grounded_label_concepts.getD []
           reach_nodup := hnodup
           reach_bounded := hbounded
           contexts := contexts
@@ -168,8 +175,8 @@ def WireRSuccClosureDocument.check (wire : WireRSuccClosureDocument) :
   return true
 
 theorem DecodedContextRSuccClosure.complete_delivery
-    (context : DecodedContextRSuccClosure succ reachConcepts) :
-    ∀ offer ∈ rSuccOffers (sendCoverageOf succ) reachConcepts
+    (context : DecodedContextRSuccClosure succ reachConcepts groundedConcepts) :
+    ∀ offer ∈ rSuccOffers (sendCoverageOf succ) reachConcepts groundedConcepts
         succ.join3.hyper.literalOrder context.sourceIndex.val
         ((productionOf succ).contexts.get context.sourceIndex).retained,
       ∃ targetIndex strengtheningIndex,
@@ -194,7 +201,7 @@ theorem WireRSuccClosureDocument.check_sound
         List.range (productionOf decoded.succ).contexts.length ∧
       ∀ context ∈ decoded.contexts,
         ∀ offer ∈ rSuccOffers (sendCoverageOf decoded.succ)
-            decoded.reachConcepts decoded.succ.join3.hyper.literalOrder
+            decoded.reachConcepts decoded.groundedConcepts decoded.succ.join3.hyper.literalOrder
             context.sourceIndex.val
             ((productionOf decoded.succ).contexts.get context.sourceIndex).retained,
           ∃ targetIndex strengtheningIndex,

@@ -386,6 +386,11 @@ pub struct Sig {
     /// clauses with roles directed into the central variable; KM_RSUCC can
     /// additionally request it for diagnostic runs.
     pub rsucc: bool,
+    /// Concepts whose label on an individual `o` the ground context offers to
+    /// the successors `f(o)` of `o` (`rsucc_offered_over`): those a source
+    /// clause reads on a neighbour joined to the centre by an edge that can
+    /// lead from a successor to its predecessor (`grounded_label_concepts`).
+    pub grounded_label: Vec<bool>,
 }
 
 impl Sig {

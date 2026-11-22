@@ -118,7 +118,7 @@ def sourceReachPredicates (reachConcepts : List Nat)
 /-- `sourceReachPredicates` per edge: the central reach facts on every edge
 and, on a grounded edge `f(o)`, also the labels of `o`
 (`CBRSuccClosure.offeredOver`). -/
-def sourceEdgeReachPredicates (reachConcepts : List Nat)
+def sourceEdgeReachPredicates (reachConcepts groundedConcepts : List Nat)
     (order : DecodedSourceFiniteOrder production) (root : Bool)
     (retained : List FCL) (edge : FTerm) : List FPred :=
   ((List.range retained.length).flatMap fun clauseIndex =>
@@ -128,16 +128,16 @@ def sourceEdgeReachPredicates (reachConcepts : List Nat)
       (order.maximalHeadIndices root clause.head).filterMap fun headIndex =>
         match (clause.head[headIndex]? : Option FLit) with
         | some (.P predicate) =>
-            if CBRSuccClosure.offeredOver reachConcepts edge predicate then
+            if CBRSuccClosure.offeredOver reachConcepts groundedConcepts edge predicate then
               some predicate else none
         | _ => none).eraseDups
 
 def sourceRSuccOffers
-    (reachConcepts : List Nat) (order : DecodedSourceFiniteOrder production)
+    (reachConcepts groundedConcepts : List Nat) (order : DecodedSourceFiniteOrder production)
     (context : DecodedSourceLiveContext production ordinary rootArena) :
     List RSuccOffer :=
   context.successors.flatMap fun edge =>
-    (sourceEdgeReachPredicates reachConcepts order context.rootDomain
+    (sourceEdgeReachPredicates reachConcepts groundedConcepts order context.rootDomain
       context.retained edge.label).map fun predicate => {
         edge := { label := edge.label, targetIndex := edge.targetIndex.val }
         sourcePredicate := predicate
@@ -146,12 +146,12 @@ def sourceRSuccOffers
 
 def rSuccClosedB
     (live : DecodedSourceLiveInsertionDerivationDocument)
-    (rsuccEnabled : Bool) (reachConcepts : List Nat)
+    (rsuccEnabled : Bool) (reachConcepts groundedConcepts : List Nat)
     (order : DecodedSourceFiniteOrder live.production)
     (context : DecodedSourceLiveContext live.production
       live.ordinaryArena live.rootArena) : Bool :=
   if rsuccEnabled then
-    (sourceRSuccOffers reachConcepts order context).all fun offer =>
+    (sourceRSuccOffers reachConcepts groundedConcepts order context).all fun offer =>
       edgeDelivered live context.contextIndex.val offer.edge.targetIndex
           offer.edge.label offer.pushed &&
         targetStrengthens live offer.edge.targetIndex offer.pushed
@@ -159,13 +159,13 @@ def rSuccClosedB
 
 theorem rSuccClosedB_sound
     (live : DecodedSourceLiveInsertionDerivationDocument)
-    (rsuccEnabled : Bool) (reachConcepts : List Nat)
+    (rsuccEnabled : Bool) (reachConcepts groundedConcepts : List Nat)
     (order : DecodedSourceFiniteOrder live.production)
     (context : DecodedSourceLiveContext live.production
       live.ordinaryArena live.rootArena)
-    (hclosed : rSuccClosedB live rsuccEnabled reachConcepts order context = true)
+    (hclosed : rSuccClosedB live rsuccEnabled reachConcepts groundedConcepts order context = true)
     (henabled : rsuccEnabled = true) :
-    ∀ offer ∈ sourceRSuccOffers reachConcepts order context,
+    ∀ offer ∈ sourceRSuccOffers reachConcepts groundedConcepts order context,
       edgeDelivered live context.contextIndex.val offer.edge.targetIndex
           offer.edge.label offer.pushed = true ∧
         targetStrengthens live offer.edge.targetIndex offer.pushed = true := by
@@ -180,12 +180,16 @@ structure WireSourceSuccClosureDocument where
   join3_closure : WireSourceJoin3ClosureDocument
   rsucc_enabled : Bool
   reach_concepts : List Nat
+  /-- KM's `Sig::grounded_label` (`CBRSuccClosure.isGroundedLabel`); absent:
+  none. -/
+  grounded_label_concepts : Option (List Nat) := none
 deriving FromJson, ToJson
 
 structure DecodedSourceSuccClosureDocument where
   join3Closure : DecodedSourceJoin3ClosureDocument
   rsuccEnabled : Bool
   reachConcepts : List Nat
+  groundedConcepts : List Nat
   reach_nodup : reachConcepts.Nodup
   reach_bounded : ∀ concept ∈ reachConcepts,
     concept < join3Closure.hyperClosure.localClosure.live.production.bounds.concepts
@@ -196,7 +200,7 @@ structure DecodedSourceSuccClosureDocument where
   rsucc_closed : ∀ context ∈
       join3Closure.hyperClosure.localClosure.live.contexts,
     rSuccClosedB join3Closure.hyperClosure.localClosure.live rsuccEnabled
-      reachConcepts join3Closure.hyperClosure.order context = true
+      reachConcepts groundedConcepts join3Closure.hyperClosure.order context = true
 
 def WireSourceSuccClosureDocument.decode
     (wire : WireSourceSuccClosureDocument) :
@@ -213,11 +217,13 @@ def WireSourceSuccClosureDocument.decode
             wire.rsucc_enabled wire.reach_concepts context = true then
         if hrsucc : ∀ context ∈ live.contexts,
             rSuccClosedB live wire.rsucc_enabled wire.reach_concepts
+              (wire.grounded_label_concepts.getD [])
               join3Closure.hyperClosure.order context = true then
           return {
             join3Closure
             rsuccEnabled := wire.rsucc_enabled
             reachConcepts := wire.reach_concepts
+            groundedConcepts := wire.grounded_label_concepts.getD []
             reach_nodup := hnodup
             reach_bounded := hbounded
             direct_closed := hdirect
@@ -245,7 +251,7 @@ theorem WireSourceSuccClosureDocument.check_sound
             context.contextIndex.val offer = true) ∧
       (decoded.rsuccEnabled = true →
         ∀ context ∈ decoded.join3Closure.hyperClosure.localClosure.live.contexts,
-          ∀ offer ∈ sourceRSuccOffers decoded.reachConcepts
+          ∀ offer ∈ sourceRSuccOffers decoded.reachConcepts decoded.groundedConcepts
               decoded.join3Closure.hyperClosure.order context,
             edgeDelivered decoded.join3Closure.hyperClosure.localClosure.live
                 context.contextIndex.val offer.edge.targetIndex offer.edge.label
@@ -264,7 +270,7 @@ theorem WireSourceSuccClosureDocument.check_sound
       · intro henabled context hcontext
         exact rSuccClosedB_sound
           decoded.join3Closure.hyperClosure.localClosure.live
-          decoded.rsuccEnabled decoded.reachConcepts
+          decoded.rsuccEnabled decoded.reachConcepts decoded.groundedConcepts
           decoded.join3Closure.hyperClosure.order context
           (decoded.rsucc_closed context hcontext) henabled
 
