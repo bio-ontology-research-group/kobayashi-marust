@@ -208,3 +208,20 @@ fn object_only_rules_keep_off_data_values_in_different_rows() {
         assert!(!stdout.lines().any(|line| line == row), "{row}: {stdout}");
     }
 }
+
+/// Campaign case missed_1027_15, reduced: `a0` and `a5` have different `d1`
+/// values and only `G ⊑ ≤1 d1` counts them. The value projection gives the
+/// two values different digits that clash on `G` only, but the model plan
+/// read different digits as different individuals and published
+/// `DIFFERENT a0 a5`; HermiT finds `a0 = a5` consistent. With `d1`
+/// functional the two are different.
+#[test]
+fn guarded_value_digits_do_not_make_individuals_different() {
+    for (case, different) in [("different-guarded-value-digits", false), ("different-functional-value-digits", true)] {
+        let output = km(&fixture(&format!("{case}.ofn")), &["--realize", "--values", "--different"]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{case}: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(stdout.lines().any(|line| line == "CONSISTENT 1"), "{case}: {stdout}");
+        assert_eq!(stdout.lines().any(|line| line == "DIFFERENT\t:a0\t:a5"), different, "{case}: {stdout}");
+    }
+}

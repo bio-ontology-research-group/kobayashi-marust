@@ -483,7 +483,6 @@ pub(super) fn from_exported_model(
     let n_elems = labels.len();
     let mut elem_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
     let mut entailed_elem_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
-    let mut elem_dvp: Vec<HashMap<(String, String), String>> = vec![HashMap::new(); n_elems];
     for u in 0..n_elems {
         for ind in &elem_inds[u] {
             let nom = format!("__nom__{ind}");
@@ -493,14 +492,6 @@ pub(super) fn from_exported_model(
     }
     for (u, lbl) in labels.iter().enumerate() {
         for item in lbl {
-            if let Some(rest) = item.strip_prefix("__dvp__") {
-                if let Some((prefix, val_bit)) = rest.rsplit_once('_') {
-                    if let Some((grp, bit_idx)) = prefix.rsplit_once('_') {
-                        elem_dvp[u].insert((grp.to_string(), bit_idx.to_string()), val_bit.to_string());
-                    }
-                }
-                continue;
-            }
             if item.starts_with("__") || item.starts_with("Q_") {
                 continue;
             }
@@ -3158,7 +3149,7 @@ pub(super) fn from_exported_model(
             }
         }
 
-        // (D2) Entailed disjoint / complement classes and `__dvp__` binary projection digits
+        // (D2) Entailed disjoint / complement classes
         let mut disjoint_pairs: HashSet<(String, String)> = HashSet::new();
         for grp in &disjoint_class_groups {
             for i in 0..grp.len() {
@@ -3219,20 +3210,12 @@ pub(super) fn from_exported_model(
                 }
             }
         }
-        for i in 0..ind_elems.len() {
-            let u = ind_elems[i];
-            if elem_dvp[u].is_empty() {
-                continue;
-            }
-            for &v in &ind_elems[(i + 1)..] {
-                if elem_dvp[u]
-                    .iter()
-                    .any(|(k, b1)| elem_dvp[v].get(k).is_some_and(|b2| b1 != b2))
-                {
-                    diff.insert(pair_key(u, v));
-                }
-            }
-        }
+        // Value projection digits (`frontend::value_projection`) do not make
+        // two individuals different: the digits of two values clash only on
+        // an element of the counted guard class `C` (`C ⊓ digit_0 ⊓ digit_1 ⊑
+        // ⊥`), and an element outside `C` may carry both values. Functional
+        // properties are decided by (D4) below; the pair tests and the exact
+        // probes decide the rest.
 
         // (D3) Entailed role edges (`proved_edge_set`) + negative/irreflexive/asymmetric/disjoint roles
         for &(ref r, ua, ub) in &neg_role_assertions {
