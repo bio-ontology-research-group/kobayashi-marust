@@ -238,3 +238,50 @@ fn tableau_cache_does_not_refute_satisfiable_seeds_after_the_complement_fold() {
         assert_eq!(classify(&text, route), answer, "route {route:?}");
     }
 }
+
+/// Sweep case universal20089_0125, reduced: the Konclude bridge initialised
+/// the root of `E` from a substituted saturation node and lost `B`, so the
+/// probe `E ⊓ ¬Q0` was satisfiable and `B ⊑ Q0`, `E ⊑ Q0` went missing.
+#[test]
+fn bridge_root_initialisation_keeps_substitute_chain_concepts() {
+    let text = ontology(
+        &["B", "C", "E", "Q0"],
+        &["s1"],
+        "EquivalentClasses(:Q0 ObjectUnionOf(ObjectAllValuesFrom(:s1 :B) :B))\n\
+         SubClassOf(:B :C)\n\
+         SubClassOf(:E :B)",
+    );
+    let answer = expected(&[], &[("B", "C"), ("B", "Q0"), ("E", "B"), ("E", "C"), ("E", "Q0")]);
+    for route in [None, Some("ht_bridge"), Some("cb_plain1")] {
+        assert_eq!(classify(&text, route), answer, "route {route:?}");
+    }
+}
+
+/// Sweep cases card20047_0106 and card20045_0132, reduced: the HT ≤n
+/// recognition derived its marker without a decision behind it.
+#[test]
+fn card_recognition_is_a_decision() {
+    // F needs ≥2 s0 successors (F is not E), each of which needs three more.
+    let text = ontology(
+        &["A", "E", "F"],
+        &["s0"],
+        "SubClassOf(ObjectMaxCardinality(1 :s0 owl:Thing) :E)\n\
+         DisjointClasses(:E :F)\n\
+         ObjectPropertyRange(:s0 ObjectMinCardinality(3 :s0 :A))",
+    );
+    let answer = expected(&[], &[]);
+    for route in [None, Some("ht_card"), Some("certified_card_proxy_abox"), Some("cb_plain1")] {
+        assert_eq!(classify(&text, route), answer, "route {route:?}");
+    }
+    // Only C is empty; the ontology is consistent.
+    let text = ontology(
+        &["C"],
+        &["s1"],
+        "SubClassOf(:C ObjectMaxCardinality(0 :s1))\n\
+         SubClassOf(owl:Thing ObjectSomeValuesFrom(:s1 owl:Thing))",
+    );
+    let answer = expected(&["C"], &[]);
+    for route in [None, Some("ht_card"), Some("certified_card_proxy_abox"), Some("cb_plain1")] {
+        assert_eq!(classify(&text, route), answer, "route {route:?}");
+    }
+}
