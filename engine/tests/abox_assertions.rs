@@ -190,3 +190,21 @@ fn nominal_on_an_abox_template_keeps_representatives_insufficient() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     assert!(stdout.lines().any(|line| line == "SAME\t:a3\t:a5"), "{stdout}");
 }
+
+/// Campaign case missed_1026_16, reduced. `C ⊑ ≤2 r.⊤` gives the definer of
+/// `⊤` the object-only rule `O(x) → Q(x)` and the clash `Q(x) ∧ D(x) → ⊥`.
+/// The model plan of `--different` dropped the object guard, so `Q` reached
+/// the data values of `a4`; merging any two individuals merged those values
+/// under the functional `d0` and met the clash, and km reported every pair of
+/// individuals different. HermiT: no pair among `a0`, `a1`, `a4` is
+/// different.
+#[test]
+fn object_only_rules_keep_off_data_values_in_different_rows() {
+    let output = km(&fixture("different-object-guard-data-value.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "CONSISTENT 1"), "{stdout}");
+    for row in ["DIFFERENT\t:a0\t:a1", "DIFFERENT\t:a0\t:a4", "DIFFERENT\t:a1\t:a4"] {
+        assert!(!stdout.lines().any(|line| line == row), "{row}: {stdout}");
+    }
+}

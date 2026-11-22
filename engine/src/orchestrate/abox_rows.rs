@@ -1487,11 +1487,36 @@ pub(super) fn from_exported_model(
     let mut skolem_ineqs: Vec<(Vec<String>, String, String)> = Vec::new();
     let mut has_unhandled_clause = false;
 
+    // A model element is a data value when the model labels it with the data
+    // sort or a data property edge ends in it; every other element is an
+    // object. Object-only rules (bodies guarded by the object sort) must not
+    // reach data values.
+    let data_role_set: HashSet<String> = f_res
+        .data_roles
+        .iter()
+        .map(|r| canon_role(r).0)
+        .collect();
+    let mut data_value_elem = vec![false; n_elems];
+    for (u, lbl) in labels.iter().enumerate() {
+        if lbl.iter().any(|l| l == crate::frontend::sorts::DATA_SORT) {
+            data_value_elem[u] = true;
+        }
+    }
+    for (_, r, t) in edge_set.iter().chain(proved_edge_set.iter()) {
+        if *t < n_elems && data_role_set.contains(r) {
+            data_value_elem[*t] = true;
+        }
+    }
     for u in 0..n_elems {
+        let sort = if data_value_elem[u] {
+            crate::frontend::sorts::DATA_SORT
+        } else {
+            crate::frontend::sorts::OBJECT_SORT
+        };
         elem_classes[u].insert("owl:Thing".to_string());
-        elem_classes[u].insert(crate::frontend::sorts::OBJECT_SORT.to_string());
+        elem_classes[u].insert(sort.to_string());
         entailed_elem_classes[u].insert("owl:Thing".to_string());
-        entailed_elem_classes[u].insert(crate::frontend::sorts::OBJECT_SORT.to_string());
+        entailed_elem_classes[u].insert(sort.to_string());
         for ind in &elem_inds[u] {
             let nom_c = format!("__nom__{ind}");
             elem_classes[u].insert(nom_c.clone());
@@ -1534,11 +1559,6 @@ pub(super) fn from_exported_model(
         }
     }
 
-    let data_role_set: HashSet<String> = f_res
-        .data_roles
-        .iter()
-        .map(|r| canon_role(r).0)
-        .collect();
 
     use crate::json_io::{JAtom, JTerm};
     for cl in &f_res.clauses {
@@ -1552,7 +1572,7 @@ pub(super) fn from_exported_model(
         {
             continue;
         }
-        let body: Vec<&JAtom> = cl
+        let mut body: Vec<&JAtom> = cl
             .body
             .iter()
             .filter(|a| !matches!(a, JAtom::Concept { concept, .. } if concept == crate::frontend::sorts::OBJECT_SORT))
@@ -1568,6 +1588,30 @@ pub(super) fn from_exported_model(
                     || !matches!(a, JAtom::Concept { concept, .. } if concept == crate::frontend::sorts::DATA_SORT)
             })
             .collect();
+        // Every element carries exactly one sort, so the head disjunct `D(t)`
+        // is the body guard `O(t)`: `→ C(x) ∨ D(x)` (the sorted `⊤ ⊑ C`) holds
+        // on objects only. Dropping the disjunct without the guard put `C` on
+        // data values. A body guard `O(t)` stays when it is the only atom.
+        let object_guards: Vec<JAtom> = if body_has_data_sort {
+            Vec::new()
+        } else {
+            cl.head
+                .iter()
+                .filter_map(|a| match a {
+                    JAtom::Concept { concept, term } if concept == crate::frontend::sorts::DATA_SORT => {
+                        Some(JAtom::Concept {
+                            concept: crate::frontend::sorts::OBJECT_SORT.to_string(),
+                            term: term.clone(),
+                        })
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        if body.is_empty() && object_guards.is_empty() {
+            body = cl.body.iter().collect();
+        }
+        body.extend(object_guards.iter());
 
         // Ground ABox clauses
         let all_ground = body.iter().chain(head.iter()).all(|a| match a {
@@ -3840,6 +3884,11 @@ pub(super) fn from_exported_model(
                                 let cr = &concept_rules[idx];
                                 if cr.body.iter().all(|b| z_set.contains(b)) {
                                     if cr.heads.is_empty() && cr.nom_merge.is_none() {
+                                        if clash_trace {
+                                            let mut labels: Vec<_> = z_set.iter().collect();
+                                            labels.sort();
+                                            eprintln!("KM_DIFF_TRACE concept rule {:?} closes element {} {:?}", cr.body, z, labels);
+                                        }
                                         return horn_clash!();
                                     }
                                     if let Some(u_o) = cr.nom_merge {
