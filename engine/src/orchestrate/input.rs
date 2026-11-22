@@ -132,7 +132,12 @@ fn prepare_with_format(
                         OrchestrateError::OutOfFragment(format!("OWL/XML parse: {error}"))
                     })?;
             let mapped: ComponentMappedOntology<RcStr, RcAnnotatedComponent> = ontology.into();
-            write_functional(&mapped, Some(&prefixes))?
+            // Write full IRIs. The reader's mapping has the ontology IRI as its
+            // default prefix, and the writer would abbreviate every IRI under
+            // it to a relative form such as `/A`, which is not functional
+            // syntax (issue #6).
+            let _ = prefixes;
+            write_functional(&mapped, None)?
         }
         InputFormat::RdfXml | InputFormat::Turtle => {
             let rdf_format = match format {
@@ -265,6 +270,36 @@ mod tests {
         assert_eq!(InputFormat::parse("rdfxml").unwrap(), InputFormat::RdfXml);
         assert_eq!(InputFormat::parse("ttl").unwrap(), InputFormat::Turtle);
         assert!(InputFormat::parse("manchester").is_err());
+    }
+
+    /// Issue #6: entity IRIs and a version IRI under the ontology IRI stay
+    /// absolute, with and without `versionIRI`.
+    #[test]
+    fn owlxml_iris_under_the_ontology_iri_stay_absolute() {
+        let _test_env = crate::test_env::write();
+        for version in [" versionIRI=\"http://example.org/onto/2.0.0\"", ""] {
+            let owlxml = format!(
+                r#"<?xml version="1.0"?>
+<Ontology xmlns="http://www.w3.org/2002/07/owl#"
+ ontologyIRI="http://example.org/onto"{version}>
+ <Declaration><Class IRI="http://example.org/onto/A"/></Declaration>
+ <Declaration><Class IRI="http://example.org/onto/B"/></Declaration>
+ <SubClassOf>
+  <Class IRI="http://example.org/onto/A"/>
+  <Class IRI="http://example.org/onto/B"/>
+ </SubClassOf>
+</Ontology>"#
+            );
+            let result = convert(&owlxml, ".owx", "owlxml");
+            for full in ["http://example.org/onto/A", "http://example.org/onto/B"] {
+                assert!(
+                    result.iri_map.iter().any(|(_, iri)| iri == full),
+                    "{full} missing from {:?}",
+                    result.iri_map
+                );
+            }
+            assert!(result.iri_map.iter().all(|(_, iri)| !iri.starts_with('/')));
+        }
     }
 
     #[test]
