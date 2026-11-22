@@ -2145,6 +2145,43 @@ fn classify_with_evidence_mode(
     // its own workers.
     engine_run::reset_cancel();
     CLASSIFY_DEPTH.with(|d| d.set(depth));
+    // The nominal CB arm declines an input it cannot decide
+    // (`nominal_cb_predecessor_gap`). The automatic route then asks the native
+    // bridge, which is complete-answer-or-defer, before it gives up; the
+    // fall-through must not end on a weaker route than the one that declined.
+    let cb_predecessor_decline = matches!(
+        &result,
+        Err(OrchestrateError::OutOfFragment(message)) if message.starts_with("nominal CB engine:")
+    );
+    if depth == 0 && forced_route.is_none() && cb_predecessor_decline {
+        let counters = PublicationCounters::capture();
+        UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(0));
+        DROPPED_SOURCE_AXIOMS.with(|u| u.set(0));
+        DROPPED_SOURCE_DETAIL.with(|d| d.borrow_mut().clear());
+        ROUTE_APPROXIMATIONS.with(|d| d.borrow_mut().clear());
+        ONE_SORTED_DATA_SUCCESSORS.with(|u| u.set(false));
+        RULES_OUTSIDE_TAXONOMY.with(|u| u.set(0));
+        let bridge = {
+            let _environment = crate::routing::EnvironmentGuard::capture();
+            crate::routing::Route::HtBridge.apply_environment();
+            std::env::set_var("KM_ROUTE", crate::routing::Route::HtBridge.as_str());
+            CLASSIFY_DEPTH.with(|d| d.set(depth + 1));
+            let bridge = classify_with_evidence_inner(&Config::from_env(), ont, retain_grouped_output);
+            CLASSIFY_DEPTH.with(|d| d.set(depth));
+            engine_run::reset_cancel();
+            bridge
+        };
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!(
+                "KM_TIMING nominal CB decline: native bridge {}",
+                if bridge.is_ok() { "answered" } else { "declined too" }
+            );
+        }
+        match bridge {
+            Ok(evidence) => result = Ok(evidence),
+            Err(_) => counters.restore(),
+        }
+    }
     if depth == 0
         && forced_route.is_none()
         && result.is_err()
