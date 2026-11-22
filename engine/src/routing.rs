@@ -2879,6 +2879,7 @@ impl EnvironmentGuard {
             .chain(std::iter::once("KM_TRANSITIVE_RULE_REDUCE"))
             .chain(std::iter::once("KM_RULE_JOIN_ORDER"))
             .chain(std::iter::once("KM_GROUND_RULE_SOURCE"))
+            .chain(std::iter::once("KM_GROUND_RULE_SOURCE_DEFERRED"))
             .chain(std::iter::once("KM_GROUND_RULE_HAS_RULES"))
             .chain(std::iter::once("KM_GROUND_PRIVATE_CLASS_FILE"))
             .chain(std::iter::once("KM_BRIDGE_PUBLIC_SUBJECT_FILE"))

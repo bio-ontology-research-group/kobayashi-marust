@@ -4538,6 +4538,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private List<OWLNamedIndividual> activeTargetIndividuals(OWLOntology snapshot) {
         List<OWLNamedIndividual> all = new ArrayList<>(signatureIndividuals());
         if (all.isEmpty()) return all;
+        // A path through an anonymous element can end at any individual.
+        if (ForestABoxRollup.mayRelateNamedThroughAnonymous(snapshot)) return all;
         for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
             if (ax instanceof OWLReflexiveObjectPropertyAxiom
                     || ax instanceof OWLHasKeyAxiom
@@ -4585,6 +4587,16 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     private List<OWLObjectProperty> activeObjectProperties(OWLOntology snapshot) {
+        if (ForestABoxRollup.mayRelateNamedThroughAnonymous(snapshot)) {
+            // A composite role or a merge can relate named individuals through
+            // an anonymous element without any of the constructs below
+            // (h_f9002_44_chain_anon: c1(a4, a4)); every property may be active.
+            List<OWLObjectProperty> all = new ArrayList<>(snapshot.getObjectPropertiesInSignature());
+            all.remove(df.getOWLTopObjectProperty());
+            all.remove(df.getOWLBottomObjectProperty());
+            all.sort(Comparator.comparing(p -> p.getIRI().toString()));
+            return all;
+        }
         boolean hasObjectOneOf = hasObjectOneOf(snapshot);
         Set<OWLObjectProperty> active = new LinkedHashSet<>();
         active.add(df.getOWLTopObjectProperty());

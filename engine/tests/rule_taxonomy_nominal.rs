@@ -54,10 +54,24 @@ fn rule_conclusion_reaches_class_through_nominal() {
     assert_eq!(output["unsatisfiable"], serde_json::json!([]));
 }
 
+/// `KM_RULES_NO_TAXONOMY` switches the rule worker to its consistency-only
+/// check. The default schedule answers fr282 by the ground-rule reduction
+/// (docs/V1.7.0-RULES-SHOIQ.md), which applies every rule and ignores the
+/// switch; on the rules route (`KM_RULES_ROUTE_FIRST=1`, the v1.6.5
+/// schedule) the taxonomy omits the rules and says so.
 #[test]
 fn consistency_only_check_still_counts_the_rules_as_dropped() {
     let output = answer(&classify(FR282_MIN, |command| {
         command.env("KM_RULES_NO_TAXONOMY", "1");
+    }));
+    assert_eq!(output["consistent"], true);
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(
+        output["subsumptions"],
+        serde_json::json!([["http://example.org/m#A", "http://example.org/m#D"]])
+    );
+    let output = answer(&classify(FR282_MIN, |command| {
+        command.env("KM_RULES_NO_TAXONOMY", "1").env("KM_RULES_ROUTE_FIRST", "1");
     }));
     assert_eq!(output["consistent"], true);
     assert_ne!(output["dropped"], 0);
@@ -108,19 +122,29 @@ fn rule_clash_beside_top_nominal_is_inconsistent() {
 #[test]
 fn unrepresented_rule_beside_nominal_is_refused() {
     // A `DifferentIndividualsAtom` rule has no encoding in the rule worker;
-    // the taxonomy would omit it, so the input is refused with a reason
-    // instead of published as DROPPED.
+    // the taxonomy would omit it, so the rules route refuses the input with
+    // a reason instead of publishing it as DROPPED. The ground-rule
+    // reduction grounds the atom exactly: the only `t` edge is `t(b, b)`,
+    // so the rule never fires and the answer is fr282's.
     let rule = "DLSafeRule(Body(ObjectPropertyAtom(<http://example.org/m#t> Variable(<http://example.org/m#x>) \
         Variable(<http://example.org/m#y>)) DifferentIndividualsAtom(Variable(<http://example.org/m#x>) \
         Variable(<http://example.org/m#y>))) Head(ClassAtom(<http://example.org/m#A> Variable(<http://example.org/m#x>))))\n)";
     let source = format!("{}{rule}\n", FR282_MIN.trim_end().strip_suffix(')').unwrap());
-    let output = classify(&source, |_| {});
-    assert!(!output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("rule-aware taxonomy"),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let fr282 = serde_json::json!([["http://example.org/m#A", "http://example.org/m#D"]]);
+    let output = answer(&classify(&source, |_| {}));
+    assert_eq!(output["consistent"], true);
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(output["subsumptions"], fr282);
+    // Rules route first: it declines with its reason, and the ground-rule
+    // reduction answers (docs/V1.7.0-RULES-SHOIQ.md).
+    let routed = classify(&source, |command| {
+        command.env("KM_RULES_ROUTE_FIRST", "1");
+    });
+    let stderr = String::from_utf8_lossy(&routed.stderr).to_string();
+    assert!(stderr.contains("rules route declined") && stderr.contains("rule-aware taxonomy"), "{stderr}");
+    let output = answer(&routed);
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(output["subsumptions"], fr282);
 }
 
 /// The fr282 minimum plus `K ≡ {b} ⊓ {c}` and `DifferentIndividuals(b c)`:

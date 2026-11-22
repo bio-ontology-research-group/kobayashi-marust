@@ -699,6 +699,9 @@ final class ForestABoxRollup {
             OWLOntology snapshot,
             boolean onlyThingUnsat,
             java.util.function.BiPredicate<OWLNamedIndividual, OWLClass> hasEntailedType) {
+        // The closure below reads only edges between named individuals; a path
+        // through an anonymous successor is outside it.
+        if (mayRelateNamedThroughAnonymous(snapshot)) return null;
         boolean positiveRBox = tryBuildPositiveRBoxProperties(snapshot, onlyThingUnsat) != null;
         if (!positiveRBox && !canComputeForestRBoxValues(snapshot)) return null;
         KMReasoner.recordReduction("R06_positive_rbox_values");
@@ -925,6 +928,48 @@ final class ForestABoxRollup {
             out.put(ops.get(p), map);
         }
         return out;
+    }
+
+    /**
+     * Whether a model may be forced to relate two named individuals (or one
+     * with itself) through an anonymous element. Such an element exists only
+     * below an existential or a minimum cardinality; a path through it ends at
+     * a named individual only by a composite role (a property chain or a
+     * transitive property: {@code B(a)}, {@code B ⊑ ∃s3⁻.B},
+     * {@code s3⁻ ⊑ s1}, {@code s1 ∘ s3 ⊑ c1} entail {@code c1(a, a)}) or by a
+     * merge of the anonymous element with a named one (functional, inverse
+     * functional, maximum or exact cardinality: {@code ∃s.C(x)}, {@code s ⊑ f},
+     * functional {@code f} and {@code f(x, b)} entail {@code s(x, b)}).
+     * Nominals are handled by their callers. When this holds, a shortcut that
+     * reads only named edges or only "active" properties may lose rows, so it
+     * must hand the question to the exact probes.
+     */
+    static boolean mayRelateNamedThroughAnonymous(OWLOntology snapshot) {
+        boolean anonymous = false;
+        boolean composite = false;
+        for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
+            if (ax instanceof OWLSubPropertyChainOfAxiom
+                    || ax instanceof OWLTransitiveObjectPropertyAxiom
+                    || ax instanceof OWLFunctionalObjectPropertyAxiom
+                    || ax instanceof OWLInverseFunctionalObjectPropertyAxiom
+                    || ax instanceof SWRLRule) {
+                composite = true;
+            }
+            for (OWLClassExpression ce : ax.getNestedClassExpressions()) {
+                if (ce instanceof OWLObjectSomeValuesFrom
+                        || (ce instanceof OWLObjectMinCardinality
+                                && ((OWLObjectMinCardinality) ce).getCardinality() >= 1)
+                        || (ce instanceof OWLObjectExactCardinality
+                                && ((OWLObjectExactCardinality) ce).getCardinality() >= 1)) {
+                    anonymous = true;
+                }
+                if (ce instanceof OWLObjectMaxCardinality || ce instanceof OWLObjectExactCardinality) {
+                    composite = true;
+                }
+            }
+            if (anonymous && composite) return true;
+        }
+        return false;
     }
 
     private static boolean canComputeForestRBoxValues(OWLOntology snapshot) {

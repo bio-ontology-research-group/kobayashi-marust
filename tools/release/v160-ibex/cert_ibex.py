@@ -85,7 +85,9 @@ def base_env():
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("KM_", "CARGO_", "GIT_", "LEAN_", "RUST", "LLVM_PROFILE"))
            and k not in ("LD_PRELOAD", "LD_LIBRARY_PATH")}
-    env.update(PATH=f"{RUST_TC}/bin:{LEAN_TC}/bin:{HOME}/.cargo/bin:" + env.get("PATH", ""),
+    # System tools only behind the pinned toolchains: a module-loaded python3 on
+    # PATH would need the module's LD_LIBRARY_PATH, which the clean environment drops.
+    env.update(PATH=f"{RUST_TC}/bin:{LEAN_TC}/bin:{HOME}/.cargo/bin:/usr/local/bin:/usr/bin:/bin",
                CARGO_HOME=str(HOME / ".cargo"), RUSTUP_HOME=str(HOME / ".rustup"),
                RUSTUP_TOOLCHAIN="1.95.0-x86_64-unknown-linux-gnu",
                CARGO_INCREMENTAL="0", CARGO_NET_OFFLINE="true")
@@ -129,7 +131,8 @@ if STEP == "gates":
                KM_CERT_LEAN_CPUSET=cpus, KM_CERT_KEEP_NATIVE_CHECKERS="1", CARGO_BUILD_JOBS="8",
                KM_RULES_GATE_ORE_7278=str(ROOT / "inputs/ore_ont_7278.owl"))
     results = {}
-    for gate in ["elc", "routing", "ht", "cb", "rules"]:
+    selected = os.environ.get("KM_IBEX_GATES", "elc,routing,ht,cb,rules").split(",")
+    for gate in selected:
         script = SRC / f"lean/run-{gate}-certification-gate.sh"
         row = run(["bash", str(script)], LOGS / f"cert-gate-{gate}.log", env, SRC)
         same, h, d = verify_source()
@@ -139,9 +142,15 @@ if STEP == "gates":
                    and same and mf_after == mf_before else "rejected", ended_utc=now())
         results[gate] = row
         receipt(f"gate-{gate}", dict(common, gate=gate, **row))
-    status = "passed" if all(r["status"] == "passed" for r in results.values()) else "rejected"
-    receipt("gates", dict(common, status=status, gates={k: v["status"] for k, v in results.items()},
-                          ended_utc=now()))
+    # The summary reads every gate receipt on disk, so a gate rerun alone
+    # (KM_IBEX_GATES) completes the set only if the others passed for this commit.
+    allg = {}
+    for gate in ["elc", "routing", "ht", "cb", "rules"]:
+        p = RECEIPTS / f"gate-{gate}.json"
+        g = json.loads(p.read_text()) if p.exists() else {}
+        allg[gate] = g.get("status") if g.get("commit") == COMMIT else "missing"
+    status = "passed" if all(v == "passed" for v in allg.values()) else "rejected"
+    receipt("gates", dict(common, status=status, gates=allg, ended_utc=now()))
 
 elif STEP == "rust":
     gates = json.loads((RECEIPTS / "gates.json").read_text())
@@ -152,7 +161,8 @@ elif STEP == "rust":
     targets = sorted(p.stem for p in (SRC / "engine/tests").glob("*.rs") if p.stem not in excluded)
     env = base_env()
     env.update(CARGO_BUILD_JOBS="4", CARGO_TARGET_DIR=str(WORK / "target-rust"))
-    workers = ["ofn", "elc", "kobayashi-marust", "tableau_cli"]
+    # The lib tests of orchestrate::{abox_rows,realize} run target/release/km.
+    workers = ["ofn", "elc", "kobayashi-marust", "tableau_cli", "km"]
     cmds = [["cargo", "build", "--release", "--jobs", "4"] + sum((["--bin", n] for n in workers), [])]
     cmds += [["cargo", "test", "--release", "--jobs", "4", "--lib", "--", "--test-threads=1"]
              + sum((["--skip", n] for n in skips), [])]
