@@ -1709,7 +1709,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
             );
             if self.conf_caching_blocking_from_saturation {
-                self.try_establish_saturation_caching(
+                self.try_establish_saturation_caching_on_existing(
                     indi,
                     succ_indi,
                     saturation_indi_node,

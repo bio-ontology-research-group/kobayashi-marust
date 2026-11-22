@@ -963,6 +963,51 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         last_sat_cach_possible_con_des: &mut ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        self.try_establish_saturation_caching_on(
+            indi,
+            succ_indi,
+            saturation_indi_node,
+            sat_caching_possible,
+            last_sat_cach_possible_con_des,
+            false,
+            calc_alg_context,
+        )
+    }
+
+    /// `try_establish_saturation_caching` for a successor that existed
+    /// before the generating rule reused it (`tryExtendFunctionalSuccessorIndividual`,
+    /// cpp 14346): its label predates the saturation replay.
+    pub fn try_establish_saturation_caching_on_existing(
+        &mut self,
+        indi: &mut NodeId,
+        succ_indi: NodeId,
+        saturation_indi_node: SatNodeId,
+        sat_caching_possible: &mut bool,
+        last_sat_cach_possible_con_des: &mut ConDescId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        self.try_establish_saturation_caching_on(
+            indi,
+            succ_indi,
+            saturation_indi_node,
+            sat_caching_possible,
+            last_sat_cach_possible_con_des,
+            true,
+            calc_alg_context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_establish_saturation_caching_on(
+        &mut self,
+        indi: &mut NodeId,
+        succ_indi: NodeId,
+        saturation_indi_node: SatNodeId,
+        sat_caching_possible: &mut bool,
+        last_sat_cach_possible_con_des: &mut ConDescId,
+        existing_successor: bool,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
         let _ = indi;
         type SatF = IndividualSaturationProcessNodeStatusFlags;
         let trace = super::sat_absorb_debug_enabled()
@@ -1045,16 +1090,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             };
             // The validation walk advances `last_sat_cach_possible_con_des` to the
             // label head even when it finds a concept the saturation node lacks,
-            // and a declined establishment (uncovered concept, nominal
-            // connection, clashed or insufficient saturation node) would record
-            // that head. The retest (`is_node_satisfiable_cached`) reads "last
-            // confirmed == label head" as "the label is still covered", so it
-            // re-confirmed such a node as saturation cached after any link
-            // change: a nominal whose label held two values of a functional
-            // data property was then never expanded, and the clash of its merged
-            // value successor never arose. Only a successful establishment
-            // confirms a label prefix.
-            let confirmed_con_des = if caching_establishment_possible {
+            // and the retest (`is_node_satisfiable_cached`) reads "last
+            // confirmed == label head" as "the label is still covered".
+            // Konclude stores that head for every attempt. When the functional
+            // extension reuses a nominal as the successor, its label holds the
+            // individual's ABox facts and merges, which the saturation node
+            // never had; a declined attempt on it was re-confirmed after the
+            // next link change: a nominal with two values of a functional data
+            // property was never expanded and the clash of its merged value
+            // successor never arose. On a reused nominal only a successful
+            // establishment confirms a prefix. Tree nodes keep Konclude's rule
+            // (ore_ont_12451 relies on it: 6 s against 40-48 s without it).
+            let existing_nominal = existing_successor && {
+                let n = calc_alg_context.process_context().node(succ_indi);
+                n.is_nominal_individual_node() || n.nominal_individual().is_some()
+            };
+            let confirmed_con_des = if !existing_nominal || caching_establishment_possible {
                 *last_sat_cach_possible_con_des
             } else {
                 ConDescId::NONE

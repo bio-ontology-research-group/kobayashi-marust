@@ -960,19 +960,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 0
             }
         };
-        // As in `try_establish_saturation_caching`: the validation walk moves
-        // `last_sat_cache_possible` to the label head even after a miss, and
-        // the retest treats "last confirmed == head" as a covered label. A
-        // failed validation confirms nothing.
-        let confirmed_con_des = if sat_caching_possible {
-            last_sat_cache_possible
-        } else {
-            ConDescId::NONE
-        };
         let mut sat_blocking = IndividualNodeSaturationBlockingData::new();
         sat_blocking.init_saturation_blocking_data(
             concept_count,
-            confirmed_con_des,
+            last_sat_cache_possible,
             base_sat_node,
         );
         let sat_blocking = calc_alg_context
