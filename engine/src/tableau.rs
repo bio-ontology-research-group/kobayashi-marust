@@ -2081,9 +2081,11 @@ impl Tableau {
                         }
                     }
                 } else {
-                    // Source unbound: must consider every edge.
+                    // Source unbound: must consider every edge. A self atom
+                    // `r(x, x)` names one variable twice, so only a loop
+                    // edge matches it.
                     for &(er, es, et) in &g.edges {
-                        if er != *r {
+                        if er != *r || (*s == *t && es != et) {
                             continue;
                         }
                         if let Some(bt) = subst.get(*t) {

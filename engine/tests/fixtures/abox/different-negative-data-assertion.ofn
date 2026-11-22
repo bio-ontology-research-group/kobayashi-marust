@@ -1,0 +1,9 @@
+Prefix(:=<http://ex.org/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex.org/n>
+Declaration(DataProperty(:d2))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+NegativeDataPropertyAssertion(:d2 :a1 "1"^^xsd:integer)
+DataPropertyAssertion(:d2 :a2 "1"^^xsd:integer)
+)

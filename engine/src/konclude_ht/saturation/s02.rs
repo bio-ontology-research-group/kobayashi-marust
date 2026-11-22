@@ -1690,6 +1690,16 @@ impl SaturationTaskHandleAlgorithm {
                     .sat_node_mut(exist_indi_node)
                     .add_multiple_cardinality_ancestor_nodes_linker(*process_indi);
                 // 7024–7026
+                // KM-BRIDGE: a value singleton on a successor counted twice
+                // forces a merge saturation cannot make (s03).
+                if self.singleton_carriers.contains(&exist_indi_node) {
+                    self.update_direct_adding_individual_status_flags(
+                        *process_indi,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                    self.set_insufficient_node_occured(calc_alg_context);
+                }
             }
         }
 
