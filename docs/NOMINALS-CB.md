@@ -2058,3 +2058,41 @@ bound (`data_role_uses_are_safe_cardinality_only`), so `automatic`,
 `certified_nominals`, and `nominals` all answer through the CB nominal engine in
 0.21-0.25 s, and all 16 tests in `top_nominal_data_successors` pass with every
 route required to answer as HermiT.
+
+## 13. Labels of an individual offered to its successors (2026-11-22)
+
+Found by the v1.7.0 differential campaign (case new_1002_65). For
+`a : ∃t.C`, `∃t⁻.K ⊑ E` (or `∃t⁻.{a} ⊑ E`), `K(a)` and `E ⊓ C ⊑ ⊥` the
+ontology is inconsistent, and the nominal CB routes answered consistent in
+every release. The successor `f(a)` needs `K`, or `{a}`, at its predecessor
+`a`. An ordinary predecessor offers its central labels `B(x)` to its
+successors as `B(y)` hypotheses (r-Succ, `rsucc_reach`); the ground context
+held the labels of `a` on the constant `a` and offered none of them.
+
+The repair: the ground context puts its maximal labels `B(o)` into the r-Succ
+pool and offers each over the grounded edges `f(o)` of `o` only, where
+`forwards` maps `B(o)` to `B(y)` (`rsucc_offered_over`). Only concepts in
+`Sig::grounded_label` are offered: a concept that some source clause reads
+on a neighbour `v` that a role atom of the same body joins to the centre
+along an edge that can lead from a successor to its predecessor
+(`grounded_label_concepts`: a Skolem head `S(x, f(x))` gives an edge from
+predecessor to successor, `S(f(x), x)` the other way, a role clause
+`R(x,y) → R'(x,y)` keeps the direction, `R(x,y) → R'(y,x)` turns it, any
+other role head counts both ways). A label nothing reads is an inert
+hypothesis, so leaving it out changes no derivation that uses one.
+
+Lean: `CBRSuccClosure.isGroundedLabel`, `offeredOver`, `edgeReachPredicates`
+and `rSuccOffers`, and `CBSourceSuccClosure.sourceEdgeReachPredicates` and
+`sourceRSuccOffers`, take the concept list `groundedConcepts`, which the
+wires carry as the optional field `grounded_label_concepts`.
+`forwardPredicate_grounded_label` shows that the offer of `B(o)` over `f(o)`
+pushes `B(y)`; the payload is a tautological hypothesis (`rSuccOffer_valid`),
+so soundness is unchanged, and the r-Succ closure checks now require the
+engine to deliver the new offers.
+
+Cost: on the nominal CB pool inputs the answers are unchanged and the time
+and memory level. The synthetic fixture `nominal_cb_slow/fx12.ofn` now runs
+past the nominal CB limit on the forced `nominals` route: the offer of the
+nominal label `{a}` to the successors of `a` interacts with the root-edge
+offers of section 12 (`KM_NO_ROOT_REACH=1` restores 0.2 s). The route fails
+closed there; the automatic route answers through the bridge.
