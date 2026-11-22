@@ -300,3 +300,15 @@ fn reflexive_loops_on_data_values_make_no_pair_different() {
         }
     }
 }
+
+/// Campaign case new_2012_75, reduced: `a0 : A` with `A ⊑ ≥2 s5.C` and
+/// `C ⊑ {a1, a3}`, so `a1` and `a3` are the two successors and `a1 ≠ a3`
+/// (HermiT). The pair test merged `a1` and `a3`, which carry no restriction,
+/// and never revisited `a0`, whose two successors the merge joined.
+#[test]
+fn merging_two_successors_revisits_their_min_cardinality() {
+    let output = km(&fixture("different-min-cardinality-into-nominals.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a1\t:a3"), "{stdout}");
+}

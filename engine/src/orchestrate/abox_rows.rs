@@ -3536,6 +3536,18 @@ pub(super) fn from_exported_model(
 
         // Fast concept-only saturation for pure-concept individual elements `(u, v)`
         // that have no non-reflexive edges.
+        // The structure `M_0` is a model only where every element meets the
+        // disjunctive rules. The Skolem elements this plan adds carry their
+        // fillers but no choice of a disjunction (`C ⊑ {a1, a3}` on the two
+        // successors of `≥ 2 s5.C`), so a merge that keeps such a structure
+        // proves no model either: the model test may then only say undecided.
+        let model_disjunction_gap = (0..elem_classes.len()).any(|z| {
+            concept_rules.iter().any(|cr| {
+                cr.heads.len() >= 2
+                    && cr.body.iter().all(|b| elem_classes[z].contains(b))
+                    && !cr.heads.iter().any(|h| elem_classes[z].contains(h))
+            })
+        });
         let test_pure_concept_merge = |u: usize, v: usize, horn_only: bool| -> PairVerdict {
             let base = if horn_only {
                 &entailed_elem_classes
@@ -3659,7 +3671,7 @@ pub(super) fn from_exported_model(
                     }
                 }
             }
-            if restricted_data_elem[u] || restricted_data_elem[v] {
+            if restricted_data_elem[u] || restricted_data_elem[v] || (!horn_only && model_disjunction_gap) {
                 return PairVerdict::Undecided;
             }
             PairVerdict::NotDifferent
@@ -3758,6 +3770,14 @@ pub(super) fn from_exported_model(
                     let mut joined = mk;
                     joined.extend(md);
                     class_members.insert(keep, joined);
+                    // A merge also joins two successors of each neighbour, so
+                    // the neighbours face the Skolem inequality test below
+                    // (`≥ 2 s.C` at `a0` with `C ⊑ {a1, a3}` keeps `a1` and
+                    // `a3` apart although neither carries the restriction).
+                    for &(s, _, t) in base_adj[keep].iter().chain(base_adj[drop_el].iter()) {
+                        all_dirty_elems.insert(s);
+                        all_dirty_elems.insert(t);
+                    }
                     if proved_apart {
                         return if horn_only {
                             horn_clash!()
@@ -4418,7 +4438,7 @@ pub(super) fn from_exported_model(
                     }
                 }
             }
-            if merged_restricted_data {
+            if merged_restricted_data || (!horn_only && model_disjunction_gap) {
                 return PairVerdict::Undecided;
             }
             PairVerdict::NotDifferent
