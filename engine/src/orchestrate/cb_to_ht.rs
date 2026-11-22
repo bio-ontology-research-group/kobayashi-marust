@@ -4695,14 +4695,6 @@ fn convert_with_rule_abox(
         }
     }
 
-    for (i, n) in ids.con_names.iter().enumerate() {
-        if (named.contains(n) || !is_internal(n)) && !is_bottom(n) {
-            queries.push(i);
-        }
-    }
-    queries.sort();
-    queries.dedup();
-
     // ---- KM_HT_CARD: resolve the first-class number restrictions to ids ----
     let mut card_defs: Vec<CardDefJson> = Vec::new();
     if card_active {
@@ -4717,6 +4709,17 @@ fn convert_with_rule_abox(
             });
         }
     }
+    // Query every named concept, including one that first gets an id as a
+    // cardinality filler above: `A ⊑ ∃s2.≥3 s0.D` with `D` in no clause left
+    // `D` out of the taxonomy on every HT card arm (tbox sweep card20044_0044).
+    for (i, n) in ids.con_names.iter().enumerate() {
+        if (named.contains(n) || !is_internal(n)) && !is_bottom(n) {
+            queries.push(i);
+        }
+    }
+    queries.sort();
+    queries.dedup();
+
     let cardinality_exact_pairs = exact_cardinality_marker_pairs
         .iter()
         .map(|(maximum, minimum)| {
