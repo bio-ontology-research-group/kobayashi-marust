@@ -815,13 +815,26 @@ fn rsucc_reach_tail(arena: &[ContextClause], pool: &[u32], _sig: &Sig) -> Vec<Pr
     for &ci in pool {
         for (p, _) in arena[ci as usize].max_head_predicates() {
             if let Pred::Concept { t, .. } = p {
-                if is_central(t) {
+                // Individual labels enter the pool only in the ground context
+                // (`rsucc_pool_eligible`).
+                if is_central(t) || is_individual(t) {
                     out.push(p);
                 }
             }
         }
     }
     out
+}
+
+/// Whether the reach fact `p` is offered over the edge labelled `f`: a central
+/// label over every edge, a label `B(o)` of an individual only over the
+/// grounded edges `f(o)` of that individual, where it arrives as `B(y)`
+/// (`CBRSuccClosure.edgeOffers`).
+fn rsucc_offered_over(f: Term, p: &Pred) -> bool {
+    match *p {
+        Pred::Concept { t, .. } if is_individual(t) => is_comp(f) && comp_parts(f).1 == t,
+        _ => true,
+    }
 }
 
 /// Fold a reach-tail (see [`rsucc_reach_tail`]) into a persistent ordered-unique
@@ -865,7 +878,7 @@ fn rsucc_cross_step(
     for &(f, target) in successors {
         let start = hwm.get(&(f, target)).copied().unwrap_or(0);
         for &p in &reach[start..nreach] {
-            if pushed.insert((f, target, p)) {
+            if rsucc_offered_over(f, &p) && pushed.insert((f, target, p)) {
                 fired.push((f, target, p));
             }
         }
@@ -2630,10 +2643,13 @@ impl Context {
 /// edge-conditioned neighbour hypothesis (see `Context::rsucc_pool`). Shared by
 /// `saturate` and the closure-seeding paths, so a clause enters the pool by the
 /// same test however it reaches the worked-off set.
-fn rsucc_pool_eligible(sig: &Sig, clause: &ContextClause) -> bool {
+/// `ground`: the clause belongs to the nominal ground context, whose labels
+/// on an individual `o` are offered to the successors `f(o)` of `o` as well
+/// (`rsucc_cross_step`, `CBRSuccClosure.groundedLabel`).
+fn rsucc_pool_eligible(sig: &Sig, clause: &ContextClause, ground: bool) -> bool {
     sig.rsucc
         && clause.max_head_predicates().any(|(p, _)| match p {
-            Pred::Concept { t, .. } => is_central(t),
+            Pred::Concept { t, .. } => is_central(t) || (ground && is_individual(t)),
             _ => false,
         })
 }
@@ -5823,7 +5839,7 @@ impl Engine {
                 .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
             // r-Succ: a maximal head CENTRAL concept is offered to successors
             // as an edge-conditioned neighbour hypothesis (see `rsucc_pool`).
-            let rsucc_eligible = rsucc_pool_eligible(&self.sig, &clause);
+            let rsucc_eligible = rsucc_pool_eligible(&self.sig, &clause, self.ground_ctx == Some(id));
             {
                 let arena = &self.cc_arena[d];
                 let ctx = &mut self.contexts[id];
@@ -7555,7 +7571,9 @@ impl Engine {
             let arena = &self.cc_arena[d];
             closure
                 .into_iter()
-                .filter(|&cid| rsucc_pool_eligible(&self.sig, &arena[cid as usize]))
+                // The shared base never belongs to the ground context, which
+                // is seeded on its own (`ground_context`).
+                .filter(|&cid| rsucc_pool_eligible(&self.sig, &arena[cid as usize], false))
                 .collect()
         } else {
             Vec::new()
@@ -7651,7 +7669,7 @@ impl Engine {
             return;
         }
         let arena = &self.cc_arena[d];
-        let rsucc = rsucc_pool_eligible(&self.sig, &arena[cid as usize]);
+        let rsucc = rsucc_pool_eligible(&self.sig, &arena[cid as usize], self.ground_ctx == Some(id));
         let ctx = &mut self.contexts[id];
         if ctx.delta.seed(arena, cid) && rsucc {
             // Same r-Succ pool feed as `saturate`: a seeded clause is a
