@@ -2467,8 +2467,18 @@ fn classify_with_evidence_inner(
             };
             match rules_route {
                 Ok(evidence) => return Ok(evidence),
-                Err(OrchestrateError::OutOfFragment(reason)) => {
+                // A decline or a worker past its time or memory limit: the
+                // schedule cannot answer. A failed or rejected worker can.
+                Err(error @ (OrchestrateError::OutOfFragment(_)
+                    | OrchestrateError::WorkerTimeout { .. }
+                    | OrchestrateError::WorkerMemoryLimit { .. })) => {
                     counters.restore();
+                    let reason = match &error {
+                        OrchestrateError::OutOfFragment(reason) => reason.clone(),
+                        OrchestrateError::WorkerTimeout { bin, .. } => format!("worker {bin} exceeded its time limit"),
+                        OrchestrateError::WorkerMemoryLimit { bin, .. } => format!("worker {bin} exceeded its RSS limit"),
+                        _ => unreachable!(),
+                    };
                     let detail = format!(
                         "the rules route declined ({reason}); the ground-rule bridge answer has no rules certificate"
                     );
