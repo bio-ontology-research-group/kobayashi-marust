@@ -267,3 +267,15 @@ fn negative_data_assertion_keeps_individuals_different() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a1\t:a2"), "{stdout}");
 }
+
+/// Campaign case new_1041_62, reduced by hand: `a0 : C` with
+/// `C ⊑ ≤0 d0.[2, 4]` and `d0(a3, 4)`, so `a0 ≠ a3` (HermiT). The model plan
+/// of `--different` checks no data restriction on a merge and reported the
+/// pair not different.
+#[test]
+fn data_restriction_on_an_asserted_value_keeps_individuals_different() {
+    let output = km(&fixture("different-data-restriction-value.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a0\t:a3"), "{stdout}");
+}

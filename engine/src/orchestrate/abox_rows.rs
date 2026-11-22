@@ -623,7 +623,46 @@ pub(super) fn from_exported_model(
         }
     }
 
+    // Data properties a TBox restriction reads. Merging an individual that
+    // has an asserted value of such a property with another one can meet the
+    // restriction (`C ⊑ ≤0 d.R` on one, `d(b, v)` with `v ∈ R` on the
+    // other), which no pair test checks, so such individuals are restricted
+    // below and their pairs go to the exact probes.
+    fn collect_data_restricted(node: &Node<'_>, expand: &dyn Fn(&str) -> String, out: &mut HashSet<String>) {
+        let Node::List(head, args) = node else { return };
+        let atoms = |items: &[Node<'_>]| -> Vec<String> {
+            items.iter().filter_map(Node::as_atom).map(expand).collect()
+        };
+        match *head {
+            "DataSomeValuesFrom" | "DataAllValuesFrom" | "DataHasValue" => {
+                if let Some(p) = args.first().and_then(Node::as_atom) {
+                    out.insert(expand(p));
+                }
+            }
+            "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality" => {
+                if let Some(p) = args.get(1).and_then(Node::as_atom) {
+                    out.insert(expand(p));
+                }
+            }
+            "DisjointDataProperties" => out.extend(atoms(args)),
+            "HasKey" => {
+                for group in args.iter().skip(1) {
+                    if let Node::List(_, items) = group {
+                        out.extend(atoms(items));
+                    }
+                }
+            }
+            _ => {}
+        }
+        for a in args {
+            collect_data_restricted(a, expand, out);
+        }
+    }
+    let mut data_restricted_props: HashSet<String> = HashSet::new();
     let _ = crate::frontend::parse::for_each_ontology_child(text, |node| {
+        if !matches!(node.head(), Some("DataPropertyAssertion" | "NegativeDataPropertyAssertion" | "Declaration")) {
+            collect_data_restricted(node, &|t: &str| expand_tok(t), &mut data_restricted_props);
+        }
         let Node::List(head, args) = node else {
             return Ok(());
         };
@@ -3434,6 +3473,7 @@ pub(super) fn from_exported_model(
         // Clause roles and source property tokens use different spellings
         // (short frontend names, full IRIs); accept a match in any of them.
         let mut restricted_data_roles: HashSet<String> = func_data_props.clone();
+        restricted_data_roles.extend(data_restricted_props.iter().cloned());
         for qf in &qual_func_rules {
             restricted_data_roles.insert(qf.role.clone());
             if let Some(spelled) = f_res.iri_map.get(&qf.role) {
