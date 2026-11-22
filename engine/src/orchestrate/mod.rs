@@ -765,23 +765,33 @@ fn nominal_cb_clause_input(
 /// ground context offers no label of `a` to `f(a)` (an ordinary predecessor
 /// offers its labels as `B(y)` hypotheses, `rsucc_reach`; the ground context
 /// does not), so the clash is never found and the arm answers consistent.
-/// `Some(reason)` when the clause set can need such a step, with margin: a
-/// ground term (an individual or nominal), a Skolem function, a role atom from a neighbour to
-/// the centre (in a body, or in a head reversing a role, as inverse and
-/// symmetric properties do), and a concept atom other than a sort on a
-/// neighbour variable in some body. Then the CB arm gives no answer.
+/// `Some(reason)` when the clause set can need such a step: a ground term
+/// (an individual or nominal), a Skolem function, and a body concept atom
+/// other than a sort on a neighbour `y` that a role atom of the same body
+/// joins to the centre along an edge that can lead from a successor to its
+/// predecessor (the direction closure below, with margin for role chains).
+/// Then the CB arm gives no answer.
 /// `KM_NOMINAL_CB_NO_PREDECESSOR_GUARD=1` lifts the guard (diagnostic).
-fn nominal_cb_predecessor_gap(bytes: &[u8]) -> Result<Option<String>, CbInputError> {
+/// What the nominal CB arm does about `nominal_cb_predecessor_gap`.
+enum PredecessorGap {
+    /// The arm gives no answer.
+    Decline(String),
+    /// The arm runs with these forward forms added (none: nothing to add).
+    Forward(Vec<crate::json_io::JClause>),
+}
+
+fn nominal_cb_predecessor_gap(bytes: &[u8]) -> Result<PredecessorGap, CbInputError> {
     // Without a Skolem function no context has a successor, so no successor
     // reads a predecessor (a role chain over named individuals only, say).
     if std::env::var_os("KM_NOMINAL_CB_NO_PREDECESSOR_GUARD").is_some()
         || !contains_bytes(bytes, br#""kind":"ind""#)
         || !contains_bytes(bytes, br#""kind":"fun""#)
     {
-        return Ok(None);
+        return Ok(PredecessorGap::Forward(Vec::new()));
     }
     // Every backward role atom has the centre `x` as its target and a
-    // neighbour as its source; a file without one is decided at once.
+    // neighbour or a Skolem term as its source; a file without one is decided
+    // at once.
     let target_x = br#""target":{"kind":"var","name":"x"}"#;
     let mut backward = false;
     let mut from = 0;
@@ -794,45 +804,209 @@ fn nominal_cb_predecessor_gap(bytes: &[u8]) -> Result<Option<String>, CbInputErr
         }
         from = start + 1;
     }
-    if !backward {
-        return Ok(None);
+    // A Skolem source `S(f(x), x)` ends its function term right before the
+    // target.
+    if !backward && !contains_bytes(bytes, br#"}},"target":{"kind":"var","name":"x"}"#) {
+        return Ok(PredecessorGap::Forward(Vec::new()));
     }
     use crate::json_io::{JAtom, JTerm};
     let input: crate::json_io::JInput = serde_json::from_slice(bytes)?;
     let neighbour = |term: &JTerm| matches!(term, JTerm::Var { name } if name != "x");
     let centre = |term: &JTerm| matches!(term, JTerm::Var { name } if name == "x");
-    let mut reversing = false;
-    let mut neighbour_concept = None;
+    let function = |term: &JTerm| matches!(term, JTerm::Fun { .. });
+    // Directions of the edges between a successor and its predecessor: `true`
+    // for an atom `R(predecessor, successor)`, `false` for
+    // `R(successor, predecessor)`. A Skolem head `S(x, f(x))` starts the first
+    // kind, `S(f(x), x)` the second; a role clause `R(x,y) → R'(x,y)` keeps the
+    // direction and `R(x,y) → R'(y,x)` turns it. A head role atom of any other
+    // clause (role chains, several body roles) gets both, which is margin.
+    let mut dirs: std::collections::HashSet<(String, bool)> = Default::default();
+    let mut rules: Vec<(String, String, bool)> = Vec::new();
     for clause in &input.clauses {
-        let backward_atom = |atom: &JAtom| {
-            matches!(atom, JAtom::Role { source, target, .. } if neighbour(source) && centre(target))
-        };
-        if clause.body.iter().any(backward_atom) || clause.head.iter().any(backward_atom) {
-            reversing = true;
-        }
-        if neighbour_concept.is_none() {
-            neighbour_concept = clause.body.iter().find_map(|atom| match atom {
-                JAtom::Concept { concept, term }
-                    if neighbour(term)
-                        && concept != crate::frontend::sorts::DATA_SORT
-                        && concept != crate::frontend::sorts::OBJECT_SORT =>
-                {
-                    Some(concept.clone())
-                }
+        let body_roles: Vec<(&String, &JTerm, &JTerm)> = clause
+            .body
+            .iter()
+            .filter_map(|atom| match atom {
+                JAtom::Role { role, source, target } => Some((role, source, target)),
                 _ => None,
-            });
+            })
+            .collect();
+        for atom in &clause.head {
+            let JAtom::Role { role, source, target } = atom else { continue };
+            if centre(source) && function(target) {
+                dirs.insert((role.clone(), true));
+            } else if function(source) && centre(target) {
+                dirs.insert((role.clone(), false));
+            } else if let [(body, bs, bt)] = body_roles.as_slice() {
+                if bs == &source && bt == &target {
+                    rules.push(((*body).clone(), role.clone(), false));
+                } else if bs == &target && bt == &source {
+                    rules.push(((*body).clone(), role.clone(), true));
+                } else {
+                    dirs.insert((role.clone(), true));
+                    dirs.insert((role.clone(), false));
+                }
+            } else if !body_roles.is_empty() {
+                dirs.insert((role.clone(), true));
+                dirs.insert((role.clone(), false));
+            }
         }
-        if reversing && neighbour_concept.is_some() {
+    }
+    loop {
+        let before = dirs.len();
+        for (body, head, flip) in &rules {
+            for forward in [true, false] {
+                if dirs.contains(&(body.clone(), forward)) {
+                    dirs.insert((head.clone(), forward != *flip));
+                }
+            }
+        }
+        if dirs.len() == before {
             break;
         }
     }
-    Ok((reversing && neighbour_concept.is_some()).then(|| {
-        format!(
-            "a body atom ({}) can read the individual predecessor of a successor through an inverse \
-             role, which the nominal CB engine does not offer to the successor",
-            neighbour_concept.unwrap_or_default()
-        )
-    }))
+    // `reverses[r]`: the roles `s` with `s(a, b) ⊢ r(b, a)` through the role
+    // clauses (any chain with an odd number of turns).
+    let mut implied: std::collections::HashSet<(String, String, bool)> = Default::default();
+    for (body, head, flip) in &rules {
+        implied.insert((body.clone(), head.clone(), *flip));
+    }
+    loop {
+        let before = implied.len();
+        let current: Vec<_> = implied.iter().cloned().collect();
+        for (a, b, f1) in &current {
+            for (body, head, f2) in &rules {
+                if body == b {
+                    implied.insert((a.clone(), head.clone(), f1 != f2));
+                }
+            }
+        }
+        if implied.len() == before {
+            break;
+        }
+    }
+    // A body concept atom on the neighbour `y` joined to the centre by an edge
+    // that can point at the predecessor reads the predecessor's label. Such a
+    // clause `C(y) ∧ R(x, y) → H(x)` with the edge `S(y, x)` that `R` reverses
+    // holds as `C(x) ∧ S(x, y) → H(y)` too (`S(x, y) ⊢ R(y, x)`), and a clause
+    // `C(y) ∧ R(y, x) → H(x)` is `C(x) ∧ R(x, y) → H(y)` renamed. These forward
+    // forms fire in the predecessor's context, the ground context for an
+    // individual, as a universal does, so they are added. A clause of any
+    // other shape (another body atom, a head off the centre) is not covered,
+    // and then the CB arm gives no answer.
+    let rename = |term: &JTerm| -> JTerm {
+        match term {
+            JTerm::Var { name } if name == "x" => JTerm::Var { name: "y".into() },
+            JTerm::Var { .. } => JTerm::Var { name: "x".into() },
+            other => other.clone(),
+        }
+    };
+    let mut forward: Vec<crate::json_io::JClause> = Vec::new();
+    for clause in &input.clauses {
+        fn reads<'a>(
+            atom: &'a JAtom,
+            dirs: &std::collections::HashSet<(String, bool)>,
+        ) -> Option<(bool, &'a JTerm)> {
+            let neighbour = |term: &JTerm| matches!(term, JTerm::Var { name } if name != "x");
+            let centre = |term: &JTerm| matches!(term, JTerm::Var { name } if name == "x");
+            match atom {
+                JAtom::Role { role, source, target }
+                    if centre(source) && neighbour(target) && dirs.contains(&(role.clone(), false)) =>
+                {
+                    Some((false, target))
+                }
+                JAtom::Role { role, source, target }
+                    if neighbour(source) && centre(target) && dirs.contains(&(role.clone(), true)) =>
+                {
+                    Some((true, source))
+                }
+                _ => None,
+            }
+        }
+        for atom in &clause.body {
+            let JAtom::Concept { concept, term } = atom else { continue };
+            if !neighbour(term)
+                || concept == crate::frontend::sorts::DATA_SORT
+                || concept == crate::frontend::sorts::OBJECT_SORT
+            {
+                continue;
+            }
+            let Some((role_atom, (pred_to_centre, _))) = clause
+                .body
+                .iter()
+                .find_map(|a| reads(a, &dirs).filter(|(_, v)| *v == term).map(|r| (a, r)))
+            else {
+                continue;
+            };
+            let uncovered = || {
+                Ok(PredecessorGap::Decline(format!(
+                    "a body atom ({concept}) can read the individual predecessor of a successor \
+                     through an inverse role, which the nominal CB engine does not offer to the successor"
+                )))
+            };
+            // Covered shape: concepts on `y`, the one role atom, heads on `x`.
+            let shape = clause.body.iter().all(|a| match a {
+                JAtom::Concept { term: t, .. } => t == term,
+                a => std::ptr::eq(a, role_atom),
+            }) && clause.head.iter().all(|h| matches!(h, JAtom::Concept { term: t, .. } if centre(t)));
+            // An at-most clause (equality head) at the predecessor is the
+            // ground context's own inference: Nom with the predecessor labels
+            // the successors offer over root edges (`offer_root_reach`,
+            // docs/NOMINALS-CB.md section 12). It needs no forward form.
+            if clause.head.iter().any(|h| matches!(h, JAtom::Eq { .. })) {
+                break;
+            }
+            if !shape {
+                return uncovered();
+            }
+            let JAtom::Role { role, .. } = role_atom else { unreachable!() };
+            let concepts: Vec<JAtom> = clause
+                .body
+                .iter()
+                .filter_map(|a| match a {
+                    JAtom::Concept { concept, .. } => {
+                        Some(JAtom::Concept { concept: concept.clone(), term: JTerm::Var { name: "x".into() } })
+                    }
+                    _ => None,
+                })
+                .collect();
+            let head: Vec<JAtom> = clause
+                .head
+                .iter()
+                .map(|h| match h {
+                    JAtom::Concept { concept, term } => JAtom::Concept { concept: concept.clone(), term: rename(term) },
+                    other => other.clone(),
+                })
+                .collect();
+            let edge = |r: &str| JAtom::Role {
+                role: r.to_string(),
+                source: JTerm::Var { name: "x".into() },
+                target: JTerm::Var { name: "y".into() },
+            };
+            let roles: Vec<String> = if pred_to_centre {
+                vec![role.clone()]
+            } else {
+                implied
+                    .iter()
+                    .filter(|(_, b, flip)| b == role && *flip)
+                    .map(|(a, _, _)| a.clone())
+                    .collect()
+            };
+            if roles.is_empty() {
+                return uncovered();
+            }
+            for r in roles {
+                let mut body = concepts.clone();
+                body.push(edge(&r));
+                let added = crate::json_io::JClause { body, head: head.clone() };
+                if !forward.contains(&added) {
+                    forward.push(added);
+                }
+            }
+            break;
+        }
+    }
+    Ok(PredecessorGap::Forward(forward))
 }
 
 /// `nominal_cb_clause_input`, keeping the frontend's file when the copy
@@ -843,18 +1017,19 @@ fn nominal_cb_clause_input_or_keep(
     clauses_path: &Path,
     meta: &frontend_run::Meta,
 ) -> Result<Option<tmpfile::TempPath>, OrchestrateError> {
+    let mut forward = Vec::new();
     if std::env::var_os("KM_NOMINALS").is_some() {
         let gap = std::fs::read(clauses_path)
             .map_err(CbInputError::from)
             .and_then(|bytes| nominal_cb_predecessor_gap(&bytes));
         match gap {
-            Ok(Some(reason)) => {
+            Ok(PredecessorGap::Decline(reason)) => {
                 if std::env::var_os("KM_TIMING").is_some() {
                     eprintln!("KM_TIMING nominal CB input: declined: {reason}");
                 }
                 return Err(OrchestrateError::OutOfFragment(format!("nominal CB engine: {reason}")));
             }
-            Ok(None) => {}
+            Ok(PredecessorGap::Forward(clauses)) => forward = clauses,
             Err(error) => {
                 return Err(OrchestrateError::OutOfFragment(format!(
                     "nominal CB engine: the predecessor guard could not read the clauses ({})",
@@ -863,6 +1038,43 @@ fn nominal_cb_clause_input_or_keep(
             }
         }
     }
+    // The forward forms change the clause set a CB certificate would cover;
+    // a run that must publish one declines instead.
+    if !forward.is_empty()
+        && (std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() || nominal_cb_certificate_plan().is_some())
+    {
+        return Err(OrchestrateError::OutOfFragment(
+            "nominal CB engine: a successor reads its individual predecessor, and the forward \
+             clauses that cover it are outside the CB certificate"
+                .into(),
+        ));
+    }
+    let copy = nominal_cb_clause_input_or_keep_inner(clauses_path, meta)?;
+    if forward.is_empty() {
+        return Ok(copy);
+    }
+    let source = copy.as_ref().map_or(clauses_path, |c| c.path());
+    let mut input: crate::json_io::JInput = serde_json::from_slice(&std::fs::read(source)?)?;
+    if input.cb_typed_source.is_some() {
+        return Err(OrchestrateError::OutOfFragment(
+            "nominal CB engine: a successor reads its individual predecessor in a certified CB input".into(),
+        ));
+    }
+    if std::env::var_os("KM_TIMING").is_some() {
+        eprintln!("KM_TIMING nominal CB input: {} forward predecessor clause(s) added", forward.len());
+    }
+    input.clauses.extend(forward);
+    let out = tmpfile::TempPath::new(".cb.forward.json");
+    let mut writer = std::io::BufWriter::new(File::create(out.path())?);
+    serde_json::to_writer(&mut writer, &input)?;
+    writer.flush()?;
+    Ok(Some(out))
+}
+
+fn nominal_cb_clause_input_or_keep_inner(
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+) -> Result<Option<tmpfile::TempPath>, OrchestrateError> {
     match nominal_cb_clause_input(clauses_path, meta) {
         Ok(copy) => Ok(copy),
         Err(CbInputError::Rejected(message)) => {
