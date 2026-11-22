@@ -2990,14 +2990,7 @@ fn classify_with_evidence_inner(
             (
                 data_assertions,
                 true,
-                // `object_guard_candidate` is read from the unconverted
-                // source, which the bounded-bridge short circuit defers: with
-                // data assertions still to be carried as `DataHasValue`
-                // class assertions, the guard can apply to the converted
-                // ontology although the profile says it does not (a negative
-                // data assertion next to a nominal: the attempt was skipped
-                // and the nominal CB fallback answered).
-                ((meta.profile.object_guard_candidate || meta.uncarried_data_assertions > 0)
+                (meta.profile.object_guard_candidate
                     && std::env::var_os("KM_NO_BRIDGE_OBJECT_GUARD").is_none())
                 .then(|| {
                     speculative_bridge_budget(
