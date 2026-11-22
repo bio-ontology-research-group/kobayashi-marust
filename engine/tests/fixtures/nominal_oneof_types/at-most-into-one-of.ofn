@@ -1,0 +1,10 @@
+Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex.org/n>
+SubClassOf(:A ObjectOneOf(:a1 :a2))
+NegativeDataPropertyAssertion(:d1 :a2 "2"^^xsd:integer)
+DisjointUnion(:A :G :C)
+SubClassOf(ObjectMaxCardinality(1 :s2 :C) :A)
+ClassAssertion(ObjectHasValue(ObjectInverseOf(:t) :a1) :a0)
+)
