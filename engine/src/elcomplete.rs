@@ -1861,6 +1861,100 @@ impl Idx {
     }
 }
 
+/// A map from `(context, role)` to a list, stored per context: `rows[d]` holds
+/// `(role, list)` entries sorted by role. It replaces a `HashMap<(u32, u32),
+/// Vec<u32>>` for `in_by_role` and `prop`: the keys and each key's list are the
+/// same, only the lookup differs (an index plus a binary search over the few
+/// roles of one context, instead of hashing the pair and rehashing every key
+/// as the map grows; on ore_ont_12567 that rehash alone was 8 % of the EL
+/// worker). Iteration visits contexts in index order and roles in sorted
+/// order; no rule depends on it.
+#[derive(Clone, Default)]
+struct ContextRoleMap {
+    rows: Vec<Vec<(u32, Vec<u32>)>>,
+}
+
+struct ContextRoleEntry<'a> {
+    map: &'a mut ContextRoleMap,
+    key: (u32, u32),
+}
+
+impl<'a> ContextRoleEntry<'a> {
+    #[inline]
+    fn or_default(self) -> &'a mut Vec<u32> {
+        self.map.get_or_insert_default(self.key)
+    }
+}
+
+impl ContextRoleMap {
+    #[inline]
+    fn position(row: &[(u32, Vec<u32>)], role: u32) -> Result<usize, usize> {
+        row.binary_search_by_key(&role, |entry| entry.0)
+    }
+    #[inline]
+    fn get(&self, key: &(u32, u32)) -> Option<&Vec<u32>> {
+        let row = self.rows.get(key.0 as usize)?;
+        Self::position(row, key.1).ok().map(|i| &row[i].1)
+    }
+    #[inline]
+    fn get_mut(&mut self, key: &(u32, u32)) -> Option<&mut Vec<u32>> {
+        let row = self.rows.get_mut(key.0 as usize)?;
+        match Self::position(row, key.1) {
+            Ok(i) => Some(&mut row[i].1),
+            Err(_) => None,
+        }
+    }
+    #[inline]
+    fn contains_key(&self, key: &(u32, u32)) -> bool {
+        self.get(key).is_some()
+    }
+    #[inline]
+    fn get_or_insert_default(&mut self, key: (u32, u32)) -> &mut Vec<u32> {
+        let d = key.0 as usize;
+        if d >= self.rows.len() {
+            self.rows.resize_with(d + 1, Vec::new);
+        }
+        let row = &mut self.rows[d];
+        let i = match Self::position(row, key.1) {
+            Ok(i) => i,
+            Err(i) => {
+                row.insert(i, (key.1, Vec::new()));
+                i
+            }
+        };
+        &mut row[i].1
+    }
+    #[inline]
+    fn entry(&mut self, key: (u32, u32)) -> ContextRoleEntry<'_> {
+        ContextRoleEntry { map: self, key }
+    }
+    fn insert(&mut self, key: (u32, u32), value: Vec<u32>) -> Option<Vec<u32>> {
+        let slot = self.get_or_insert_default(key);
+        let old = std::mem::replace(slot, value);
+        (!old.is_empty()).then_some(old)
+    }
+    fn remove(&mut self, key: &(u32, u32)) -> Option<Vec<u32>> {
+        let row = self.rows.get_mut(key.0 as usize)?;
+        match Self::position(row, key.1) {
+            Ok(i) => Some(row.remove(i).1),
+            Err(_) => None,
+        }
+    }
+    fn clear(&mut self) {
+        self.rows.clear();
+    }
+    fn extend<I: IntoIterator<Item = ((u32, u32), Vec<u32>)>>(&mut self, entries: I) {
+        for (key, value) in entries {
+            *self.get_or_insert_default(key) = value;
+        }
+    }
+    fn iter(&self) -> impl Iterator<Item = ((u32, u32), &Vec<u32>)> + '_ {
+        self.rows.iter().enumerate().flat_map(|(d, row)| {
+            row.iter().map(move |(r, list)| ((d as u32, *r), list))
+        })
+    }
+}
+
 /// Mutable saturation state. Kept separate from `Idx` so a rule can iterate an
 /// index immutably while pushing conclusions here mutably.
 struct State {
@@ -1879,7 +1973,7 @@ struct State {
     // stays small because backward links concentrate (1194's saturated structure
     // holds 43.9M links over ~203k distinct `(node, role)` keys), and the flat
     // form's `(u32, u32)` pairs become bare `u32` parents.
-    in_by_role: HashMap<(u32, u32), Vec<u32>>,
+    in_by_role: ContextRoleMap,
     // The roles a node actually has backward links along (first-arrival order),
     // so the rules that need EVERY predecessor (⊥ back-propagation, role
     // composition, repair merges) can still enumerate them without scanning the
@@ -1895,9 +1989,8 @@ struct State {
     // whole filler label crossed with the role closure (`role_supers(r) ×
     // nf4_label[d]`). This is the ELK join: each (backward link, propagation)
     // pair fires exactly once -- whichever of the two is created second triggers
-    // it. Keyed globally (one map, sparse) rather than a Vec-per-context so a
-    // 400k-node giant pays only for the contexts that actually carry fillers.
-    prop: HashMap<(u32, u32), Vec<u32>>,
+    // it. Stored per context (see `ContextRoleMap`).
+    prop: ContextRoleMap,
     // Pending items, scheduled per context by default (see `Worklist`): the
     // rules of one activated context run back to back while its label and
     // edge tables are hot, instead of interleaving every context's items
@@ -3352,9 +3445,9 @@ fn init_state_with(nfs: &Nfs, n: usize, worklist: Worklist) -> State {
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
         edges: vec![HashSet::default(); n],
-        in_by_role: HashMap::default(),
+        in_by_role: ContextRoleMap::default(),
         in_roles: vec![Vec::new(); n],
-        prop: HashMap::default(),
+        prop: ContextRoleMap::default(),
         worklist,
         sub_journal: None,
         edge_epoch: 0,
@@ -4945,8 +5038,8 @@ fn collect_shards(shards: Vec<Shard<'_>>, n: usize, workers: usize, prof: &mut P
     let mut sub_super: Vec<HashSet<u32>> = vec![HashSet::default(); n];
     let mut edges: Vec<HashSet<(u32, u32)>> = vec![HashSet::default(); n];
     let mut in_roles: Vec<Vec<u32>> = vec![Vec::new(); n];
-    let mut in_by_role: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
-    let mut prop: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    let mut in_by_role = ContextRoleMap::default();
+    let mut prop = ContextRoleMap::default();
     let mut edge_epoch = 0u64;
     for (id, shard) in shards.into_iter().enumerate() {
         for (slot, label) in shard.sub_super.into_iter().enumerate() {
@@ -12274,9 +12367,9 @@ impl IncrementalElClassifier {
         let mut state = State {
             sub_super: vec![HashSet::default(); next_len],
             edges: vec![HashSet::default(); next_len],
-            in_by_role: HashMap::default(),
+            in_by_role: ContextRoleMap::default(),
             in_roles: vec![Vec::new(); next_len],
-            prop: HashMap::default(),
+            prop: ContextRoleMap::default(),
             worklist: Worklist::from_env(next_len),
             sub_journal: None,
             edge_epoch: 0,
@@ -16744,9 +16837,9 @@ mod tests {
         let mut st = State {
             sub_super: vec![HashSet::default(); n],
             edges: vec![HashSet::default(); n],
-            in_by_role: HashMap::default(),
+            in_by_role: ContextRoleMap::default(),
             in_roles: vec![Vec::new(); n],
-            prop: HashMap::default(),
+            prop: ContextRoleMap::default(),
             worklist: Worklist::contextual(n),
             sub_journal: None,
             edge_epoch: 0,
@@ -17119,9 +17212,9 @@ mod tests {
         State {
             sub_super: vec![HashSet::default(); n],
             edges: vec![HashSet::default(); n],
-            in_by_role: HashMap::default(),
+            in_by_role: ContextRoleMap::default(),
             in_roles: vec![Vec::new(); n],
-            prop: HashMap::default(),
+            prop: ContextRoleMap::default(),
             worklist: Worklist::contextual(n),
             sub_journal: None,
             edge_epoch: 0,
@@ -19356,13 +19449,13 @@ mod tests {
     /// appends them in a different order but must build the same multisets.
     fn link_facts(st: &State) -> (Vec<(u32, u32, u32)>, Vec<(u32, u32, u32)>) {
         let mut links: Vec<(u32, u32, u32)> = Vec::new();
-        for (&(d, r), parents) in st.in_by_role.iter() {
+        for ((d, r), parents) in st.in_by_role.iter() {
             for &p in parents {
                 links.push((d, r, p));
             }
         }
         let mut props: Vec<(u32, u32, u32)> = Vec::new();
-        for (&(c, r), sups) in st.prop.iter() {
+        for ((c, r), sups) in st.prop.iter() {
             for &e in sups {
                 props.push((c, r, e));
             }
