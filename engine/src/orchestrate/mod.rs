@@ -1036,6 +1036,23 @@ fn reference_force_enabled() -> bool {
     std::env::var("KM_REFERENCE_FORCE").as_deref() == Ok("1")
 }
 
+/// Whether the automatic schedule runs the bounded bridge-first attempts on
+/// `route` (see `classify_with_evidence_inner`). Those attempts carry
+/// data-property assertions themselves and re-run the full frontend when
+/// they decline, so only then may the frontend skip its `DataHasValue`
+/// conversion pass. A forced route never runs them: skipping the conversion
+/// there leaves the assertions uncarried and the route declines.
+pub(crate) fn bounded_bridge_first_scheduled(
+    automatic_requested: bool,
+    route: crate::routing::Route,
+    profile: &crate::frontend::profile::OntologyProfile,
+) -> bool {
+    automatic_requested
+        && !reference_force_enabled()
+        && !profile.atomic_class_abox_candidate
+        && crate::routing::bounded_bridge_first_candidate(route, profile)
+}
+
 /// Dispatch an isolated top-level mechanism. `None` means the explicitly
 /// requested historical portfolio; every other variant returns one worker's
 /// answer or an honest out-of-fragment/error result, never a fallback answer.
@@ -2885,11 +2902,7 @@ fn classify_with_evidence_inner(
     // attempt first. The bridge is complete-answer-or-defer, so an answer is
     // publishable as is; any decline or budget expiry restores this call's
     // environment and continues with the unchanged schedule below.
-    if automatic_requested
-        && !reference_force_enabled()
-        && !meta.profile.atomic_class_abox_candidate
-        && crate::routing::bounded_bridge_first_candidate(selected_route, &meta.profile)
-    {
+    if bounded_bridge_first_scheduled(automatic_requested, selected_route, &meta.profile) {
         // The historical attempt runs first and unchanged. Only when it
         // declines on a source with data-property assertions does a second,
         // separately bounded attempt carry those assertions to the bridge as
