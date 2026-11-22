@@ -4181,12 +4181,20 @@ pub(super) fn from_exported_model(
                         let z_set = c_overrides.get(&z).unwrap_or(&base_c[z]);
                         for (b_cons, f1, f2) in &skolem_ineqs {
                             if b_cons.iter().all(|b| z_set.contains(b)) {
+                                // Without the witnesses of `f1(u)` and `f2(u)`
+                                // for any member `u` of the merged class (the
+                                // model reused successors for them), nothing
+                                // shows that the two terms stay apart: a
+                                // functional or at-most merge may have joined
+                                // them, so the merge proves nothing either way.
+                                let mut witnessed = false;
                                 for orig in 0..n_elems {
                                     if find(&mut uf, orig) == z {
                                         if let (Some(&w1), Some(&w2)) = (
                                             skolem_witness_of.get(&(orig, f1.clone())),
                                             skolem_witness_of.get(&(orig, f2.clone())),
                                         ) {
+                                            witnessed = true;
                                             if find(&mut uf, w1) == find(&mut uf, w2) {
                                                 return if horn_only {
                                                     horn_clash!()
@@ -4196,6 +4204,9 @@ pub(super) fn from_exported_model(
                                             }
                                         }
                                     }
+                                }
+                                if !witnessed {
+                                    return PairVerdict::Undecided;
                                 }
                             }
                         }

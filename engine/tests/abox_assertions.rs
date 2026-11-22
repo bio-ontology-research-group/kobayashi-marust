@@ -242,3 +242,17 @@ fn disjoint_role_loop_keeps_same_individuals_together() {
         assert!(stdout.lines().any(|line| line == row), "{row}: {stdout}");
     }
 }
+
+/// Campaign case e9_1023_68, reduced: `s0` is symmetric, `a1 : A` with
+/// `s0(a1, a5)` and `A ⊑ ∀s0.≥2 s0.A`, so `a5` has two `s0` successors, and
+/// `a4 : B` with `B ⊑ ≤1 s0`. HermiT: `a4 ≠ a5`. The model reused existing
+/// successors for the two Skolem terms of `a5`, so the pair test had no
+/// witnesses for their inequality, merged them under `≤1 s0` unchecked and
+/// reported the pair not different.
+#[test]
+fn reused_skolem_successors_leave_the_pair_to_the_exact_probe() {
+    let output = km(&fixture("different-reused-skolem-successors.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a4\t:a5"), "{stdout}");
+}
