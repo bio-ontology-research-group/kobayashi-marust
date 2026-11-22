@@ -2,6 +2,63 @@
 
 ## [Unreleased]
 
+## [1.7.0] - unreleased
+
+OWL 2 DL coverage, HermiT parity in Protégé, faster and smaller runs, and
+fixes for wrong answers. Notes: `docs/RELEASE-NOTES-1.7.0.md`. Errata for earlier releases:
+`docs/ERRATA-1.6.5.md`. Plan and results: `docs/V1.7.0-PLAN.md`,
+`docs/V1.7.0-PARITY-FINAL.md`, `docs/V1.7.0-SPEED.md`,
+`docs/V1.7.0-NOMINAL-COVER.md`.
+
+Numbers marked `[[TBD: ...]]` are not final and are filled in from the
+release gate.
+
+### Summary
+
+- Query rows: `--realize` (TYPE, SAME), `--values` (VALUE), `--different`
+  (DIFFERENT), `--properties`, `--data-properties`, `--top`. The Protégé
+  plugin answers the `OWLReasoner` methods HermiT answers by reducing them
+  to km runs.
+- `--lenient` reads inputs that OWL API and HermiT load in Protégé but that
+  strict OWL 2 DL checking rejects. `--unknown-datatypes=free` reads
+  datatypes outside the OWL 2 datatype map as fresh datatypes.
+- `--export-model FILE` writes a finite model (`km-model-v1`, see
+  `docs/MODEL-EXPORT.md`).
+- Finite-cover route: ontologies with a cover `⊤ ⊑ {o1, …, ok}` of up to
+  four individuals no longer take minutes on small inputs
+  (`docs/V1.7.0-NOMINAL-COVER.md`).
+- Certificates: a checker proved in Lean accepts a model for the negative
+  answers of an input, and a refutation certificate for inconsistent
+  inputs. Coverage is partial; see the release notes.
+- Speed and memory: see the release notes. Preliminary numbers there.
+- Wrong answers fixed in the saturation cache, the functional merge and the
+  blocking test. Releases v1.5.1 to v1.6.5 can miss an inconsistency or
+  unsatisfiable classes on some inputs with functional or inverse-functional
+  properties and merges. See `docs/ERRATA-1.6.5.md`.
+
+### Fixed (wrong answers)
+
+- A declined saturation cache no longer confirms a label prefix
+  (`19b80195`, `af790502`). Inputs where merges made an individual its own
+  successor and carried two values of a functional data property were
+  reported consistent.
+- The saturation merge of the successors of a functional role keeps both
+  polarities of a concept and becomes insufficient on a conflict
+  (`8a34a1e3`). A class that needs two disjoint fillers of a functional
+  super-role was reported satisfiable.
+- Optimized blocking reads the blocker's unapplied universal and at-most
+  restrictions (`c11e5db6`).
+- `--different` rows no longer depend on hash order, and DIFFERENT rows
+  come from the model plan (`cc4529fc`, `cae7cc6e`).
+- Plugin: correct answers and fresh runs after an interrupted query
+  (`43beadd0`).
+
+### Entries from the development log
+
+The entries below were written during development. Several (E7, E8, E12,
+E17, E18, E19, E20) also shipped in v1.6.5; see `docs/RELEASE-1.6.5.md` at
+the tag `v1.6.5`.
+
 ### Engine
 
 - Cheaper chain-consumer markers (E12 cost): a letter of a marker automaton
