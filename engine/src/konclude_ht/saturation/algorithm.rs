@@ -254,6 +254,11 @@ pub struct SaturationTaskHandleAlgorithm {
     pub diagnostic_all_back_prop_count: Cint64,
     pub diagnostic_successor_create_count: Cint64,
     pub diagnostic_max_label_count: Cint64,
+    /// KM-BRIDGE: the value singleton concepts (`v(y1) ∧ v(y2) → y1 = y2`)
+    /// the completion merges at fixpoint (u02 `ht_apply_singleton_merges`).
+    /// Saturation has no such merge, so a node that carries one is
+    /// insufficient (s03), as a node with a nominal is.
+    pub value_singletons: crate::fxhash::FxHashSet<ConceptId>,
 }
 
 impl SaturationTaskHandleAlgorithm {
@@ -376,6 +381,7 @@ impl SaturationTaskHandleAlgorithm {
             diagnostic_all_back_prop_count: 0,
             diagnostic_successor_create_count: 0,
             diagnostic_max_label_count: 0,
+            value_singletons: Default::default(),
         }
     }
 

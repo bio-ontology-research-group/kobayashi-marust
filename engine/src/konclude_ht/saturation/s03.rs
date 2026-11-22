@@ -119,6 +119,19 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .concept(concept)
             .get_operator_code();
 
+        if !con_negation && self.value_singletons.contains(&concept) {
+            // KM-BRIDGE: a value singleton merges every node that carries it
+            // (u02 `ht_apply_singleton_merges`); saturation has no such merge,
+            // so the node is insufficient and completion decides, as for a
+            // nominal. Without it, `A ⊑ ≥2 d` over a one-value range of `d`
+            // came out satisfiable.
+            self.update_direct_adding_individual_status_flags(
+                *process_indi,
+                super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                calc_alg_context,
+            );
+            self.set_insufficient_node_occured(calc_alg_context);
+        }
         if !con_negation {
             match con_op_code {
                 CCDATATYPE => {

@@ -16143,6 +16143,7 @@ fn run_bridged_saturation_with_native_consistency_prefix(
     }
     let mut sat_algo = super::saturation::algorithm::SaturationTaskHandleAlgorithm::new();
     sat_algo.native_consistency_nominal_nondeterministic_prefix = native_consistency_prefix;
+    sat_algo.value_singletons = bridged.singleton_concepts.iter().copied().collect();
     configure_production_saturation(&mut sat_algo);
     let preparation_started = std::time::Instant::now();
     let preparation_budget =
