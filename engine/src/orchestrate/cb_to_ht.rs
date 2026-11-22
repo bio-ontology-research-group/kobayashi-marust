@@ -3308,6 +3308,12 @@ pub fn convert_rule_model(
         source_axioms, false, rules, true, true)
 }
 
+fn clause_has_forall_marker(c: &JClause) -> bool {
+    c.body.iter().chain(c.head.iter()).any(|a| {
+        matches!(a, crate::json_io::JAtom::Concept { concept, .. } if concept.starts_with("__forall__"))
+    })
+}
+
 fn convert_with_rule_abox(
     clauses: &[JClause],
     rbox: Option<&[Vec<String>]>,
@@ -3320,6 +3326,17 @@ fn convert_with_rule_abox(
     ht_rules: bool,
     retain_rule_abox: bool,
 ) -> TInput {
+    // The frontend's `__forall__` markers encode universals over transitive
+    // roles for the CB engine (`preprocess::forall_transitivity_clauses`).
+    // The HT side reads transitivity from the RBox itself, and the markers are
+    // a conservative extension, so they are left out of its input.
+    let without_forall_markers: Vec<JClause>;
+    let clauses: &[JClause] = if clauses.iter().any(clause_has_forall_marker) {
+        without_forall_markers = clauses.iter().filter(|c| !clause_has_forall_marker(c)).cloned().collect();
+        &without_forall_markers
+    } else {
+        clauses
+    };
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
     let mut ht: Vec<HtClause> = Vec::new();

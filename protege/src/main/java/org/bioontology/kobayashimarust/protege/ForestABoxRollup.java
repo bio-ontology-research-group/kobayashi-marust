@@ -50,6 +50,13 @@ final class ForestABoxRollup {
             if (!o.getIndividualsInSignature().isEmpty()) hasIndividuals = true;
         }
         if (!hasReflexive || !hasIndividuals) return null;
+        // Its value probes ask only for targets that occur in property
+        // assertions; a path through an anonymous element can end at any
+        // individual (c1(a4, a4) with no assertion on a4), so the rollup steps
+        // aside and the exact probes answer.
+        List<OWLAxiom> closureAxioms = new ArrayList<>();
+        for (OWLOntology o : closure) closureAxioms.addAll(o.getLogicalAxioms());
+        if (mayRelateNamedThroughAnonymous(closureAxioms)) return null;
 
         Set<OWLDataProperty> tboxDataProps = new HashSet<>();
         Set<OWLDataProperty> funcDataProps = new HashSet<>();
@@ -945,9 +952,13 @@ final class ForestABoxRollup {
      * must hand the question to the exact probes.
      */
     static boolean mayRelateNamedThroughAnonymous(OWLOntology snapshot) {
+        return mayRelateNamedThroughAnonymous(snapshot.getLogicalAxioms());
+    }
+
+    static boolean mayRelateNamedThroughAnonymous(Iterable<? extends OWLAxiom> axioms) {
         boolean anonymous = false;
         boolean composite = false;
-        for (OWLAxiom ax : snapshot.getLogicalAxioms()) {
+        for (OWLAxiom ax : axioms) {
             if (ax instanceof OWLSubPropertyChainOfAxiom
                     || ax instanceof OWLTransitiveObjectPropertyAxiom
                     || ax instanceof OWLFunctionalObjectPropertyAxiom
