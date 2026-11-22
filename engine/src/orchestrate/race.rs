@@ -331,8 +331,8 @@ where
                 if let Ok(Some(st)) = child.try_wait() {
                     let mut won = None;
                     if st.success() {
-                        if let Ok(f) = File::open(outp.path()) {
-                            if let Ok(t) = serde_json::from_reader::<_, TOutput>(BufReader::new(f))
+                        if let Ok(bytes) = std::fs::read(outp.path()) {
+                            if let Ok(t) = serde_json::from_slice::<TOutput>(&bytes)
                             {
                                 let mut w = tableau_to_out(t);
                                 w.worker_model_path =
@@ -3045,8 +3045,11 @@ fn read_ht_answer(p: &Path, proxy_abox_certificate: Option<&ProxyAboxCertificate
         // HT compact output lists only subjects with a superclass.
         return super::parse_out_path(p).ok().map(ht_pair_form);
     }
-    let f = File::open(p).ok()?;
-    let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
+    // Whole-file read plus slice parse: the same value as the streaming
+    // reader, without its per-byte `IoRead` cost on large answers.
+    let bytes = std::fs::read(p).ok()?;
+    let mut output = serde_json::from_slice::<TOutput>(&bytes).ok()?;
+    drop(bytes);
     if proxy_abox_certificate
         .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &output))
     {
@@ -3281,14 +3284,15 @@ pub fn run_ht_only(
         out.dropped += bypass_drops;
         return Ok(out);
     }
-    let output = File::open(out_path.path())?;
-    let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
+    let output = std::fs::read(out_path.path())?;
+    let mut parsed: TOutput = serde_json::from_slice(&output).map_err(|error| {
         OrchestrateError::Worker {
             bin: "tableau/ht".into(),
             code: 0,
             stderr: format!("successful worker emitted no valid taxonomy: {error}"),
         }
     })?;
+    drop(output);
     if proxy_abox_certificate
         .as_ref()
         .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &parsed))
@@ -3696,14 +3700,15 @@ fn run_ht_only_bounded_from_with_input(
         }
         return super::parse_out_path(out_path.path()).map(|out| Some(ht_pair_form(out)));
     }
-    let output = File::open(out_path.path())?;
-    let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
+    let output = std::fs::read(out_path.path())?;
+    let mut parsed: TOutput = serde_json::from_slice(&output).map_err(|error| {
         OrchestrateError::Worker {
             bin: "tableau/ht".into(),
             code: 0,
             stderr: format!("successful worker emitted no valid taxonomy: {error}"),
         }
     })?;
+    drop(output);
     if proxy_abox_certificate
         .as_ref()
         .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &parsed))
@@ -3740,8 +3745,9 @@ pub fn run_tableau_only(
             stderr: String::new(),
         });
     }
-    let output = File::open(out_path.path())?;
-    let parsed: TOutput = serde_json::from_reader(BufReader::new(output))?;
+    let output = std::fs::read(out_path.path())?;
+    let parsed: TOutput = serde_json::from_slice(&output)?;
+    drop(output);
     let mut out = tableau_to_out(parsed);
     out.worker_model_path = super::model_export::worker_model_sidecar_if_exists(out_path.path());
     Ok(out)
