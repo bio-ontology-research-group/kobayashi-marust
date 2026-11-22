@@ -225,3 +225,20 @@ fn guarded_value_digits_do_not_make_individuals_different() {
         assert_eq!(stdout.lines().any(|line| line == "DIFFERENT\t:a0\t:a5"), different, "{case}: {stdout}");
     }
 }
+
+/// Campaign case new_1077_75, reduced by hand: `s0` and `s1` are disjoint,
+/// `s0(a3, a3)`, `s1(a1, a2)` and `a2 = a3`. The model plan's disjoint-role
+/// rule paired the loop's element with itself and published
+/// `DIFFERENT a2 a3` next to `SAME a2 a3`. HermiT: `a2 = a3`, and `a1` is
+/// different from both.
+#[test]
+fn disjoint_role_loop_keeps_same_individuals_together() {
+    let output = km(&fixture("different-disjoint-role-loop.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "SAME\t:a2\t:a3"), "{stdout}");
+    assert!(!stdout.lines().any(|line| line == "DIFFERENT\t:a2\t:a3"), "{stdout}");
+    for row in ["DIFFERENT\t:a1\t:a2", "DIFFERENT\t:a1\t:a3"] {
+        assert!(stdout.lines().any(|line| line == row), "{row}: {stdout}");
+    }
+}

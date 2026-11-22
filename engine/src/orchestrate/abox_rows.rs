@@ -3255,6 +3255,10 @@ pub(super) fn from_exported_model(
                             .get(grp[j].as_str())
                             .map(Vec::as_slice)
                             .unwrap_or(&[]);
+                        // Merging the two named ends that keep the edges
+                        // `p(u1, v1)` and `q(u2, v2)` apart would make them
+                        // one edge of two disjoint properties. A loop at `x`
+                        // with an edge from or to `y` keeps `x` and `y` apart.
                         for &(u1, v1) in e1 {
                             for &(u2, v2) in e2 {
                                 if u1 == u2 && v1 != v2 {
@@ -3263,8 +3267,19 @@ pub(super) fn from_exported_model(
                                 if v1 == v2 && u1 != u2 {
                                     diff.insert(pair_key(u1, u2));
                                 }
-                                if u1 == v2 && v1 != u2 && (u1 == v1 || u2 == v2) {
+                                if u1 == v2 && v1 == u2 && u1 != v1 {
                                     diff.insert(pair_key(u1, v1));
+                                }
+                                for ((x, loop_x), (a, b)) in [((u1, v1), (u2, v2)), ((u2, v2), (u1, v1))] {
+                                    if x != loop_x {
+                                        continue;
+                                    }
+                                    if a == x && b != x {
+                                        diff.insert(pair_key(x, b));
+                                    }
+                                    if b == x && a != x {
+                                        diff.insert(pair_key(x, a));
+                                    }
                                 }
                             }
                         }
