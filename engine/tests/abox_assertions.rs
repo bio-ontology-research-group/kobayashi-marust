@@ -256,3 +256,14 @@ fn reused_skolem_successors_leave_the_pair_to_the_exact_probe() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a4\t:a5"), "{stdout}");
 }
+
+/// Campaign case new_1002_70, reduced by hand: `¬d2(a1, 1)` and `d2(a2, 1)`,
+/// so `a1 ≠ a2` (HermiT). The model plan of `--different` reads no negative
+/// data assertion, merged the two and reported the pair not different.
+#[test]
+fn negative_data_assertion_keeps_individuals_different() {
+    let output = km(&fixture("different-negative-data-assertion.ofn"), &["--realize", "--values", "--different"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.lines().any(|line| line == "DIFFERENT\t:a1\t:a2"), "{stdout}");
+}

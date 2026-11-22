@@ -559,6 +559,9 @@ pub(super) fn from_exported_model(
     let mut obj_domains: Vec<(String, String)> = Vec::new();
     let mut obj_ranges: Vec<(String, String)> = Vec::new();
     let mut source_data_assertions: Vec<(usize, String, String)> = Vec::new();
+    // Individuals with a `NegativeDataPropertyAssertion`: no pair test reads
+    // those assertions, so pairs with them go to the exact probes.
+    let mut negative_data_elems: HashSet<usize> = HashSet::new();
     let mut elem_neg_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
 
     fn collect_has_value_rhs<'a>(
@@ -991,6 +994,17 @@ pub(super) fn from_exported_model(
             "ObjectPropertyRange" if plain.len() == 2 => {
                 if let (Some(r), Some(c)) = (plain[0].as_atom(), plain[1].as_atom()) {
                     obj_ranges.push((resolve_role_short(r), resolve_class_iri(c)));
+                }
+            }
+            "NegativeDataPropertyAssertion" if plain.len() >= 3 => {
+                if let Some(ind_tok) = plain[1].as_atom() {
+                    if let Some(&u) = ind_lookup
+                        .get(&expand_tok(ind_tok))
+                        .or_else(|| ind_lookup.get(&public_name(ind_tok)))
+                        .and_then(|p| ind_to_elem.get(p))
+                    {
+                        negative_data_elems.insert(u);
+                    }
                 }
             }
             "DataPropertyAssertion" if plain.len() >= 3 => {
@@ -3436,6 +3450,11 @@ pub(super) fn from_exported_model(
                 || meta.iri_map.get(p).is_some_and(|s| restricted_data_roles.contains(s));
             if *u < n_elems && restricted {
                 restricted_data_elem[*u] = true;
+            }
+        }
+        for &u in &negative_data_elems {
+            if u < n_elems {
+                restricted_data_elem[u] = true;
             }
         }
         if std::env::var_os("KM_DIFF_TRACE").is_some() {
