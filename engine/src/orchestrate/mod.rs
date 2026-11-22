@@ -759,13 +759,107 @@ fn nominal_cb_clause_input(
     Ok(Some(out))
 }
 
+/// The nominal CB engine misses a body atom on the predecessor of a
+/// successor of an individual: for `a : ∃t.C`, `∃t⁻.K ⊑ E`, `K(a)` and
+/// `E ⊓ C ⊑ ⊥`, the successor `f(a)` needs `K` at its predecessor `a`, but the
+/// ground context offers no label of `a` to `f(a)` (an ordinary predecessor
+/// offers its labels as `B(y)` hypotheses, `rsucc_reach`; the ground context
+/// does not), so the clash is never found and the arm answers consistent.
+/// `Some(reason)` when the clause set can need such a step, with margin: a
+/// ground term (an individual or nominal), a role atom from a neighbour to
+/// the centre (in a body, or in a head reversing a role, as inverse and
+/// symmetric properties do), and a concept atom other than a sort on a
+/// neighbour variable in some body. Then the CB arm gives no answer.
+/// `KM_NOMINAL_CB_NO_PREDECESSOR_GUARD=1` lifts the guard (diagnostic).
+fn nominal_cb_predecessor_gap(bytes: &[u8]) -> Result<Option<String>, CbInputError> {
+    if std::env::var_os("KM_NOMINAL_CB_NO_PREDECESSOR_GUARD").is_some()
+        || !contains_bytes(bytes, br#""kind":"ind""#)
+    {
+        return Ok(None);
+    }
+    // Every backward role atom has the centre `x` as its target and a
+    // neighbour as its source; a file without one is decided at once.
+    let target_x = br#""target":{"kind":"var","name":"x"}"#;
+    let mut backward = false;
+    let mut from = 0;
+    while let Some(offset) = bytes[from..].windows(target_x.len()).position(|w| w == target_x) {
+        let start = from + offset;
+        let window = &bytes[start.saturating_sub(48)..start];
+        if contains_bytes(window, br#""source":{"kind":"var","name":"y"#) {
+            backward = true;
+            break;
+        }
+        from = start + 1;
+    }
+    if !backward {
+        return Ok(None);
+    }
+    use crate::json_io::{JAtom, JTerm};
+    let input: crate::json_io::JInput = serde_json::from_slice(bytes)?;
+    let neighbour = |term: &JTerm| matches!(term, JTerm::Var { name } if name != "x");
+    let centre = |term: &JTerm| matches!(term, JTerm::Var { name } if name == "x");
+    let mut reversing = false;
+    let mut neighbour_concept = None;
+    for clause in &input.clauses {
+        let backward_atom = |atom: &JAtom| {
+            matches!(atom, JAtom::Role { source, target, .. } if neighbour(source) && centre(target))
+        };
+        if clause.body.iter().any(backward_atom) || clause.head.iter().any(backward_atom) {
+            reversing = true;
+        }
+        if neighbour_concept.is_none() {
+            neighbour_concept = clause.body.iter().find_map(|atom| match atom {
+                JAtom::Concept { concept, term }
+                    if neighbour(term)
+                        && concept != crate::frontend::sorts::DATA_SORT
+                        && concept != crate::frontend::sorts::OBJECT_SORT =>
+                {
+                    Some(concept.clone())
+                }
+                _ => None,
+            });
+        }
+        if reversing && neighbour_concept.is_some() {
+            break;
+        }
+    }
+    Ok((reversing && neighbour_concept.is_some()).then(|| {
+        format!(
+            "a body atom ({}) can read the individual predecessor of a successor through an inverse \
+             role, which the nominal CB engine does not offer to the successor",
+            neighbour_concept.unwrap_or_default()
+        )
+    }))
+}
+
 /// `nominal_cb_clause_input`, keeping the frontend's file when the copy
 /// cannot be made (the copy only saves time; the frontend's file is exact).
-/// A rejected certificate is an error: the arm gives no answer.
+/// A rejected certificate is an error: the arm gives no answer, and so is a
+/// clause set the nominal CB engine cannot decide (`nominal_cb_predecessor_gap`).
 fn nominal_cb_clause_input_or_keep(
     clauses_path: &Path,
     meta: &frontend_run::Meta,
 ) -> Result<Option<tmpfile::TempPath>, OrchestrateError> {
+    if std::env::var_os("KM_NOMINALS").is_some() {
+        let gap = std::fs::read(clauses_path)
+            .map_err(CbInputError::from)
+            .and_then(|bytes| nominal_cb_predecessor_gap(&bytes));
+        match gap {
+            Ok(Some(reason)) => {
+                if std::env::var_os("KM_TIMING").is_some() {
+                    eprintln!("KM_TIMING nominal CB input: declined: {reason}");
+                }
+                return Err(OrchestrateError::OutOfFragment(format!("nominal CB engine: {reason}")));
+            }
+            Ok(None) => {}
+            Err(error) => {
+                return Err(OrchestrateError::OutOfFragment(format!(
+                    "nominal CB engine: the predecessor guard could not read the clauses ({})",
+                    match error { CbInputError::Rejected(m) => m, CbInputError::Other(e) => e.to_string() }
+                )));
+            }
+        }
+    }
     match nominal_cb_clause_input(clauses_path, meta) {
         Ok(copy) => Ok(copy),
         Err(CbInputError::Rejected(message)) => {

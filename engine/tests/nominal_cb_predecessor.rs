@@ -36,6 +36,18 @@ const CASES: [&str; 4] = [
 ];
 
 #[test]
+fn every_route_answers_inconsistent_or_declines() {
+    for case in CASES {
+        for route in ["certified_nominals", "nominals", "certified_card_nominals", "ht_bridge", "cb_plain1",
+                      "production_all", "lean", "default"] {
+            if let Some(line) = first_line(&fixture(case), Some(route)) {
+                assert_eq!(line, "CONSISTENT 0", "{case} on {route}");
+            }
+        }
+    }
+}
+
+#[test]
 fn the_automatic_route_answers_inconsistent() {
     for case in CASES {
         assert_eq!(first_line(&fixture(case), None).as_deref(), Some("CONSISTENT 0"), "{case}");
