@@ -1092,37 +1092,48 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // label head even when it finds a concept the saturation node lacks,
             // and the retest (`is_node_satisfiable_cached`) reads "last
             // confirmed == label head" as "the label is still covered".
-            // Konclude stores that head for every attempt. When the functional
-            // extension reuses a nominal as the successor, its label holds the
-            // individual's ABox facts and merges, which the saturation node
-            // never had; a declined attempt on it was re-confirmed after the
-            // next link change: a nominal with two values of a functional data
-            // property was never expanded and the clash of its merged value
-            // successor never arose. On a reused nominal only a successful
-            // establishment confirms a prefix. Tree nodes keep Konclude's rule
-            // (ore_ont_12451 relies on it: 6 s against 40-48 s without it).
-            let existing_nominal = existing_successor && {
-                let n = calc_alg_context.process_context().node(succ_indi);
-                n.is_nominal_individual_node() || n.nominal_individual().is_some()
-            };
-            let confirmed_con_des = if !existing_nominal || caching_establishment_possible {
-                *last_sat_cach_possible_con_des
-            } else {
-                ConDescId::NONE
-            };
-            let mut sat_blocking_data = IndividualNodeSaturationBlockingData::new();
-            sat_blocking_data.init_saturation_blocking_data(
-                succ_indi_con_count,
-                confirmed_con_des,
-                saturation_indi_node,
-            );
-            let sat_blocking_data_id = calc_alg_context
-                .process_context_mut()
-                .alloc_indi_sat_block_data(sat_blocking_data);
-            calc_alg_context
-                .process_context_mut()
-                .node_mut(succ_indi)
-                .set_individual_saturation_blocking_data(sat_blocking_data_id);
+            // Konclude stores that head and the attempt's saturation node for
+            // every attempt. When the functional extension reuses an existing
+            // successor (tryExtendFunctionalSuccessorIndividual), the saturation
+            // node is the one of the new filler only, and the existing label is
+            // not covered by it; storing the head let the next link change
+            // re-confirm the node as cached against the wrong saturation node.
+            // The nominal of v101_13 (two values of a functional data
+            // property) was then never expanded, and a reused tree node lost
+            // the consequences of its old concepts (fuzz m32_240: UNSAT D).
+            // A declined attempt on a reused successor therefore leaves the
+            // node's existing blocking data alone (it still describes the
+            // label it was validated for, and the grown label no longer
+            // matches its head) and installs one that confirms nothing only
+            // when the node had none. Fresh successors keep Konclude's rule.
+            let label_uncovered = !caching_establishment_possible && !*sat_caching_possible;
+            let keep_existing = existing_successor
+                && label_uncovered
+                && calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .individual_saturation_blocking_data(false)
+                    .is_some();
+            if !keep_existing {
+                let confirmed_con_des = if !existing_successor || !label_uncovered {
+                    *last_sat_cach_possible_con_des
+                } else {
+                    ConDescId::NONE
+                };
+                let mut sat_blocking_data = IndividualNodeSaturationBlockingData::new();
+                sat_blocking_data.init_saturation_blocking_data(
+                    succ_indi_con_count,
+                    confirmed_con_des,
+                    saturation_indi_node,
+                );
+                let sat_blocking_data_id = calc_alg_context
+                    .process_context_mut()
+                    .alloc_indi_sat_block_data(sat_blocking_data);
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(succ_indi)
+                    .set_individual_saturation_blocking_data(sat_blocking_data_id);
+            }
 
             if caching_establishment_possible {
                 self.saturation_cache_establish_count += 1; // STATINC(SATURATIONCACHEESTABLISHCOUNT)
