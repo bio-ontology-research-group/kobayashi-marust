@@ -5,7 +5,7 @@
 ## [1.7.0] - unreleased
 
 OWL 2 DL coverage, HermiT parity in Protégé, faster and smaller runs, and
-fixes for wrong answers. Notes: `docs/RELEASE-NOTES-1.7.0.md`. Errata for earlier releases:
+fixes for wrong answers. Notes: `docs/RELEASE-1.7.0.md`. Errata for earlier releases:
 `docs/ERRATA-1.6.5.md`. Plan and results: `docs/V1.7.0-PLAN.md`,
 `docs/V1.7.0-PARITY-FINAL.md`, `docs/V1.7.0-SPEED.md`,
 `docs/V1.7.0-NOMINAL-COVER.md`.
@@ -31,27 +31,75 @@ release gate.
   answers of an input, and a refutation certificate for inconsistent
   inputs. Coverage is partial; see the release notes.
 - Speed and memory: see the release notes. Preliminary numbers there.
-- Wrong answers fixed in the saturation cache, the functional merge and the
-  blocking test. Releases v1.5.1 to v1.6.5 can miss an inconsistency or
-  unsatisfiable classes on some inputs with functional or inverse-functional
-  properties and merges. See `docs/ERRATA-1.6.5.md`.
+- Wrong answers fixed (see "Fixed" below). Releases up to v1.6.5 can miss
+  an inconsistency, unsatisfiable classes or subsumptions on some inputs.
+  See `docs/ERRATA-1.6.5.md`.
 
 ### Fixed (wrong answers)
 
-- A declined saturation cache no longer confirms a label prefix
-  (`19b80195`, `af790502`). Inputs where merges made an individual its own
-  successor and carried two values of a functional data property were
-  reported consistent.
-- The saturation merge of the successors of a functional role keeps both
-  polarities of a concept and becomes insufficient on a conflict
-  (`8a34a1e3`). A class that needs two disjoint fillers of a functional
-  super-role was reported satisfiable.
-- Optimized blocking reads the blocker's unapplied universal and at-most
-  restrictions (`c11e5db6`).
-- `--different` rows no longer depend on hash order, and DIFFERENT rows
-  come from the model plan (`cc4529fc`, `cae7cc6e`).
-- Plugin: correct answers and fresh runs after an interrupted query
-  (`43beadd0`).
+Details, reproducers and which releases have each item:
+`docs/ERRATA-1.6.5.md`, `docs/errata/1.6.5/`. Items 1 to 14 are in v1.6.5.
+
+1. Saturation cache confirmed a label that it had not covered
+   (`19b80195`, `af790502`, `554a72e7`): missed inconsistencies.
+2. Functional merge kept one polarity per concept (`8a34a1e3`).
+3. Value merges in saturation (`6b5e1613`): `A ⊑ ≥2 d` over a one-value
+   range was satisfiable.
+4. Universals over transitive roles were applied along one edge only on the
+   CB routes (`a111e343`, `eb04beb3`, `d21a49e0`).
+5. N-ary axioms with repeated operands are sets, as in the OWL API
+   (`f2710130`, `bfb7be93`): `DisjointClasses(B D D)` no longer makes `D`
+   unsatisfiable.
+6. Classes that occur only as cardinality fillers get HT rows (`04a49e49`).
+7. Bridge root label keeps the concepts of the substitute chain
+   (`ee79d91a`).
+8. HT cardinality number rule is a decision (`4acc762d`, `c6ff52f6`).
+9. Certified EL arm: a node with an edge to a dead node is dead in that
+   pass (`1f71bc91`).
+10. A nominal in a domain or range blocks the separability certificate
+    (`482a3458`).
+11. Nominal CB routes: r-Succ offers the labels of individuals over every
+    edge, as in the rule of arXiv:1805.01396, with a ground-unit cut; the
+    Lean closure is extended (`30c850c4`, `a84969a4`, `9bd68cb6`,
+    `24d50930`).
+12. Rule worker: a self atom matches loop edges only (`b15cf0d8`).
+13. Plugin: property values through anonymous individuals go to exact
+    probes (`b6cb3438`, `34f9e651`).
+14. OWL/XML input: full IRIs on conversion (issue #6, `df2529cf`); `km
+    features` scans constructs after the conversion (issue #7, `42da1e86`).
+    Reported by Michel Dumontier.
+15. Not in v1.6.5: `--different` rows no longer depend on hash order and
+    come from the model plan, with nine further causes fixed
+    (`cc4529fc`, `cae7cc6e`, `71272d09`); optimized blocking reads the
+    blocker's unapplied restrictions (`c11e5db6`); after an interrupted query
+    the plugin answers correctly and starts fresh runs (`43beadd0`).
+
+### Removed
+
+- The forced routes `tableau` and `tab_race` (`62ad6911`). They published
+  wrong subsumptions with `DROPPED 0` on 15 sweep cases, and no automatic
+  path reached them. The `km tableau` worker stays.
+
+### Known limits
+
+- With the complete r-Succ offers, the automatic route gives no answer
+  within the time limit on some synthetic nominal inputs it answered before
+  (about 3 to 5 percent of targeted fuzz cases). No pool input is affected.
+  Forced nominal routes are exact or silent on a few fixtures
+  (`docs/NOMINALS-CB.md`, 13.2).
+- `ore_ont_12451` takes about 44 s (6 s in v1.6.5). `ore_ont_10926`, `1673`
+  and `12128` use 13 to 16 percent more memory.
+
+### Evidence (preliminary; re-run at the tag)
+
+- Checkers-on pool run at `bbe67385`: 1,623 of 1,696 solved inputs
+  certified, 0 rejected `[[TBD: re-run at the tag]]`.
+- Held-out comparison at `bbe67385`: KM 579 solved, mean 1.37 s, median
+  0.140 s, median memory 33 MiB; Konclude 578, 1.97 s, 0.164 s, 48 MiB
+  `[[TBD: re-run at the tag]]`.
+- Protégé parity (`800fc8f6`, plus the later plugin fix): KM right in 2,154
+  of 2,156 differing calls, HermiT right in 2 `[[TBD: rerun at the tag]]`.
+- 64,000-case campaign and two 20,200-case TBox sweeps against HermiT.
 
 ### Entries from the development log
 
