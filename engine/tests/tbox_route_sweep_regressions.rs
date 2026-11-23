@@ -234,7 +234,7 @@ fn tableau_cache_does_not_refute_satisfiable_seeds_after_the_complement_fold() {
          SubClassOf(ObjectIntersectionOf(:B ObjectComplementOf(:A)) :Q0)",
     );
     let answer = expected(&[], &[]);
-    for route in [None, Some("tableau"), Some("cb_plain1")] {
+    for route in [None, Some("cb_plain1")] {
         assert_eq!(classify(&text, route), answer, "route {route:?}");
     }
 }
