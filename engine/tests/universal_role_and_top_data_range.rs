@@ -60,12 +60,6 @@ fn classify_on(text: &str, route: Option<&str>) -> (Answer, Duration) {
     classify_on_within(text, route, BOUND)
 }
 
-/// As [`classify_on`], but `None` when the run fails closed (a failing exit
-/// or `BOUND`).
-fn classify_on_or_silent(text: &str, route: Option<&str>) -> Option<(Answer, Duration)> {
-    classify_on_within_or_silent(text, route, BOUND, true)
-}
-
 /// As [`classify_on`], killing the child after `bound` instead of `BOUND`.
 fn classify_on_within(text: &str, route: Option<&str>, bound: Duration) -> (Answer, Duration) {
     classify_on_within_or_silent(text, route, bound, false).unwrap()
@@ -330,20 +324,11 @@ fn data_value_next_to_universal_role_hub_stays_satisfiable() {
     let text = hub_with_data_values();
     let expected = hub_with_data_values_expected();
     for route in NOMINAL_ROUTES {
-        // With the individual-label offers over every edge (docs/NOMINALS-CB.md
-        // 13.1) the forced `nominals`, `nominal_ni_abox` and
-        // `certified_card_proxy_abox` routes take about 55 s here (under 1 s
-        // with the offers off); they are exact or silent (follow-up in 13.2).
-        // The automatic route and `certified_nominals` stay exact.
-        let slow = matches!(route, Some("nominals" | "nominal_ni_abox" | "certified_card_proxy_abox"));
-        let (answer, elapsed) = if slow {
-            match classify_on_or_silent(&text, route) {
-                Some(run) => run,
-                None => continue,
-            }
-        } else {
-            classify_on(&text, route)
-        };
+        // v1.7.0's first candidate took about 55 s here on the forced
+        // `nominals`, `nominal_ni_abox` and `certified_card_proxy_abox` routes:
+        // it sent labels of individuals over root edges to the ground context
+        // (docs/NOMINALS-CB.md 13.3). Every route is exact within the bound.
+        let (answer, elapsed) = classify_on(&text, route);
         assert!(elapsed < BOUND, "{route:?}");
         assert!(answer.consistent, "{route:?}");
         assert!(answer.unsat.is_empty(), "{route:?}: {:?}", answer.unsat);

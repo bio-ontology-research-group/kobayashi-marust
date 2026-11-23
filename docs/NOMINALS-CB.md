@@ -2163,12 +2163,8 @@ one-concept-at-a-time check on their CB inputs gives:
   120 s on): Q_3 (`∀r.{c, b}`), E (`E ⊑ {b, a}`) and `__nom__a`, each alone;
   C alone is fast. Labels conditional on nominal disjunctions.
 - The universal-role hub with data values
-  (`universal_role_and_top_data_range`), forced `nominals`,
-  `nominal_ni_abox` and `certified_card_proxy_abox` (under 1 s off, about
-  55 s on): slow even when no label of an individual is offered at all,
-  while r-Succ fully on with the offers off is fast. The cost there comes
-  from the labels-only r-Succ mode itself (`Sig::rsucc_labels_only`), not
-  from an offered label; not analysed further.
+  (`universal_role_and_top_data_range`): slow on three forced routes in
+  v1.7.0's first candidate for another reason, fixed in 13.3.
 
 In every case the automatic route answers exactly and fast, and the tests
 hold those forced routes to exact-or-silent only.
@@ -2178,3 +2174,18 @@ individuals in successors, for instance applying an individual's at-most
 only in the ground context (Nom) and not offering the definers whose only
 readers are at-most clauses at the centre, with its Lean statement in
 `CBRSuccClosure.skipsGroundUnit`'s style.
+
+### 13.3 Root edges carry central labels only (2026-11-23)
+
+Section 12 offers the central labels `B(x)` of a context over its root edges
+to the ground context; `offer_root_reach` read them from the r-Succ reach
+set. Since 13.1 that set also holds the labels `B(o')` of individuals, and the
+first v1.7.0 candidate (caf9c171) sent those over root edges as well. The
+Lean closure never asks for them (`CBRSuccClosure.isGroundedLabel` is false
+on an edge labelled by a constant), and they flood the ground context with
+hypotheses: on the universal-role hub with data values the forced `nominals`
+route took about 55 s instead of 0.7 s, and the sampled fuzz cases on which
+the automatic route went silent ran past 120 s with no label offered at all
+(`inv_3049_62`: 0.16 s once the individual labels left the pool). The
+root-edge offer now takes central labels only, as before 13.1;
+KM_ROOT_REACH_INDIVIDUALS=1 restores the old behaviour for A/B.
