@@ -156,11 +156,35 @@ theorem forwardPredicate_individual_label (function individual concept : Nat)
     · intro e; exact e.elim
   simp [parentOfEdge, forwardPredicate, forwardTerm, h]
 
+/-- The nominal ground context of `production` holds the unconditional
+fact `→ p`. -/
+def groundUnitLabel (production : DecodedProductionRun) (p : FPred) : Bool :=
+  production.contexts.any fun context =>
+    context.nominalGround &&
+      context.retained.any fun clause => decide (clause.body = [] ∧ clause.head = [.P p])
+
+/-- With `everyEdge`, a label `B(o)` that the ground context holds as an
+unconditional fact goes over the grounded edges `f(o)` only: its readers
+get it through the root edges into the ground context as with the offers
+off (KM's `rsucc_reach_unit`).  The exclusion only drops offers, and every
+offer is a tautological hypothesis, so it does not affect soundness. -/
+def skipsGroundUnit (labels : IndividualLabels) (production : DecodedProductionRun)
+    (edge : FTerm) : FPred → Bool
+  | p@(.concept _ (.const individual)) =>
+      labels.everyEdge &&
+        (match edge with
+          | .app _ (.const parent) => decide (parent ≠ individual)
+          | _ => true) &&
+        groundUnitLabel production p
+  | _ => false
+
 def rSuccOffers (coverage : DecodedPredSendCoverageDocument)
     (reachConcepts : List Nat) (groundedConcepts : IndividualLabels) (order : DecodedFiniteLiteralOrderDocument)
     (sourceIndex : Nat) (retained : List FCL) : List RSuccOffer :=
   (outgoingEdges coverage sourceIndex).flatMap fun edge =>
-    (edgeReachPredicates reachConcepts groundedConcepts order retained edge.label).map
+    ((edgeReachPredicates reachConcepts groundedConcepts order retained edge.label).filter
+      fun predicate => !skipsGroundUnit groundedConcepts coverage.interContext.base.production
+        edge.label predicate).map
       fun predicate => {
       edge
       sourcePredicate := predicate
@@ -174,12 +198,20 @@ theorem mem_rSuccOffers_iff {coverage : DecodedPredSendCoverageDocument}
       ∃ edge ∈ outgoingEdges coverage sourceIndex,
         ∃ predicate ∈ edgeReachPredicates reachConcepts groundedConcepts order retained
             edge.label,
+          skipsGroundUnit groundedConcepts coverage.interContext.base.production
+              edge.label predicate = false ∧
           offer = {
             edge := edge
             sourcePredicate := predicate
             pushed := forwardPredicate edge.label (parentOfEdge edge.label) predicate
           } := by
-  simp [rSuccOffers, eq_comm]
+  simp only [rSuccOffers, List.mem_flatMap, List.mem_map, List.mem_filter,
+    Bool.not_eq_true']
+  constructor
+  · rintro ⟨edge, hedge, predicate, ⟨hpred, hskip⟩, rfl⟩
+    exact ⟨edge, hedge, predicate, hpred, hskip, rfl⟩
+  · rintro ⟨edge, hedge, predicate, hpred, hskip, rfl⟩
+    exact ⟨edge, hedge, predicate, ⟨hpred, hskip⟩, rfl⟩
 
 /-- Every r-Succ payload is again a tautological hypothesis at its target. -/
 theorem rSuccOffer_valid {D : Type} (model : TModel D) (offer : RSuccOffer) :

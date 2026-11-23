@@ -137,8 +137,10 @@ def sourceRSuccOffers
     (context : DecodedSourceLiveContext production ordinary rootArena) :
     List RSuccOffer :=
   context.successors.flatMap fun edge =>
-    (sourceEdgeReachPredicates reachConcepts groundedConcepts order context.rootDomain
-      context.retained edge.label).map fun predicate => {
+    ((sourceEdgeReachPredicates reachConcepts groundedConcepts order context.rootDomain
+      context.retained edge.label).filter fun predicate =>
+        !CBRSuccClosure.skipsGroundUnit groundedConcepts production edge.label predicate).map
+      fun predicate => {
         edge := { label := edge.label, targetIndex := edge.targetIndex.val }
         sourcePredicate := predicate
         pushed := forwardPredicate edge.label (parentOfEdge edge.label) predicate

@@ -981,12 +981,19 @@ fn rsucc_cross_step(
     reach: &[Pred],
     hwm: &mut HashMap<(Term, usize), usize>,
     pushed: &mut HashSet<(Term, usize, Pred)>,
+    unit: &[bool],
 ) -> Vec<(Term, usize, Pred)> {
     let nreach = reach.len();
     let mut fired: Vec<(Term, usize, Pred)> = Vec::new();
     for &(f, target) in successors {
         let start = hwm.get(&(f, target)).copied().unwrap_or(0);
-        for &p in &reach[start..nreach] {
+        for (i, &p) in reach[start..nreach].iter().enumerate() {
+            if unit.get(start + i).copied().unwrap_or(false) {
+                let grounded = matches!(p, Pred::Concept { t, .. } if is_comp(f) && comp_parts(f).1 == t);
+                if !grounded {
+                    continue;
+                }
+            }
             if rsucc_offered_over(sig, f, &p) && pushed.insert((f, target, p)) {
                 fired.push((f, target, p));
             }
@@ -2657,6 +2664,10 @@ struct Context {
     /// avoiding the per-`propagate` full `successors × reach` rescan while
     /// emitting an identical `Msg::Succ` set and order (see `rsucc_cross_step`).
     rsucc_pair_reach_hwm: HashMap<(Term, usize), usize>,
+    /// Per `rsucc_reach` entry: a label `B(o)` that the ground context held
+    /// as an unconditional fact when it entered the reach set. It goes over
+    /// the grounded edges `f(o)` only (`rsucc_cross_step`).
+    rsucc_reach_unit: Vec<bool>,
     /// Semi-naive r-Succ cross-product driver gate.  `rsucc_offered` is the
     /// `rsucc_reach.len()` at the last time the `successors × reach` cross-step
     /// ran; `rsucc_edges_grew` records that a successor edge was added or
@@ -2731,6 +2742,7 @@ impl Context {
             rsucc_hwm: 0,
             pushed_rsucc: HashSet::default(),
             rsucc_pair_reach_hwm: HashMap::default(),
+            rsucc_reach_unit: Vec::new(),
             rsucc_offered: 0,
             rsucc_edges_grew: false,
             root_labels: Vec::new(),
@@ -8270,6 +8282,21 @@ impl Engine {
                 // reach` rescan's fired triples and order exactly (see its
                 // doc-comment).  Disjoint field borrows let it read `rsucc_reach`
                 // while mutating the two maps.
+                // Mark the new reach entries that the ground context holds as
+                // unconditional facts (KM_RSUCC_KEEP_GROUND_UNITS=1 keeps them).
+                if self.sig.individual_labels_every_edge
+                    && std::env::var_os("KM_RSUCC_KEEP_GROUND_UNITS").is_none()
+                {
+                    let have = self.contexts[id].rsucc_reach_unit.len();
+                    let marks: Vec<bool> = match self.ground_ctx {
+                        Some(g) => self.contexts[id].rsucc_reach[have..reach_len]
+                            .iter()
+                            .map(|&p| matches!(p, Pred::Concept { t, .. } if is_individual(t)) && self.ground_unit(g, p))
+                            .collect(),
+                        None => vec![false; reach_len - have],
+                    };
+                    self.contexts[id].rsucc_reach_unit.extend(marks);
+                }
                 let fired = {
                     let sig = &self.sig;
                     let ctx = &mut self.contexts[id];
@@ -8279,30 +8306,14 @@ impl Engine {
                         &ctx.rsucc_reach,
                         &mut ctx.rsucc_pair_reach_hwm,
                         &mut ctx.pushed_rsucc,
+                        &ctx.rsucc_reach_unit,
                     )
                 };
                 // Every current edge is now offered `rsucc_reach[..reach_len]`;
                 // record it so the next round can skip an unchanged sweep.
                 self.contexts[id].rsucc_offered = reach_len;
                 self.contexts[id].rsucc_edges_grew = false;
-                // A label `B(o)` that the ground context holds as the
-                // unconditional fact `→ B(o)` reaches its readers without an
-                // offer (root edges and Pred into the ground context, as with
-                // the offers off), so only the grounded edges `f(o)` carry it.
-                // KM_RSUCC_KEEP_GROUND_UNITS=1 offers it everywhere (A/B).
-                let skip_units = self.sig.individual_labels_every_edge
-                    && std::env::var_os("KM_RSUCC_KEEP_GROUND_UNITS").is_none();
-                let ground = self.ground_ctx;
                 for (f, target, p) in fired {
-                    if skip_units {
-                        if let (Some(g), Pred::Concept { t, .. }) = (ground, p) {
-                            if is_individual(t) && !(is_comp(f) && comp_parts(f).1 == t) && g != id {
-                                if self.ground_unit(g, p) {
-                                    continue;
-                                }
-                            }
-                        }
-                    }
                     let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
                     self.msgs.push_back(Msg::Succ {
                         from: pack_msg_context(id),
@@ -15586,6 +15597,7 @@ mod rsucc_rolechain_tests {
                 reach,
                 &mut delta_hwm,
                 &mut delta_pushed,
+                &[],
             ));
         }
 
@@ -15671,6 +15683,7 @@ mod rsucc_rolechain_tests {
                 &u_reach,
                 &mut u_hwm,
                 &mut u_pushed,
+                &[],
             ));
 
             // Gated: cross-step only on a genuine delta.
@@ -15682,6 +15695,7 @@ mod rsucc_rolechain_tests {
                     &g_reach,
                     &mut g_hwm,
                     &mut g_pushed,
+                    &[],
                 ));
                 offered = reach_len;
                 edges_grew = false;
