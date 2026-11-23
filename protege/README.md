@@ -108,7 +108,8 @@ Behaviour as HermiT (Protégé integration):
   version of the ontology: later calls rethrow the stored exception without a
   new KM run, until the ontology changes or `flush()` runs. The same holds for
   a failed realization or property run. An interrupt or a time out is not
-  remembered; the next call starts a new run.
+  remembered; the next call starts a new run (or joins a batch run that a time
+  out left going, see "Time outs, interrupts and batch runs" below).
 - Queries on an inconsistent ontology throw `InconsistentOntologyException`,
   which Protégé catches to open its inconsistency explanation. Only
   `isConsistent` does not throw. `getTopClassNode`, `getBottomClassNode`,
@@ -118,8 +119,8 @@ Behaviour as HermiT (Protégé integration):
 - Native work reports to the progress monitor of the reasoner configuration
   (started, busy, stopped), ends with `TimeOutException` after `getTimeOut()`
   milliseconds, and ends with `ReasonerInterruptedException` when `interrupt()`
-  is called (the one exception Protégé catches). `interrupt()` while idle does
-  nothing.
+  is called (the one exception Protégé catches). `interrupt()` while idle
+  stops only the batch runs that a time out left going (below).
 - A named class or object property outside the signature sits between Top and
   Bottom (HermiT's default `FreshEntityPolicy.ALLOW`).
 - `isEntailed(Set)` ignores annotation and declaration axioms.
@@ -480,6 +481,45 @@ classification.
 Incremental-session and explanation cancellation, timeout, and disposal stop
 the complete native process tree and wait for route workers to exit. They do
 not leave an orphaned worker consuming memory after the OWLAPI call returns.
+Every km process the plugin starts is registered until it exits: a JVM that
+exits normally or on SIGTERM/SIGINT terminates every registered tree from a
+shutdown hook. The plugin exports the JVM's pid as `KM_SUPERVISOR_PID`, so the
+workers of a `km incremental-source` session (for example its `km engine`)
+exit within 100 ms when the JVM is gone, also after a SIGKILL, which runs no
+hook. A one-shot `km classify` or `km explain` replaces that variable with its
+own pid for its workers; after a SIGKILL of the JVM such a process runs to the
+end of its own run (bounded by `km.timeout.seconds`) before it exits.
+
+### Time outs, interrupts and batch runs
+
+Three answers come from one long native run each, computed once per committed
+revision and then read by many calls: the data property values of all named
+individuals (`getDataPropertyValues`), the object property values of all named
+individuals (`getObjectPropertyValues` after
+`precomputeInferences(OBJECT_PROPERTY_ASSERTIONS)`), and the realization
+(`getTypes`, `getInstances`, `getSameIndividuals`). The plugin treats the two
+ways of ending a call differently for these batch runs:
+
+- **The configured time out** (`OWLReasonerConfiguration.getTimeOut()`) ends
+  the call with `TimeOutException`, but the batch run goes on in the
+  background, owned by the reasoner. The next call that needs it waits for it
+  (under its own time out) and is answered from it as soon as it finishes; it
+  is not started again. So an input whose batch takes 50 s answers from the
+  third call on under a 20 s time out, instead of never. If such a run fails,
+  the failure is not remembered (as for a stopped run); the next call starts a
+  new run.
+- **`interrupt()`** stops all native work of the reasoner at once, the batch
+  runs included, like HermiT's interrupt. It discards a running batch, so a
+  client that interrupts every slow call, instead of setting a time out, does
+  not benefit: every call starts the batch again.
+- `dispose()`, `flush()` with changes, and every new committed revision also
+  stop all batch runs: a batch run only answers the revision it started on.
+
+Protégé itself configures its reasoners without a time out
+(`SimpleConfiguration(progressMonitor)`, so `getTimeOut()` is
+`Long.MAX_VALUE`) and ends a slow call only through `interrupt()` (the "Stop
+reasoner" button). In Protégé a batch run therefore either finishes or is
+discarded by the user's stop.
 A declined buffered transaction leaves the last committed hierarchy queryable.
 After the caller removes or corrects the unsupported change, the next
 `flush()` starts a clean native session and commits the complete current

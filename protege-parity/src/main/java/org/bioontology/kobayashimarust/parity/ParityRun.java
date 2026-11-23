@@ -24,6 +24,11 @@ import java.util.concurrent.*;
  *   --sample N        at most N entities per kind (default 200)
  *   --xmx 6g          heap of each worker process
  *   --only hermit|km  run one reasoner (the report then has no verdicts)
+ *   --call-cap-mode interrupt|timeout
+ *                     how the KM worker ends a call at the cap: interrupt() after
+ *                     the cap (default, as for HermiT), or the reasoner's own
+ *                     configured time out set to the cap for that call (the
+ *                     time out lets a batch run go on for later calls)
  * </pre>
  *
  * Each reasoner runs in its own JVM (a worker). A worker that hangs is killed
@@ -55,6 +60,7 @@ public final class ParityRun {
                 case "--only": only = args[++i]; break;
                 case "--hermit-from": hermitFrom = args[++i]; break;
                 case "--km-from": kmFrom = args[++i]; break;
+                case "--call-cap-mode": System.setProperty("parity.capMode", args[++i]); break;
                 default: pos.add(args[i]);
             }
         }
@@ -148,6 +154,17 @@ public final class ParityRun {
         return a;
     }
 
+    /**
+     * Set the time out of an OWLReasonerBase reasoner for the next call. The
+     * OWL API reads it once from the configuration; the KM reasoner reads
+     * getTimeOut() at the start of each call.
+     */
+    static void setTimeOut(OWLReasoner reasoner, long millis) throws Exception {
+        java.lang.reflect.Field field = org.semanticweb.owlapi.reasoner.impl.OWLReasonerBase.class.getDeclaredField("timeOut");
+        field.setAccessible(true);
+        field.setLong(reasoner, millis);
+    }
+
     static void worker(String[] args) throws Exception {
         String which = args[1];
         File ontFile = new File(args[2]);
@@ -193,9 +210,13 @@ public final class ParityRun {
                     }
                     long s0 = System.nanoTime();
                     final OWLReasoner fr = reasoner;
+                    boolean reasonerTimeout = which.equals("km") && "timeout".equals(System.getProperty("parity.capMode"));
+                    // The reasoner's own time out ends the call at the cap; the
+                    // worker waits a little longer for the TimeOutException.
+                    if (reasonerTimeout) setTimeOut(reasoner, early ? Long.MAX_VALUE : cap);
                     Future<Object> f = ex.submit(() -> call.fn.apply(fr));
                     try {
-                        Object a = f.get(cap, TimeUnit.MILLISECONDS);
+                        Object a = f.get(reasonerTimeout && !early ? cap + 10_000 : cap, TimeUnit.MILLISECONDS);
                         emit(w, call.id, call.phase, "ok", a, null, msSince(s0), call);
                     } catch (TimeoutException te) {
                         emit(w, call.id, call.phase, "timeout", null, null, msSince(s0), call);
@@ -211,7 +232,15 @@ public final class ParityRun {
                             return;
                         }
                     } catch (ExecutionException ee) {
-                        emit(w, call.id, call.phase, "exception", null, ee.getCause(), msSince(s0), call);
+                        if (reasonerTimeout && ee.getCause() instanceof org.semanticweb.owlapi.reasoner.TimeOutException) {
+                            emit(w, call.id, call.phase, "timeout", null, null, msSince(s0), call);
+                            if (early) {
+                                halt(w, which, "precompute phase timed out");
+                                return;
+                            }
+                        } else {
+                            emit(w, call.id, call.phase, "exception", null, ee.getCause(), msSince(s0), call);
+                        }
                     }
                 }
                 long d0 = System.nanoTime();
@@ -315,6 +344,7 @@ public final class ParityRun {
         String tmp = System.getProperty("java.io.tmpdir");
         cmd.add("-Djava.io.tmpdir=" + tmp);
         if (System.getProperty("km.bin") != null) cmd.add("-Dkm.bin=" + System.getProperty("km.bin"));
+        if (System.getProperty("parity.capMode") != null) cmd.add("-Dparity.capMode=" + System.getProperty("parity.capMode"));
         cmd.add("-cp");
         cmd.add(System.getProperty("java.class.path"));
         cmd.add(ParityRun.class.getName());
@@ -442,6 +472,7 @@ public final class ParityRun {
         root.addProperty("sample", sample);
         root.addProperty("timeout_s", timeout);
         root.addProperty("call_timeout_s", callTimeout);
+        root.addProperty("call_cap_mode", System.getProperty("parity.capMode", "interrupt"));
         root.addProperty("load_ms", loadMs);
         root.add("signature", GSON.toJsonTree(plan.signature));
         JsonObject reasoners = new JsonObject();

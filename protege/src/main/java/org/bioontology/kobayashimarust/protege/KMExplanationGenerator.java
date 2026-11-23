@@ -149,7 +149,7 @@ public final class KMExplanationGenerator implements ExplanationGenerator<OWLAxi
             ProcessBuilder processBuilder = new ProcessBuilder(command);
             processBuilder.redirectOutput(stdout.toFile());
             processBuilder.redirectError(stderr.toFile());
-            process = processBuilder.start();
+            process = NativeProcessTree.start(processBuilder);
             waitFor(process);
 
             String errorText = new String(

@@ -174,7 +174,7 @@ public final class Classifier {
             ProcessBuilder builder = new ProcessBuilder(
                     kmBin, "incremental-source", "--lenient", "--unknown-datatypes=free");
             builder.redirectError(log.toFile());
-            this.process = builder.start();
+            this.process = NativeProcessTree.start(builder);
             this.input = new BufferedWriter(new OutputStreamWriter(
                     process.getOutputStream(), StandardCharsets.UTF_8));
             this.output = new BufferedReader(new InputStreamReader(
@@ -698,7 +698,7 @@ public final class Classifier {
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
             pb.redirectOutput(log.toFile());
-            Process proc = pb.start();
+            Process proc = NativeProcessTree.start(pb);
             if (onStart != null) onStart.accept(proc);
             try {
                 if (!proc.waitFor(timeout, TimeUnit.SECONDS)) {
@@ -974,7 +974,7 @@ public final class Classifier {
                     tmp.toString());
             pb.redirectErrorStream(true);
             pb.redirectOutput(log.toFile());
-            Process proc = pb.start();
+            Process proc = NativeProcessTree.start(pb);
 
             if (!proc.waitFor(timeout, TimeUnit.SECONDS)) {
                 NativeProcessTree.terminateAndWait(proc);

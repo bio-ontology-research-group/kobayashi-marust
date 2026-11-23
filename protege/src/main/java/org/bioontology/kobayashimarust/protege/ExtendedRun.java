@@ -125,7 +125,16 @@ final class ExtendedRun {
     static Answer run(String base, OWLDataFactory df, Collection<? extends OWLAxiom> extra, boolean realize,
                       boolean top, boolean freeUnknownDatatypes, String label,
                       java.util.function.Consumer<Process> onStart) throws Exception {
-        String source = extend(base, df, extra);
+        return runSource(extend(base, df, extra), extra.size(), realize, top, freeUnknownDatatypes, label, onStart);
+    }
+
+    /**
+     * Run km on an already extended source ({@link #extend}). Touches no
+     * reasoner state, so a batch run can execute it on a background thread.
+     */
+    static Answer runSource(String source, int extraCount, boolean realize, boolean top,
+                            boolean freeUnknownDatatypes, String label,
+                            java.util.function.Consumer<Process> onStart) throws Exception {
         List<String> flags = new ArrayList<>();
         if (realize) flags.add("--realize");
         if (top) flags.add("--top");
@@ -142,7 +151,7 @@ final class ExtendedRun {
             lines = Classifier.oneShot(source, flags.toArray(new String[0]), label, onStart);
         } finally {
             if (Boolean.getBoolean("km.trace.runs")) {
-                System.err.printf("km-run\t%s\t%d\t%.3f%n", label, extra.size(),
+                System.err.printf("km-run\t%s\t%d\t%.3f%n", label, extraCount,
                         (System.nanoTime() - started) / 1e9);
             }
         }
