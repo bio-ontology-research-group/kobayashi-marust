@@ -23,8 +23,8 @@ issues #6 and #7) were reported by Michel Dumontier.
   and facets, individuals and DL-safe rules. The Protégé plugin and the
   command line handle each of these, and the engine declines (exit 3) what
   it cannot represent. On the 1,708-input ORE pool, the paired release-gate
-  runs solved 1,696 inputs. Final count: `[[TBD: pool inputs solved at the
-  release commit]]`.
+  runs solved 1,696 inputs, with the same answers at every gate. The second
+  release candidate keeps that count (240 s, one core).
 - **More query rows from `km classify`.**
   - `--realize` adds `TYPE a C` and `SAME a b` rows.
   - `--values` adds `VALUE r a b`, every entailed object property assertion
@@ -70,8 +70,7 @@ issues #6 and #7) were reported by Michel Dumontier.
     cases. That run used 51 of the 212
     inputs that strict mode rejects; the rest did not run.
   - KM did not answer 3,511 calls that HermiT answered (timeouts) and
-    refused or failed 46 more. Re-run on the release binary:
-    `[[TBD: parity rerun at the release binary]]`.
+    refused or failed 46 more (parity run 2).
 - **Lenient input.** `km classify --lenient` (and the plugin) accepts inputs
   that OWL API and HermiT load in Protégé but that strict OWL 2 DL checking
   rejects, by a source rewrite before reasoning (anonymous individuals in
@@ -129,55 +128,67 @@ engine is complete on every OWL 2 DL input.
   `e8b49702`) the checker confirmed every negative row on 1,517 of the 1,708
   pool inputs. The other inputs have rows missing, a model that the checker
   took too long to check, or no model. The rows that were checked had no
-  disagreement with KM. Final coverage at the release commit:
-  `[[TBD: inputs confirmed full at the release commit]]`.
-- **Checkers-on run.** One pool run with the Lean checkers switched on
-  (build `bbe67385`; to be re-run at the tag, `[[TBD: checkers-on run at
-  the tag]]`): of 1,696 solved inputs, 1,623 are certified (a hint or
-  refutation accepted, no checker rejected), 65 solved inputs are not
-  certified because a step declined, 8 because a step timed out, and 12
-  inputs are unsolved. No checker rejected an answer. The answers equal the
-  plain run on 1,693 inputs; three inputs (`ore_ont_13483`, `13690`,
-  `3562`) gave a different answer hash in the checkers-on run and I have
-  not explained this (`[[TBD: cause of the 3 answer-hash differences in the
-  checkers-on run]]`). The checkers-on run takes 1.7 times the wall time of
-  the plain run in total (median ratio 1.13; 1.01 on inputs over 5 s) and
-  uses 1.5 times the summed peak memory (median ratio 1.01).
+  disagreement with KM. The checkers-on run below gives the current count.
+- **Checkers-on run.** One pool run with the Lean checkers switched on,
+  on the first release candidate (`caf9c171`): 1,693 inputs solved, 1,619
+  fully certified (a hint or refutation accepted, no checker rejected), 74
+  solved but not certified (67 declined, 7 timed out; reasons in
+  `scratch/certcount/results-rc1/summary.txt`), 15 unsolved, 0 rejected.
+  Three rule inputs (`ore_ont_2526`, `6615`, `15063`) timed out in that
+  run. The rules-first change (below) fixes them; to be re-run at the tag:
+  `[[TBD: checkers-on run at the tag]]`. Three inputs (`ore_ont_13483`,
+  `13690`, `3562`) give a different answer hash under the checkers. The
+  cause is a different listing of subsumption edges of unsatisfiable classes
+  between the in-process engine and the forked worker. The sets of
+  unsatisfiable classes are the same, and so is the closure for satisfiable
+  classes. The earlier run at `bbe67385` took 1.7 times the plain wall time
+  in total (median ratio 1.13; 1.01 on inputs over 5 s) and 1.5 times the
+  summed peak memory (median ratio 1.01).
+- **Rule ontologies under certificate modes.** The ground-rule reduction
+  has no Lean certificate. KM runs the older rules route first (which has
+  one) only when a rules certificate is requested by name, with a 30 s
+  budget (`KM_RULES_FIRST_BUDGET_S`). Under `KM_LEAN_CHECKERS` a rule
+  ontology takes the default path and records a `cannot_check` event.
+  Wiring `rules-cert-check` into `KM_LEAN_CHECKERS` is open and planned
+  after the release (`docs/V1.7.0-RULES-SHOIQ.md`).
 - **Inconsistent inputs.** A refutation certificate and a checker proved in
   Lean cover inconsistent inputs. 42 of the 46 inputs on which KM answers
   "inconsistent" were certified (`docs/V1.7.0-INCONSISTENCY-CERT.md`); the
-  checkers-on run certifies 43 of 46. Of the four that stayed open
+  checkers-on run on `caf9c171` certifies 43 of 46. Of the four that stayed open
   (`ore_ont_1123`, `4141`, `8445`, `10860`), `4141` is now certified, and
-  `1123`, `8445` and `10860` are not (declined; producer timeout; declined).
+  `1123`, `8445` and `10860` are not (all three declined in that run).
 - **Proof scope.** According to the merge messages, completeness is proved
   on OWL EL, ALC and SHI (v1.6.3), and the v1.7.0 work adds SHIQ at the
   normal-form level, knowledge bases with an ABox, datatypes and the
   nominal fragment C2a, with role features. Inputs outside these parts have
-  checked-model certificates only. The fragment list, the Lean files
-  and the axiom audit for the tag: `[[TBD: Lean certification result from the
-  exact tag: gates, sorry and axiom audit]]`.
+  checked-model certificates only. Release chain on the first candidate
+  (`caf9c171`): the five Lean gates pass (elc 9, routing 310, ht 253, cb 44,
+  rules 40 tests) with 0 `sorryAx`; the axiom audit covers 66,756 constants
+  and finds exactly `propext`, `Classical.choice` and `Quot.sound`. To be
+  re-run from the tag: `[[TBD: Lean certification from the tag]]`.
 - Soundness and completeness claims hold for the Lean statements, not for
   the Rust code. Tests, differential runs and the checkers compare the Rust
   answers with the statements.
 
 ### Speed and memory
 
-Preliminary numbers on Ibex, 585 held-out inputs, one core, 240 s limit.
-Both rows are from builds before the last fixes. Re-run both at the tag.
+Ibex, 585 held-out inputs, one core, 240 s limit. First release candidate
+(`caf9c171`, PGO binary) and Konclude v0.7.0-1138 in the same run. Mean and
+median time are over the 577 inputs that both solve; memory is the peak.
 
-| | solved | mean | median | median peak memory |
-|---|---:|---:|---:|---:|
-| KM, plain build `ebe741b4` (2026-11-21, mean and median on the 577 inputs both solve) | 579 | 1.94 s | 0.146 s | 27.2 MiB |
-| Konclude, same day | 578 | 2.00 s | 0.167 s | 47.5 MiB |
-| KM at `bbe67385` (comparison on the common inputs) | 579 | 1.37 s | 0.140 s | 33 MiB |
-| Konclude, same comparison | 578 | 1.97 s | 0.164 s | 48 MiB |
+| | solved | mean time | median time | median memory | mean memory |
+|---|---:|---:|---:|---:|---:|
+| KM 1.7.0 candidate | 579 | 1.36 s | 0.129 s | 30.9 MiB | 167 MiB |
+| Konclude | 578 | 2.07 s | 0.186 s | 48.1 MiB | 257 MiB |
+| KM v1.6.5 (plain-build run, same comparison) | 578 | 3.57 s | 0.169 s | 72.5 MiB | not recorded |
 
-The two KM rows come from different builds and runs, so they differ in
-more than the code. `[[TBD: re-run of both comparisons at the tag]]`.
-
-Final numbers on the release binary: `[[TBD: held-out solved, mean, median
-and median memory for KM and Konclude, release binary]]`. Pool numbers:
-`[[TBD: pool solved, mean and median against v1.6.5 and the baselines]]`.
+KM is faster on 381 of the 577 common inputs and smaller on 463. The
+v1.6.5 row comes from a plain build, not PGO. The PGO to plain time ratio
+is 0.92 on 196 pool inputs with identical answers.
+Earlier preliminary runs (`ebe741b4`, `bbe67385`) gave 1.94 s and 1.37 s
+means and are superseded. Re-run at the tag:
+`[[TBD: held-out re-run at the tag]]`. Pool time against v1.6.5 and the
+baselines: `[[TBD: pool mean and median against v1.6.5 and the baselines]]`.
 
 What changed in the engine, from the merge messages. Each merge passed a
 paired pool gate on Ibex with 0 answer differences on 1,696 solved inputs
@@ -202,8 +213,7 @@ and no flagged time or memory regressions, except where noted below.
   speed-ups.
 - One regression from the wrong-answer fixes: `ore_ont_12451` goes from
   6.3 s to about 44 s. Its earlier speed came from the unsound confirmation
-  described in the errata. Time at the release commit:
-  `[[TBD: ore_ont_12451 time at the tag]]`.
+  described in the errata.
 - 20cddc6d (binary hypertableau hand-off, 1 to 3 percent) stays on its
   branch and is not in this release.
 
@@ -281,7 +291,7 @@ Also in this release: with the new defaults the forced routes `tableau` and
 Evidence:
 
 - A 64,000-case differential campaign against HermiT on Ibex.
-- Two TBox sweeps of 20,200 cases each, on 13 routes. The first found the
+- Two TBox sweeps of 20,200 cases each, on 12 routes. The first found the
   n-ary, cardinality, substitute-chain and HT cardinality errors. The
   second left only errors on the nominal routes; those are fixed, and the
   46-case acceptance set for them passes (before the fix the development
@@ -290,6 +300,10 @@ Evidence:
 - 5,000 targeted TBox fuzz cases on 8 routes against HermiT after the
   transitive fix: 0 KM errors (54 per CB route before).
 - 4,920 standard and 2,400 blocking random cases agree with HermiT.
+- On the first candidate (`caf9c171`): two TBox sweeps of 20,200 cases on
+  12 routes with 0 unsound and 0 incomplete answers on every route, and the
+  64,000-case campaign and the targeted nominal families with 0 wrong
+  answers.
 - Every merge passed a paired pool gate on Ibex: 0 answer differences on
   the 1,696 solved inputs.
 - Plugin: 477,120 calls against HermiT on 3,300 cases, 383 missed rows
@@ -297,32 +311,54 @@ Evidence:
   miss, open). Re-run the Java suite in the release chain.
 
 Upstream Konclude v0.7.0-1138 shows the functional-merge defect
-(`case3_c3min.ofn`, confirmed by the supervisor) and, in our run, the
-value-merge defect (`value-merge-singleton.ofn`: it classifies `A` as
-satisfiable). See the errata for the table and its limits.
+(`case3_c3min.ofn`, confirmed by the supervisor). On the value-merge input
+(`value-merge-singleton.ofn`) it gives the same wrong answer, `A`
+satisfiable; we did not establish the cause there. See the errata.
+
+Oracle note: HermiT's `isEntailed` was wrong on some inputs, so the
+campaigns used HermiT's own consistency test as the oracle. On a few
+datatype cases and one role-equivalence case HermiT is wrong there too. The
+hand proofs are in the agents' reports (for `r9600_0013`:
+`scratch/chainanon/HANDBACK-trans.md`).
 
 ## Checks for this release
 
-PENDING: Ibex certification from the tag (build, Lean gates and axiom
-audit, Rust suite, Java and checkers) and the speed and correctness runs:
-`[[TBD: certification and gate results at the tag]]`.
+Release chain on Ibex for the first candidate (`caf9c171`; pinned rustc
+1.95.0):
 
-Test counts at the release commit: `[[TBD: Rust lib, integration and plugin
-test counts and the list of failing tests]]`. Earlier baselines: 21 library
-tests failed on development because they need the Lean checker binaries.
-At the merge of `43beadd0`, the plugin suite passed 192 of 194; the two
-failures were in `NativeProcessTreeTest`, which also fails about 1 run in 6
-on development under load. Rerun on the release machine.
+- Five Lean gates pass with real checkers (elc 9, routing 310, ht 253, cb
+  44, rules 40 tests), 0 `sorryAx`. Axiom audit: 66,756 constants; the
+  axioms are exactly `propext`, `Classical.choice` and `Quot.sound`.
+- Official Rust step: 3,804 passed, 0 failed, 12 ignored.
+- Plain `cargo test` of the library: 3,238 passed, 21 failed. The 21 are
+  the tests that need the built Lean checkers. All integration targets pass.
+- Java: 198 tests, 0 failures.
+- PGO build with rustc 1.95.0.
+- Pool (1,708 inputs, 240 s, one core): 1,696 solved, with answers identical
+  to every earlier gate.
+- The second candidate (`36aa4a7c`) adds the rules-first budget and the
+  root-edge offer fix. For both, the agents report the five gates passing
+  with real checkers and a paired pool gate with 0 answer differences on
+  1,696 solved inputs.
+
+To be repeated from the tag: `[[TBD: full release chain at the tag]]`.
 
 ## Known limits
 
-- With the complete r-Succ offers, the automatic route gives no answer
-  within the time limit on some synthetic nominal inputs that it answered
-  before (about 3 to 5 percent of the targeted fuzz cases). No pool input
-  is affected (`docs/NOMINALS-CB.md`, 13.2). The forced nominal routes are
-  exact-or-silent on a few fixtures (`m2058`, `m2197`, `cut_r129_pushback`,
-  `merge_r1646`, the universal-role hub with data values): they either give
-  the exact answer or fail closed.
+- The complete r-Succ rule costs time on some nominal inputs. After the
+  root-edge fix (`73223020`), 350 of 503 TBox sweep cases that had gone
+  silent on the automatic route (no answer within the limit) answer again,
+  and all agree with HermiT. Against the pre-change head, the automatic
+  route stays silent on `inv` 45 of 6,000, `invt` 39 of 3,000, `invu` 54 of
+  3,000, and the campaign "new" family 112 of about 25,000 cases. The
+  acceptance set of 46 hard nominal cases is right on all four routes for 44
+  cases, wrong on none, and silent on the automatic route for 1. Two
+  `--realize --values --different` examples are slower than before the rule
+  (29.7 s to 180 s; 101 s to 146 s). No pool input is affected. The
+  follow-up is in `docs/NOMINALS-CB.md`, 13.2. The forced nominal routes
+  are exact or silent on a few fixtures (`m2058`, `m2197`,
+  `cut_r129_pushback`, `merge_r1646`, the universal-role hub with data
+  values).
 - `ore_ont_12451` takes 44 s where v1.6.5 took 6 s (its speed came from the
   unsound cache confirmation). Three large inputs use 13 to 16 percent more
   memory than before the r-Succ change (`ore_ont_10926`, `1673`, `12128`).

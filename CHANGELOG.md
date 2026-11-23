@@ -74,6 +74,16 @@ Details, reproducers and which releases have each item:
     blocker's unapplied restrictions (`c11e5db6`); after an interrupted query
     the plugin answers correctly and starts fresh runs (`43beadd0`).
 
+### Changed
+
+- Rule ontologies under certificate modes: the rules route runs first only
+  when a rules certificate is requested by name, with a 30 s budget
+  (`2baf64c2`). Under `KM_LEAN_CHECKERS` they take the default path and
+  record a `cannot_check` event; wiring `rules-cert-check` into
+  `KM_LEAN_CHECKERS` is open.
+- r-Succ root-edge offers carry central labels only, as the Lean closure
+  states (`73223020`).
+
 ### Removed
 
 - The forced routes `tableau` and `tab_race` (`62ad6911`). They published
@@ -82,24 +92,34 @@ Details, reproducers and which releases have each item:
 
 ### Known limits
 
-- With the complete r-Succ offers, the automatic route gives no answer
-  within the time limit on some synthetic nominal inputs it answered before
-  (about 3 to 5 percent of targeted fuzz cases). No pool input is affected.
-  Forced nominal routes are exact or silent on a few fixtures
-  (`docs/NOMINALS-CB.md`, 13.2).
+- The complete r-Succ rule costs time on some synthetic nominal inputs. After
+  the root-edge fix, 350 of 503 newly silent sweep cases answer again; the
+  automatic route stays silent on 45 of 6,000 (`inv`), 39 of 3,000
+  (`invt`), 54 of 3,000 (`invu`) and 112 of about 25,000 (campaign "new")
+  cases against the pre-change head. Two `--realize --values --different`
+  examples are slower (29.7 s to 180 s; 101 s to 146 s). No pool input is
+  affected (`docs/NOMINALS-CB.md`, 13.2).
 - `ore_ont_12451` takes about 44 s (6 s in v1.6.5). `ore_ont_10926`, `1673`
   and `12128` use 13 to 16 percent more memory.
 
-### Evidence (preliminary; re-run at the tag)
+### Evidence
 
-- Checkers-on pool run at `bbe67385`: 1,623 of 1,696 solved inputs
-  certified, 0 rejected `[[TBD: re-run at the tag]]`.
-- Held-out comparison at `bbe67385`: KM 579 solved, mean 1.37 s, median
-  0.140 s, median memory 33 MiB; Konclude 578, 1.97 s, 0.164 s, 48 MiB
-  `[[TBD: re-run at the tag]]`.
+- Release chain on `caf9c171`: five Lean gates pass (0 `sorryAx`), axiom
+  audit exactly `propext`, `Classical.choice`, `Quot.sound` over 66,756
+  constants; Rust step 3,804 passed, 0 failed; Java 198 tests, 0 failures.
+  Re-run at the tag `[[TBD: release chain at the tag]]`.
+- Pool: 1,696 of 1,708 solved, answers identical at every gate.
+- Held-out (585 inputs, `caf9c171` PGO binary, same run as Konclude
+  v0.7.0-1138): KM 579 solved, mean 1.36 s, median 0.129 s, median memory
+  30.9 MiB; Konclude 578, 2.07 s, 0.186 s, 48.1 MiB; v1.6.5 (plain build)
+  578, 3.57 s, 0.169 s, 72.5 MiB `[[TBD: re-run at the tag]]`.
+- Checkers-on pool run (`caf9c171`): 1,693 solved, 1,619 fully certified, 0
+  rejected `[[TBD: re-run at the tag]]`.
+- 20,200-case TBox sweeps (two, on 12 routes): 0 unsound, 0 incomplete.
+  64,000-case campaign: 0 wrong answers.
 - Protégé parity (`800fc8f6`, plus the later plugin fix): KM right in 2,154
-  of 2,156 differing calls, HermiT right in 2 `[[TBD: rerun at the tag]]`.
-- 64,000-case campaign and two 20,200-case TBox sweeps against HermiT.
+  of 2,156 differing calls, HermiT right in 2 `[[TBD: parity rerun at the
+  tag]]`.
 
 ### Entries from the development log
 
