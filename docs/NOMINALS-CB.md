@@ -2096,3 +2096,35 @@ past the nominal CB limit on the forced `nominals` route: the offer of the
 nominal label `{a}` to the successors of `a` interacts with the root-edge
 offers of section 12 (`KM_NO_ROOT_REACH=1` restores 0.2 s). The route fails
 closed there; the automatic route answers through the bridge.
+
+### 13.1 Labels of individuals over every successor edge (2026-11-23)
+
+The grounded offers above cover a successor `f(o)` of the ground context.
+They miss a label `B(o)` that a non-ground context derives under its own
+hypotheses and that another element reads: for `E ⊑ ∃p.{h}`, `∃p⁻.E ⊑ Q`,
+`E ⊑ ∃s.Z`, `Z ⊑ ∃p.{h}`, `Z ⊓ ∃p.Q ⊑ W` the query context of `E` learns
+`Q(h)` (the ground context holds `E(y) → Q(h)`), but its successor `Z` never
+does, and the nominal CB routes missed `E ⊑ ∃s.W`. The universal role, which
+becomes a hub individual, shows the same miss (the TBox route sweep cases).
+The r-Succ rule of arXiv:1805.01396 puts `B(o)` into `Su^r` for every edge.
+
+KM now does the same, by default: every context puts its maximal labels on
+individuals into the r-Succ pool and offers them over every successor edge;
+over an edge whose parent is not `o` the offer keeps the constant
+(`CBRSuccClosure.forwardPredicate_individual_label`). The offered concepts
+are those a source clause reads on a variable that a role atom of the same
+body touches, the centre included (`grounded_label_concepts`). When only
+these offers turn r-Succ on, central labels stay out of the pool and the
+root-edge offers (`Sig::rsucc_labels_only`).
+
+Redundancy: a label that the ground context holds as the unconditional fact
+`→ B(o)` goes over the grounded edges `f(o)` only (`rsucc_reach_unit`,
+`CBRSuccClosure.skipsGroundUnit`). Its readers get it through the root edges
+into the ground context, as with the offers off. Without the cut,
+ore_ont_4775 offered 21.6 million ABox labels (76 s, 9 GB); with it 0.4 s.
+
+Switches: KM_RSUCC_INDIVIDUAL_LABELS=0 (off), `auto` (on for the broad shape
+of `individual_label_shape` only), `all` (every concept, diagnostic);
+KM_RSUCC_KEEP_GROUND_UNITS=1 disables the cut;
+KM_RSUCC_INDIVIDUAL_LABELS_CENTRAL=1 keeps the central offers in labels-only
+mode.

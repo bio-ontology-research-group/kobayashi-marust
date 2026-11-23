@@ -4761,12 +4761,13 @@ impl Engine {
         sig.rsucc = std::env::var_os("KM_RSUCC").is_some()
             || ont_clauses.iter().any(clause_enables_rsucc);
         // The r-Succ offer of individual labels over every edge
-        // (arXiv:1805.01396, `Su^r`). KM_RSUCC_INDIVIDUAL_LABELS=1 (or `all`)
-        // turns it on; `auto` turns it on for the inputs of
-        // `individual_label_shape` only.
+        // (arXiv:1805.01396, `Su^r`), on by default.
+        // KM_RSUCC_INDIVIDUAL_LABELS=0 turns it off (the grounded edges `f(o)`
+        // of the ground context only), `auto` turns it on for the inputs of
+        // `individual_label_shape` only, `all` offers every concept.
         let labels_mode = std::env::var("KM_RSUCC_INDIVIDUAL_LABELS").unwrap_or_default();
         sig.individual_labels_every_edge = match labels_mode.as_str() {
-            "" | "0" => false,
+            "0" => false,
             "auto" => {
                 let wide = grounded_label_concepts(&ont_clauses, sig.concept_names.len(), true);
                 individual_label_shape(&ont_clauses, &wide)
