@@ -202,15 +202,26 @@ unsafe fn remove_tree_raw(path: *const libc::c_char, _depth: u32) {
     ));
 }
 
+#[cfg(unix)]
 fn process_alive(pid: libc::pid_t) -> bool {
     if pid <= 0 {
         return false;
     }
-    unsafe { libc::kill(pid, 0) == 0 || *libc::__errno_location() != libc::ESRCH }
+    // `kill(pid, 0)` probes for existence. Read errno through std so the
+    // code builds on every Unix (glibc, musl and macOS name it differently).
+    unsafe { libc::kill(pid, 0) == 0 }
+        || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
 }
 
 /// Remove run directories and legacy `km-<pid>-...` files of processes that
 /// no longer exist. Only entries owned by this user are considered.
+/// Unix only: other platforms keep stale entries (no portable liveness and
+/// ownership test), which costs disk space and nothing else.
+#[cfg(not(unix))]
+fn sweep_stale(_base: &Path) {}
+
+/// See the non-Unix variant above for the contract.
+#[cfg(unix)]
 fn sweep_stale(base: &Path) {
     let Ok(entries) = std::fs::read_dir(base) else { return };
     let uid = unsafe { libc::getuid() };
@@ -294,6 +305,7 @@ impl Drop for TempPath {
 mod tests {
     use super::TempPath;
 
+    #[cfg(unix)]
     #[test]
     fn stale_entries_of_dead_processes_are_swept() {
         let _test_env = crate::test_env::read();
