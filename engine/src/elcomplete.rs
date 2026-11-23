@@ -7448,6 +7448,39 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, st: &State, debug: bool) -> boo
 /// subsumptions, unsatisfiable classes, and consistency alike. Any other
 /// outcome fails conservatively (context-engine fallback). Never an
 /// approximation.
+/// Nodes of a repair-pass model that cannot exist: those whose label holds ⊥
+/// and, backwards along the edges, every node with an edge to such a node
+/// (an existential successor that does not exist leaves its parent without
+/// a model).
+fn repair_pass_dead_nodes(st: &State) -> Vec<bool> {
+    let n = st.sub_super.len();
+    let mut parents: Vec<Vec<u32>> = vec![Vec::new(); n];
+    for (x, edges) in st.edges.iter().enumerate() {
+        for &(_, y) in edges {
+            if (y as usize) < n {
+                parents[y as usize].push(x as u32);
+            }
+        }
+    }
+    let mut dead = vec![false; n];
+    let mut work: Vec<u32> = Vec::new();
+    for (x, labels) in st.sub_super.iter().enumerate() {
+        if labels.contains(&BOTTOM) {
+            dead[x] = true;
+            work.push(x as u32);
+        }
+    }
+    while let Some(y) = work.pop() {
+        for &x in &parents[y as usize] {
+            if !dead[x as usize] {
+                dead[x as usize] = true;
+                work.push(x);
+            }
+        }
+    }
+    dead
+}
+
 /// Union-find representative with path halving.
 fn uf_find(repr: &mut [u32], mut x: u32) -> u32 {
     while repr[x as usize] != x {
@@ -11271,7 +11304,16 @@ fn repair_certify(
     // unresolved residue; everything else is answered exactly.
     const REFINE_CAP: usize = 8;
     let mut refine = 0usize;
+    // Per pass, the nodes that cannot exist in it: a node with ⊥, and every
+    // node with an edge to one. The repair closure does not always carry a
+    // ⊥ that a repair adds at a shared witness back to its parents, so a pass
+    // could keep a node alive whose existential successor is dead and read
+    // its label as a model.
+    let mut pass_dead: Vec<Vec<bool>> = Vec::new();
     loop {
+        while pass_dead.len() < pass_states.len() {
+            pass_dead.push(repair_pass_dead_nodes(&pass_states[pass_dead.len()].0));
+        }
         let mut unsat_subjects: Vec<u32> = Vec::new();
         let mut undet: Vec<(u32, u32)> = Vec::new();
         let subjects: Vec<u32> = if rooted_domain {
@@ -11285,8 +11327,8 @@ fn repair_certify(
                 continue;
             }
             let mut inter: Option<HashSet<u32>> = None;
-            for (st, _) in &pass_states {
-                if st.sub_super[c].contains(&BOTTOM) {
+            for ((st, _), dead) in pass_states.iter().zip(&pass_dead) {
+                if dead[c] {
                     continue;
                 }
                 let extras: HashSet<u32> = st.sub_super[c]

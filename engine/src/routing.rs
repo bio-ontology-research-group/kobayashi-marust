@@ -98,8 +98,6 @@ pub enum Route {
     HtFeatures,
     HtFull,
     HtRules,
-    Tableau,
-    TabRace,
     CardFn,
     /// Complete-answer-or-defer SHOIQ TBox specialist for the certified
     /// finite nominal layout selected by `nominal_ni_tbox_candidate`.
@@ -113,7 +111,7 @@ pub enum Route {
 }
 
 impl Route {
-    pub const NAMED: [Route; 40] = [
+    pub const NAMED: [Route; 38] = [
         Route::Default,
         Route::Default8,
         Route::Default1,
@@ -146,8 +144,6 @@ impl Route {
         Route::HtFeatures,
         Route::HtFull,
         Route::HtRules,
-        Route::Tableau,
-        Route::TabRace,
         Route::CardFn,
         Route::NominalNiTbox,
         Route::NominalNiAbox,
@@ -192,8 +188,6 @@ impl Route {
             Route::HtFeatures => "ht_features",
             Route::HtFull => "ht_full",
             Route::HtRules => "ht_rules",
-            Route::Tableau => "tableau",
-            Route::TabRace => "tab_race",
             Route::CardFn => "card_fn",
             Route::NominalNiTbox => "nominal_ni_tbox",
             Route::NominalNiAbox => "nominal_ni_abox",
@@ -240,8 +234,6 @@ impl Route {
             Route::HtFeatures => HT_FEATURES,
             Route::HtFull => HT_FULL,
             Route::HtRules => HT_RULES,
-            Route::Tableau => TABLEAU,
-            Route::TabRace => TAB_RACE,
             Route::CardFn => CARD_FN,
             Route::NominalNiTbox => NOMINAL_NI_TBOX,
             Route::NominalNiAbox => NOMINAL_NI_ABOX,
@@ -311,7 +303,6 @@ impl Route {
                 | Route::HtFeatures
                 | Route::HtFull
                 | Route::HtRules
-                | Route::Tableau
                 | Route::CardFn
                 | Route::NominalNiTbox
                 | Route::Nominals
@@ -385,8 +376,6 @@ impl FromStr for Route {
             "ht_features" | "ht_feature_pack" => Route::HtFeatures,
             "ht_full" => Route::HtFull,
             "ht_rules" | "rules" => Route::HtRules,
-            "tableau" => Route::Tableau,
-            "tab_race" | "tab" => Route::TabRace,
             "card_fn" | "functional_card" => Route::CardFn,
             "nominal_ni_tbox" | "ni_tbox" => Route::NominalNiTbox,
             "nominal_ni_abox" | "ni_abox" => Route::NominalNiAbox,
@@ -3327,20 +3316,6 @@ const HT_RULES: &[(&str, &str)] = &[
     ("KM_NO_HT_CARD", "1"),
     ("KM_NO_RETRY", "1"),
 ];
-const TABLEAU: &[(&str, &str)] = &[
-    ("KM_MECHANISM", "tableau"),
-    ("KM_NO_HT_RULES", "1"),
-    ("KM_TAB_RACE", "1"),
-    ("KM_TAB_FEAT", "1"),
-    ("KM_TAB_RACE_NICE", "0"),
-];
-const TAB_RACE: &[(&str, &str)] = &[
-    ("KM_MECHANISM", "portfolio"),
-    ("KM_TAB_RACE", "1"),
-    ("KM_TAB_FEAT", "1"),
-    ("KM_NO_ELC_PORTFOLIO", "1"),
-    ("KM_NO_HT_RACE", "1"),
-];
 const CB_PORTFOLIO: &[(&str, &str)] = &[
     ("KM_MECHANISM", "portfolio"),
     ("KM_NO_ELC_PORTFOLIO", "1"),
@@ -4799,15 +4774,9 @@ mod tests {
         assert!(Route::HtFull
             .settings()
             .contains(&("KM_TRIGGER_ABSORB", "1")));
-        assert!(Route::Tableau
-            .settings()
-            .contains(&("KM_MECHANISM", "tableau")));
-        assert!(Route::TabRace.settings().contains(&("KM_TAB_RACE", "1")));
-        assert!(Route::TabRace.settings().contains(&("KM_TAB_FEAT", "1")));
-        assert!(Route::TabRace
-            .settings()
-            .contains(&("KM_NO_ELC_PORTFOLIO", "1")));
-        assert!(Route::TabRace.settings().contains(&("KM_NO_HT_RACE", "1")));
+        // The legacy tableau routes are not part of the release.
+        assert!("tableau".parse::<Route>().is_err());
+        assert!("tab_race".parse::<Route>().is_err());
         assert!(Route::CardFn.settings().contains(&("KM_HT_CARD_FN", "1")));
         for required in [
             ("KM_MECHANISM", "ht"),
@@ -5068,7 +5037,6 @@ mod tests {
             Route::ProductionAll1,
             Route::CertifiedNominals,
             Route::CbAbsorbPortfolio16,
-            Route::TabRace,
         ] {
             assert!(!route.is_atomic(), "{} must remain a portfolio", route);
         }
@@ -6848,7 +6816,6 @@ mod tests {
                     | Route::ProductionAll8
                     | Route::ProductionAll1
                     | Route::CbAbsorbPortfolio16
-                    | Route::TabRace
             );
             assert_eq!(
                 keeps_precheck, expected,

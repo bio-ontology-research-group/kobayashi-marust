@@ -142,10 +142,12 @@ HT combinations, plus four external baselines:
 | `seq_on`, `seq_off` | Force the Sequoia definer ordering on or off instead of using its internal structural gate |
 | `elk`, `hermit`, `konclude_w1`, `konclude_w16` | External baselines, with official Konclude measured at one and 16 workers |
 
-The catalog still exposes `default*`, `production_all*`,
-`cb_absorb_portfolio16`, `tableau`, and `tab_race` for direct experiments.
-They are not matrix rows: the first groups are portfolios, `tab_race` is a
-race, and the historical tableau has no full-fragment procedure contract.
+The catalog still exposes `default*`, `production_all*` and
+`cb_absorb_portfolio16` for direct experiments. They are not matrix rows: they
+are portfolios. The legacy tableau routes `tableau` and `tab_race` were
+removed in v1.7.0: no automatic path reached them, and forced they published
+wrong subsumptions with `DROPPED 0` (v1.7.0 TBox route sweep). The `km tableau`
+worker subcommand stays; the HT workers run through it.
 The matrix keeps the additive `ht_features` and `ht_full` combinations because
 they define single, sequential completion mechanisms rather than concurrent
 competitors.
@@ -406,15 +408,14 @@ on the reproducers of `tests/forced_route_fail_closed.rs`):
 | `nominals`, `certified_nominals`, `certified_card_nominals`, `certified_card_proxy_abox`, `nominal_ni_abox`, `nominal_ni_tbox` (`KM_NOMINALS`) | exact | exact | exact after conversion, else counted | unread: counted | rewritten to rules: counted as rules |
 | `ht_bridge`, `ht_full` (HT reading the typed payload) | exact when the payload is complete, else counted | exact when the payload is complete, else approximation | as above | unread: counted | as rules |
 | `production_all*` (portfolio with `KM_TRIGGER_ABSORB`) | counted, or approximation when the payload is complete (the CB arm lacks it) | approximation | as above | read | read as rules |
-| `default*`, `manual`, `cb_absorb_portfolio16`, `tab_race`, `ht_rules` | counted | approximation | as above | read | read as rules |
+| `default*`, `manual`, `cb_absorb_portfolio16`, `ht_rules` | counted | approximation | as above | read | read as rules |
 | `cb_plain*`, `cb_absorb*`, `cb_trigger*`, `cb_portfolio16`, `lean`, `seq_on`, `seq_off`, `elc`, `elc_cert`, `certified_el_production` | counted (`cb_trigger*`: approximation when the payload is complete) | approximation | as above | unread: counted | as rules |
-| `ht_general`, `ht_qo`, `ht_shoq`, `ht_card`, `ht_features`, `card_fn`, `tableau` | counted | approximation | as above | unread: counted | as rules |
+| `ht_general`, `ht_qo`, `ht_shoq`, `ht_card`, `ht_features`, `card_fn` | counted | approximation | as above | unread: counted | as rules |
 
 "Read" rules still fail closed on unsupported rule shapes before any answer
 exists. A frontend that lowers unary or constant-data rules sets `KM_NOMINALS`
 for that run, so those inputs keep their nominals and ABox on every route.
-The nominal count is conservative for the historical `tableau`, which seeds
-its own nominal roots but has no full-fragment contract. The rule covers
+The rule covers
 representation drops only. Measurement-only mechanisms
 (`ht_general`, `ht_qo`, `ht_shoq`, `ht_card`, `nominal_ni_tbox`, `card_fn`) can
 still be incomplete on input they represent; the table in

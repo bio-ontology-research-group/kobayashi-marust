@@ -285,7 +285,6 @@ const ROUTES: &[Option<&str>] = &[
     Some("certified_el_production"),
     Some("ht_general"),
     Some("lean"),
-    Some("tableau"),
     Some("nominals"),
 ];
 
@@ -445,8 +444,7 @@ fn complements_of_ordinary_ranges() {
         let text = format!(
             "{HEADER}Declaration(Class(:C)) Declaration(Class(:X)) Declaration(Class(:Y))\n{body}\n)\n"
         );
-        // The tableau route declines facet and string ranges.
-        for route in ROUTES.iter().filter(|route| **route != Some("tableau")) {
+        for route in ROUTES {
             let answer = classify(&text, *route);
             assert_eq!(answer, Answer { unsat: names(unsat), subs: pairs(subs) }, "{body} on {route:?}");
         }
@@ -507,7 +505,7 @@ fn excluded_middle_of_complement_ranges() {
             "{HEADER}Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:H)) \
              Declaration(Class(:N))\n{body}\n)\n"
         );
-        // The tableau route declines the union range. (`ht_general` missed
+        // (`ht_general` missed
         // the excluded middle of two data ranges until its subset blocking
         // learned that a gained data-range label at a successor can enable a
         // recognition clause; docs/HYBRID-CB-HT.md section 9.) The forced
@@ -516,8 +514,7 @@ fn excluded_middle_of_complement_ranges() {
         // unrelativized excluded middle at the data-value individual and runs
         // for minutes (as it already did for `ObjectComplementOf(DataHasValue)`).
         for route in ROUTES.iter().filter(|route| {
-            !(**route == Some("tableau") && body.contains("DataUnionOf"))
-                && !(**route == Some("nominals") && body.contains("DataOneOf"))
+            !(**route == Some("nominals") && body.contains("DataOneOf"))
         }) {
             // The value cases split on the value singleton in every context
             // and take about 30 s on the CB routes, as the pre-existing
