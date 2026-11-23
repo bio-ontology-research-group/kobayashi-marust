@@ -83,3 +83,30 @@ fn missing_worker_verdict_cannot_default_to_consistent() {
     let _ = std::fs::remove_dir_all(certificates);
     std::fs::remove_file(path).unwrap();
 }
+
+/// A certificate request must not make a run wait on the rules route: past
+/// its budget (`KM_RULES_FIRST_BUDGET_S`, default 30 s) the attempt's
+/// workers are killed and the ground-rule reduction answers, with the
+/// decline reason on stderr. The stand-in rule worker never answers.
+#[cfg(unix)]
+#[test]
+fn rules_first_attempt_is_bounded_by_its_budget() {
+    use std::os::unix::fs::PermissionsExt;
+    let path = std::env::temp_dir().join(format!("km-slow-rule-worker-{}", std::process::id()));
+    std::fs::write(&path, "#!/bin/sh\ncat >/dev/null\nsleep 120\n").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let started = std::time::Instant::now();
+    let result = classify(SOURCE, |command| {
+        command.env("KM_TAB_BIN", &path).env("KM_RULES_ROUTE_FIRST", "1").env("KM_RULES_FIRST_BUDGET_S", "2");
+    });
+    let elapsed = started.elapsed();
+    std::fs::remove_file(path).unwrap();
+    let stderr = String::from_utf8_lossy(&result.stderr).to_string();
+    assert!(result.status.success(), "{stderr}");
+    assert!(elapsed < std::time::Duration::from_secs(60), "{elapsed:?}");
+    assert!(stderr.contains("rules route declined") && stderr.contains("2s budget"), "{stderr}");
+    let output: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(output["consistent"], true);
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(output["subsumptions"], serde_json::json!([["http://km.test/P", "http://km.test/Q"]]));
+}

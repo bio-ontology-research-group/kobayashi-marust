@@ -32,6 +32,7 @@ pub mod race;
 pub mod properties;
 pub mod data_properties;
 pub mod abox_rows;
+mod attempt_budget;
 pub mod realize;
 pub mod tmpfile;
 
@@ -2452,18 +2453,37 @@ fn classify_with_evidence_inner(
         // A rule ontology under a certificate request takes the certified
         // rules route (`ht_rules` and its certificate) first, as at v1.6.5;
         // the ground-rule reduction answers only when that route declines.
-        let rules_first = candidate == Some("KM_GROUND_RULE_SOURCE")
-            && data_source::cached_grounded_has_rules(ont)
-            && rules_route_first_requested(|key| std::env::var_os(key));
+        let ground_rules = candidate == Some("KM_GROUND_RULE_SOURCE")
+            && data_source::cached_grounded_has_rules(ont);
+        let rules_first = ground_rules && rules_route_first_requested(|key| std::env::var_os(key));
+        let mut rules_event_recorded = false;
         let candidate = if rules_first && std::env::var_os(GROUND_RULE_SOURCE_DEFERRED_ENV).is_some() {
             // The nested classification below: skip the reduction here.
             None
         } else if rules_first {
             let counters = PublicationCounters::capture();
-            let rules_route = {
+            let budget = rules_first_budget();
+            let attempt = || {
                 let _probe_environment = crate::routing::EnvironmentGuard::capture();
                 std::env::set_var(GROUND_RULE_SOURCE_DEFERRED_ENV, "1");
                 classify_with_evidence_mode(initial_cfg, ont, retain_grouped_output)
+            };
+            let (rules_route, expired) = match budget {
+                Some(budget) => attempt_budget::run(budget, attempt),
+                None => (attempt(), false),
+            };
+            // Past its budget the attempt's workers were killed, so whatever
+            // it returned is a decline of the certified route. A rejection
+            // recorded on the way still fails the run: the checker log keeps
+            // it and `finish_classify` publishes nothing.
+            let rules_route = match rules_route {
+                Err(_) if expired && !crate::lean_checkers::rejected_in_process() => {
+                    Err(OrchestrateError::WorkerTimeout {
+                        bin: format!("rules route ({}s budget)", budget.map_or(0, |b| b.as_secs())),
+                        stderr: String::new(),
+                    })
+                }
+                other => other,
             };
             match rules_route {
                 Ok(evidence) => return Ok(evidence),
@@ -2483,6 +2503,7 @@ fn classify_with_evidence_inner(
                         "the rules route declined ({reason}); the ground-rule bridge answer has no rules certificate"
                     );
                     crate::lean_checkers::record_cannot_check("rules", "ground-rule-source", &detail);
+                    rules_event_recorded = true;
                     if std::env::var_os("KM_TIMING").is_some() || !crate::lean_checkers::active() {
                         eprintln!("KM rules route: {detail}");
                     }
@@ -2513,6 +2534,16 @@ fn classify_with_evidence_inner(
                 Ok(evidence) => {
                     if std::env::var_os("KM_TIMING").is_some() {
                         eprintln!("KM_TIMING automatic data source accepted: {mode}");
+                    }
+                    // Under KM_LEAN_CHECKERS the rule ontology's answer comes
+                    // from the reduction, which has no checker: say so.
+                    if ground_rules && !rules_event_recorded && crate::lean_checkers::active() {
+                        crate::lean_checkers::record_cannot_check(
+                            "rules",
+                            "ground-rule-source",
+                            "the ground-rule bridge answer has no rules certificate (KM_LEAN_CHECKERS \
+                             does not run rules-cert-check; request it with KM_RULES_LEAN_CERT)",
+                        );
                     }
                     return Ok(evidence);
                 }
@@ -4297,21 +4328,40 @@ fn finite_cover_enabled() -> bool {
 /// `--export-model` (`KM_EXPORT_MODEL_ACTIVE` without the realization's own
 /// ABox-only capture `KM_EXPORT_ABOX_ONLY`, after which realization runs its
 /// exact probe path when no model is recorded).
+/// Wall-clock budget of the rules-first attempt (`KM_RULES_FIRST_BUDGET_S`,
+/// default 30 s, `0` for none). Past it the ground-rule reduction answers,
+/// so a certificate request makes a run at most this much slower than the
+/// default schedule (plus the reduction's own time). The rules route answers
+/// the gate fixtures and ore_ont_7278 within a few seconds; on ore_ont_2526,
+/// 6615 and 15063 its CB taxonomy worker ran to the RSS limit (54 s) or past
+/// 240 s where the reduction answers in about a second.
+const RULES_FIRST_BUDGET_S: u64 = 30;
+
+fn rules_first_budget() -> Option<std::time::Duration> {
+    let seconds = std::env::var("KM_RULES_FIRST_BUDGET_S")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(RULES_FIRST_BUDGET_S);
+    (seconds > 0).then(|| std::time::Duration::from_secs(seconds))
+}
+
 /// Set by the rules-first schedule for its nested classification, which
 /// must not try the ground-rule reduction again.
 const GROUND_RULE_SOURCE_DEFERRED_ENV: &str = "KM_GROUND_RULE_SOURCE_DEFERRED";
 
 /// Whether a rule ontology takes the certified rules route before the
-/// ground-rule reduction (docs/V1.7.0-RULES-SHOIQ.md): whenever certificates
-/// are consumed (the modes of [`finite_cover_certificate_mode`], an HT
-/// certificate request, or a rules-route or inert-sort certificate request),
-/// and on request with `KM_RULES_ROUTE_FIRST=1`. Default runs keep the
-/// faster ground-rule reduction.
+/// ground-rule reduction (docs/V1.7.0-RULES-SHOIQ.md): only when a rules
+/// certificate is requested explicitly (`KM_RULES_LEAN_CERT`,
+/// `KM_RULES_LEAN_CHECKER`, `KM_RULES_INERT_CERT`,
+/// `KM_RULES_INERT_LEAN_CHECKER`) or with `KM_RULES_ROUTE_FIRST=1`. The
+/// general certificate modes (`KM_LEAN_CHECKERS` and the others of
+/// [`finite_cover_certificate_mode`]) write no rules certificate, so there
+/// the attempt would only cost time; they keep the reduction, which records
+/// its `cannot_check` event. An HT certificate request skips the reduction
+/// altogether (see the caller).
 fn rules_route_first_requested(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
     let set = |key: &str| env(key).is_some_and(|v| !v.is_empty());
-    finite_cover_certificate_mode(&env)
-        || crate::tableau::HT_LEAN_CERTIFICATION_ENV.iter().any(|key| set(key))
-        || set("KM_RULES_LEAN_CERT")
+    set("KM_RULES_LEAN_CERT")
         || set("KM_RULES_LEAN_CHECKER")
         || set("KM_RULES_INERT_CERT")
         || set("KM_RULES_INERT_LEAN_CHECKER")
