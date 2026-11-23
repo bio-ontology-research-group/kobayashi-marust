@@ -470,7 +470,7 @@ public class ReductionsTest {
     }
 
     @Test
-    public void unwrittenValuesOfSmallDataRangesAreCandidatesAndFacetsThrow() throws Exception {
+    public void unwrittenValuesOfSmallDataRangesAreCandidates() throws Exception {
         String head = "Prefix(:=<" + NS + ">)\nPrefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n"
                 + "Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)\n";
         // nonNegativeInteger ∩ nonPositiveInteger = {0}: 0 is entailed and no literal writes it.
@@ -481,17 +481,15 @@ public class ReductionsTest {
         KMReasoner k = km(load(zero));
         assertEquals(Collections.singleton(df().getOWLLiteral("0", df().getIntegerOWLDatatype())),
                 k.getDataPropertyValues(i("z"), d("n")));
-        // A facet restriction can pin a value too; it is refused.
+        // A facet restriction on an integer type can pin a value too: its
+        // bounds cut the integers like the bounds of the integer types, so
+        // the small interval (4, 6) contributes the candidate 5.
         String facet = head + "Ontology(<http://example.org/red-facet>\n"
                 + "Declaration(DataProperty(:n)) Declaration(NamedIndividual(:z))\n"
                 + "DataPropertyRange(:n DatatypeRestriction(xsd:integer xsd:minExclusive \"4\"^^xsd:integer xsd:maxExclusive \"6\"^^xsd:integer))\n"
                 + "ClassAssertion(DataSomeValuesFrom(:n rdfs:Literal) :z)\n)\n";
-        try {
-            km(load(facet)).getDataPropertyValues(i("z"), d("n"));
-            fail("the value 5 could be entailed and no literal of the ontology denotes it");
-        } catch (UnsupportedOperationException expected) {
-            assertTrue(expected.getMessage(), expected.getMessage().contains("data range"));
-        }
+        assertEquals(Collections.singleton(df().getOWLLiteral("5", df().getIntegerOWLDatatype())),
+                km(load(facet)).getDataPropertyValues(i("z"), d("n")));
     }
 
     @Test

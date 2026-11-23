@@ -150,6 +150,13 @@ pub fn project(text: &str) -> Result<String, String> {
             for (b, right) in &group[i+1..] {
                 match datatypes::bridge_exact_value_equal(&format!("__dt__val__{left}"), &format!("__dt__val__{right}")) {
                     Some(true) => {},
+                    // Two different values of a functional property on one
+                    // owner are a contradiction. `DifferentIndividuals(a a)`
+                    // would say so, but operands form a set, so the frontend
+                    // reads it as vacuous (docs/V1.7.0-LENIENT-INPUT.md 2.7).
+                    Some(false) if a == b => {
+                        generated.insert(format!("ClassAssertion(<http://www.w3.org/2002/07/owl#Nothing> {a})"));
+                    }
                     Some(false) => { let (a,b) = if a <= b { (a,b) } else { (b,a) };
                         generated.insert(format!("DifferentIndividuals({a} {b})")); },
                     None => return Err("undecided functional value equality".into()),
@@ -192,6 +199,19 @@ mod tests {
         assert_eq!(result.matches("ClassAssertion(").count(), 2);
         assert_eq!(result.matches("DifferentIndividuals(").count(), 1);
         assert!(result.contains("Annotation(<urn:note> \"retained\")"));
+    }
+    #[test]
+    fn two_values_of_a_functional_property_on_one_owner_contradict() {
+        let _test_env = crate::test_env::read();
+        // ore_ont_3205 through the Protégé plugin: ¬p(b, "x") is entailed
+        // because b already has another value of the functional p.
+        let result = project(r#"Ontology(FunctionalDataProperty(<urn:p>)
+            DataPropertyAssertion(<urn:p> <urn:a> "first"^^xsd:string)
+            DataPropertyAssertion(<urn:p> <urn:b> "second"^^xsd:string)
+            DataPropertyAssertion(<urn:p> <urn:b> "x"))"#).unwrap();
+        assert!(result.contains("ClassAssertion(<http://www.w3.org/2002/07/owl#Nothing> <urn:b>)"), "{result}");
+        assert!(!result.contains("DifferentIndividuals(<urn:b> <urn:b>)"), "{result}");
+        assert!(result.contains("DifferentIndividuals(<urn:a> <urn:b>)"), "{result}");
     }
     #[test]
     fn range_violation_is_retained_as_contradiction() {

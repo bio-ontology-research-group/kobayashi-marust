@@ -125,6 +125,8 @@ final class DataValues {
         final Set<OWLDataProperty> hasValueProperties = new HashSet<>();
         final Set<OWLDataProperty> positiveProperties = new HashSet<>();
         final List<Double> floatCuts = new ArrayList<>();
+        /** Cuts that facet restrictions on integer datatypes add (the first integer of each new interval). */
+        final List<java.math.BigInteger> integerCuts = new ArrayList<>();
 
         boolean isPurelyAsserted(Set<OWLDataProperty> subPropertiesAndSelf) {
             if (hasRuleData) return false;
@@ -370,8 +372,8 @@ final class DataValues {
     private static final int ENUMERATED_CELL = 256;
 
     private static boolean integerCellsSafe(Candidates out, OWLDataFactory df) {
-        if (out.integerTypes.isEmpty()) return true;
-        TreeSet<java.math.BigInteger> cuts = new TreeSet<>();
+        if (out.integerTypes.isEmpty() && out.integerCuts.isEmpty()) return true;
+        TreeSet<java.math.BigInteger> cuts = new TreeSet<>(out.integerCuts);
         for (IRI t : out.integerTypes) {
             java.math.BigInteger[] b = INTEGER_TYPES.get(t);
             if (b[0] != null) cuts.add(b[0]);
@@ -404,6 +406,32 @@ final class DataValues {
             previous = cut;
         }
         return true;
+    }
+
+    /**
+     * The first integer of the interval that an integer bound opens or the
+     * first integer after the interval it closes: {@code >= v} and {@code < v}
+     * cut at {@code v}, {@code > v} and {@code <= v} at {@code v + 1}. Null
+     * for another facet or a bound that is not an integral numeral.
+     */
+    private static java.math.BigInteger integerCut(OWLFacetRestriction f) {
+        org.semanticweb.owlapi.vocab.OWLFacet facet = f.getFacet();
+        java.math.BigInteger v;
+        try {
+            java.math.BigDecimal d = new java.math.BigDecimal(f.getFacetValue().getLiteral().trim().replaceFirst("^\\+", ""));
+            v = d.signum() == 0 ? java.math.BigInteger.ZERO : d.toBigIntegerExact();
+        } catch (NumberFormatException | ArithmeticException e) {
+            return null;
+        }
+        if (facet == org.semanticweb.owlapi.vocab.OWLFacet.MIN_INCLUSIVE
+                || facet == org.semanticweb.owlapi.vocab.OWLFacet.MAX_EXCLUSIVE) {
+            return v;
+        }
+        if (facet == org.semanticweb.owlapi.vocab.OWLFacet.MIN_EXCLUSIVE
+                || facet == org.semanticweb.owlapi.vocab.OWLFacet.MAX_INCLUSIVE) {
+            return v.add(java.math.BigInteger.ONE);
+        }
+        return null;
     }
 
     private static boolean floatCellsSafe(Candidates out) {
@@ -450,6 +478,24 @@ final class DataValues {
             boolean denseFloat = base.equals(OWL2Datatype.XSD_DOUBLE.getIRI())
                     || base.equals(OWL2Datatype.XSD_FLOAT.getIRI())
                     || base.equals(OWL2Datatype.XSD_DECIMAL.getIRI());
+            boolean integral = INTEGER_TYPES.containsKey(base) || base.equals(OWL2Datatype.XSD_INTEGER.getIRI());
+            if (integral) {
+                // Bounds on an integer datatype cut the integers into intervals,
+                // as the bounds of the integer types themselves do: the
+                // interval checks of integerCellsSafe then decide whether the
+                // candidates cover every value an entailment could force
+                // (PARITY4: xsd:int ranges on ore_ont_2548, 13700, 9662).
+                if (INTEGER_TYPES.containsKey(base)) out.integerTypes.add(base);
+                boolean intOk = true;
+                for (OWLFacetRestriction f : r.getFacetRestrictions()) {
+                    out.addLiteral(f.getFacetValue());
+                    java.math.BigInteger cut = integerCut(f);
+                    if (cut == null) intOk = false;
+                    else out.integerCuts.add(cut);
+                }
+                if (!intOk) out.outside = "the data range " + range;
+                return;
+            }
             boolean ok = denseFloat;
             for (OWLFacetRestriction f : r.getFacetRestrictions()) {
                 out.addLiteral(f.getFacetValue());
@@ -538,6 +584,24 @@ final class DataValues {
         if ((NON_STRING_BUILTINS.contains(rIri) || INTEGER_TYPES.containsKey(rIri)) && litString) {
             return true;
         }
-        return false;
+        // OWL 2 keeps the value spaces of owl:real (with xsd:decimal and the
+        // integer types), xsd:double and xsd:float pairwise disjoint.
+        int litSpace = numericSpace(lIri);
+        int rangeSpace = numericSpace(rIri);
+        return litSpace != 0 && rangeSpace != 0 && litSpace != rangeSpace;
+    }
+
+    /** 1 for owl:real and its subtypes, 2 for xsd:double, 3 for xsd:float, 0 otherwise. */
+    private static int numericSpace(IRI dt) {
+        if (INTEGER_TYPES.containsKey(dt)
+                || dt.equals(OWL2Datatype.XSD_INTEGER.getIRI())
+                || dt.equals(OWL2Datatype.XSD_DECIMAL.getIRI())
+                || dt.equals(OWL2Datatype.OWL_REAL.getIRI())
+                || dt.equals(OWL2Datatype.OWL_RATIONAL.getIRI())) {
+            return 1;
+        }
+        if (dt.equals(OWL2Datatype.XSD_DOUBLE.getIRI())) return 2;
+        if (dt.equals(OWL2Datatype.XSD_FLOAT.getIRI())) return 3;
+        return 0;
     }
 }
