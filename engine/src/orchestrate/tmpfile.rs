@@ -209,8 +209,8 @@ fn process_alive(pid: libc::pid_t) -> bool {
     }
     // `kill(pid, 0)` probes for existence. Read errno through std so the
     // code builds on every Unix (glibc, musl and macOS name it differently).
-    unsafe { libc::kill(pid, 0) == 0 }
-        || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+    let signalled = unsafe { libc::kill(pid, 0) } == 0;
+    signalled || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
 }
 
 /// Remove run directories and legacy `km-<pid>-...` files of processes that
