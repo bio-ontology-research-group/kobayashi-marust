@@ -24,6 +24,77 @@ fn render(node: &Node<'_>) -> String {
     }
 }
 
+/// `text` with every `<iri>` that `source` spells as one prefixed name in
+/// that spelling, and with the prefix declarations of `source` that `text`
+/// lacks. Quoted literals are copied unchanged.
+fn respell_as_source(text: &str, source: &str) -> String {
+    let mut prefixes: Vec<(String, String, String)> = Vec::new();
+    let mut parser = Parser::new(source);
+    while parser.peek() == Some("Prefix") {
+        let Ok(node) = parser.parse() else { break };
+        let declaration = render(&node);
+        let Node::List(_, args) = node else { break };
+        let parts: Option<Vec<&str>> = args.iter().map(Node::as_atom).collect();
+        let Some(definition) = parts.map(|p| p.concat()) else { continue };
+        if let Some((prefix, value)) = definition.split_once(":=") {
+            if let Some(iri) = value.strip_prefix('<').and_then(|v| v.strip_suffix('>')) {
+                prefixes.push((prefix.to_string(), iri.to_string(), declaration));
+            }
+        }
+    }
+    let mut spelled: std::collections::HashMap<String, Option<String>> = Default::default();
+    for token in super::sexpr::tokens(source) {
+        if token.starts_with('"') || token.starts_with('<') { continue }
+        let Some((prefix, local)) = token.split_once(':') else { continue };
+        if local.starts_with('=') { continue }
+        let Some((_, ns, _)) = prefixes.iter().find(|(p, _, _)| p == prefix) else { continue };
+        let entry = spelled.entry(format!("{ns}{local}")).or_insert_with(|| Some(token.to_string()));
+        if entry.as_deref() != Some(token) { *entry = None }
+    }
+    // An IRI the source also writes in full keeps its full form.
+    for token in super::sexpr::tokens(source) {
+        if let Some(iri) = token.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
+            if let Some(entry) = spelled.get_mut(iri) { *entry = None }
+        }
+    }
+    let mut out = String::with_capacity(text.len());
+    for (prefix, _, declaration) in &prefixes {
+        if !text.contains(&format!("Prefix({prefix}:=")) {
+            out.push_str(declaration);
+            out.push('\n');
+        }
+    }
+    let bytes = text.as_bytes();
+    let (mut i, mut start) = (0usize, 0usize);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    if bytes[i] == b'\\' { i += 1 }
+                    i += 1;
+                }
+                i += 1;
+            }
+            b'<' => match text[i + 1..].find('>') {
+                Some(len) => {
+                    let iri = &text[i + 1..i + 1 + len];
+                    if let Some(Some(token)) = spelled.get(iri) {
+                        out.push_str(&text[start..i]);
+                        out.push_str(token);
+                        start = i + len + 2;
+                    }
+                    i += len + 2;
+                }
+                None => i += 1,
+            },
+            _ => i += 1,
+        }
+    }
+    out.push_str(&text[start.min(text.len())..]);
+    out
+}
+
 fn retained_axiom(node: &Node<'_>, definitions:&mut BTreeMap<String,String>,
     occupied:&mut BTreeSet<String>, next_assertion: &mut usize) -> Result<String,String> {
     let Node::List(kind,args) = node else { return Ok(render(node)) };
@@ -71,6 +142,7 @@ fn compile_uncached(text: &str, max_instances: usize) -> Result<GroundedRuleSour
     // Prototype integration: guarded finite numeric profiles precede rule
     // compilation; every resulting source axiom still faces native admission.
     let normalized = super::numeric_source::normalize(text, 256)?;
+    let original = text;
     let text = normalized.as_deref().unwrap_or(text);
     let mut registry = IriRegistry::new();
     let mut profile = SourceProfileBuilder::new();
@@ -238,7 +310,12 @@ fn compile_uncached(text: &str, max_instances: usize) -> Result<GroundedRuleSour
             _=>return Err("unexpected ground-rule axiom".into()),
         });
     }
-    Ok(GroundedRuleSource{text:format!("{}\nOntology(\n{}\n)\n",prefixes.join("\n"),axioms.join("\n")),
+    let compiled = format!("{}\nOntology(\n{}\n)\n",prefixes.join("\n"),axioms.join("\n"));
+    // The numeric normalization writes every IRI in full and drops the prefix
+    // declarations, so the classifier, and every row it publishes, spelled the
+    // source's prefixed names as full IRIs. Spell them back as the source does.
+    let compiled = if normalized.is_some() { respell_as_source(&compiled, original) } else { compiled };
+    Ok(GroundedRuleSource{text:compiled,
         source_rules:source.rule_axioms,instances:plan.instances + paths.instances,
         private_classes:definitions.values().chain(paths.domain.iter()).map(|n|generated[n].trim_matches(['<','>']).to_owned())
             .chain(assertion_definitions.values().map(|n|n.trim_matches(['<','>']).to_owned())).collect()})
