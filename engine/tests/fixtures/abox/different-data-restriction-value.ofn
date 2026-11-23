@@ -1,0 +1,11 @@
+Prefix(:=<http://ex.org/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex.org/n>
+Declaration(Class(:C))
+Declaration(DataProperty(:d0))
+Declaration(NamedIndividual(:a0))
+Declaration(NamedIndividual(:a3))
+SubClassOf(:C DataMaxCardinality(0 :d0 DatatypeRestriction(xsd:integer xsd:minInclusive "2"^^xsd:integer xsd:maxInclusive "4"^^xsd:integer)))
+DataPropertyAssertion(:d0 :a3 "4"^^xsd:integer)
+ClassAssertion(:C :a0)
+)

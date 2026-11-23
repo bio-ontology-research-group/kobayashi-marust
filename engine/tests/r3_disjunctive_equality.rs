@@ -113,13 +113,17 @@ fn disjunctive_ground_equalities_under_the_base_context_regime() {
 /// the ranked guard (docs/PER-CONTEXT-ORDERING.md section 11) delivers the
 /// private equalities of `m6` and `m7`, the old comparisons alone answer
 /// them; `KM_CONTEXT_PAIR_R2` restores the guard of section 8 as well.
+/// The individual-label offers over every edge (docs/NOMINALS-CB.md 13.1)
+/// hand `E(a)` to the `Q` context by another path, so the controls turn them
+/// off to isolate the v1.5.4 rules.
 #[test]
 fn v154_rules_miss_the_motifs() {
+    const OFF: (&str, &str) = ("KM_RSUCC_INDIVIDUAL_LABELS", "0");
     for (name, flags) in [
-        ("r3_m1_atmost_qualified.ofn", &[("KM_CONTEXT_UNIT_R3", "1")][..]),
-        ("r3_m4_atmost_union.ofn", &[("KM_CONTEXT_UNIT_R3", "1")][..]),
-        ("r3_m6_private_equality.ofn", &[("KM_CONTEXT_NO_EQ_R2", "1"), ("KM_CONTEXT_PAIR_R2", "1")][..]),
-        ("r3_m7_two_equalities.ofn", &[("KM_CONTEXT_NO_EQ_R2", "1"), ("KM_CONTEXT_PAIR_R2", "1")][..]),
+        ("r3_m1_atmost_qualified.ofn", &[("KM_CONTEXT_UNIT_R3", "1"), OFF][..]),
+        ("r3_m4_atmost_union.ofn", &[("KM_CONTEXT_UNIT_R3", "1"), OFF][..]),
+        ("r3_m6_private_equality.ofn", &[("KM_CONTEXT_NO_EQ_R2", "1"), ("KM_CONTEXT_PAIR_R2", "1"), OFF][..]),
+        ("r3_m7_two_equalities.ofn", &[("KM_CONTEXT_NO_EQ_R2", "1"), ("KM_CONTEXT_PAIR_R2", "1"), OFF][..]),
     ] {
         let (_, _, got) = classify(&fixture(name), Some("nominals"), flags);
         assert!(!got.contains(&("Q".to_string(), "E".to_string())), "{name} {flags:?}: {got:?}");

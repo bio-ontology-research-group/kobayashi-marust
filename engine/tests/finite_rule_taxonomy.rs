@@ -51,6 +51,12 @@ fn requested_ht_certificate_cannot_be_bypassed_by_finite_rule_projection() {
     assert!(!result.status.success(), "unchecked projection bypassed requested HT certification");
 }
 
+/// A rule worker that prints `{}` must never be read as a consistent
+/// verdict. Since v1.7.0 the default schedule answers this ontology by the
+/// ground-rule reduction on the native bridge and never starts the rule
+/// worker (docs/V1.7.0-RULES-SHOIQ.md); a certificate request (here
+/// `KM_RULES_LEAN_CERT`) or `KM_RULES_ROUTE_FIRST=1` sends it to the rules
+/// route first, as at v1.6.5, and there the empty verdict must fail the run.
 #[cfg(unix)]
 #[test]
 fn missing_worker_verdict_cannot_default_to_consistent() {
@@ -58,8 +64,22 @@ fn missing_worker_verdict_cannot_default_to_consistent() {
     let path = std::env::temp_dir().join(format!("km-empty-rule-worker-{}", std::process::id()));
     std::fs::write(&path, "#!/bin/sh\ncat >/dev/null\nprintf '{}\\n'\n").unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let certificates = std::env::temp_dir().join(format!("km-empty-rule-worker-cert-{}", std::process::id()));
+    // The default schedule does not consult the rule worker.
     let result = classify(SOURCE, |command| { command.env("KM_TAB_BIN", &path); });
+    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    let output: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(output["consistent"], true);
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(output["subsumptions"], serde_json::json!([["http://km.test/P", "http://km.test/Q"]]));
+    // The rules route reads the worker's verdict and refuses the empty one.
+    for (key, value) in [("KM_RULES_ROUTE_FIRST", std::ffi::OsString::from("1")),
+                         ("KM_RULES_LEAN_CERT", certificates.clone().into_os_string())] {
+        let result = classify(SOURCE, |command| { command.env("KM_TAB_BIN", &path).env(key, &value); });
+        assert!(!result.status.success(), "{key}: {}", String::from_utf8_lossy(&result.stdout));
+        assert!(String::from_utf8_lossy(&result.stderr).contains("missing field `consistent`"),
+            "{key}: {}", String::from_utf8_lossy(&result.stderr));
+    }
+    let _ = std::fs::remove_dir_all(certificates);
     std::fs::remove_file(path).unwrap();
-    assert!(!result.status.success());
-    assert!(String::from_utf8_lossy(&result.stderr).contains("missing field `consistent`"));
 }

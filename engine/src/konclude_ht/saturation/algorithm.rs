@@ -27,6 +27,7 @@ use super::super::completion::stubs::{
 };
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::ConceptId;
+use super::super::process::SatNodeId;
 use super::super::process::node_resolution::IndividualProcessNodeVector;
 use super::stubs::{
     SatisfiableTaskSaturationIndividualsAnalyser,
@@ -254,6 +255,15 @@ pub struct SaturationTaskHandleAlgorithm {
     pub diagnostic_all_back_prop_count: Cint64,
     pub diagnostic_successor_create_count: Cint64,
     pub diagnostic_max_label_count: Cint64,
+    /// KM-BRIDGE: the value singleton concepts (`v(y1) ∧ v(y2) → y1 = y2`)
+    /// the completion merges at fixpoint (u02 `ht_apply_singleton_merges`).
+    /// Saturation has no such merge, so a node where one could happen (a
+    /// second carrier, or a carrier counted twice) is insufficient (s03, s02).
+    pub value_singletons: crate::fxhash::FxHashSet<ConceptId>,
+    /// KM-BRIDGE: the first node that received each value singleton, and every
+    /// node that received one (s03, s02).
+    pub singleton_first_carrier: crate::fxhash::FxHashMap<ConceptId, SatNodeId>,
+    pub singleton_carriers: crate::fxhash::FxHashSet<SatNodeId>,
 }
 
 impl SaturationTaskHandleAlgorithm {
@@ -376,6 +386,9 @@ impl SaturationTaskHandleAlgorithm {
             diagnostic_all_back_prop_count: 0,
             diagnostic_successor_create_count: 0,
             diagnostic_max_label_count: 0,
+            value_singletons: Default::default(),
+            singleton_first_carrier: Default::default(),
+            singleton_carriers: Default::default(),
         }
     }
 

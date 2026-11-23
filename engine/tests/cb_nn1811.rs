@@ -236,8 +236,32 @@ fn automatic_route_matches_hermit_on_the_nominal_cb_slow_inputs() {
 /// The same inputs on the nominal CB stack also answer as HermiT within the
 /// test bound once `build_hyper_resolvent` uses the exact `n_y - 1 + K''`
 /// covering width and reuses blocks covered by `Nominals.nom_shared_cover_sound`.
+///
+/// fx12 is the exception: since the ground context offers an individual's
+/// labels to its successors (docs/NOMINALS-CB.md), `{a} ⊑ ∃s⁻.∃s⁻.{c}` with
+/// the root-edge offers of section 12 keeps the nominal CB engine busy past
+/// its limit. The route must then fail closed (silent), never answer wrong.
 #[test]
 fn nominal_cb_route_is_exact_or_silent_on_the_nominal_cb_slow_inputs() {
-    let paths = fixtures_in("tests/fixtures/cb_nn1811/nominal_cb_slow");
-    check_paths(&paths, "nominals", &with_release(&[("KM_ROUTE", "nominals")]));
+    let env = with_release(&[("KM_ROUTE", "nominals")]);
+    let (silent, exact): (Vec<PathBuf>, Vec<PathBuf>) = fixtures_in("tests/fixtures/cb_nn1811/nominal_cb_slow")
+        .into_iter()
+        .partition(|path| path.file_stem().is_some_and(|stem| stem == "fx12"));
+    check_paths(&exact, "nominals", &env);
+    for path in silent {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
+        for (key, _) in std::env::vars() {
+            if key.starts_with("KM_") {
+                command.env_remove(key);
+            }
+        }
+        for (key, value) in &env {
+            command.env(key, value);
+        }
+        let result = command.arg("classify").arg(&path).output().expect("run km classification");
+        if result.status.success() {
+            let got = normalise(&serde_json::from_slice(&result.stdout).unwrap());
+            assert_eq!(got, expected(&path), "{} [nominals]", path.display());
+        }
+    }
 }

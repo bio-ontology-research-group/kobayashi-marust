@@ -600,6 +600,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         let mut resolved_sat_node = base_sat_node;
+        // A substituted saturation node stands for the label of its
+        // substitute plus its own initialization concept, which the
+        // saturation leaves out of every label of the chain (s02, cpp
+        // 5524-5542: a node is substituted only when the block node does not
+        // contain its concept). The root receives `concept` and the label of
+        // the last node; the concepts of the nodes in between were lost, so
+        // with E ⊑ B, B ⊑ C and Q0 ≡ ∀s1.B ⊔ B the root of E lacked B and a
+        // probe of E ⊓ ¬Q0 came out satisfiable (tbox sweep, ht_or.ofn).
+        // Collect them and add them after the label.
+        let mut intermediate_concepts: Vec<(ConceptId, bool)> = Vec::new();
         while calc_alg_context
             .process_context()
             .sat_node(resolved_sat_node)
@@ -609,6 +619,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context()
                 .sat_node(resolved_sat_node)
                 .get_substitute_individual_node();
+            if calc_alg_context
+                .process_context()
+                .sat_node(resolved_sat_node)
+                .has_substitute_individual_node()
+            {
+                let item = calc_alg_context
+                    .process_context()
+                    .sat_node(resolved_sat_node)
+                    .get_saturation_concept_reference_linking();
+                if item.is_none() {
+                    return false;
+                }
+                let linking = calc_alg_context.process_context().extended_con_ref_linking_data(item);
+                if linking.get_saturation_role_ranges().is_some() {
+                    return false;
+                }
+                intermediate_concepts
+                    .push((linking.get_saturation_concept(), linking.get_saturation_negation()));
+            }
         }
         let (sat_label, resolved_flags, base_flags) = {
             let resolved = calc_alg_context
@@ -892,6 +921,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 );
             }
             sat_des = next;
+        }
+        for (intermediate, intermediate_negation) in intermediate_concepts {
+            if intermediate == concept && intermediate_negation == concept_negation {
+                continue;
+            }
+            self.add_concept_to_individual_skip_and_processing(
+                intermediate,
+                intermediate_negation,
+                *indi,
+                expand_dep,
+                allow_preprocess,
+                false,
+                true,
+                calc_alg_context,
+            );
+            if calc_alg_context.has_pending_signal() {
+                return true;
+            }
+            let mut validation_node = base_sat_node;
+            self.validate_saturation_caching_possible(
+                *indi,
+                &mut validation_node,
+                Some(&mut sat_caching_possible),
+                Some(&mut last_sat_cache_possible),
+                intermediate,
+                intermediate_negation,
+                calc_alg_context,
+            );
         }
 
         if let Some((requires_nondeterministic, expansion)) =

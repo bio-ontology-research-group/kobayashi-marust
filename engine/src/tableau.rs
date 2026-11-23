@@ -2081,9 +2081,11 @@ impl Tableau {
                         }
                     }
                 } else {
-                    // Source unbound: must consider every edge.
+                    // Source unbound: must consider every edge. A self atom
+                    // `r(x, x)` names one variable twice, so only a loop
+                    // edge matches it.
                     for &(er, es, et) in &g.edges {
-                        if er != *r {
+                        if er != *r || (*s == *t && es != et) {
                             continue;
                         }
                         if let Some(bt) = subst.get(*t) {
@@ -3470,6 +3472,15 @@ impl Tableau {
             let mut hy: Vec<CLit> = Vec::new();
             for a in &cl.head {
                 match a {
+                    // A negative head literal (from the complementary-definer
+                    // fold, `Q1 ⊑ ¬B`) made the caching checker refute
+                    // satisfiable seeds: `C ⊓ ¬Q1` came back unsatisfiable
+                    // under `⊤ ⊑ Q1 ⊔ B`, `B ⊑ ∃s0.A` (tbox sweep
+                    // bool20033_0082). Leave such inputs to the search-based
+                    // classification, which decides them correctly.
+                    Atom::Concept { lit, .. } if lit.neg => {
+                        fence!(ci, "negative head literal")
+                    }
                     Atom::Concept { lit, t } => {
                         if *t == 0 {
                             hx.push(*lit)

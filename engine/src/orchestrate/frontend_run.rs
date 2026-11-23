@@ -451,6 +451,13 @@ fn run_ofn_split_cached_passes(
     // classification (the key is restored by the caller's environment guard).
     // Whatever stays uncarried after that (negative assertions, a literal
     // vocabulary above the cap) is published as dropped axioms.
+    // The conversion may wait only for a schedule that carries the
+    // assertions itself: the automatic bounded bridge-first attempts, which
+    // re-run this frontend in full when they decline. On a forced route the
+    // frontend's early return for uncarried assertions also leaves `named`
+    // empty, but no such attempt follows.
+    let automatic_requested =
+        std::env::var("KM_ROUTE").as_deref() == Ok(crate::routing::Route::Auto.as_str());
     let deferred_for_bounded_bridge = result.1.named.is_empty()
         && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
         && result
@@ -459,7 +466,7 @@ fn run_ofn_split_cached_passes(
             .parse::<crate::routing::Route>()
             .ok()
             .is_some_and(|route| {
-                crate::routing::bounded_bridge_first_candidate(route, &result.1.profile)
+                super::bounded_bridge_first_scheduled(automatic_requested, route, &result.1.profile)
             });
     if result.1.uncarried_data_assertions > 0
         && !data_assertions_as_class_requested()

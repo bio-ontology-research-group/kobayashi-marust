@@ -2031,6 +2031,26 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     }
     role_existentials.sort_unstable();
     role_existentials.dedup();
+    // The probe value `v` of `--data-properties` is one data value shared by
+    // every probe `W_p ≡ ∃p.{v}`, and `X_pq ≡ W_p ⊓ W_q` is unsatisfiable
+    // when the ranges of `p` and `q` admit no common value. The bridge
+    // checks the probe against no range and keeps the two successors apart,
+    // so it misses that clash (t2: `p ≡ q` with an `xsd:integer` range and
+    // `s` with an `xsd:string` range lost `DISJOINTDATAPROP p s`). Admit the
+    // probe only when all its roles share one atomic range.
+    {
+        let mut probe_ranges: Vec<&str> = role_existentials
+            .iter()
+            .filter(|&&(_, datatype)| crate::frontend::datatypes::is_data_property_probe_value(datatype))
+            .filter_map(|(role, _)| role_ranges.get(role))
+            .flat_map(|ranges| ranges.iter().copied())
+            .collect();
+        probe_ranges.sort_unstable();
+        probe_ranges.dedup();
+        if probe_ranges.len() > 1 {
+            defer!("data-property probes occur on roles with different ranges");
+        }
+    }
     for &(role, datatype) in &role_existentials {
         if crate::frontend::datatypes::is_data_property_probe_value(datatype) {
             if role_ranges.get(&role).is_some_and(|ranges_for_role| {
@@ -8913,7 +8933,14 @@ fn bridge_tinput_with_trigger_absorption(
     // automata and propagation-direction passes. The linked candidate-hash
     // blocker search reads these marks; without them every label set lacks a
     // core descriptor and the search falls back to the linear candidate scan.
-    let core_blocking_marked = mark_core_blocking_concepts(ctx);
+    // `KM_HT_NO_CORE_BLOCKING_MARK=1` leaves the marks out (the candidate
+    // order before 1ba05c77), so the negative controls of
+    // tests/bridge_satcache.rs keep reproducing their historical misses.
+    let core_blocking_marked = if std::env::var_os("KM_HT_NO_CORE_BLOCKING_MARK").is_some() {
+        0
+    } else {
+        mark_core_blocking_concepts(ctx)
+    };
     bridge_phase!("core-blocking-marker");
     if std::env::var_os("KM_HT_STATS").is_some() {
         eprintln!("bridge [core-blocking] marked={core_blocking_marked}");
@@ -16143,6 +16170,7 @@ fn run_bridged_saturation_with_native_consistency_prefix(
     }
     let mut sat_algo = super::saturation::algorithm::SaturationTaskHandleAlgorithm::new();
     sat_algo.native_consistency_nominal_nondeterministic_prefix = native_consistency_prefix;
+    sat_algo.value_singletons = bridged.singleton_concepts.iter().copied().collect();
     configure_production_saturation(&mut sat_algo);
     let preparation_started = std::time::Instant::now();
     let preparation_budget =

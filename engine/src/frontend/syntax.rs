@@ -687,6 +687,13 @@ impl Ontology {
     }
 
     /// Record a source axiom the parser drops (see `dropped_source_axioms`).
+    /// A source ABox axiom that holds in every interpretation and adds no
+    /// parsed axiom (`DifferentIndividuals(:a :a)`, one individual after
+    /// removing repeats). Counted like a repeated axiom: covered, no pair.
+    pub fn note_vacuous_abox_axiom(&mut self, head: &'static str) {
+        *self.duplicate_abox_axioms.entry(head).or_default() += 1;
+    }
+
     pub fn drop_source_axiom(&mut self, head: &str) {
         *self.dropped_source_axioms.entry(head.to_string()).or_default() += 1;
     }

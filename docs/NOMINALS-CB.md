@@ -2058,3 +2058,123 @@ bound (`data_role_uses_are_safe_cardinality_only`), so `automatic`,
 `certified_nominals`, and `nominals` all answer through the CB nominal engine in
 0.21-0.25 s, and all 16 tests in `top_nominal_data_successors` pass with every
 route required to answer as HermiT.
+
+## 13. Labels of an individual offered to its successors (2026-11-22)
+
+Found by the v1.7.0 differential campaign (case new_1002_65). For
+`a : ∃t.C`, `∃t⁻.K ⊑ E` (or `∃t⁻.{a} ⊑ E`), `K(a)` and `E ⊓ C ⊑ ⊥` the
+ontology is inconsistent, and the nominal CB routes answered consistent in
+every release. The successor `f(a)` needs `K`, or `{a}`, at its predecessor
+`a`. An ordinary predecessor offers its central labels `B(x)` to its
+successors as `B(y)` hypotheses (r-Succ, `rsucc_reach`); the ground context
+held the labels of `a` on the constant `a` and offered none of them.
+
+The repair: the ground context puts its maximal labels `B(o)` into the r-Succ
+pool and offers each over the grounded edges `f(o)` of `o` only, where
+`forwards` maps `B(o)` to `B(y)` (`rsucc_offered_over`). Only concepts in
+`Sig::grounded_label` are offered: a concept that some source clause reads
+on a neighbour `v` that a role atom of the same body joins to the centre
+along an edge that can lead from a successor to its predecessor
+(`grounded_label_concepts`: a Skolem head `S(x, f(x))` gives an edge from
+predecessor to successor, `S(f(x), x)` the other way, a role clause
+`R(x,y) → R'(x,y)` keeps the direction, `R(x,y) → R'(y,x)` turns it, any
+other role head counts both ways). A label nothing reads is an inert
+hypothesis, so leaving it out changes no derivation that uses one.
+
+Lean: `CBRSuccClosure.isGroundedLabel`, `offeredOver`, `edgeReachPredicates`
+and `rSuccOffers`, and `CBSourceSuccClosure.sourceEdgeReachPredicates` and
+`sourceRSuccOffers`, take the concept list `groundedConcepts`, which the
+wires carry as the optional field `grounded_label_concepts`.
+`forwardPredicate_grounded_label` shows that the offer of `B(o)` over `f(o)`
+pushes `B(y)`; the payload is a tautological hypothesis (`rSuccOffer_valid`),
+so soundness is unchanged, and the r-Succ closure checks now require the
+engine to deliver the new offers.
+
+Cost: on the nominal CB pool inputs the answers are unchanged and the time
+and memory level. The synthetic fixture `nominal_cb_slow/fx12.ofn` now runs
+past the nominal CB limit on the forced `nominals` route: the offer of the
+nominal label `{a}` to the successors of `a` interacts with the root-edge
+offers of section 12 (`KM_NO_ROOT_REACH=1` restores 0.2 s). The route fails
+closed there; the automatic route answers through the bridge.
+
+### 13.1 Labels of individuals over every successor edge (2026-11-23)
+
+The grounded offers above cover a successor `f(o)` of the ground context.
+They miss a label `B(o)` that a non-ground context derives under its own
+hypotheses and that another element reads: for `E ⊑ ∃p.{h}`, `∃p⁻.E ⊑ Q`,
+`E ⊑ ∃s.Z`, `Z ⊑ ∃p.{h}`, `Z ⊓ ∃p.Q ⊑ W` the query context of `E` learns
+`Q(h)` (the ground context holds `E(y) → Q(h)`), but its successor `Z` never
+does, and the nominal CB routes missed `E ⊑ ∃s.W`. The universal role, which
+becomes a hub individual, shows the same miss (the TBox route sweep cases).
+The r-Succ rule of arXiv:1805.01396 puts `B(o)` into `Su^r` for every edge.
+
+KM now does the same, by default: every context puts its maximal labels on
+individuals into the r-Succ pool and offers them over every successor edge;
+over an edge whose parent is not `o` the offer keeps the constant
+(`CBRSuccClosure.forwardPredicate_individual_label`). The offered concepts
+are those a source clause reads on a variable that a role atom of the same
+body touches, the centre included (`grounded_label_concepts`). When only
+these offers turn r-Succ on, central labels stay out of the pool and the
+root-edge offers (`Sig::rsucc_labels_only`).
+
+Redundancy: a label that the ground context holds as the unconditional fact
+`→ B(o)` goes over the grounded edges `f(o)` only (`rsucc_reach_unit`,
+`CBRSuccClosure.skipsGroundUnit`). Its readers get it through the root edges
+into the ground context, as with the offers off. Without the cut,
+ore_ont_4775 offered 21.6 million ABox labels (76 s, 9 GB); with it 0.4 s.
+
+Switches: KM_RSUCC_INDIVIDUAL_LABELS=0 (off), `auto` (on for the broad shape
+of `individual_label_shape` only), `all` (every concept, diagnostic);
+KM_RSUCC_KEEP_GROUND_UNITS=1 disables the cut;
+KM_RSUCC_INDIVIDUAL_LABELS_CENTRAL=1 keeps the central offers in labels-only
+mode.
+
+### 13.2 Open: disjunctive labels of individuals in successors (follow-up)
+
+The offers of 13.1 hand a successor every maximal label `B(o)`, including
+labels that hold only in some branches. Two inputs run long because of that:
+
+- `tests/fixtures/nominal_inert_sorts/m2058.ofn`, forced `certified_nominals`:
+  1.0 s with the offers off, past 120 s with them on (the automatic route
+  answers in 0.03 s either way). Offering one concept at a time on the CB
+  input isolates Q_13 and Q_15, the data at-most definers `≤1 v` and `≤2 v`
+  of the sort disjunction `⊤ → Q_13 ∨ Q_14 ∨ __data__`. Their labels on
+  individuals are conditional, so the ground-unit cut keeps them, and a
+  successor reads Q_13 legitimately (`Q_13(y) ∧ s(x,y) → Q_12(x)`). The
+  context count stays at 16; the time goes into saturating successors that
+  carry the data at-most of an individual under each hypothesis set.
+- `mixed20004_0031` (TBox sweep), forced `nominals` and
+  `certified_card_proxy_abox`: the offered conditional labels include the
+  `__forall__` markers of the transitive role and the hub proxy; each new
+  hypothesis set adds conditional clauses and the run grows without hitting
+  the message cap. The automatic route answers through `certified_nominals`.
+
+Four more fixtures run long on forced routes with the offers on; the same
+one-concept-at-a-time check on their CB inputs gives:
+
+- `top_nominal_data/m2197.ofn`, forced `nominals` (0.2 s off, past 120 s
+  on): Q_13 (`→ C ∨ D` definer) and the class D, read by the qualified
+  at-most `≥3 t.D` clause; every other offered concept alone is fast.
+- `nominal_seq_order/cut_r129_pushback.ofn`, forced `nominals` (0.13 s off;
+  on, past the worker cap and then a failing exit): the nominal proxy
+  `__nom__b` offered as a label of other individuals, from the disjunction
+  `Q_2 → __nom__b ∨ __nom__d`. Not a data definer.
+- `nominal_seq_order/merge_r1646.ofn`, forced `nominals` (1.5 s off, past
+  120 s on): Q_3 (`∀r.{c, b}`), E (`E ⊑ {b, a}`) and `__nom__a`, each alone;
+  C alone is fast. Labels conditional on nominal disjunctions.
+- The universal-role hub with data values
+  (`universal_role_and_top_data_range`), forced `nominals`,
+  `nominal_ni_abox` and `certified_card_proxy_abox` (under 1 s off, about
+  55 s on): slow even when no label of an individual is offered at all,
+  while r-Succ fully on with the offers off is fast. The cost there comes
+  from the labels-only r-Succ mode itself (`Sig::rsucc_labels_only`), not
+  from an offered label; not analysed further.
+
+In every case the automatic route answers exactly and fast, and the tests
+hold those forced routes to exact-or-silent only.
+
+All fail closed. A fix needs a redundancy for disjunctive labels on
+individuals in successors, for instance applying an individual's at-most
+only in the ground context (Nom) and not offering the definers whose only
+readers are at-most clauses at the centre, with its Lean statement in
+`CBRSuccClosure.skipsGroundUnit`'s style.

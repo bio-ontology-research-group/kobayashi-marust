@@ -221,3 +221,12 @@ fixture_test!(range_exhaust, "range_exhaust");
 fixture_test!(range_exhaust8, "range_exhaust8");
 fixture_test!(range_exhaust_keep, "range_exhaust_keep", plain_only);
 fixture_test!(range_exhaust_tbox, "range_exhaust_tbox");
+// Campaign case new_1004_72, reduced: `≥ 2 u` over a property whose range
+// holds one value. The saturation kept the two data successors apart (it has
+// no value-singleton merge) and the bridge took its satisfiable verdict, so
+// `A` and `B` came out satisfiable on the bridge and HT routes since v1.5.5.
+#[test]
+fn count_singleton_range() {
+    check_variants("count_singleton_range", &[None], true);
+    check_variants("count_singleton_range", &[Some("ht_bridge")], false);
+}

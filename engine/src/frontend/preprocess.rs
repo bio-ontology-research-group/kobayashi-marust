@@ -317,6 +317,284 @@ fn transitivity_clauses_with(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLClaus
     extra
 }
 
+/// A role literal: a role name and whether it is read backwards (`R⁻`).
+type RoleLit = (String, bool);
+
+/// `∀`-propagation over transitive roles (Horrocks and Sattler's
+/// transitivity encoding for SHI, as in the CB calculus papers).
+///
+/// The clause stream carries a universal as `Γ(x) ∧ R(x,y) ∧ ⋀D(y) → ⋁C(y)`
+/// (a universal over an inverse uses the `__inv__R` name). The raw transitivity axioms
+/// `T(x,y) ∧ T(y,z) → T(x,z)` are filtered from the stream (they bloat the
+/// CB contexts), and the transitivity recognitions above cover only
+/// `∃`-consumers, so a universal over a role with a transitive sub-role was
+/// applied to one edge only: `Q ⊑ ∀t.F` with transitive `t` missed
+/// `Q ⊑ ∀t.∀t.F`, and with `s ⊑ t`, `s` symmetric and `D ⊑ ∃s.⊤`, missed
+/// `D ⊓ ∀t.F ⊑ F` (the loop `t(d,x), t(x,d)`).
+///
+/// For every such clause and every transitive role literal `T` with
+/// `T ⊑* R` in the reflexive-transitive closure of the role inclusions
+/// closed under inverses (a symmetric role and an inverse pair are inclusions
+/// in both orientations; the inverse of a transitive role is transitive),
+/// with a fresh marker `M` read as `∀T.(¬⋀D ⊔ ⋁C)`:
+///
+///   Γ(x) → M(x)
+///   M(x) ∧ L(x,y) ∧ ⋀D(y) → ⋁C(y)      for every literal L ⊑* T
+///   M(x) ∧ L(x,y) → M(y)                for every literal L ⊑* T
+///
+/// where `L(x,y)` is `l(x,y)` for `L = l` and `l(y,x)` for `L = l⁻`
+/// (written as `l(x,y)` with the marker moving from y to x).
+/// Soundness: every model of the clauses extends to the marker by
+/// `M := ∀T.(¬⋀D ⊔ ⋁C)`. The first clause holds because `T ⊑* R` and the
+/// original clause, the second because `L ⊑* T` and the definition, and the
+/// third because `L ⊑* T` and `T` is transitive (`∀T.E ⊑ ∀T.∀T.E ⊑ ∀L.∀T.E`). So the clauses are a conservative
+/// extension and no answer over the source signature changes except by
+/// completeness. Completeness: these are the propagations the standard
+/// elimination of transitive roles adds (`∀R.E ⊑ ∀T.∀T.E` for transitive
+/// `T ⊑* R`).
+fn forall_transitivity_clauses(tbox: &[DLClause], info: &ChainInfo) -> Vec<DLClause> {
+    if info.trans.is_empty() {
+        return Vec::new();
+    }
+    let inv = |l: &RoleLit| -> RoleLit { (l.0.clone(), !l.1) };
+    // Direct inclusions between literals, from `u(x,y) → v(x,y)` and
+    // `u(x,y) → v(y,x)` clauses (symmetric roles and inverse pairs included).
+    let mut up: HashMap<RoleLit, Vec<RoleLit>> = HashMap::default();
+    let add = |a: RoleLit, b: RoleLit, up: &mut HashMap<RoleLit, Vec<RoleLit>>| {
+        let (ia, ib) = (inv(&a), inv(&b));
+        up.entry(a).or_default().push(b);
+        up.entry(ia).or_default().push(ib);
+    };
+    for c in tbox {
+        if let ([Atom::Role(u, a, b)], [Atom::Role(v, c2, d)]) = (c.body.as_slice(), c.head.as_slice()) {
+            if a == b || !matches!(a, Term::Var(_)) || !matches!(b, Term::Var(_)) {
+                continue;
+            }
+            if a == c2 && b == d {
+                add((u.clone(), false), (v.clone(), false), &mut up);
+            } else if a == d && b == c2 {
+                add((u.clone(), false), (v.clone(), true), &mut up);
+            }
+        }
+    }
+    let supers = |start: &RoleLit| -> HashSet<RoleLit> {
+        let mut seen: HashSet<RoleLit> = HashSet::default();
+        let mut stack = vec![start.clone()];
+        while let Some(l) = stack.pop() {
+            if seen.insert(l.clone()) {
+                for n in up.get(&l).map(Vec::as_slice).unwrap_or(&[]) {
+                    stack.push(n.clone());
+                }
+            }
+        }
+        seen
+    };
+    // Transitive literals: the detected transitive roles, both orientations,
+    // and every literal equivalent to one.
+    let mut transitive: Vec<RoleLit> = Vec::new();
+    for t in &info.trans {
+        for lit in [(t.clone(), false), (t.clone(), true)] {
+            if !transitive.contains(&lit) {
+                transitive.push(lit);
+            }
+        }
+    }
+    let base_trans = transitive.clone();
+    for t in &base_trans {
+        for e in supers(t) {
+            if supers(&e).contains(t) && !transitive.contains(&e) {
+                transitive.push(e);
+            }
+        }
+    }
+    transitive.sort();
+    // For each transitive literal, the literals above it.
+    let trans_supers: Vec<(RoleLit, HashSet<RoleLit>)> =
+        transitive.iter().map(|t| (t.clone(), supers(t))).collect();
+    // Every literal below each transitive literal: the engine labels an edge
+    // with the super-roles of its own direction only, so a T-edge reached
+    // through an inverse inclusion (s2 ⊑ s0⁻, s0 ⊑ ti, ti symmetric) is not
+    // seen as T on the existential's edge. The propagation clauses are
+    // therefore emitted for every sub-literal L ⊑* T in L's own name.
+    let mut universe: HashSet<RoleLit> = HashSet::default();
+    for (k, vs) in &up {
+        universe.insert(k.clone());
+        universe.extend(vs.iter().cloned());
+    }
+    for t in &transitive {
+        universe.insert(t.clone());
+    }
+    let mut lit_supers: HashMap<RoleLit, HashSet<RoleLit>> = HashMap::default();
+    for l in &universe {
+        lit_supers.insert(l.clone(), supers(l));
+    }
+    // Edges exist only where a clause creates them: an existential head
+    // `l(x, f(x))` (or `l(f(x), x)`) or a ground role atom. Propagation is
+    // needed over T itself (the engine lifts an edge to the super-roles of
+    // its own direction) and over every created literal below T.
+    let mut generated: HashSet<RoleLit> = HashSet::default();
+    for c in tbox {
+        for h in &c.head {
+            if let Atom::Role(l, a, b) = h {
+                // An edge is walked in both directions (forward from its
+                // source, backward from its target), so both literals count.
+                if !(matches!(a, Term::Var(_)) && matches!(b, Term::Var(_))) {
+                    generated.insert((l.clone(), false));
+                    generated.insert((l.clone(), true));
+                }
+            }
+        }
+        for at in &c.body {
+            if let Atom::Role(l, a, b) = at {
+                if matches!(a, Term::Ind(_)) || matches!(b, Term::Ind(_)) {
+                    generated.insert((l.clone(), false));
+                    generated.insert((l.clone(), true));
+                }
+            }
+        }
+    }
+    let subs_of = |t: &RoleLit| -> Vec<RoleLit> {
+        let mut v: Vec<RoleLit> = lit_supers
+            .iter()
+            .filter(|(l, ups)| ups.contains(t) && (*l == t || generated.contains(*l)))
+            .map(|(l, _)| l.clone())
+            .collect();
+        v.sort();
+        v
+    };
+    let x = var_x();
+    let y = var_y();
+    let rename = |t: &Term, cx: &Term| -> Term { if t == cx { x.clone() } else { y.clone() } };
+    let mut out = Vec::new();
+    let mut markers: HashMap<(RoleLit, Vec<Atom>, Vec<Atom>), String> = HashMap::default();
+    for c in tbox {
+        let Some(role) = single_body_role(c) else { continue };
+        let (r, a, b) = role_parts(role);
+        if a == b || !matches!(a, Term::Var(_)) || !matches!(b, Term::Var(_)) || c.head.is_empty() {
+            continue;
+        }
+        // The far end carries every head atom; the near end is `x`.
+        let far = match c.head.first() {
+            Some(Atom::Concept(_, t)) => t.clone(),
+            _ => continue,
+        };
+        if far != *a && far != *b {
+            continue;
+        }
+        // Only the universal form `Γ(x) ∧ R(x,y) → C(y)` with a guard Γ: the
+        // `∃`-consumer form (head on the role's source) is the business of
+        // the recognitions above, and keeping it out leaves EL clause streams
+        // (which have no universals) unchanged. An unguarded universal (a
+        // range) already holds at every element, so it needs no marker.
+        if far != *b {
+            continue;
+        }
+        let near = a.clone();
+        if !c.head.iter().all(|h| matches!(h, Atom::Concept(_, t) if *t == far)) {
+            continue;
+        }
+        if !c.body.iter().all(|at| match at {
+            Atom::Role(..) => true,
+            Atom::Concept(_, t) => *t == near || *t == far,
+            Atom::Eq(..) => false,
+        }) {
+            continue;
+        }
+        let lit: RoleLit = (r.to_string(), false);
+        let gamma: Vec<Atom> = c
+            .body
+            .iter()
+            .filter(|at| matches!(at, Atom::Concept(_, t) if *t == near))
+            .map(|at| match at {
+                Atom::Concept(n, _) => Atom::Concept(n.clone(), x.clone()),
+                _ => unreachable!(),
+            })
+            .collect();
+        let mut on_far: Vec<Atom> = c
+            .body
+            .iter()
+            .filter(|at| matches!(at, Atom::Concept(_, t) if *t == far))
+            .map(|at| match at {
+                Atom::Concept(n, t) => Atom::Concept(n.clone(), rename(t, &near)),
+                _ => unreachable!(),
+            })
+            .collect();
+        on_far.sort();
+        let mut head: Vec<Atom> = c
+            .head
+            .iter()
+            .map(|h| match h {
+                Atom::Concept(n, t) => Atom::Concept(n.clone(), rename(t, &near)),
+                _ => unreachable!(),
+            })
+            .collect();
+        head.sort();
+        if gamma.is_empty() {
+            continue;
+        }
+        // The transitive literals below R, keeping only the maximal ones and
+        // one per equivalence class: for T ⊑* T' (both transitive, both
+        // ⊑* R) every T-path is a T'-path, so the marker of T' covers T.
+        let below: Vec<&RoleLit> = trans_supers.iter().filter(|(_, ups)| ups.contains(&lit)).map(|(t, _)| t).collect();
+        let above = |a: &RoleLit, b: &RoleLit| -> bool {
+            lit_supers.get(a).is_some_and(|ups| ups.contains(b))
+        };
+        let kept: HashSet<RoleLit> = below
+            .iter()
+            .filter(|t| {
+                !below.iter().any(|u| {
+                    u != *t && above(t, u) && (!above(u, t) || *u < **t)
+                })
+            })
+            .map(|t| (*t).clone())
+            .collect();
+        for (t, _) in &trans_supers {
+            if !kept.contains(t) {
+                continue;
+            }
+            let key = (t.clone(), on_far.clone(), head.clone());
+            let next = markers.len();
+            let (m, fresh) = match markers.get(&key) {
+                Some(m) => (m.clone(), false),
+                None => {
+                    let m = format!("__forall__{}{}__{}", if t.1 { "inv_" } else { "" }, t.0, next);
+                    markers.insert(key, m.clone());
+                    (m, true)
+                }
+            };
+            // Γ(x) → M(x)
+            out.push(clause(gamma.clone(), [Atom::Concept(m.clone(), x.clone())]));
+            if fresh {
+                for l in subs_of(t) {
+                    // A literal L ⊑* T: its edge `l(x,y)` runs from x to y
+                    // for L = l and from y to x for L = l⁻ (the same clause
+                    // read with the variables swapped, so no reversed atom).
+                    let edge = Atom::Role(l.0.clone(), x.clone(), y.clone());
+                    let (from, to) = if l.1 { (&y, &x) } else { (&x, &y) };
+                    let at = |a: &Atom| -> Atom {
+                        match a {
+                            Atom::Concept(n, _) => Atom::Concept(n.clone(), to.clone()),
+                            other => other.clone(),
+                        }
+                    };
+                    // M(from) ∧ L(from,to) ∧ ⋀D(to) → ⋁C(to)
+                    let mut body2 = vec![Atom::Concept(m.clone(), from.clone()), edge.clone()];
+                    body2.extend(on_far.iter().map(at));
+                    out.push(clause(body2, head.iter().map(at)));
+                    // M(from) ∧ L(from,to) → M(to)
+                    out.push(clause(
+                        [Atom::Concept(m.clone(), from.clone()), edge],
+                        [Atom::Concept(m.clone(), to.clone())],
+                    ));
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// KM_TRANS_CHAIN_COMPOSE (gated, additive): glue role CHAINS into a TRANSITIVE
 /// role's reachability, the way Konclude's role automaton folds a chain's
 /// transitions into the super-role's automaton (ws Konclude trace: the
@@ -2359,6 +2637,7 @@ pub(super) fn augment_with_chains_retaining_role_axioms(
     // `nominal_clauses` turns them into existentials on the proxies.
     chain_info.generated_roles = Some(generated_roles(tbox.iter().chain(abox.iter())));
     let mut derived = transitivity_clauses_with(&tbox, &chain_info);
+    derived.extend(forall_transitivity_clauses(&tbox, &chain_info));
     derived.extend(chain_clauses_with(&tbox, &chain_info));
     derived.extend(regular_role_automaton_clauses(&tbox, &chain_info));
     let (chain_consumers, unencoded) =

@@ -483,7 +483,6 @@ pub(super) fn from_exported_model(
     let n_elems = labels.len();
     let mut elem_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
     let mut entailed_elem_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
-    let mut elem_dvp: Vec<HashMap<(String, String), String>> = vec![HashMap::new(); n_elems];
     for u in 0..n_elems {
         for ind in &elem_inds[u] {
             let nom = format!("__nom__{ind}");
@@ -493,14 +492,6 @@ pub(super) fn from_exported_model(
     }
     for (u, lbl) in labels.iter().enumerate() {
         for item in lbl {
-            if let Some(rest) = item.strip_prefix("__dvp__") {
-                if let Some((prefix, val_bit)) = rest.rsplit_once('_') {
-                    if let Some((grp, bit_idx)) = prefix.rsplit_once('_') {
-                        elem_dvp[u].insert((grp.to_string(), bit_idx.to_string()), val_bit.to_string());
-                    }
-                }
-                continue;
-            }
             if item.starts_with("__") || item.starts_with("Q_") {
                 continue;
             }
@@ -568,6 +559,9 @@ pub(super) fn from_exported_model(
     let mut obj_domains: Vec<(String, String)> = Vec::new();
     let mut obj_ranges: Vec<(String, String)> = Vec::new();
     let mut source_data_assertions: Vec<(usize, String, String)> = Vec::new();
+    // Individuals with a `NegativeDataPropertyAssertion`: no pair test reads
+    // those assertions, so pairs with them go to the exact probes.
+    let mut negative_data_elems: HashSet<usize> = HashSet::new();
     let mut elem_neg_classes: Vec<HashSet<String>> = vec![HashSet::new(); n_elems];
 
     fn collect_has_value_rhs<'a>(
@@ -629,7 +623,46 @@ pub(super) fn from_exported_model(
         }
     }
 
+    // Data properties a TBox restriction reads. Merging an individual that
+    // has an asserted value of such a property with another one can meet the
+    // restriction (`C ⊑ ≤0 d.R` on one, `d(b, v)` with `v ∈ R` on the
+    // other), which no pair test checks, so such individuals are restricted
+    // below and their pairs go to the exact probes.
+    fn collect_data_restricted(node: &Node<'_>, expand: &dyn Fn(&str) -> String, out: &mut HashSet<String>) {
+        let Node::List(head, args) = node else { return };
+        let atoms = |items: &[Node<'_>]| -> Vec<String> {
+            items.iter().filter_map(Node::as_atom).map(expand).collect()
+        };
+        match *head {
+            "DataSomeValuesFrom" | "DataAllValuesFrom" | "DataHasValue" => {
+                if let Some(p) = args.first().and_then(Node::as_atom) {
+                    out.insert(expand(p));
+                }
+            }
+            "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality" => {
+                if let Some(p) = args.get(1).and_then(Node::as_atom) {
+                    out.insert(expand(p));
+                }
+            }
+            "DisjointDataProperties" => out.extend(atoms(args)),
+            "HasKey" => {
+                for group in args.iter().skip(1) {
+                    if let Node::List(_, items) = group {
+                        out.extend(atoms(items));
+                    }
+                }
+            }
+            _ => {}
+        }
+        for a in args {
+            collect_data_restricted(a, expand, out);
+        }
+    }
+    let mut data_restricted_props: HashSet<String> = HashSet::new();
     let _ = crate::frontend::parse::for_each_ontology_child(text, |node| {
+        if !matches!(node.head(), Some("DataPropertyAssertion" | "NegativeDataPropertyAssertion" | "Declaration")) {
+            collect_data_restricted(node, &|t: &str| expand_tok(t), &mut data_restricted_props);
+        }
         let Node::List(head, args) = node else {
             return Ok(());
         };
@@ -1000,6 +1033,17 @@ pub(super) fn from_exported_model(
             "ObjectPropertyRange" if plain.len() == 2 => {
                 if let (Some(r), Some(c)) = (plain[0].as_atom(), plain[1].as_atom()) {
                     obj_ranges.push((resolve_role_short(r), resolve_class_iri(c)));
+                }
+            }
+            "NegativeDataPropertyAssertion" if plain.len() >= 3 => {
+                if let Some(ind_tok) = plain[1].as_atom() {
+                    if let Some(&u) = ind_lookup
+                        .get(&expand_tok(ind_tok))
+                        .or_else(|| ind_lookup.get(&public_name(ind_tok)))
+                        .and_then(|p| ind_to_elem.get(p))
+                    {
+                        negative_data_elems.insert(u);
+                    }
                 }
             }
             "DataPropertyAssertion" if plain.len() >= 3 => {
@@ -1487,11 +1531,36 @@ pub(super) fn from_exported_model(
     let mut skolem_ineqs: Vec<(Vec<String>, String, String)> = Vec::new();
     let mut has_unhandled_clause = false;
 
+    // A model element is a data value when the model labels it with the data
+    // sort or a data property edge ends in it; every other element is an
+    // object. Object-only rules (bodies guarded by the object sort) must not
+    // reach data values.
+    let data_role_set: HashSet<String> = f_res
+        .data_roles
+        .iter()
+        .map(|r| canon_role(r).0)
+        .collect();
+    let mut data_value_elem = vec![false; n_elems];
+    for (u, lbl) in labels.iter().enumerate() {
+        if lbl.iter().any(|l| l == crate::frontend::sorts::DATA_SORT) {
+            data_value_elem[u] = true;
+        }
+    }
+    for (_, r, t) in edge_set.iter().chain(proved_edge_set.iter()) {
+        if *t < n_elems && data_role_set.contains(r) {
+            data_value_elem[*t] = true;
+        }
+    }
     for u in 0..n_elems {
+        let sort = if data_value_elem[u] {
+            crate::frontend::sorts::DATA_SORT
+        } else {
+            crate::frontend::sorts::OBJECT_SORT
+        };
         elem_classes[u].insert("owl:Thing".to_string());
-        elem_classes[u].insert(crate::frontend::sorts::OBJECT_SORT.to_string());
+        elem_classes[u].insert(sort.to_string());
         entailed_elem_classes[u].insert("owl:Thing".to_string());
-        entailed_elem_classes[u].insert(crate::frontend::sorts::OBJECT_SORT.to_string());
+        entailed_elem_classes[u].insert(sort.to_string());
         for ind in &elem_inds[u] {
             let nom_c = format!("__nom__{ind}");
             elem_classes[u].insert(nom_c.clone());
@@ -1534,11 +1603,6 @@ pub(super) fn from_exported_model(
         }
     }
 
-    let data_role_set: HashSet<String> = f_res
-        .data_roles
-        .iter()
-        .map(|r| canon_role(r).0)
-        .collect();
 
     use crate::json_io::{JAtom, JTerm};
     for cl in &f_res.clauses {
@@ -1552,7 +1616,7 @@ pub(super) fn from_exported_model(
         {
             continue;
         }
-        let body: Vec<&JAtom> = cl
+        let mut body: Vec<&JAtom> = cl
             .body
             .iter()
             .filter(|a| !matches!(a, JAtom::Concept { concept, .. } if concept == crate::frontend::sorts::OBJECT_SORT))
@@ -1568,6 +1632,30 @@ pub(super) fn from_exported_model(
                     || !matches!(a, JAtom::Concept { concept, .. } if concept == crate::frontend::sorts::DATA_SORT)
             })
             .collect();
+        // Every element carries exactly one sort, so the head disjunct `D(t)`
+        // is the body guard `O(t)`: `→ C(x) ∨ D(x)` (the sorted `⊤ ⊑ C`) holds
+        // on objects only. Dropping the disjunct without the guard put `C` on
+        // data values. A body guard `O(t)` stays when it is the only atom.
+        let object_guards: Vec<JAtom> = if body_has_data_sort {
+            Vec::new()
+        } else {
+            cl.head
+                .iter()
+                .filter_map(|a| match a {
+                    JAtom::Concept { concept, term } if concept == crate::frontend::sorts::DATA_SORT => {
+                        Some(JAtom::Concept {
+                            concept: crate::frontend::sorts::OBJECT_SORT.to_string(),
+                            term: term.clone(),
+                        })
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        if body.is_empty() && object_guards.is_empty() {
+            body = cl.body.iter().collect();
+        }
+        body.extend(object_guards.iter());
 
         // Ground ABox clauses
         let all_ground = body.iter().chain(head.iter()).all(|a| match a {
@@ -3114,7 +3202,7 @@ pub(super) fn from_exported_model(
             }
         }
 
-        // (D2) Entailed disjoint / complement classes and `__dvp__` binary projection digits
+        // (D2) Entailed disjoint / complement classes
         let mut disjoint_pairs: HashSet<(String, String)> = HashSet::new();
         for grp in &disjoint_class_groups {
             for i in 0..grp.len() {
@@ -3175,20 +3263,12 @@ pub(super) fn from_exported_model(
                 }
             }
         }
-        for i in 0..ind_elems.len() {
-            let u = ind_elems[i];
-            if elem_dvp[u].is_empty() {
-                continue;
-            }
-            for &v in &ind_elems[(i + 1)..] {
-                if elem_dvp[u]
-                    .iter()
-                    .any(|(k, b1)| elem_dvp[v].get(k).is_some_and(|b2| b1 != b2))
-                {
-                    diff.insert(pair_key(u, v));
-                }
-            }
-        }
+        // Value projection digits (`frontend::value_projection`) do not make
+        // two individuals different: the digits of two values clash only on
+        // an element of the counted guard class `C` (`C ⊓ digit_0 ⊓ digit_1 ⊑
+        // ⊥`), and an element outside `C` may carry both values. Functional
+        // properties are decided by (D4) below; the pair tests and the exact
+        // probes decide the rest.
 
         // (D3) Entailed role edges (`proved_edge_set`) + negative/irreflexive/asymmetric/disjoint roles
         for &(ref r, ua, ub) in &neg_role_assertions {
@@ -3228,6 +3308,10 @@ pub(super) fn from_exported_model(
                             .get(grp[j].as_str())
                             .map(Vec::as_slice)
                             .unwrap_or(&[]);
+                        // Merging the two named ends that keep the edges
+                        // `p(u1, v1)` and `q(u2, v2)` apart would make them
+                        // one edge of two disjoint properties. A loop at `x`
+                        // with an edge from or to `y` keeps `x` and `y` apart.
                         for &(u1, v1) in e1 {
                             for &(u2, v2) in e2 {
                                 if u1 == u2 && v1 != v2 {
@@ -3236,8 +3320,19 @@ pub(super) fn from_exported_model(
                                 if v1 == v2 && u1 != u2 {
                                     diff.insert(pair_key(u1, u2));
                                 }
-                                if u1 == v2 && v1 != u2 && (u1 == v1 || u2 == v2) {
+                                if u1 == v2 && v1 == u2 && u1 != v1 {
                                     diff.insert(pair_key(u1, v1));
+                                }
+                                for ((x, loop_x), (a, b)) in [((u1, v1), (u2, v2)), ((u2, v2), (u1, v1))] {
+                                    if x != loop_x {
+                                        continue;
+                                    }
+                                    if a == x && b != x {
+                                        diff.insert(pair_key(x, b));
+                                    }
+                                    if b == x && a != x {
+                                        diff.insert(pair_key(x, a));
+                                    }
                                 }
                             }
                         }
@@ -3378,6 +3473,7 @@ pub(super) fn from_exported_model(
         // Clause roles and source property tokens use different spellings
         // (short frontend names, full IRIs); accept a match in any of them.
         let mut restricted_data_roles: HashSet<String> = func_data_props.clone();
+        restricted_data_roles.extend(data_restricted_props.iter().cloned());
         for qf in &qual_func_rules {
             restricted_data_roles.insert(qf.role.clone());
             if let Some(spelled) = f_res.iri_map.get(&qf.role) {
@@ -3394,6 +3490,11 @@ pub(super) fn from_exported_model(
                 || meta.iri_map.get(p).is_some_and(|s| restricted_data_roles.contains(s));
             if *u < n_elems && restricted {
                 restricted_data_elem[*u] = true;
+            }
+        }
+        for &u in &negative_data_elems {
+            if u < n_elems {
+                restricted_data_elem[u] = true;
             }
         }
         if std::env::var_os("KM_DIFF_TRACE").is_some() {
@@ -3435,6 +3536,18 @@ pub(super) fn from_exported_model(
 
         // Fast concept-only saturation for pure-concept individual elements `(u, v)`
         // that have no non-reflexive edges.
+        // The structure `M_0` is a model only where every element meets the
+        // disjunctive rules. The Skolem elements this plan adds carry their
+        // fillers but no choice of a disjunction (`C ⊑ {a1, a3}` on the two
+        // successors of `≥ 2 s5.C`), so a merge that keeps such a structure
+        // proves no model either: the model test may then only say undecided.
+        let model_disjunction_gap = (0..elem_classes.len()).any(|z| {
+            concept_rules.iter().any(|cr| {
+                cr.heads.len() >= 2
+                    && cr.body.iter().all(|b| elem_classes[z].contains(b))
+                    && !cr.heads.iter().any(|h| elem_classes[z].contains(h))
+            })
+        });
         let test_pure_concept_merge = |u: usize, v: usize, horn_only: bool| -> PairVerdict {
             let base = if horn_only {
                 &entailed_elem_classes
@@ -3558,7 +3671,7 @@ pub(super) fn from_exported_model(
                     }
                 }
             }
-            if restricted_data_elem[u] || restricted_data_elem[v] {
+            if restricted_data_elem[u] || restricted_data_elem[v] || (!horn_only && model_disjunction_gap) {
                 return PairVerdict::Undecided;
             }
             PairVerdict::NotDifferent
@@ -3657,6 +3770,14 @@ pub(super) fn from_exported_model(
                     let mut joined = mk;
                     joined.extend(md);
                     class_members.insert(keep, joined);
+                    // A merge also joins two successors of each neighbour, so
+                    // the neighbours face the Skolem inequality test below
+                    // (`≥ 2 s.C` at `a0` with `C ⊑ {a1, a3}` keeps `a1` and
+                    // `a3` apart although neither carries the restriction).
+                    for &(s, _, t) in base_adj[keep].iter().chain(base_adj[drop_el].iter()) {
+                        all_dirty_elems.insert(s);
+                        all_dirty_elems.insert(t);
+                    }
                     if proved_apart {
                         return if horn_only {
                             horn_clash!()
@@ -3840,6 +3961,11 @@ pub(super) fn from_exported_model(
                                 let cr = &concept_rules[idx];
                                 if cr.body.iter().all(|b| z_set.contains(b)) {
                                     if cr.heads.is_empty() && cr.nom_merge.is_none() {
+                                        if clash_trace {
+                                            let mut labels: Vec<_> = z_set.iter().collect();
+                                            labels.sort();
+                                            eprintln!("KM_DIFF_TRACE concept rule {:?} closes element {} {:?}", cr.body, z, labels);
+                                        }
                                         return horn_clash!();
                                     }
                                     if let Some(u_o) = cr.nom_merge {
@@ -3931,6 +4057,20 @@ pub(super) fn from_exported_model(
                     let Some(indices) = role_rules_by_role.get(r) else {
                         continue;
                     };
+                    // The rbox closure puts the loops of a reflexive property,
+                    // and of the roles it implies (inverses, internal chain
+                    // roles), on every element, data values included. These
+                    // properties relate objects only, and a data value has no
+                    // other loop, so a loop on a data value is no edge and must
+                    // not meet the sort clash `r(x, y) ∧ D(x) → ⊥`.
+                    if u == v
+                        && c_overrides
+                            .get(&u)
+                            .unwrap_or(&base_c[u])
+                            .contains(crate::frontend::sorts::DATA_SORT)
+                    {
+                        continue;
+                    }
                     for &idx in indices {
                         let rr = &role_rules[idx];
                         if rr.self_only && u != v {
@@ -4134,12 +4274,20 @@ pub(super) fn from_exported_model(
                         let z_set = c_overrides.get(&z).unwrap_or(&base_c[z]);
                         for (b_cons, f1, f2) in &skolem_ineqs {
                             if b_cons.iter().all(|b| z_set.contains(b)) {
+                                // Without the witnesses of `f1(u)` and `f2(u)`
+                                // for any member `u` of the merged class (the
+                                // model reused successors for them), nothing
+                                // shows that the two terms stay apart: a
+                                // functional or at-most merge may have joined
+                                // them, so the merge proves nothing either way.
+                                let mut witnessed = false;
                                 for orig in 0..n_elems {
                                     if find(&mut uf, orig) == z {
                                         if let (Some(&w1), Some(&w2)) = (
                                             skolem_witness_of.get(&(orig, f1.clone())),
                                             skolem_witness_of.get(&(orig, f2.clone())),
                                         ) {
+                                            witnessed = true;
                                             if find(&mut uf, w1) == find(&mut uf, w2) {
                                                 return if horn_only {
                                                     horn_clash!()
@@ -4149,6 +4297,9 @@ pub(super) fn from_exported_model(
                                             }
                                         }
                                     }
+                                }
+                                if !witnessed {
+                                    return PairVerdict::Undecided;
                                 }
                             }
                         }
@@ -4287,7 +4438,7 @@ pub(super) fn from_exported_model(
                     }
                 }
             }
-            if merged_restricted_data {
+            if merged_restricted_data || (!horn_only && model_disjunction_gap) {
                 return PairVerdict::Undecided;
             }
             PairVerdict::NotDifferent
