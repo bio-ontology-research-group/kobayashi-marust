@@ -2453,9 +2453,10 @@ fn classify_with_evidence_inner(
         // A rule ontology under a certificate request takes the certified
         // rules route (`ht_rules` and its certificate) first, as at v1.6.5;
         // the ground-rule reduction answers only when that route declines.
-        let rules_first = candidate == Some("KM_GROUND_RULE_SOURCE")
-            && data_source::cached_grounded_has_rules(ont)
-            && rules_route_first_requested(|key| std::env::var_os(key));
+        let ground_rules = candidate == Some("KM_GROUND_RULE_SOURCE")
+            && data_source::cached_grounded_has_rules(ont);
+        let rules_first = ground_rules && rules_route_first_requested(|key| std::env::var_os(key));
+        let mut rules_event_recorded = false;
         let candidate = if rules_first && std::env::var_os(GROUND_RULE_SOURCE_DEFERRED_ENV).is_some() {
             // The nested classification below: skip the reduction here.
             None
@@ -2502,6 +2503,7 @@ fn classify_with_evidence_inner(
                         "the rules route declined ({reason}); the ground-rule bridge answer has no rules certificate"
                     );
                     crate::lean_checkers::record_cannot_check("rules", "ground-rule-source", &detail);
+                    rules_event_recorded = true;
                     if std::env::var_os("KM_TIMING").is_some() || !crate::lean_checkers::active() {
                         eprintln!("KM rules route: {detail}");
                     }
@@ -2532,6 +2534,16 @@ fn classify_with_evidence_inner(
                 Ok(evidence) => {
                     if std::env::var_os("KM_TIMING").is_some() {
                         eprintln!("KM_TIMING automatic data source accepted: {mode}");
+                    }
+                    // Under KM_LEAN_CHECKERS the rule ontology's answer comes
+                    // from the reduction, which has no checker: say so.
+                    if ground_rules && !rules_event_recorded && crate::lean_checkers::active() {
+                        crate::lean_checkers::record_cannot_check(
+                            "rules",
+                            "ground-rule-source",
+                            "the ground-rule bridge answer has no rules certificate (KM_LEAN_CHECKERS \
+                             does not run rules-cert-check; request it with KM_RULES_LEAN_CERT)",
+                        );
                     }
                     return Ok(evidence);
                 }
@@ -4338,16 +4350,18 @@ fn rules_first_budget() -> Option<std::time::Duration> {
 const GROUND_RULE_SOURCE_DEFERRED_ENV: &str = "KM_GROUND_RULE_SOURCE_DEFERRED";
 
 /// Whether a rule ontology takes the certified rules route before the
-/// ground-rule reduction (docs/V1.7.0-RULES-SHOIQ.md): whenever certificates
-/// are consumed (the modes of [`finite_cover_certificate_mode`], an HT
-/// certificate request, or a rules-route or inert-sort certificate request),
-/// and on request with `KM_RULES_ROUTE_FIRST=1`. Default runs keep the
-/// faster ground-rule reduction.
+/// ground-rule reduction (docs/V1.7.0-RULES-SHOIQ.md): only when a rules
+/// certificate is requested explicitly (`KM_RULES_LEAN_CERT`,
+/// `KM_RULES_LEAN_CHECKER`, `KM_RULES_INERT_CERT`,
+/// `KM_RULES_INERT_LEAN_CHECKER`) or with `KM_RULES_ROUTE_FIRST=1`. The
+/// general certificate modes (`KM_LEAN_CHECKERS` and the others of
+/// [`finite_cover_certificate_mode`]) write no rules certificate, so there
+/// the attempt would only cost time; they keep the reduction, which records
+/// its `cannot_check` event. An HT certificate request skips the reduction
+/// altogether (see the caller).
 fn rules_route_first_requested(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
     let set = |key: &str| env(key).is_some_and(|v| !v.is_empty());
-    finite_cover_certificate_mode(&env)
-        || crate::tableau::HT_LEAN_CERTIFICATION_ENV.iter().any(|key| set(key))
-        || set("KM_RULES_LEAN_CERT")
+    set("KM_RULES_LEAN_CERT")
         || set("KM_RULES_LEAN_CHECKER")
         || set("KM_RULES_INERT_CERT")
         || set("KM_RULES_INERT_LEAN_CHECKER")
