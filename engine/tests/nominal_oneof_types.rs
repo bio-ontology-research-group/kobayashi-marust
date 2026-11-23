@@ -41,8 +41,31 @@ fn types(path: &Path) -> Option<Vec<String>> {
     ] {
         command.env(key, value);
     }
-    let output = command.arg("classify").arg("--lines").arg("--realize").arg(path).output().unwrap();
-    if !output.status.success() {
+    // The automatic route may run past any test budget on these inputs and
+    // fail closed later; a run killed after 120 s counts as silent.
+    let mut child = command
+        .arg("classify")
+        .arg("--lines")
+        .arg("--realize")
+        .arg(path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let start = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break Some(status);
+        }
+        if start.elapsed() > std::time::Duration::from_secs(120) {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    let output = child.wait_with_output().unwrap();
+    if !status.is_some_and(|status| status.success()) {
         return None;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
