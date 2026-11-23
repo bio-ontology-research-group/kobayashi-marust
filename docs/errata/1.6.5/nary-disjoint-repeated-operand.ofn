@@ -1,0 +1,7 @@
+Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/e>
+Declaration(Class(:B))
+Declaration(Class(:D))
+DisjointClasses(:B :D :D)
+)

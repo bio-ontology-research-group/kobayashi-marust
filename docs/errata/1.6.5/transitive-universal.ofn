@@ -1,0 +1,9 @@
+Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/nf>
+Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(Class(:F)) Declaration(Class(:Q))
+Declaration(ObjectProperty(:s0)) Declaration(ObjectProperty(:s2)) Declaration(ObjectProperty(:t0))
+SymmetricObjectProperty(:s0) TransitiveObjectProperty(:t0) SubObjectPropertyOf(:s0 :t0)
+SubClassOf(:D ObjectSomeValuesFrom(:s0 :D)) SubClassOf(:C :D)
+EquivalentClasses(:Q ObjectIntersectionOf(:C ObjectAllValuesFrom(:t0 :F)))
+)

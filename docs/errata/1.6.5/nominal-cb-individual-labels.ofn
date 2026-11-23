@@ -1,0 +1,12 @@
+Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex.org/n>
+Declaration(Class(:C))
+Declaration(Class(:E))
+Declaration(ObjectProperty(:t))
+Declaration(DataProperty(:d2))
+DisjointClasses(:E :C)
+SubClassOf(ObjectHasValue(ObjectInverseOf(:t) :a5) :E)
+ClassAssertion(ObjectSomeValuesFrom(:t :C) :a5)
+)

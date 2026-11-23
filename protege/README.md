@@ -404,8 +404,8 @@ The tests need a `km` executable: pass `-Dkm.bin`, or build `km` under the
 checkout-local `.work/target`. The jars are:
 
 ```text
-protege/target/protege5/kobayashi-marust-protege5-1.6.4.jar
-protege/target/protege6/kobayashi-marust-protege6-1.6.4.jar
+protege/target/protege5/kobayashi-marust-protege5-1.7.0.jar
+protege/target/protege6/kobayashi-marust-protege6-1.7.0.jar
 ```
 
 A developer build bundles no `km`. To bundle executables, lay them out as
@@ -525,11 +525,11 @@ Protégé 6 distribution before releasing:
 ```sh
 protege/run-installation-smoke.sh \
   /absolute/path/to/Protege-5.6.9 \
-  "$PWD/protege/target/protege5/kobayashi-marust-protege5-1.6.4.jar"
+  "$PWD/protege/target/protege5/kobayashi-marust-protege5-1.7.0.jar"
 
 protege/run-installation-smoke.sh \
   /absolute/path/to/Protege-6.0.0-alpha-1 \
-  "$PWD/protege/target/protege6/kobayashi-marust-protege6-1.6.4.jar"
+  "$PWD/protege/target/protege6/kobayashi-marust-protege6-1.7.0.jar"
 ```
 
 Without a third argument the jar must bundle `km` for the running platform:
