@@ -3980,6 +3980,20 @@ fn individual_label_shape(clauses: &[OntologyClause], read: &[bool]) -> bool {
     dep.iter().zip(read).any(|(&d, &r)| d && r)
 }
 
+/// KM_RSUCC_KEEP_GROUND_UNITS=1 offers ground-unit labels over every edge
+/// (A/B only), read once.
+fn keep_ground_units() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("KM_RSUCC_KEEP_GROUND_UNITS").is_some())
+}
+
+/// KM_ROOT_REACH_INDIVIDUALS=1 also sends labels of individuals over root
+/// edges, as v1.7.0's first candidate did (A/B only; docs/NOMINALS-CB.md 13.3).
+fn root_reach_individuals() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("KM_ROOT_REACH_INDIVIDUALS").is_some())
+}
+
 /// Whether a source clause names an individual (a nominal or an ABox fact).
 fn clause_mentions_individual(clause: &OntologyClause) -> bool {
     let pred = |p: &Pred| match *p {
@@ -8286,7 +8300,7 @@ impl Engine {
                 // Mark the new reach entries that the ground context holds as
                 // unconditional facts (KM_RSUCC_KEEP_GROUND_UNITS=1 keeps them).
                 if self.sig.individual_labels_every_edge
-                    && std::env::var_os("KM_RSUCC_KEEP_GROUND_UNITS").is_none()
+                    && !keep_ground_units()
                 {
                     let have = self.contexts[id].rsucc_reach_unit.len();
                     let marks: Vec<bool> = match self.ground_ctx {
@@ -8964,7 +8978,14 @@ impl Engine {
                     continue;
                 }
                 for &p in &ctx.rsucc_reach[start..n] {
-                    fired.push((o, p.apply(&|v| forwards(o, v))));
+                    // Root edges carry central labels only (section 12;
+                    // `CBRSuccClosure.isGroundedLabel` is false on a constant
+                    // edge). Since labels of individuals share the reach set
+                    // (13.1), a label `B(o')` there must not go to the ground
+                    // context as a hypothesis (docs/NOMINALS-CB.md 13.3).
+                    if root_reach_individuals() || matches!(p, Pred::Concept { t, .. } if is_central(t)) {
+                        fired.push((o, p.apply(&|v| forwards(o, v))));
+                    }
                 }
                 ctx.root_reach_hwm.insert(o, n);
             }
