@@ -121,7 +121,21 @@ fn classify(text: &str, route: Option<&str>) -> Option<BTreeSet<String>> {
     let mut stderr = String::new();
     child.stderr.take().unwrap().read_to_string(&mut stderr).unwrap();
     assert!(status.success(), "km failed on route {route:?}: {stderr}\n{stdout}");
-    Some(stdout.lines().filter(|l| !l.is_empty()).map(str::to_string).collect())
+    // A route may list the (trivial) subsumers of an unsatisfiable class.
+    let rows: BTreeSet<String> = stdout.lines().filter(|l| !l.is_empty()).map(str::to_string).collect();
+    let unsat: BTreeSet<String> = rows
+        .iter()
+        .filter_map(|row| row.strip_prefix("UNSAT\t").map(str::to_string))
+        .collect();
+    Some(
+        rows.into_iter()
+            .filter(|row| {
+                !row.strip_prefix("SUB\t")
+                    .and_then(|rest| rest.split('\t').next())
+                    .is_some_and(|sub| unsat.contains(sub))
+            })
+            .collect(),
+    )
 }
 
 #[test]
