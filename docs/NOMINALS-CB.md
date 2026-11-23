@@ -2149,7 +2149,31 @@ labels that hold only in some branches. Two inputs run long because of that:
   hypothesis set adds conditional clauses and the run grows without hitting
   the message cap. The automatic route answers through `certified_nominals`.
 
-Both fail closed. A fix needs a redundancy for disjunctive labels on
+Four more fixtures run long on forced routes with the offers on; the same
+one-concept-at-a-time check on their CB inputs gives:
+
+- `top_nominal_data/m2197.ofn`, forced `nominals` (0.2 s off, past 120 s
+  on): Q_13 (`→ C ∨ D` definer) and the class D, read by the qualified
+  at-most `≥3 t.D` clause; every other offered concept alone is fast.
+- `nominal_seq_order/cut_r129_pushback.ofn`, forced `nominals` (0.13 s off;
+  on, past the worker cap and then a failing exit): the nominal proxy
+  `__nom__b` offered as a label of other individuals, from the disjunction
+  `Q_2 → __nom__b ∨ __nom__d`. Not a data definer.
+- `nominal_seq_order/merge_r1646.ofn`, forced `nominals` (1.5 s off, past
+  120 s on): Q_3 (`∀r.{c, b}`), E (`E ⊑ {b, a}`) and `__nom__a`, each alone;
+  C alone is fast. Labels conditional on nominal disjunctions.
+- The universal-role hub with data values
+  (`universal_role_and_top_data_range`), forced `nominals`,
+  `nominal_ni_abox` and `certified_card_proxy_abox` (under 1 s off, about
+  55 s on): slow even when no label of an individual is offered at all,
+  while r-Succ fully on with the offers off is fast. The cost there comes
+  from the labels-only r-Succ mode itself (`Sig::rsucc_labels_only`), not
+  from an offered label; not analysed further.
+
+In every case the automatic route answers exactly and fast, and the tests
+hold those forced routes to exact-or-silent only.
+
+All fail closed. A fix needs a redundancy for disjunctive labels on
 individuals in successors, for instance applying an individual's at-most
 only in the ground context (Nom) and not offering the definers whose only
 readers are at-most clauses at the centre, with its Lean statement in
