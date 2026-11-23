@@ -2128,3 +2128,29 @@ of `individual_label_shape` only), `all` (every concept, diagnostic);
 KM_RSUCC_KEEP_GROUND_UNITS=1 disables the cut;
 KM_RSUCC_INDIVIDUAL_LABELS_CENTRAL=1 keeps the central offers in labels-only
 mode.
+
+### 13.2 Open: disjunctive labels of individuals in successors (follow-up)
+
+The offers of 13.1 hand a successor every maximal label `B(o)`, including
+labels that hold only in some branches. Two inputs run long because of that:
+
+- `tests/fixtures/nominal_inert_sorts/m2058.ofn`, forced `certified_nominals`:
+  1.0 s with the offers off, past 120 s with them on (the automatic route
+  answers in 0.03 s either way). Offering one concept at a time on the CB
+  input isolates Q_13 and Q_15, the data at-most definers `≤1 v` and `≤2 v`
+  of the sort disjunction `⊤ → Q_13 ∨ Q_14 ∨ __data__`. Their labels on
+  individuals are conditional, so the ground-unit cut keeps them, and a
+  successor reads Q_13 legitimately (`Q_13(y) ∧ s(x,y) → Q_12(x)`). The
+  context count stays at 16; the time goes into saturating successors that
+  carry the data at-most of an individual under each hypothesis set.
+- `mixed20004_0031` (TBox sweep), forced `nominals` and
+  `certified_card_proxy_abox`: the offered conditional labels include the
+  `__forall__` markers of the transitive role and the hub proxy; each new
+  hypothesis set adds conditional clauses and the run grows without hitting
+  the message cap. The automatic route answers through `certified_nominals`.
+
+Both fail closed. A fix needs a redundancy for disjunctive labels on
+individuals in successors, for instance applying an individual's at-most
+only in the ground context (Nom) and not offering the definers whose only
+readers are at-most clauses at the centre, with its Lean statement in
+`CBRSuccClosure.skipsGroundUnit`'s style.
