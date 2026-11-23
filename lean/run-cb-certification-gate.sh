@@ -66,6 +66,7 @@ surface_theorems=(
     InverseRoleChainNormalization.centered_binary_chain
     InverseRoleChainNormalization.reciprocal_bridges_preserve_transitivity
     certifiedCBGlobalProductionClosure
+    certifiedCBDeferredLabelUnread
     certifiedCBClashFreeGlobalProductionModel
     certifiedCBStandaloneContextProof
     certifiedCBSourceLiveProductionDerivation

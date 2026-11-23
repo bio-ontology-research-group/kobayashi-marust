@@ -129,6 +129,8 @@ structure WireRSuccClosureDocument where
   grounded_label_concepts : Option (List Nat) := none
   /-- Whether those labels go over every successor edge (`IndividualLabels.everyEdge`); absent: off. -/
   individual_labels_every_edge : Option Bool := none
+  /-- Whether offers of those labels wait for demand (`IndividualLabels.demand`); absent: off. -/
+  rsucc_demand : Option Bool := none
   contexts : List WireContextRSuccClosure
 deriving FromJson, ToJson
 
@@ -155,13 +157,13 @@ def WireRSuccClosureDocument.decode (wire : WireRSuccClosureDocument) :
         concept < (productionOf succ).bounds.concepts then
       let contexts ← wire.contexts.mapM
         (WireContextRSuccClosure.decode succ wire.reach_concepts
-          { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false })
+          { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false, demand := wire.rsucc_demand.getD false })
       if hexact : contexts.map (·.sourceIndex.val) =
           List.range (productionOf succ).contexts.length then
         return {
           succ := succ
           reachConcepts := wire.reach_concepts
-          groundedConcepts := { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false }
+          groundedConcepts := { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false, demand := wire.rsucc_demand.getD false }
           reach_nodup := hnodup
           reach_bounded := hbounded
           contexts := contexts

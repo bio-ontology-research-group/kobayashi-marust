@@ -2702,6 +2702,14 @@ struct Context {
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
+    /// KM_RSUCC_DEMAND: role atoms this context holds with an individual,
+    /// `(role, x -> o, o)`, and the individuals its centre equals.
+    demand_roles: HashSet<(Iri, bool, Term)>,
+    demand_centre: HashSet<Term>,
+    /// `(B, o)` this context needs: it, or a successor, can read `B(o)`.
+    demand_needs: HashSet<(Iri, Term)>,
+    /// Offers of `B(o)` to this context deferred until it needs `(B, o)`.
+    demand_deferred: HashMap<(Iri, Term), Vec<(usize, Term, Pred)>>,
     /// `true` if a new worked-off clause or a new predecessor edge/pushed
     /// predicate has appeared since the last `propagate`.  When `false`,
     /// `propagate` has no new Succ/Pred message to emit (the `pushed_succ` /
@@ -2750,6 +2758,10 @@ impl Context {
             root_reach_hwm: HashMap::default(),
             merge_hyp_inds: Vec::new(),
             seeded_inds: HashSet::default(),
+            demand_roles: HashSet::default(),
+            demand_centre: HashSet::default(),
+            demand_needs: HashSet::default(),
+            demand_deferred: HashMap::default(),
             dirty: true,
         }
     }
@@ -3994,6 +4006,16 @@ fn root_reach_individuals() -> bool {
     *V.get_or_init(|| std::env::var_os("KM_ROOT_REACH_INDIVIDUALS").is_some())
 }
 
+/// Wildcard concept of a KM_RSUCC_DEMAND need: every label of the individual.
+const DEMAND_ALL: Iri = Iri::MAX;
+
+/// Demand-driven offers of labels of individuals (docs/NOMINALS-CB.md 14):
+/// on by default, `KM_RSUCC_DEMAND=0` sends every offer at once.
+fn rsucc_demand() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("KM_RSUCC_DEMAND").is_none_or(|v| v != "0"))
+}
+
 /// Whether a source clause names an individual (a nominal or an ABox fact).
 fn clause_mentions_individual(clause: &OntologyClause) -> bool {
     let pred = |p: &Pred| match *p {
@@ -4260,6 +4282,8 @@ pub struct Engine {
     /// derived clauses remain sound, but classification is not complete and
     /// must never be published as a successful answer.
     message_truncated: bool,
+    /// A retained insertion ended demand-driven offers (`demand_active`).
+    demand_off: bool,
     /// A context whose empty clause is global inconsistency (the ground
     /// context, or a root context with an empty core: the ⊤ context or the
     /// throwaway ⊤ closure of `ensure_shared_root_closure`) has worked off
@@ -4571,6 +4595,8 @@ pub struct CbLiveTerminalSnapshot {
     pub grounded_label_concept_ids: Vec<Iri>,
     /// `Sig::individual_labels_every_edge` (`IndividualLabels.everyEdge`).
     pub individual_labels_every_edge: bool,
+    /// Offers of those labels wait for demand (`IndividualLabels.demand`).
+    pub rsucc_demand: bool,
     pub ordinary_clause_arena: Vec<CbLiveClause>,
     pub root_clause_arena: Vec<CbLiveClause>,
     pub pending_messages: usize,
@@ -4793,6 +4819,56 @@ impl Engine {
         }
         sig.grounded_label =
             grounded_label_concepts(&ont_clauses, sig.concept_names.len(), sig.individual_labels_every_edge);
+        {
+            let n = sig.concept_names.len();
+            let mut readers: Vec<Vec<(Iri, bool)>> = vec![Vec::new(); n];
+            let mut always = vec![false; n];
+            for clause in &ont_clauses {
+                let roles: Vec<(Iri, Term, Term)> = clause
+                    .body
+                    .iter()
+                    .filter_map(|p| match *p { Pred::Role { iri, s, t } => Some((iri, s, t)), _ => None })
+                    .collect();
+                for p in &clause.body {
+                    let Pred::Concept { iri, t: v } = *p else { continue };
+                    let Some(slot) = readers.get_mut(iri as usize) else { continue };
+                    // Hyper grounds the central variable only in the ground
+                    // context, which never defers: a central atom reads no label.
+                    if is_central(v) {
+                        continue;
+                    }
+                    let mut anchored = false;
+                    for &(r, s, t) in &roles {
+                        if is_central(s) && t == v {
+                            anchored = true;
+                            if !slot.contains(&(r, true)) {
+                                slot.push((r, true));
+                            }
+                        }
+                        if s == v && is_central(t) {
+                            anchored = true;
+                            if !slot.contains(&(r, false)) {
+                                slot.push((r, false));
+                            }
+                        }
+                    }
+                    // A reader on a constant or on a term no central role atom
+                    // binds: offer the concept unconditionally.
+                    if !anchored || is_individual(v) {
+                        always[iri as usize] = true;
+                    }
+                }
+            }
+            let mut rev: std::collections::HashMap<Iri, Vec<(Iri, bool)>> = std::collections::HashMap::new();
+            for (b, list) in readers.iter().enumerate() {
+                for &(r, d) in list {
+                    rev.entry(r).or_default().push((b as Iri, d));
+                }
+            }
+            sig.label_readers = readers;
+            sig.label_always = always;
+            sig.role_label_readers = rev;
+        }
         if std::env::var_os("KM_RSUCC_INDIVIDUAL_LABELS").is_some_and(|v| v == "all") {
             // Diagnostic: offer the labels of every concept.
             sig.grounded_label.iter_mut().for_each(|g| *g = true);
@@ -4958,6 +5034,7 @@ impl Engine {
                 .then(Vec::new),
             dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
+            demand_off: false,
             global_refutation: false,
             stop_on_global_refutation: false,
             nom_k: prepared.nom_k,
@@ -5122,6 +5199,16 @@ impl Engine {
         // any other holder (a co-existing engine that shares this prepared
         // ontology) on its own unchanged copy.
         self.sig = Arc::new(next_sig);
+        // Demand: the new signature has no reader analysis, so demand ends
+        // here and every later offer goes out at once; deliver the deferred
+        // ones as well (the closure wire then reports demand off).
+        self.demand_off = true;
+        for c in 0..self.contexts.len() {
+            let deferred: Vec<(usize, Term, Pred)> = self.contexts[c].demand_deferred.drain().flat_map(|(_, v)| v).collect();
+            for (from, f, p) in deferred {
+                self.msgs.push_back(Msg::Succ { from: pack_msg_context(from), f, p, target: pack_msg_context(c) });
+            }
+        }
 
         let first_new = self.ont.clauses.len();
         let max_added_individual = input_max_individual(&additions);
@@ -5669,6 +5756,44 @@ impl Engine {
         // mentioning an individual brings that individual's ground ontology
         // facts into this context (they are Hyper/Eq providers here). The
         // ground context is fully pre-seeded at creation.
+        let mut new_needs: Vec<(Iri, Term)> = Vec::new();
+        if self.demand_active() {
+            let lits = clause.body.iter().map(|&p| Lit::P(p)).chain(clause.head.iter().copied());
+            for l in lits {
+                match l {
+                    Lit::P(Pred::Role { iri, s, t }) => {
+                        let found = if is_central(s) && is_individual(t) {
+                            Some((true, t))
+                        } else if is_individual(s) && is_central(t) {
+                            Some((false, s))
+                        } else {
+                            None
+                        };
+                        if let Some((dir, o)) = found {
+                            if self.contexts[id].demand_roles.insert((iri, dir, o)) {
+                                if let Some(cs) = self.sig.role_label_readers.get(&iri) {
+                                    for &(b, d) in cs {
+                                        if d == dir {
+                                            new_needs.push((b, o));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Lit::Eq { s, t } => {
+                        // An equation on `o` can rewrite `B(o)` onto any term,
+                        // so every label of `o` is needed (wildcard).
+                        for o in [s, t] {
+                            if is_individual(o) && self.contexts[id].demand_centre.insert(o) {
+                                new_needs.push((DEMAND_ALL, o));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         let mut new_inds: Vec<Term> = Vec::new();
         if !self.ont.ground_facts.is_empty() {
             let mut inds: Vec<Term> = Vec::new();
@@ -5725,7 +5850,45 @@ impl Engine {
                 }
             }
         }
+        for (b, o) in new_needs {
+            self.demand_note(id, b, o);
+        }
         true
+    }
+
+    /// Demand-driven offers are on: the default, until a retained insertion
+    /// (which brings clauses the reader analysis has not seen).
+    fn demand_active(&self) -> bool {
+        rsucc_demand() && !self.demand_off && self.sig.individual_labels_every_edge
+    }
+
+    /// Context `id` needs the label `B(o)` (`DEMAND_ALL`: every label of `o`).
+    /// Deliver the offers deferred for it and make every predecessor need it
+    /// as well, so it is relayed only along the edges that lead to a reader
+    /// (Lean `CBRSuccClosure.DemandView.needClosure`).
+    fn demand_note(&mut self, id: usize, b: Iri, o: Term) {
+        let mut work = vec![id];
+        while let Some(c) = work.pop() {
+            if self.contexts[c].demand_needs.contains(&(DEMAND_ALL, o))
+                || !self.contexts[c].demand_needs.insert((b, o))
+            {
+                continue;
+            }
+            let keys: Vec<(Iri, Term)> = if b == DEMAND_ALL {
+                self.contexts[c].demand_deferred.keys().filter(|k| k.1 == o).copied().collect()
+            } else {
+                vec![(b, o)]
+            };
+            for k in keys {
+                if let Some(list) = self.contexts[c].demand_deferred.remove(&k) {
+                    for (from, f, p) in list {
+                        self.msgs.push_back(Msg::Succ { from: pack_msg_context(from), f, p, target: pack_msg_context(c) });
+                    }
+                }
+            }
+            let preds: Vec<usize> = self.contexts[c].predecessors.keys().map(|&(from, _)| from).collect();
+            work.extend(preds);
+        }
     }
 
     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
@@ -8328,8 +8491,24 @@ impl Engine {
                 // record it so the next round can skip an unchanged sweep.
                 self.contexts[id].rsucc_offered = reach_len;
                 self.contexts[id].rsucc_edges_grew = false;
+                let demand = self.demand_active();
                 for (f, target, p) in fired {
                     let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
+                    // Hold back a label of an individual until the target
+                    // needs it (Lean `CBRSuccClosure.DemandView.deferred`).
+                    if demand {
+                        if let Pred::Concept { iri, t } = psigma {
+                            if is_individual(t)
+                                && Some(target) != self.ground_ctx
+                                && !self.sig.label_always.get(iri as usize).copied().unwrap_or(true)
+                                && !self.contexts[target].demand_needs.contains(&(iri, t))
+                                && !self.contexts[target].demand_needs.contains(&(DEMAND_ALL, t))
+                            {
+                                self.contexts[target].demand_deferred.entry((iri, t)).or_default().push((id, f, psigma));
+                                continue;
+                            }
+                        }
+                    }
                     self.msgs.push_back(Msg::Succ {
                         from: pack_msg_context(id),
                         f,
@@ -9016,6 +9195,16 @@ impl Engine {
     }
 
     fn apply_succ(&mut self, from: usize, f: Term, p: Pred, target: usize) -> usize {
+        // A new edge into a context that needs labels: its source needs them.
+        if self.demand_active()
+            && !self.contexts[target].demand_needs.is_empty()
+            && !self.contexts[target].predecessors.contains_key(&(from, f))
+        {
+            let needs: Vec<(Iri, Term)> = self.contexts[target].demand_needs.iter().copied().collect();
+            for (b, o) in needs {
+                self.demand_note(from, b, o);
+            }
+        }
         // record predecessor edge
         self.contexts[target]
             .predecessors
@@ -9785,6 +9974,10 @@ impl Engine {
                 break;
             }
             debug_assert!(batch.is_empty());
+            // Demand releases deferred offers while messages are applied
+            // (`demand_note` from `apply_succ` and from `add_clause`); keep
+            // them. Without demand nothing is enqueued during application.
+            batch.append(&mut self.msgs);
             std::mem::swap(&mut self.msgs, &mut batch);
             // Message application above only accumulates edge data and local
             // clauses. Complete each touched context once for this round, then
@@ -10636,6 +10829,7 @@ impl Engine {
             reach_concept_ids,
             grounded_label_concept_ids,
             individual_labels_every_edge: self.sig.rsucc && self.sig.individual_labels_every_edge,
+            rsucc_demand: self.sig.rsucc && self.demand_active(),
             ordinary_clause_arena: self.cc_arena[0].iter().map(Into::into).collect(),
             root_clause_arena: self.cc_arena[1].iter().map(Into::into).collect(),
             pending_messages: self.msgs.len(),
@@ -10783,6 +10977,10 @@ impl Engine {
                 }
             }
             debug_assert!(batch.is_empty());
+            // Demand releases deferred offers while messages are applied
+            // (`demand_note` from `apply_succ` and from `add_clause`); keep
+            // them. Without demand nothing is enqueued during application.
+            batch.append(&mut self.msgs);
             std::mem::swap(&mut self.msgs, &mut batch);
             if batch_completion {
                 for &id in &touched {

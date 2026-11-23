@@ -397,6 +397,15 @@ pub struct Sig {
     /// with `everyEdge`). `grounded_label` then holds every concept a source
     /// clause reads on a neighbour (`grounded_label_concepts`).
     pub individual_labels_every_edge: bool,
+    /// Demand-driven label offers (Lean `CBRSuccClosure.labelReaders`): for
+    /// a concept `B`, the central role atoms a source clause joins to a body
+    /// atom `B(v)` on a neighbour (`true`: `role(x, v)`; `false`: `role(v, x)`).
+    pub label_readers: Vec<Vec<(Iri, bool)>>,
+    /// Concepts whose labels are offered without demand (read on a constant
+    /// or on a term that no central role atom binds; `labelAlways`).
+    pub label_always: Vec<bool>,
+    /// Reverse of `label_readers`: per role, the concepts it reads `(concept, x -> v)`.
+    pub role_label_readers: std::collections::HashMap<Iri, Vec<(Iri, bool)>>,
     /// r-Succ is on only for the labels of individuals: the ontology alone
     /// does not enable it (`clause_enables_rsucc`), so central labels stay out
     /// of the r-Succ pool and the root-edge offers, as without r-Succ. The
