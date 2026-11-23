@@ -2189,3 +2189,85 @@ the automatic route went silent ran past 120 s with no label offered at all
 (`inv_3049_62`: 0.16 s once the individual labels left the pool). The
 root-edge offer now takes central labels only, as before 13.1;
 KM_ROOT_REACH_INDIVIDUALS=1 restores the old behaviour for A/B.
+
+## 14. Offers of individual labels wait for demand (2026-11-24)
+
+The every-edge offers of 13.1 hand a label `B(o)` to every successor, and a
+successor that relays it hands it on. On inputs whose successors share
+empty-core ⊤ contexts the offers multiply. Two examples:
+
+- the plugin's data-value batch on `ore_ont_13584`: 1.7 s with the offers
+  off, 51 s with them on;
+- about 60 ORE inputs lose plugin calls in the Protégé parity run.
+
+KM now holds an offer of a label of an individual back until its target needs
+it. `KM_RSUCC_DEMAND=0` sends every offer at once, as before.
+
+### 14.1 The need
+
+A context needs `(B, o)` when one of its clauses, in body or head, has one of
+these:
+
+- a role literal `r(x, o)`, where an ontology clause joins `r(x, y)` to a body
+  atom `B(y)` (`Sig::label_readers`, Lean `labelReaders`), or `r(o, x)`, where
+  one joins `r(y, x)` to `B(y)`;
+- an equation with `o` on either side. This releases every label of `o`.
+
+A context also needs `(B, o)` when one of its successors needs it. KM passes
+the need to every predecessor, and to the source of each new edge.
+
+Some offers never wait:
+
+- concepts read on a constant, or on a variable that no central role atom
+  binds (`Sig::label_always`, `labelAlways`);
+- offers to the nominal ground context;
+- every offer after a retained insertion. The insertion's clauses have no
+  reader analysis, so demand ends there and the deferred offers go out.
+
+A release can happen while messages are applied. The message loop used to
+swap its batch and `self.msgs` on the assumption that nothing is queued
+during application. Without demand that still holds: only `propagate_inner`,
+`subscribe_merge_individuals` and `offer_root_reach` enqueue, and they run
+after application. Demand's releases are now kept.
+
+### 14.2 Why a held-back label is not missed
+
+A held-back hypothesis `B(o) → B(o)` at a target `T` could take part only in
+these steps (Lean `CBRSuccDemand`):
+
+- **Hyper.** Outside the ground context the central variable maps to itself.
+  So a body atom `B(v)` meets `B(o)` only for a neighbour `v`, through a
+  central role atom `r(x, v)` or `r(v, x)`. Hyper then needs a provider of
+  `r(x, o)` or `r(o, x)` among `T`'s clauses, which registers the need
+  (`central_hyper_read_registers`). Unbound and constant readers are always
+  offered.
+- **Eq.** KM rewrites whole arguments, so rewriting `B(o)` needs an equation
+  whose rewritten side is `o`. An equation on `o` registers every label of `o`
+  (`eq_rewrite_read_registers`). An equation `f(x) = o` is such an equation
+  once it reaches `T`, whether from a successor's Pred conclusion or from a
+  local step. Before that, `B(o)` and `B(f(x))` are different literals.
+- **Relay and Pred.** `T` offers `B(o)` on, and a successor's Pred conclusion
+  carries `B(o)` back, only along an edge whose pushed set holds `B(o)`. A
+  successor that needs the label makes `T` need it, so while `T` is held back
+  no successor needs it (`deferred_successors_outside`).
+
+KM releases an offer as soon as any of these steps becomes possible, and
+saturation is monotone. So the fixpoint is the one with every offer sent.
+
+The closures owe only the offers that are not deferred:
+`CBRSuccClosure.rSuccOffers` and `CBSourceSuccClosure.sourceRSuccOffers`
+filter by `DemandView.deferred`. That filter recomputes the readers from the
+source ontology and the need closure from the terminal successor edges, and
+checks that the closure is backward closed. The wire field `rsucc_demand`
+(absent: off) turns the filter on.
+
+The Lean Hyper closure enumerates every substitution, `x ↦ o` included. KM
+grounds `x` only in the ground context. The demand argument is stated for
+the central substitutions that KM's Hyper uses outside it.
+
+### 14.3 Measurements
+
+- `dv13584_batch`: 51 s -> 2.0 s, same output.
+- `f9001_90`: 1.50 s -> 1.45 s, and `x9416_0075` 169 s -> 182 s. Their
+  readers are real (at-most clauses over the relayed definers), so demand does
+  not help there.

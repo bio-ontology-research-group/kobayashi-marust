@@ -90,6 +90,7 @@ structure SourceProductionClosed
   rSucc : (succOf decoded).rsuccEnabled = true →
     ∀ context ∈ (liveOf decoded).contexts,
       ∀ offer ∈ CBSourceSuccClosure.sourceRSuccOffers
+          (CBSourceSuccClosure.liveDemandView (liveOf decoded))
           (succOf decoded).reachConcepts (succOf decoded).groundedConcepts
           (hyperOf decoded).order context,
         CBSourceSuccClosure.edgeDelivered (liveOf decoded)
