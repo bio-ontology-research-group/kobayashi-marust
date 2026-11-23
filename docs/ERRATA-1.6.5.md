@@ -16,7 +16,9 @@ described in the table.
 
 We have not proved that no other wrong answer exists. The list comes from a
 64,000-case differential campaign against HermiT, two TBox sweeps of 20,200
-cases on 13 routes, fuzz runs and the pool gates.
+cases on 12 routes, fuzz runs and the pool gates. On the fixed code the
+sweeps show 0 unsound and 0 incomplete answers on every route, and the
+campaign and the targeted nominal families show 0 wrong answers.
 
 **No input of the 1,708-input ORE pool changed its answer with the fixes.**
 Every fix passed a paired pool run on Ibex (the build with the fix against
@@ -127,6 +129,14 @@ The second set is the output of `kc2.sbatch` under
 - The first table lists other differences between Konclude and HermiT on
   fuzz cases from the development line. We did not decide them and do not
   claim them as Konclude errors.
+
+## Oracle note
+
+HermiT's `isEntailed` was wrong on some inputs, so the campaigns used
+HermiT's own consistency test as the oracle. On a few datatype cases and one
+role-equivalence case HermiT is wrong there too. The hand proofs are in the
+agents' reports; for `r9600_0013` see
+`/mnt/data1/leechuck/km-work/v170/scratch/chainanon/HANDBACK-trans.md`.
 
 ## What to do
 
