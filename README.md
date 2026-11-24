@@ -43,10 +43,15 @@ without access to the expected answer.
   [incremental API](docs/INCREMENTAL-REASONING.md).
 - The native CLI and OWLAPI/Protégé integration return verified, subset-minimal
   source-axiom explanations for every advertised entailment kind.
-- Lean provides sorry-free soundness and completeness certification for the
-  production ELC, hypertableau, and CB publication boundaries and for their
-  automatic routing composition. Accepted routed taxonomies are bound to the
-  exact source clauses and requested named-class signature.
+- Lean 4 proofs (no `sorry`; axioms `propext`, `Classical.choice`,
+  `Quot.sound`) cover the soundness of the calculus rules and the
+  completeness of the EL, ALC and SHI fragments. Beyond those fragments,
+  an answer can be checked per input: with the checkers on, a checked model
+  confirms a consistent classification and a checked refutation confirms an
+  inconsistency (1,621 of 1,696 solved ORE pool inputs in v1.7.0, none
+  rejected). The OWL frontend, the choice of route and the Konclude-derived
+  engine are outside the proofs; see `docs/RELEASE-1.7.0.md` for the exact
+  scope.
 
 ## Install
 
