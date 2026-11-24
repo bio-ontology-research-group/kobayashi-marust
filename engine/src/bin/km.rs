@@ -65,7 +65,7 @@ fn main() {
         // Phase-2 byte-identity gate vs engine/py/cb_to_ht.py)
         Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
-            eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--top] [--route ROUTE] [--format FORMAT] <ontology>");
+            eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--top] [--route ROUTE] [--format FORMAT] [--iris source|full] <ontology>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> subclass <SUB> <SUPER>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> unsatisfiable <CLASS>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> inconsistent");
@@ -496,7 +496,7 @@ fn cb_to_ht_cmd() {
 }
 
 fn classify_help() {
-    println!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--top] [--route ROUTE] [--format FORMAT] <ontology>");
+    println!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--top] [--route ROUTE] [--format FORMAT] [--iris source|full] <ontology>");
     println!();
     println!("  --lines             tab-separated line output (default: JSON)");
     println!("  --json-edges        JSON whose subsumptions are graph edges (take their transitive closure)");
@@ -516,6 +516,10 @@ fn classify_help() {
     println!("                      route that cannot represent the input exits 3 unless");
     println!("                      KM_ALLOW_APPROXIMATE=1, which publishes an APPROXIMATE answer");
     println!("  --format FORMAT     auto, functional, owlxml, rdfxml or turtle");
+    println!("  --iris source|full  entity names in every output: source (default) as the input spells them");
+    println!("                      (ex:A stays ex:A); full: every name as its full IRI, expanded with the");
+    println!("                      input's Prefix declarations, for every input syntax (env KM_IRIS;");
+    println!("                      docs/INPUT-FORMATS.md, \"Entity names in output\")");
     println!("  --unknown-datatypes=strict|free");
     println!("                      strict (default): reject a datatype outside the OWL 2 datatype map;");
     println!("                      free: read it as a fresh datatype and its literals as opaque values");
@@ -576,12 +580,38 @@ fn classify_cmd(rest: &[String]) {
     let mut top = false;
     let mut export_model: Option<String> = None;
     let mut export_model_budget: Option<f64> = None;
+    let mut iris = match orchestrate::output_names::IriMode::from_env() {
+        Ok(mode) => mode,
+        Err(error) => {
+            eprintln!("KM_IRIS: {error}");
+            exit(2);
+        }
+    };
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
             "-h" | "--help" => {
                 classify_help();
                 exit(0);
+            }
+            "--iris" | "--iris=source" | "--iris=full" => {
+                let value = if rest[index] == "--iris" {
+                    index += 1;
+                    rest.get(index).map(String::as_str).unwrap_or("")
+                } else {
+                    rest[index].trim_start_matches("--iris=")
+                };
+                iris = match orchestrate::output_names::IriMode::parse(value) {
+                    Ok(mode) => mode,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        exit(2);
+                    }
+                };
+            }
+            value if value.starts_with("--iris=") => {
+                eprintln!("--iris takes source or full, got {:?}", value.trim_start_matches("--iris="));
+                exit(2);
             }
             "--lines" => lines = true,
             "--realize" | "--realize=all" => realize = Some(orchestrate::realize::TypeMode::All),
@@ -684,8 +714,23 @@ fn classify_cmd(rest: &[String]) {
         exit(2);
     }
     let Some(ontology) = ontology else {
-        eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--top] [--route ROUTE] [--format FORMAT] <ontology>");
+        eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--top] [--route ROUTE] [--format FORMAT] [--iris source|full] <ontology>");
         exit(2);
+    };
+    // `--iris full`: every printed entity name as its full IRI
+    // (`orchestrate::output_names`, docs/INPUT-FORMATS.md, "Entity names in output"). Read before
+    // classification so a malformed prefix header fails at once.
+    let full_iris = match iris {
+        orchestrate::output_names::IriMode::Source => None,
+        orchestrate::output_names::IriMode::Full => {
+            match orchestrate::output_names::FullIris::for_input(Path::new(ontology)) {
+                Ok(names) => Some(names),
+                Err(error) => {
+                    eprintln!("{error}");
+                    exit(error.exit_code());
+                }
+            }
+        }
     };
     if let Some(requested) = route {
         if let Err(error) = requested.parse::<kobayashi_marust::routing::Route>() {
@@ -763,7 +808,10 @@ fn classify_cmd(rest: &[String]) {
         );
         lean_gate(lean_run);
         match realized {
-            Ok(res) => {
+            Ok(mut res) => {
+                if let Some(names) = &full_iris {
+                    names.extended(&mut res);
+                }
                 use std::io::{BufWriter, Write};
                 let stdout = std::io::stdout();
                 let mut w = BufWriter::new(stdout.lock());
@@ -795,10 +843,13 @@ fn classify_cmd(rest: &[String]) {
         let classified = orchestrate::classify_json(&cfg, Path::new(ontology));
         lean_gate(lean_run);
         match classified {
-            Ok(res) => {
+            Ok(mut res) => {
                 frontend_gate(res.frontend_check_gate(Path::new(ontology)));
                 if std::env::var_os("KM_TIMING").is_some() {
                     eprintln!("KM_TIMING mark: classify_json returned");
+                }
+                if let Some(names) = &full_iris {
+                    names.json(&mut res);
                 }
                 use std::io::{BufWriter, Write};
                 let stdout = std::io::stdout();
@@ -834,8 +885,11 @@ fn classify_cmd(rest: &[String]) {
     let classified = orchestrate::classify(&cfg, Path::new(ontology));
     lean_gate(lean_run);
     match classified {
-        Ok(res) => {
+        Ok(mut res) => {
             frontend_gate(res.frontend_check_gate(Path::new(ontology)));
+            if let Some(names) = &full_iris {
+                names.classification(&mut res);
+            }
             use std::io::{BufWriter, Write};
             let stdout = std::io::stdout();
             // serde emits many small writes. Buffer them so direct streaming

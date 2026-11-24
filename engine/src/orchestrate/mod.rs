@@ -32,6 +32,7 @@ pub mod race;
 pub mod properties;
 pub mod data_properties;
 pub mod abox_rows;
+pub mod output_names;
 mod attempt_budget;
 pub mod realize;
 pub mod tmpfile;

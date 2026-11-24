@@ -81,6 +81,11 @@ rows (`C(a)` is entailed, `owl:Thing` excluded) and `SAME<TAB>a<TAB>b` rows
 (`a = b` is entailed). `--realize=direct` lists only the most specific types.
 See [docs/REALIZATION.md](docs/REALIZATION.md).
 
+Entity names are printed as the input spells them (`ex:A` for a prefixed
+Functional-Syntax input). `km classify --iris full` (or `KM_IRIS=full`) prints
+every name as its full IRI for every input syntax; see
+[docs/INPUT-FORMATS.md](docs/INPUT-FORMATS.md#entity-names-in-output).
+
 Inspect the accepted options and worker commands:
 
 ```sh
