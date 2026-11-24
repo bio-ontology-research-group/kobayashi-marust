@@ -145,6 +145,13 @@ public class TempFilesTest {
             try {
                 call.get(10, TimeUnit.SECONDS);
                 fail("interrupted");
+            } catch (java.util.concurrent.TimeoutException stuck) {
+                StringBuilder dump = new StringBuilder("the interrupted call did not return; threads:\n");
+                for (Map.Entry<Thread, StackTraceElement[]> t : Thread.getAllStackTraces().entrySet()) {
+                    dump.append(t.getKey()).append('\n');
+                    for (StackTraceElement e : t.getValue()) dump.append("    at ").append(e).append('\n');
+                }
+                fail(dump.toString());
             } catch (java.util.concurrent.ExecutionException e) {
                 assertTrue(String.valueOf(e.getCause()), e.getCause() instanceof ReasonerInterruptedException);
             }
