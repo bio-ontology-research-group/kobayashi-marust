@@ -1213,6 +1213,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override protected void handleChanges(Set<OWLAxiom> addAxioms, Set<OWLAxiom> removeAxioms) {
+        cancelBatches();
         FlushContext context = flushContext;
         if (context != null) context.handled = true;
         if (!classified) return;
@@ -1227,12 +1228,16 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      * synchronized: the computing thread holds the reasoner monitor.
      */
     @Override public void interrupt() {
+        // A batch run that outlived a time out is native work of this
+        // reasoner too: an interrupt stops it whether or not a call runs.
+        cancelBatches();
         if (!taskRunning) return;
         interruptRequested = true;
         killNative();
     }
 
     @Override public synchronized void dispose() {
+        cancelBatches();
         if (incrementalSession != null) {
             incrementalSession.close();
             incrementalSession = null;
@@ -1402,8 +1407,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             } else if (activeRollup != null && committedRows != null) {
                 result = activeRollup.buildRealization(committedRows);
             } else {
-                result = Classifier.realize(querySource(),
-                        nativeHook());
+                // A batch run: a time out leaves it going for the next call.
+                String source = querySource();
+                result = (Classifier.Realization) batchRun(Collections.singletonList("realization"),
+                        () -> new Object[]{null, (NativeWork) onStart -> Classifier.realize(source, onStart)})[1];
             }
             if (!result.consistent) {
                 realized = built;
@@ -2485,6 +2492,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private Boolean aboxConservativeForTBox;
 
     private void clearReductions() {
+        // Batch runs answer the revision they started on.
+        cancelBatches();
         reductions.clear();
         classesWithDataSome.clear();
         querySnapshot = null;
@@ -2672,6 +2681,166 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         } catch (Exception error) {
             throw new ReasonerInternalException(error);
         }
+    }
+
+    // ---- batch runs that outlive a per-call time out ---------------------------------------
+    //
+    // A batch run (the data property values of every individual, the object
+    // property values, the realization) is one long native run whose answer
+    // serves many later calls. When the configured time out ends the call that
+    // started it, the run goes on in the background, owned by this reasoner,
+    // and the next call that needs it waits for it (under its own time out)
+    // instead of starting it again. interrupt(), dispose() and every new
+    // committed revision stop all batch runs at once (protege/README.md,
+    // "Time outs, interrupts and batch runs").
+
+    /** One batch run: its prepared context (e.g. fresh-name meanings) and its answer. */
+    private static final class Batch {
+        final java.util.concurrent.CompletableFuture<Object> result =
+                new java.util.concurrent.CompletableFuture<>();
+        Object context;
+        volatile Process process;
+        volatile boolean cancelled;
+        /** Set when the call that waited for it timed out: the run outlived its call. */
+        volatile boolean detached;
+
+        void cancel() {
+            cancelled = true;
+            Process running = process;
+            if (running != null) NativeProcessTree.terminateAndWait(running);
+        }
+    }
+
+    /** The native part of a batch run; reads no reasoner state. */
+    private interface NativeWork {
+        Object run(java.util.function.Consumer<Process> onStart) throws Exception;
+    }
+
+    /** Batch runs of the committed revision, by reduction key. */
+    private final Map<Object, Batch> batches = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ExecutorService BATCH_RUNS =
+            java.util.concurrent.Executors.newCachedThreadPool(runnable -> {
+                Thread thread = new Thread(runnable, "km-batch-run");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    /**
+     * The answer of the batch run {@code key}: {context, value}. Joins a run
+     * that an earlier, timed-out call started; otherwise {@code prepare} gives
+     * the context and the native work of a new run. Waits as a monitored task
+     * waits: a time out ends the wait and leaves the run going; interrupt()
+     * stops it.
+     */
+    private Object[] batchRun(Object key, java.util.function.Supplier<Object[]> prepare) {
+        while (true) {
+            Object[] answer = batchAttempt(key, prepare);
+            if (answer != null) return answer;
+        }
+    }
+
+    /**
+     * One attempt of {@link #batchRun}; null when a run that had outlived a
+     * time out failed. Like a stopped run, such a run's failure is not
+     * remembered or reported: the caller starts a new run, whose failure
+     * counts as usual.
+     */
+    private Object[] batchAttempt(Object key, java.util.function.Supplier<Object[]> prepare) {
+        Batch batch = batches.get(key);
+        if (batch == null || batch.cancelled) {
+            Object[] prepared = prepare.get();
+            Batch started = new Batch();
+            started.context = prepared[0];
+            NativeWork work = (NativeWork) prepared[1];
+            batch = started;
+            batches.put(key, started);
+            reductionRuns++;
+            BATCH_RUNS.execute(() -> {
+                try {
+                    started.result.complete(work.run(process -> {
+                        started.process = process;
+                        if (process != null && started.cancelled) NativeProcessTree.terminateAndWait(process);
+                    }));
+                } catch (Throwable failure) {
+                    started.result.completeExceptionally(failure);
+                }
+            });
+        }
+        while (true) {
+            if (interruptRequested) {
+                cancelBatches();
+                throw stopped();
+            }
+            if (timedOut) {
+                batch.detached = true;
+                throw stopped();
+            }
+            try {
+                Object value = batch.result.get(20, java.util.concurrent.TimeUnit.MILLISECONDS);
+                batches.remove(key, batch);
+                return new Object[]{batch.context, value};
+            } catch (java.util.concurrent.TimeoutException pending) {
+                // keep waiting
+            } catch (InterruptedException error) {
+                cancelBatches();
+                Thread.currentThread().interrupt();
+                throw new ReasonerInterruptedException(error);
+            } catch (java.util.concurrent.ExecutionException error) {
+                batches.remove(key, batch);
+                if (batch.cancelled) throw stopped();
+                if (batch.detached) return null;
+                Throwable cause = error.getCause();
+                if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+                if (cause instanceof Error) throw (Error) cause;
+                throw new ReasonerInternalException(cause);
+            }
+        }
+    }
+
+    /** Whether a batch run for {@code key} is still going (it outlived a time out). */
+    private boolean batchPending(Object key) {
+        Batch batch = batches.get(key);
+        return batch != null && !batch.cancelled && !batch.result.isDone();
+    }
+
+    /** Stop every batch run at once. Callable without the reasoner monitor. */
+    private void cancelBatches() {
+        for (Batch batch : new ArrayList<>(batches.values())) batch.cancel();
+        batches.clear();
+    }
+
+    /**
+     * {@link #extendedRun} as a batch run: the extended source is built here,
+     * on the calling thread; only the native run and its parsing go to the
+     * background. The context is {@code context}.
+     */
+    private Object[] batchExtendedRun(Object key, String label, java.util.function.Supplier<Object[]> defsAndContext,
+                                      boolean realize, boolean top) {
+        return batchRun(key, () -> {
+            Object[] dc = defsAndContext.get();
+            @SuppressWarnings("unchecked")
+            Collection<? extends OWLAxiom> extra = (Collection<? extends OWLAxiom>) dc[0];
+            String baseSource;
+            if (!realize && canUseTBoxQuerySource(extra)) {
+                baseSource = tboxQuerySource();
+            } else if (!querySnapshot().getAxioms(AxiomType.SWRL_RULE).isEmpty()
+                    && introducesFreshIndividuals(extra)) {
+                baseSource = rawQuerySource();
+            } else {
+                baseSource = querySource();
+            }
+            final String source;
+            try {
+                source = ExtendedRun.extend(baseSource, df, extra);
+            } catch (RuntimeException error) {
+                throw error;
+            } catch (Exception error) {
+                throw new ReasonerInternalException(error);
+            }
+            int count = extra.size();
+            NativeWork work = onStart -> ExtendedRun.runSource(source, count, realize, top, false, label, onStart);
+            return new Object[]{dc[1], work};
+        });
     }
 
     /** A definitional extension is consistent whenever O is; anything else is an engine fault. */
@@ -4451,7 +4620,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             runTask(COMPUTING_VALUES, () -> out[0] = allObjectValuesNow());
         } catch (RuntimeException failure) {
             if (cacheable(failure)) valuesFailure = failure;
-            else bulkValuesStopped = true;
+            // A time out leaves the batch run going; the next call joins it.
+            else if (!batchPending(Collections.singletonList("all-object-values"))) bulkValuesStopped = true;
             throw failure;
         }
         return out[0];
@@ -4493,7 +4663,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                         if (!active.isEmpty() && !targets.isEmpty()) {
                             if ((active.size() == ops.size() && targets.size() == inds.size())
                                     || (long) active.size() * targets.size() >= 256L) {
-                                Classifier.Values rows = Classifier.values(querySource(), nativeHook());
+                                // A batch run: a time out leaves it going for the next call.
+                                String source = querySource();
+                                Classifier.Values rows = (Classifier.Values) batchRun(
+                                        Collections.singletonList("all-object-values"),
+                                        () -> new Object[]{null, (NativeWork) onStart -> Classifier.values(source, onStart)})[1];
                                 if (rows.consistent) {
                                     for (String[] t : rows.values) {
                                         OWLObjectProperty r = df.getOWLObjectProperty(IRI.create(normalizeIri(t[0])));
@@ -4940,13 +5114,18 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                     }
                 }
                 if (defs.isEmpty()) return found;
-                ExtendedRun.Answer answer = extendedRun("data property value query", defs, true, false);
+                // A batch run: a time out leaves it going for the next call.
+                Object[] run = batchExtendedRun(Collections.singletonList("all-data-values"),
+                        "data property value query", () -> new Object[]{defs, meaning}, true, false);
+                @SuppressWarnings("unchecked")
+                Map<String, Object[]> batchMeaning = (Map<String, Object[]>) run[0];
+                ExtendedRun.Answer answer = (ExtendedRun.Answer) run[1];
                 requireConsistent(answer, "data property value query");
                 for (Map.Entry<String, Set<String>> row : answer.types.entrySet()) {
                     if (fresh().isFresh(row.getKey())) continue;
                     OWLNamedIndividual a = df.getOWLNamedIndividual(IRI.create(row.getKey()));
                     for (String cls : row.getValue()) {
-                        Object[] m = meaning.get(cls);
+                        Object[] m = batchMeaning.get(cls);
                         if (m != null) {
                             found.get((OWLDataProperty) m[0])
                                     .computeIfAbsent(a, k -> new LinkedHashSet<>()).add((OWLLiteral) m[1]);
