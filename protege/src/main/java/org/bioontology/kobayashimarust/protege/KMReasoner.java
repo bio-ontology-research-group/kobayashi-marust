@@ -2805,9 +2805,33 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     /** Stop every batch run at once. Callable without the reasoner monitor. */
     private void cancelBatches() {
-        for (Batch batch : new ArrayList<>(batches.values())) batch.cancel();
+        List<Batch> stopping = new ArrayList<>(batches.values());
         batches.clear();
+        for (Batch batch : stopping) batch.cancel();
+        // Return only when every stopped run has ended and deleted its
+        // temporary files (README "Temporary files"). The native process is
+        // already gone, so the run ends at once; the bound only guards
+        // against a run that never started its process.
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(BATCH_STOP_SECONDS);
+        boolean interrupted = Thread.interrupted();
+        for (Batch batch : stopping) {
+            while (!batch.result.isDone()) {
+                long left = deadline - System.nanoTime();
+                if (left <= 0) break;
+                try {
+                    batch.result.get(left, java.util.concurrent.TimeUnit.NANOSECONDS);
+                } catch (InterruptedException again) {
+                    interrupted = true;
+                } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException ended) {
+                    break;
+                }
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt();
     }
+
+    /** Upper bound on the wait of {@link #cancelBatches} for the stopped runs to end. */
+    static final long BATCH_STOP_SECONDS = 10;
 
     /**
      * {@link #extendedRun} as a batch run: the extended source is built here,

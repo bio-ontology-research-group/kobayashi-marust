@@ -70,9 +70,8 @@ public class TempFilesTest {
         return out;
     }
 
-    private void awaitNone() throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!made().isEmpty() && System.nanoTime() < deadline) Thread.sleep(50);
+    /** dispose(), interrupt() and a finished call delete their files before they return. */
+    private void assertNone() throws Exception {
         assertEquals("kmarust files left behind", Collections.<String>emptyList(), made());
     }
 
@@ -93,12 +92,16 @@ public class TempFilesTest {
                 .getOWLDataProperty(IRI.create("http://example.org/intr#num"));
     }
 
+    /** Set by the stub when a delayed run has started (it has written its input by then). */
+    private Path started;
+
     private void delayRealize(int seconds) throws Exception {
         saved = System.getProperty("km.bin");
         Path dir = Files.createTempDirectory(Paths.get("target"), "temp-km");
+        started = dir.resolve("started");
         Path script = dir.resolve("km");
-        String body = "#!/bin/sh\ncase \" $* \" in\n*'--realize'*) sleep " + seconds + ";;\nesac\nexec '"
-                + saved + "' \"$@\"\n";
+        String body = "#!/bin/sh\ncase \" $* \" in\n*'--realize'*) touch '" + started.toAbsolutePath()
+                + "'; sleep " + seconds + ";;\nesac\nexec '" + saved + "' \"$@\"\n";
         Files.write(script, body.getBytes("UTF-8"));
         assertTrue(script.toFile().setExecutable(true));
         System.setProperty("km.bin", script.toAbsolutePath().toString());
@@ -116,7 +119,7 @@ public class TempFilesTest {
         // Only the open incremental session keeps its log while the reasoner lives.
         assertTrue(String.valueOf(made()), made().stream().allMatch(f -> f.contains("-incremental-")));
         r.dispose();
-        awaitNone();
+        assertNone();
     }
 
     @Test
@@ -127,12 +130,18 @@ public class TempFilesTest {
         ExecutorService ex = Executors.newSingleThreadExecutor();
         try {
             Future<?> call = ex.submit(() -> r.getDataPropertyValues(rex(r), num(r)));
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-            while (made().stream().noneMatch(f -> f.endsWith(".ofn")) && System.nanoTime() < deadline) {
+            // The stub marks the start of the delayed native run; the plugin
+            // wrote the run's input file before it started the process.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120);
+            while (!Files.exists(started) && !call.isDone() && System.nanoTime() < deadline) {
                 Thread.sleep(20);
             }
+            assertTrue("the delayed run started", Files.exists(started));
             assertTrue("the query wrote its input: " + made(), made().stream().anyMatch(f -> f.endsWith(".ofn")));
             r.interrupt();
+            // interrupt() returns after the stopped run deleted its files; only the
+            // incremental session's log stays, until dispose().
+            assertTrue(String.valueOf(made()), made().stream().allMatch(f -> f.contains("-incremental-")));
             try {
                 call.get(10, TimeUnit.SECONDS);
                 fail("interrupted");
@@ -144,7 +153,7 @@ public class TempFilesTest {
             ex.shutdownNow();
             r.dispose();
         }
-        awaitNone();
+        assertNone();
     }
 
     @Test
@@ -159,6 +168,6 @@ public class TempFilesTest {
             // the batch goes on with its input file
         }
         r.dispose();
-        awaitNone();
+        assertNone();
     }
 }
