@@ -132,14 +132,29 @@ def sourceEdgeReachPredicates (reachConcepts : List Nat) (groundedConcepts : CBR
               some predicate else none
         | _ => none).eraseDups
 
+/-- The demand view of the live terminal state (`CBRSuccClosure.DemandView`):
+the successor edges of every live context and the production's retained
+clauses. -/
+def liveDemandView (live : DecodedSourceLiveInsertionDerivationDocument) :
+    CBRSuccClosure.DemandView :=
+  { ontology := live.production.source.ontology
+    nodes := List.range live.production.contexts.length
+    edges := live.contexts.flatMap fun context =>
+      context.successors.map fun edge => (context.contextIndex.val, edge.targetIndex.val)
+    retained := fun index => (live.production.contexts[index]?.map (·.retained)).getD []
+    ground := fun index => (live.production.contexts[index]?.map (·.nominalGround)).getD false }
+
 def sourceRSuccOffers
+    (view : CBRSuccClosure.DemandView)
     (reachConcepts : List Nat) (groundedConcepts : CBRSuccClosure.IndividualLabels) (order : DecodedSourceFiniteOrder production)
     (context : DecodedSourceLiveContext production ordinary rootArena) :
     List RSuccOffer :=
   context.successors.flatMap fun edge =>
     ((sourceEdgeReachPredicates reachConcepts groundedConcepts order context.rootDomain
       context.retained edge.label).filter fun predicate =>
-        !CBRSuccClosure.skipsGroundUnit groundedConcepts production edge.label predicate).map
+        !CBRSuccClosure.skipsGroundUnit groundedConcepts production edge.label predicate &&
+          !view.deferred groundedConcepts edge.targetIndex.val
+            (forwardPredicate edge.label (parentOfEdge edge.label) predicate)).map
       fun predicate => {
         edge := { label := edge.label, targetIndex := edge.targetIndex.val }
         sourcePredicate := predicate
@@ -153,7 +168,7 @@ def rSuccClosedB
     (context : DecodedSourceLiveContext live.production
       live.ordinaryArena live.rootArena) : Bool :=
   if rsuccEnabled then
-    (sourceRSuccOffers reachConcepts groundedConcepts order context).all fun offer =>
+    (sourceRSuccOffers (liveDemandView live) reachConcepts groundedConcepts order context).all fun offer =>
       edgeDelivered live context.contextIndex.val offer.edge.targetIndex
           offer.edge.label offer.pushed &&
         targetStrengthens live offer.edge.targetIndex offer.pushed
@@ -167,7 +182,7 @@ theorem rSuccClosedB_sound
       live.ordinaryArena live.rootArena)
     (hclosed : rSuccClosedB live rsuccEnabled reachConcepts groundedConcepts order context = true)
     (henabled : rsuccEnabled = true) :
-    ∀ offer ∈ sourceRSuccOffers reachConcepts groundedConcepts order context,
+    ∀ offer ∈ sourceRSuccOffers (liveDemandView live) reachConcepts groundedConcepts order context,
       edgeDelivered live context.contextIndex.val offer.edge.targetIndex
           offer.edge.label offer.pushed = true ∧
         targetStrengthens live offer.edge.targetIndex offer.pushed = true := by
@@ -187,6 +202,8 @@ structure WireSourceSuccClosureDocument where
   grounded_label_concepts : Option (List Nat) := none
   /-- Whether those labels go over every successor edge (`IndividualLabels.everyEdge`); absent: off. -/
   individual_labels_every_edge : Option Bool := none
+  /-- Whether offers of those labels wait for demand (`IndividualLabels.demand`); absent: off. -/
+  rsucc_demand : Option Bool := none
 deriving FromJson, ToJson
 
 structure DecodedSourceSuccClosureDocument where
@@ -221,13 +238,13 @@ def WireSourceSuccClosureDocument.decode
             wire.rsucc_enabled wire.reach_concepts context = true then
         if hrsucc : ∀ context ∈ live.contexts,
             rSuccClosedB live wire.rsucc_enabled wire.reach_concepts
-              { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false }
+              { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false, demand := wire.rsucc_demand.getD false }
               join3Closure.hyperClosure.order context = true then
           return {
             join3Closure
             rsuccEnabled := wire.rsucc_enabled
             reachConcepts := wire.reach_concepts
-            groundedConcepts := { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false }
+            groundedConcepts := { concepts := wire.grounded_label_concepts.getD [], everyEdge := wire.individual_labels_every_edge.getD false, demand := wire.rsucc_demand.getD false }
             reach_nodup := hnodup
             reach_bounded := hbounded
             direct_closed := hdirect
@@ -255,7 +272,9 @@ theorem WireSourceSuccClosureDocument.check_sound
             context.contextIndex.val offer = true) ∧
       (decoded.rsuccEnabled = true →
         ∀ context ∈ decoded.join3Closure.hyperClosure.localClosure.live.contexts,
-          ∀ offer ∈ sourceRSuccOffers decoded.reachConcepts decoded.groundedConcepts
+          ∀ offer ∈ sourceRSuccOffers
+              (liveDemandView decoded.join3Closure.hyperClosure.localClosure.live)
+              decoded.reachConcepts decoded.groundedConcepts
               decoded.join3Closure.hyperClosure.order context,
             edgeDelivered decoded.join3Closure.hyperClosure.localClosure.live
                 context.contextIndex.val offer.edge.targetIndex offer.edge.label

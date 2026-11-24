@@ -1,0 +1,12 @@
+Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/t1>
+Declaration(Class(:E)) Declaration(Class(:Z)) Declaration(Class(:W)) Declaration(Class(:Q))
+Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:t)) Declaration(ObjectProperty(:r))
+Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:o))
+SubClassOf(:E ObjectSomeValuesFrom(:s ObjectOneOf(:o)))
+SubClassOf(:E ObjectAllValuesFrom(:s ObjectOneOf(:a)))
+SubClassOf(:E ObjectSomeValuesFrom(:t :Z))
+SubClassOf(:Z ObjectSomeValuesFrom(:r ObjectOneOf(:o)))
+SubClassOf(ObjectIntersectionOf(:Z ObjectSomeValuesFrom(:r ObjectOneOf(:a))) :W)
+EquivalentClasses(:Q ObjectSomeValuesFrom(:t :W))
+)

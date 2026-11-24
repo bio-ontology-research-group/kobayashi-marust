@@ -60,7 +60,120 @@ its own hypotheses hands it to its successors, which read it on the constant
 structure IndividualLabels where
   concepts : List Nat := []
   everyEdge : Bool := false
+  /-- KM_RSUCC_DEMAND: a label `B(o)` is owed to a target only when the target
+  needs it (`DemandView.deferred`). -/
+  demand : Bool := false
 deriving DecidableEq, Repr
+
+/-! ## Demand-driven individual labels
+
+KM (`KM_RSUCC_DEMAND`, on by default) holds an offer of a label `B(o)` back
+until its target needs it.  A context needs `(B, o)` when one of its clauses,
+in body or head, has
+
+* a role literal `r(x, o)` where an ontology clause joins `r(x, y)` to a body
+  atom `B(y)` (`(r, true, B) ∈ labelReaders`), or `r(o, x)` where one joins
+  `r(y, x)` to `B(y)` (`(r, false, B)`);
+* an equation with `o` on either side (every label of `o`); or
+* `B ∈ labelAlways`: some ontology clause reads `B` on a constant or on a
+  variable that no central role atom binds;
+
+or when one of its successors needs `(B, o)`.  The nominal ground context
+always receives its offers.  `CBRSuccDemand` proves that a held-back
+hypothesis takes no part in a central Hyper step, an Eq step or a relay. -/
+
+/-- The role atoms of a source clause's body. -/
+def bodyRoleAtoms (clause : FCL) : List (Nat × FTerm × FTerm) :=
+  clause.body.filterMap fun literal =>
+    match literal with
+    | .P (.role role source target) => some (role, source, target)
+    | _ => none
+
+/-- The central role atoms of `clause` that bind the variable `v`:
+`(r, true)` for `r(x, v)`, `(r, false)` for `r(v, x)`. -/
+def anchorsOf (clause : FCL) (v : FTerm) : List (Nat × Bool) :=
+  (bodyRoleAtoms clause).filterMap fun atom =>
+    if atom.2.1 = .var 0 ∧ atom.2.2 = v then some (atom.1, true)
+    else if atom.2.1 = v ∧ atom.2.2 = .var 0 then some (atom.1, false)
+    else none
+
+/-- A body literal that reads a label away from the centre. -/
+def labelRead : FLit → Option (Nat × FTerm)
+  | .P (.concept concept term) => if term = .var 0 then none else some (concept, term)
+  | _ => none
+
+def isConstTerm : FTerm → Bool
+  | .const _ => true
+  | _ => false
+
+/-- KM's `Sig::label_readers`: `(r, forward, B)` for each central role atom
+that binds the argument of a body atom `B(v)`. -/
+def labelReaders (ontology : List FCL) : List (Nat × Bool × Nat) :=
+  ontology.flatMap fun clause => clause.body.flatMap fun literal =>
+    match labelRead literal with
+    | some (concept, term) => (anchorsOf clause term).map fun anchor => (anchor.1, anchor.2, concept)
+    | none => []
+
+/-- KM's `Sig::label_always`: concepts read on a constant or on a variable
+that no central role atom binds. -/
+def labelAlways (ontology : List FCL) : List Nat :=
+  ontology.flatMap fun clause => clause.body.filterMap fun literal =>
+    match labelRead literal with
+    | some (concept, term) =>
+        if (anchorsOf clause term).isEmpty || isConstTerm term then some concept else none
+    | none => none
+
+/-- A literal through which a context reads the label `B(o)`. -/
+def literalRegisters (readers : List (Nat × Bool × Nat)) (concept individual : Nat) :
+    FLit → Bool
+  | .P (.role role (.var 0) (.const o)) =>
+      decide (o = individual) && decide ((role, true, concept) ∈ readers)
+  | .P (.role role (.const o) (.var 0)) =>
+      decide (o = individual) && decide ((role, false, concept) ∈ readers)
+  | .eq left right => decide (left = .const individual) || decide (right = .const individual)
+  | _ => false
+
+def registersIn (ontology : List FCL) (retained : List FCL) (concept individual : Nat) : Bool :=
+  decide (concept ∈ labelAlways ontology) ||
+    retained.any fun clause =>
+      clause.body.any (literalRegisters (labelReaders ontology) concept individual) ||
+        clause.head.any (literalRegisters (labelReaders ontology) concept individual)
+
+/-- The successor graph and terminal clauses the demand is read from. -/
+structure DemandView where
+  ontology : List FCL
+  nodes : List Nat
+  edges : List (Nat × Nat)
+  retained : Nat → List FCL
+  ground : Nat → Bool
+
+/-- One backward step: a context whose successor needs the label needs it. -/
+def needStep (edges : List (Nat × Nat)) (current : List Nat) : List Nat :=
+  current ++ edges.filterMap fun edge =>
+    if edge.2 ∈ current ∧ edge.1 ∉ current then some edge.1 else none
+
+def needIterate (edges : List (Nat × Nat)) : Nat → List Nat → List Nat
+  | 0, current => current
+  | fuel + 1, current => needIterate edges fuel (needStep edges current)
+
+def DemandView.needClosure (view : DemandView) (concept individual : Nat) : List Nat :=
+  needIterate view.edges (view.edges.length + 1)
+    (view.nodes.filter fun node => registersIn view.ontology (view.retained node) concept individual)
+
+/-- The closure is backward closed over the edges (checked, not assumed). -/
+def closedOver (edges : List (Nat × Nat)) (current : List Nat) : Bool :=
+  edges.all fun edge => decide (edge.2 ∈ current → edge.1 ∈ current)
+
+/-- Whether KM may hold back the offer `pushed` to `target`.  Only a label of
+an individual can wait, never at the nominal ground context, and only when the
+need closure is a fixpoint that leaves `target` out. -/
+def DemandView.deferred (view : DemandView) (labels : IndividualLabels) (target : Nat) :
+    FPred → Bool
+  | .concept concept (.const individual) =>
+      labels.demand && !view.ground target &&
+        closedOver view.edges (view.needClosure concept individual) &&
+          decide (target ∉ view.needClosure concept individual)
+  | _ => false
 
 /-- Whether the edge labelled `edge` carries the label `B(o)` of an
 individual (KM's `rsucc_offered_over`).  Root edges (labelled by a constant)
@@ -178,13 +291,27 @@ def skipsGroundUnit (labels : IndividualLabels) (production : DecodedProductionR
         groundUnitLabel production p
   | _ => false
 
+/-- The demand view of a checked production: its contexts, the successor
+edges reversed from the predecessor snapshots, and the retained clauses. -/
+def productionDemandView (coverage : DecodedPredSendCoverageDocument) : DemandView :=
+  let production := coverage.interContext.base.production
+  let nodes := List.range production.contexts.length
+  { ontology := production.source.ontology
+    nodes
+    edges := nodes.flatMap fun source =>
+      (outgoingEdges coverage source).map fun edge => (source, edge.targetIndex)
+    retained := fun index => (production.contexts[index]?.map (·.retained)).getD []
+    ground := fun index => (production.contexts[index]?.map (·.nominalGround)).getD false }
+
 def rSuccOffers (coverage : DecodedPredSendCoverageDocument)
     (reachConcepts : List Nat) (groundedConcepts : IndividualLabels) (order : DecodedFiniteLiteralOrderDocument)
     (sourceIndex : Nat) (retained : List FCL) : List RSuccOffer :=
   (outgoingEdges coverage sourceIndex).flatMap fun edge =>
     ((edgeReachPredicates reachConcepts groundedConcepts order retained edge.label).filter
       fun predicate => !skipsGroundUnit groundedConcepts coverage.interContext.base.production
-        edge.label predicate).map
+        edge.label predicate &&
+        !(productionDemandView coverage).deferred groundedConcepts edge.targetIndex
+          (forwardPredicate edge.label (parentOfEdge edge.label) predicate)).map
       fun predicate => {
       edge
       sourcePredicate := predicate
@@ -200,18 +327,20 @@ theorem mem_rSuccOffers_iff {coverage : DecodedPredSendCoverageDocument}
             edge.label,
           skipsGroundUnit groundedConcepts coverage.interContext.base.production
               edge.label predicate = false ∧
+          (productionDemandView coverage).deferred groundedConcepts edge.targetIndex
+              (forwardPredicate edge.label (parentOfEdge edge.label) predicate) = false ∧
           offer = {
             edge := edge
             sourcePredicate := predicate
             pushed := forwardPredicate edge.label (parentOfEdge edge.label) predicate
           } := by
   simp only [rSuccOffers, List.mem_flatMap, List.mem_map, List.mem_filter,
-    Bool.not_eq_true']
+    Bool.and_eq_true, Bool.not_eq_true']
   constructor
-  · rintro ⟨edge, hedge, predicate, ⟨hpred, hskip⟩, rfl⟩
-    exact ⟨edge, hedge, predicate, hpred, hskip, rfl⟩
-  · rintro ⟨edge, hedge, predicate, hpred, hskip, rfl⟩
-    exact ⟨edge, hedge, predicate, ⟨hpred, hskip⟩, rfl⟩
+  · rintro ⟨edge, hedge, predicate, ⟨hpred, hskip, hdefer⟩, rfl⟩
+    exact ⟨edge, hedge, predicate, hpred, hskip, hdefer, rfl⟩
+  · rintro ⟨edge, hedge, predicate, hpred, hskip, hdefer, rfl⟩
+    exact ⟨edge, hedge, predicate, ⟨hpred, hskip, hdefer⟩, rfl⟩
 
 /-- Every r-Succ payload is again a tautological hypothesis at its target. -/
 theorem rSuccOffer_valid {D : Type} (model : TModel D) (offer : RSuccOffer) :
