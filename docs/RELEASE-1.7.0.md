@@ -2,21 +2,26 @@
 
 This is KM 1.7.0. Three release candidates were published first (see
 "Release candidates"). The numbers below were measured on the third
-candidate (`c63f3a44`) or on its parent `07fba7aa`, as each line says.
+candidate (`c63f3a44`) or on its parent `07fba7aa`, as each line says. The
+lines marked "final" were measured on `e6257322`, which differs from the
+tagged commit by documentation only.
 
-### Open items, filled at the tag
+### Items measured on the final commit
 
-Five items come from the final tag. Each has one placeholder, and nothing
-else in this file or in the CHANGELOG evidence section is open.
+Five items come from the final commit.
 
-- Release date: `[[TBD: release date]]`
+- Release date: 2026-11-25
 - Release chain on the final commit (gate test counts, Rust step, Java
-  suite, axiom audit): `[[TBD: final-commit release chain numbers]]`
+  suite, axiom audit): on `e6257322`: five Lean gates pass (elc 9, routing 311, ht 254, cb 44, rules 40 tests; 0 `sorryAx`); axiom audit over 66,891 constants finds only `propext`, `Classical.choice`, `Quot.sound`; Rust step 3,818 passed, 0 failed; checker tests 57 of 57; Java 219 of 219. One Java process test (`stubbornChildIsForcedWhileSupervisorCanStillReap`) failed in 1 of 5 extra repeat runs, as it did on `07fba7aa` (see "Known limits").
 - Held-out timing table against Konclude v0.7.0-1138, measured on the final
-  binary (the table below is from rc1): `[[TBD: final held-out timing table]]`
+  binary (the table below is the final one): done, see "Speed and memory".
 - Checkers-on pool counts on the final commit (the counts below are from
-  `07fba7aa`): `[[TBD: final checkers-on counts]]`
-- Assets (names and checksums): `[[TBD: asset names and checksums]]`
+  `07fba7aa`): on `e6257322`, 1,696 solved, 1,618 fully certified, 78 solved
+  but not certified (67 declined, 11 timed out), 12 unsolved, 0 rejected.
+  The difference of 3 to `07fba7aa` is in checker time and memory limits
+  (three hint checks timed out at 240 s, one producer failed, one input
+  newly certified); no answer changed.
+- Assets (names and checksums): listed on the GitHub release page, with a `SHA256SUMS` file; the Linux x86_64 PGO binary has sha256 `80819d30889401e680a11b1c6352fbf735f5d25700b6a405f5af04da5dfdfec3`
 
 ## What changes
 
@@ -201,21 +206,23 @@ engine is complete on every OWL 2 DL input.
 
 ### Speed and memory
 
-Ibex, 585 held-out inputs, one core, 240 s limit. First release candidate
-(`caf9c171`, PGO binary; the engine is unchanged for these inputs in rc2 and
-rc3) and Konclude v0.7.0-1138 in the same run. Mean and
-median time are over the 577 inputs that both solve; memory is the peak.
+Ibex, 585 held-out inputs, one core, 240 s limit. Final PGO binary (built
+from `e6257322`, sha256 `80819d30...`), Konclude v0.7.0-1138 and KM v1.6.5 in
+the same run. Mean and median time are over the 577 inputs that KM 1.7.0 and
+Konclude both solve; memory is the peak.
 
 | | solved | mean time | median time | median memory | mean memory |
 |---|---:|---:|---:|---:|---:|
-| KM 1.7.0 candidate | 579 | 1.36 s | 0.129 s | 30.9 MiB | 167 MiB |
-| Konclude | 578 | 2.07 s | 0.186 s | 48.1 MiB | 257 MiB |
-| KM v1.6.5 (plain-build run, same comparison) | 578 | 3.57 s | 0.169 s | 72.5 MiB | not recorded |
+| KM 1.7.0 | 579 | 1.70 s | 0.141 s | 31.2 MiB | 167 MiB |
+| Konclude | 578 | 2.06 s | 0.169 s | 48.5 MiB | 256 MiB |
+| KM v1.6.5 (PGO release binary; over the 575 inputs all three solve) | 576 | 3.27 s | 0.160 s | 71.8 MiB | 330 MiB |
 
-KM is faster on 381 of the 577 common inputs and smaller on 463. The
-v1.6.5 row comes from a plain build, not PGO. The PGO to plain time ratio
-is 0.92 on 196 pool inputs with identical answers.
-The final binary is measured again at the tag (see "Open items"). On the
+KM is faster on 335 of the 577 common inputs and smaller on 462. On the
+575 inputs that all three solve, KM 1.7.0 takes 1.48 s mean and 0.140 s
+median, Konclude 1.92 s and 0.167 s. The first candidate was faster in the
+mean (1.36 s): the complete r-Succ rule added after it costs time on a few
+inputs (`ore_ont_762` takes 49 s, Konclude 9 s). The PGO to plain time ratio
+is 0.92 on 196 pool inputs with identical answers. On the
 pool, the gates for rc2 and rc3 show no time or memory regression against
 the previous candidate.
 
@@ -435,7 +442,7 @@ byte-identical on 200 pool inputs.
   automatic route gives no answer on 176 and 197 of 20,200 cases in the two
   rounds (129 and 151 before the complete r-Succ rule).
 
-The final commit repeats the release chain (see "Open items").
+The final commit repeats the release chain (see "Open items"); the Lean gates run once more on the tagged commit itself.
 
 ## Known limits
 
@@ -456,7 +463,13 @@ The final commit repeats the release chain (see "Open items").
 - Plugin: a one-shot `km classify` or `km explain` started by a JVM that is
   killed with SIGKILL runs to the end of its own time limit. After a JVM
   shutdown with SIGTERM or SIGINT, the plugin stops the km processes.
-- With the checkers on, 75 of 1,696 pool answers are not fully checked
+- Plugin test `stubbornChildIsForcedWhileSupervisorCanStillReap` failed in
+  1 of 5 extra repeat runs on Ibex (also on `07fba7aa`). The 219-test Java
+  suite itself passes. Open.
+- `km classify --lines --realize --top` on `ore_ont_16744` stops after 8 s
+  with "pair count exceeds limit" (it timed out before). Plain
+  `km classify` answers this input as before.
+- With the checkers on, 78 of 1,696 pool answers (75 on `07fba7aa`) are not fully checked
   because a checker declines, or runs out of time or memory. No checker
   rejects an answer.
 - `km classify --iris full` is off by default; names in the default output

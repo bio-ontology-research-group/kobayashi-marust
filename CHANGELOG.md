@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [1.7.0] - unreleased
+## [1.7.0] - 2026-11-25
 
 OWL 2 DL coverage, HermiT parity in Protégé, faster and smaller runs, and
 fixes for wrong answers. Notes: `docs/RELEASE-1.7.0.md`. Errata for earlier releases:
@@ -147,13 +147,13 @@ Measured on the third release candidate (`c63f3a44`) or its parent
   right in 2,153 differing calls, HermiT right in 0, 46 declined, KM
   timeouts 2,211.
 
-Open items, filled at the tag:
+Items measured on the final commit:
 
-- Release date: `[[TBD: release date]]`
-- Final-commit release chain: `[[TBD: final-commit release chain numbers]]`
-- Final held-out timing table against Konclude: `[[TBD: final held-out timing table]]`
-- Final checkers-on counts: `[[TBD: final checkers-on counts]]`
-- Assets: `[[TBD: asset names and checksums]]`
+- Release date: 2026-11-25
+- Final-commit release chain: on `e6257322`, five Lean gates pass (elc 9, routing 311, ht 254, cb 44, rules 40; 0 `sorryAx`), axiom audit clean over 66,891 constants, Rust step 3,818 passed and 0 failed, Java 219 of 219
+- Final held-out timing table against Konclude: final PGO binary, 585 inputs, same run: KM 579 solved, mean 1.70 s, median 0.141 s, median memory 31.2 MiB; Konclude 578, 2.06 s, 0.169 s, 48.5 MiB (times over the 577 inputs both solve)
+- Final checkers-on counts: on `e6257322`, 1,696 solved, 1,618 fully certified, 78 not certified, 0 rejected
+- Assets: listed on the GitHub release page, with a `SHA256SUMS` file; the Linux x86_64 PGO binary has sha256 `80819d30889401e680a11b1c6352fbf735f5d25700b6a405f5af04da5dfdfec3`
 
 ### Entries from the development log
 
