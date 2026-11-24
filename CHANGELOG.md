@@ -10,8 +10,8 @@ fixes for wrong answers. Notes: `docs/RELEASE-1.7.0.md`. Errata for earlier rele
 `docs/V1.7.0-PARITY-FINAL.md`, `docs/V1.7.0-SPEED.md`,
 `docs/V1.7.0-NOMINAL-COVER.md`.
 
-Numbers marked `[[TBD: ...]]` are not final and are filled in from the
-release gate.
+Open items (date, final-commit numbers, assets) are listed at the end of
+"Evidence" below.
 
 ### Summary
 
@@ -30,7 +30,7 @@ release gate.
 - Certificates: a checker proved in Lean accepts a model for the negative
   answers of an input, and a refutation certificate for inconsistent
   inputs. Coverage is partial; see the release notes.
-- Speed and memory: see the release notes. Preliminary numbers there.
+- Speed and memory: see the release notes.
 - Wrong answers fixed (see "Fixed" below). Releases up to v1.6.5 can miss
   an inconsistency, unsatisfiable classes or subsumptions on some inputs.
   See `docs/ERRATA-1.6.5.md`.
@@ -74,7 +74,7 @@ Details, reproducers and which releases have each item:
     blocker's unapplied restrictions (`c11e5db6`); after an interrupted query
     the plugin answers correctly and starts fresh runs (`43beadd0`).
 
-### Fixed since rc2
+### Fixed since rc2 (third candidate)
 
 - Wrong answer in rc1 and rc2 only: two values of a functional data property
   on one individual were reported consistent when another individual also
@@ -87,7 +87,13 @@ Details, reproducers and which releases have each item:
   (`7616d8b7`): 407 of 503 newly silent sweep cases answer again;
   `ore_ont_13584` data-value batch 2.0 s (51 s on rc2). KM builds on macOS
   and Windows again.
-- Release candidates: rc1 `caf9c171`, rc2 `9e6761f3` (see
+- Plugin: interrupt and dispose return after stopped runs have cleaned up;
+  a stopped batch always ends its call with the stop (`ad1411b3`).
+- New: `km classify --iris full` (or `KM_IRIS=full`) prints full IRIs in
+  every output for every input syntax; default unchanged
+  (`docs/INPUT-FORMATS.md`, "Entity names in output"; issue #8, reported by
+  Michel Dumontier).
+- Release candidates: rc1 `caf9c171`, rc2 `9e6761f3`, rc3 `c63f3a44` (see
   `docs/RELEASE-1.7.0.md`).
 
 ### Changed
@@ -119,22 +125,35 @@ Details, reproducers and which releases have each item:
 
 ### Evidence
 
-- Release chain on `caf9c171`: five Lean gates pass (0 `sorryAx`), axiom
-  audit exactly `propext`, `Classical.choice`, `Quot.sound` over 66,756
-  constants; Rust step 3,804 passed, 0 failed; Java 198 tests, 0 failures.
-  Re-run at the tag `[[TBD: release chain at the tag]]`.
+Measured on the third release candidate (`c63f3a44`) or its parent
+`07fba7aa`, as stated.
+
+- Release chain on `07fba7aa`: five Lean gates pass (elc 9, routing 311, ht
+  254, cb 44, rules 40 tests; 0 `sorryAx`); axiom audit only `propext`,
+  `Classical.choice`, `Quot.sound`; Rust step 3,810 passed, 0 failed, 12
+  ignored; Java 219 tests, 0 failures.
 - Pool: 1,696 of 1,708 solved, answers identical at every gate.
-- Held-out (585 inputs, `caf9c171` PGO binary, same run as Konclude
-  v0.7.0-1138): KM 579 solved, mean 1.36 s, median 0.129 s, median memory
-  30.9 MiB; Konclude 578, 2.07 s, 0.186 s, 48.1 MiB; v1.6.5 (plain build)
-  578, 3.57 s, 0.169 s, 72.5 MiB `[[TBD: re-run at the tag]]`.
-- Checkers-on pool run (`caf9c171`): 1,693 solved, 1,619 fully certified, 0
-  rejected `[[TBD: re-run at the tag]]`.
-- 20,200-case TBox sweeps (two, on 12 routes): 0 unsound, 0 incomplete.
-  64,000-case campaign: 0 wrong answers.
-- Protégé parity (`800fc8f6`, plus the later plugin fix): KM right in 2,154
-  of 2,156 differing calls, HermiT right in 2 `[[TBD: parity rerun at the
-  tag]]`.
+- Held-out (585 inputs, rc1 PGO binary, same run as Konclude v0.7.0-1138):
+  KM 579 solved, mean 1.36 s, median 0.129 s, median memory 30.9 MiB;
+  Konclude 578, 2.07 s, 0.186 s, 48.1 MiB; v1.6.5 (plain build) 578, 3.57 s,
+  0.169 s, 72.5 MiB.
+- Checkers-on pool run (`07fba7aa`): 1,696 solved, 1,621 fully certified, 75
+  not certified, 0 rejected.
+- Two TBox sweeps of 20,200 cases on 12 routes: 0 unsound, 0 incomplete. The
+  automatic route gives no answer on 176 and 197 cases per round (129 and
+  151 before the complete r-Succ rule). 64,000-case campaign: 0 wrong
+  answers.
+- Protégé parity (rc3, 349 ontologies): 554,406 comparable calls equal, KM
+  right in 2,153 differing calls, HermiT right in 0, 46 declined, KM
+  timeouts 2,211.
+
+Open items, filled at the tag:
+
+- Release date: `[[TBD: release date]]`
+- Final-commit release chain: `[[TBD: final-commit release chain numbers]]`
+- Final held-out timing table against Konclude: `[[TBD: final held-out timing table]]`
+- Final checkers-on counts: `[[TBD: final checkers-on counts]]`
+- Assets: `[[TBD: asset names and checksums]]`
 
 ### Entries from the development log
 

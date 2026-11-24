@@ -14,7 +14,17 @@ without access to the expected answer.
 
 ## Highlights
 
-- **v1.5.3** classifies `1,662 / 1,708` valid ontologies in the 1,920-file ORE
+- **v1.7.0** adds OWL 2 DL coverage for nominals, number restrictions,
+  inverse and chained roles, datatypes and DL-safe rules. `km classify` also
+  reports individual types and equalities (`--realize`), property values
+  (`--values`), different individuals (`--different`), object and data
+  property hierarchies (`--properties`, `--data-properties`) and a model of
+  the input (`--export-model`). The Protégé plugin answers the
+  `OWLReasoner` methods that HermiT answers. On the 1,708-ontology pool it
+  solves 1,696 inputs. Releases up to v1.6.5 can give wrong answers on some
+  inputs; see [`docs/ERRATA-1.6.5.md`](docs/ERRATA-1.6.5.md) and the
+  [release notes](docs/RELEASE-1.7.0.md).
+- The benchmark below is the **v1.5.3** release run. v1.5.3 classifies `1,662 / 1,708` valid ontologies in the 1,920-file ORE
   2015 pool, verified against Konclude, HermiT, Openllet, and JFact, and refuses
   all `212 / 212` invalid inputs. Konclude solves `1,655`.
 - On one core under a 240-second, 20-GiB limit, KM 1.5.3 has a mean wall time of
@@ -49,10 +59,12 @@ cargo build --release --locked
 ./target/release/km --help
 ```
 
-The main executable is `engine/target/release/km`. The measured v1.5.3 build
-uses `--features mimalloc` and profile-guided optimization; see
+The main executable is `engine/target/release/km`. The measured release
+builds use `--features mimalloc` and profile-guided optimization; see
 [`docs/RELEASE-1.5.3.md`](docs/RELEASE-1.5.3.md#reproducing-and-inspecting-the-release).
-Prebuilt Linux x86-64 executables and the Protégé JAR are attached to each
+Prebuilt executables (Linux x86-64 and aarch64, macOS x86-64 and aarch64,
+Windows x86-64) and the Protégé JARs (`kobayashi-marust-protege5-<version>.jar`
+and `kobayashi-marust-protege6-<version>.jar`) are attached to each
 [GitHub release](https://github.com/bio-ontology-research-group/kobayashi-marust/releases).
 
 ## Classify an ontology
@@ -183,7 +195,7 @@ mvn package
 ```
 
 Copy the generated JAR from `target/` into Protégé's `plugins/` directory and
-place the `km` executable on `PATH`. Restart Protégé, select KM from the
+place the `km` executable on `PATH`. The release JARs bundle the executables. Restart Protégé, select KM from the
 reasoner menu, and start the reasoner. Detailed setup and troubleshooting are
 in [`protege/README.md`](protege/README.md).
 
