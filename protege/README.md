@@ -495,8 +495,13 @@ end of its own run (bounded by `km.timeout.seconds`) before it exits.
 The plugin writes its temporary files to `java.io.tmpdir` and names them
 `kmarust-<JVM pid>-<what>-<n>` (`.ofn` input, `.log` output). A query deletes
 its files when it ends, on every path: normal end, time out, interrupt and
-dispose (a batch run that outlived its call deletes its files when it ends or
-is stopped). A JVM shutdown (normal exit, SIGTERM, SIGINT) deletes the files
+dispose. `interrupt()` and `dispose()` return only after the runs they stop
+have deleted their files (they wait for that at most 10 s, which a run whose
+process is already killed never needs). A batch run that outlived its call
+after a time out keeps its files until it ends or is stopped. The incremental
+session keeps one log file (`kmarust-<pid>-incremental-<n>.log`) for as long
+as the session lives; `dispose()` deletes it, and so does an interrupt or
+time out that stops the session. A JVM shutdown (normal exit, SIGTERM, SIGINT) deletes the files
 that are still registered, after stopping the km processes; the first query
 of a JVM deletes the files of JVMs that no longer run (a JVM killed with
 SIGKILL runs no hook). The km processes get `TMPDIR` set to the same
