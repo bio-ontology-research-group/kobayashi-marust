@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Ontology xmlns="http://www.w3.org/2002/07/owl#" ontologyIRI="http://example.org/o">
+  <Prefix name="" IRI="http://example.org/i#"/>
+  <Prefix name="ex" IRI="http://example.org/"/>
+  <Prefix name="owl" IRI="http://www.w3.org/2002/07/owl#"/>
+  <Prefix name="xsd" IRI="http://www.w3.org/2001/XMLSchema#"/>
+  <Declaration><Class abbreviatedIRI="ex:A"/></Declaration>
+  <Declaration><Class abbreviatedIRI="ex:B"/></Declaration>
+  <Declaration><Class abbreviatedIRI="ex:C"/></Declaration>
+  <Declaration><Class abbreviatedIRI="ex:D"/></Declaration>
+  <Declaration><ObjectProperty abbreviatedIRI="ex:r"/></Declaration>
+  <Declaration><ObjectProperty abbreviatedIRI="ex:s"/></Declaration>
+  <Declaration><DataProperty abbreviatedIRI="ex:d"/></Declaration>
+  <Declaration><NamedIndividual abbreviatedIRI=":a"/></Declaration>
+  <Declaration><NamedIndividual abbreviatedIRI=":b"/></Declaration>
+  <Declaration><NamedIndividual abbreviatedIRI=":c"/></Declaration>
+  <SubClassOf><Class abbreviatedIRI="ex:A"/><Class abbreviatedIRI="ex:B"/></SubClassOf>
+  <SubClassOf><Class abbreviatedIRI="ex:D"/><Class abbreviatedIRI="owl:Nothing"/></SubClassOf>
+  <SubObjectPropertyOf><ObjectProperty abbreviatedIRI="ex:r"/><ObjectProperty abbreviatedIRI="ex:s"/></SubObjectPropertyOf>
+  <ObjectPropertyDomain><ObjectProperty abbreviatedIRI="ex:r"/><Class abbreviatedIRI="ex:C"/></ObjectPropertyDomain>
+  <ClassAssertion><Class abbreviatedIRI="ex:A"/><NamedIndividual abbreviatedIRI=":a"/></ClassAssertion>
+  <ObjectPropertyAssertion><ObjectProperty abbreviatedIRI="ex:r"/><NamedIndividual abbreviatedIRI=":a"/><NamedIndividual abbreviatedIRI=":b"/></ObjectPropertyAssertion>
+  <DataPropertyAssertion><DataProperty abbreviatedIRI="ex:d"/><NamedIndividual abbreviatedIRI=":a"/><Literal datatypeIRI="http://www.w3.org/2001/XMLSchema#integer">5</Literal></DataPropertyAssertion>
+  <SameIndividual><NamedIndividual abbreviatedIRI=":b"/><NamedIndividual abbreviatedIRI=":c"/></SameIndividual>
+  <DifferentIndividuals><NamedIndividual abbreviatedIRI=":a"/><NamedIndividual abbreviatedIRI=":c"/></DifferentIndividuals>
+</Ontology>

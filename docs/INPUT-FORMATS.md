@@ -32,6 +32,33 @@ The `profile` and `features` commands accept the same formats and
   published feature list mentions Manchester syntax, but its current crate
   source does not expose a Manchester parser module.
 
+## Entity names in output
+
+By default (`--iris source`) `km classify` prints every entity as the input
+spells it. A Functional-Syntax input with `Prefix(ex:=<http://example.org/>)`
+gives `SUB ex:A ex:B`; a full IRI is printed without angle brackets; an entity
+written in more than one spelling is printed as its full IRI
+([REALIZATION.md](REALIZATION.md)). OWL/XML, RDF/XML and Turtle inputs are
+converted without prefixes, so their names are full IRIs.
+
+`km classify --iris full` (or `KM_IRIS=full`) prints every entity name as its
+full IRI, for every input syntax and in every output: the JSON object,
+`--json-edges`, and every `--lines` row, including those of `--realize`,
+`--values`, `--different`, `--properties`, `--data-properties` and `--top`.
+Names are expanded with the input's own `Prefix` declarations (the empty
+prefix `:` included) and the standard `owl`, `rdf`, `rdfs` and `xsd`
+prefixes, so `owl:Thing` becomes `http://www.w3.org/2002/07/owl#Thing`. A
+name that is already a full IRI, an anonymous individual (`_:b`) and a name
+with an undeclared prefix stay as they are; `ObjectInverseOf(r)` keeps its
+form with `r` expanded. After expansion each list is sorted again, and the
+unordered `SAME` and `DIFFERENT` pairs are put in order, so the same ontology
+gives the same bytes in any syntax. Literals and the `APPROXIMATE` and
+`LENIENT` texts are not changed. One ambiguity remains: a full IRI written
+without a `//` authority (`urn:x`) whose scheme is also a declared prefix
+name (`Prefix(urn:=<...>)`) is read as a prefixed name. `km explain` quotes
+source axioms as written, together with the document's prefix declarations,
+and has no such option.
+
 ## Dependencies and licensing
 
 The adapter uses Horned-OWL 1.4 with remote resolution disabled. Horned-OWL is

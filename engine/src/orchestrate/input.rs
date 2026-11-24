@@ -181,6 +181,53 @@ fn prepare_with_format(
     })
 }
 
+/// The part of a Functional-Syntax input before its `Ontology` keyword (its
+/// `Prefix` declarations), or an empty string for any other syntax, whose
+/// conversion writes full IRIs. Used for `--iris full` output
+/// (`output_names`). Reads the file only up to that keyword.
+pub fn functional_prefix_head(path: &Path) -> Result<String, OrchestrateError> {
+    if sniff(path)? != InputFormat::Functional {
+        return Ok(String::new());
+    }
+    let mut reader = BufReader::new(File::open(path)?);
+    let mut head: Vec<u8> = Vec::new();
+    loop {
+        let chunk = reader.fill_buf()?;
+        if chunk.is_empty() {
+            break;
+        }
+        let taken = chunk.len();
+        head.extend_from_slice(chunk);
+        reader.consume(taken);
+        let text = String::from_utf8_lossy(&head);
+        if let Some(at) = ontology_keyword(&text) {
+            return Ok(text[..at].to_string());
+        }
+    }
+    Ok(String::from_utf8_lossy(&head).into_owned())
+}
+
+/// Byte offset of the first `Ontology(` that starts a token outside an IRI.
+fn ontology_keyword(text: &str) -> Option<usize> {
+    let mut in_iri = false;
+    let bytes = text.as_bytes();
+    for (at, &byte) in bytes.iter().enumerate() {
+        match byte {
+            b'<' => in_iri = true,
+            b'>' => in_iri = false,
+            b'O' if !in_iri
+                && text[at..].starts_with("Ontology")
+                && text[at + 8..].trim_start().starts_with('(')
+                && (at == 0 || bytes[at - 1].is_ascii_whitespace() || bytes[at - 1] == b')') =>
+            {
+                return Some(at);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 pub fn prepare(path: &Path) -> Result<PreparedInput<'_>, OrchestrateError> {
     prepare_with_format(path, sniff(path)?)
 }
