@@ -490,6 +490,18 @@ hook. A one-shot `km classify` or `km explain` replaces that variable with its
 own pid for its workers; after a SIGKILL of the JVM such a process runs to the
 end of its own run (bounded by `km.timeout.seconds`) before it exits.
 
+### Temporary files
+
+The plugin writes its temporary files to `java.io.tmpdir` and names them
+`kmarust-<JVM pid>-<what>-<n>` (`.ofn` input, `.log` output). A query deletes
+its files when it ends, on every path: normal end, time out, interrupt and
+dispose (a batch run that outlived its call deletes its files when it ends or
+is stopped). A JVM shutdown (normal exit, SIGTERM, SIGINT) deletes the files
+that are still registered, after stopping the km processes; the first query
+of a JVM deletes the files of JVMs that no longer run (a JVM killed with
+SIGKILL runs no hook). The km processes get `TMPDIR` set to the same
+directory, so km's own run directories land there too.
+
 ### Time outs, interrupts and batch runs
 
 Three answers come from one long native run each, computed once per committed

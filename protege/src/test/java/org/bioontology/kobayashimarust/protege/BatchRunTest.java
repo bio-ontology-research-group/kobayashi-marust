@@ -103,7 +103,7 @@ public class BatchRunTest {
         return plain.getDataPropertyValues(ind(plain, "rex"), dp(plain, "num"));
     }
 
-    private static final String DATA_BATCH = "data property value query";
+    private static final String DATA_BATCH = "data-property-value-query";
 
     /** km processes of this JVM whose command line contains {@code text}. */
     private static List<ProcessHandle> running(String text) {

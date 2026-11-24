@@ -170,7 +170,7 @@ public final class Classifier {
             logLenientModeOnFirstUse();
             this.kmBin = KMExecutable.resolve();
             this.timeoutSeconds = parseTimeout();
-            this.log = Files.createTempFile("kmarust-incremental-", ".log");
+            this.log = TempFiles.create("incremental", ".log");
             ProcessBuilder builder = new ProcessBuilder(
                     kmBin, "incremental-source", "--lenient", "--unknown-datatypes=free");
             builder.redirectError(log.toFile());
@@ -564,7 +564,7 @@ public final class Classifier {
             reads.shutdownNow();
             try { input.close(); } catch (Exception ignored) { }
             try { output.close(); } catch (Exception ignored) { }
-            try { Files.deleteIfExists(log); } catch (Exception ignored) { }
+            TempFiles.delete(log);
         }
 
         @Override
@@ -574,7 +574,7 @@ public final class Classifier {
             try { input.close(); } catch (Exception ignored) { }
             NativeProcessTree.terminateAndWait(process);
             reads.shutdownNow();
-            try { Files.deleteIfExists(log); } catch (Exception ignored) { }
+            TempFiles.delete(log);
         }
     }
 
@@ -677,9 +677,10 @@ public final class Classifier {
         logLenientModeOnFirstUse();
         String kmBin = KMExecutable.resolve();
         long timeout = parseTimeout();
-        Path tmp = Files.createTempFile("kmarust-" + label + "-", ".ofn");
-        Path log = Files.createTempFile("kmarust-" + label + "-", ".log");
+        Path tmp = TempFiles.create(label.replace(' ', '-'), ".ofn");
+        Path log = null;
         try {
+            log = TempFiles.create(label.replace(' ', '-'), ".log");
             Files.write(tmp, functionalSyntax.getBytes(StandardCharsets.UTF_8));
             List<String> command = new ArrayList<>();
             command.add(kmBin);
@@ -730,8 +731,8 @@ public final class Classifier {
             }
             return lines;
         } finally {
-            Files.deleteIfExists(tmp);
-            Files.deleteIfExists(log);
+            TempFiles.delete(tmp);
+            TempFiles.delete(log);
         }
     }
 
@@ -963,9 +964,10 @@ public final class Classifier {
         // Flatten the complete imports closure. KM intentionally rejects
         // unresolved owl:imports declarations rather than classifying a
         // partial ontology.
-        Path tmp = Files.createTempFile("kmarust-", ".ofn");
-        Path log = Files.createTempFile("kmarust-", ".log");
+        Path tmp = TempFiles.create("classify", ".ofn");
+        Path log = null;
         try {
+            log = TempFiles.create("classify", ".log");
             FlattenedOntology.save(ontology, tmp);
 
             ProcessBuilder pb = new ProcessBuilder(
@@ -1029,8 +1031,8 @@ public final class Classifier {
             }
             return r;
         } finally {
-            Files.deleteIfExists(tmp);
-            Files.deleteIfExists(log);
+            TempFiles.delete(tmp);
+            TempFiles.delete(log);
         }
     }
 }

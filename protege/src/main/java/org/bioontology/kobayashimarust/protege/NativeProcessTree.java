@@ -39,6 +39,8 @@ final class NativeProcessTree {
      */
     static Process start(ProcessBuilder builder) throws java.io.IOException {
         builder.environment().put(SUPERVISOR_PID_ENV, Long.toString(ProcessHandle.current().pid()));
+        // km keeps its run directory under TMPDIR: the plugin's temp directory.
+        builder.environment().put("TMPDIR", TempFiles.directory().toString());
         Process process = builder.start();
         LIVE.add(process);
         process.onExit().thenRun(() -> LIVE.remove(process));

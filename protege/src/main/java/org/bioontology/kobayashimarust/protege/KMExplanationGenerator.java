@@ -125,9 +125,9 @@ public final class KMExplanationGenerator implements ExplanationGenerator<OWLAxi
         Path stderr = null;
         Process process = null;
         try {
-            source = Files.createTempFile("kmarust-explain-", ".ofn");
-            stdout = Files.createTempFile("kmarust-explain-", ".json");
-            stderr = Files.createTempFile("kmarust-explain-", ".log");
+            source = TempFiles.create("explain", ".ofn");
+            stdout = TempFiles.create("explain", ".json");
+            stderr = TempFiles.create("explain", ".log");
             FlattenedOntology.save(ontology, source);
 
             List<String> command = new ArrayList<>();
@@ -351,7 +351,7 @@ public final class KMExplanationGenerator implements ExplanationGenerator<OWLAxi
         }
         Path document = null;
         try {
-            document = Files.createTempFile("kmarust-source-axiom-", ".ofn");
+            document = TempFiles.create("source-axiom", ".ofn");
             StringBuilder source = new StringBuilder();
             for (String prefix : prefixes) {
                 source.append(prefix).append('\n');
@@ -380,13 +380,8 @@ public final class KMExplanationGenerator implements ExplanationGenerator<OWLAxi
     }
 
     private static void delete(Path path) {
-        if (path != null) {
-            try {
-                Files.deleteIfExists(path);
-            } catch (Exception ignored) {
-                // Temporary-file cleanup must not mask the explanation result.
-            }
-        }
+        // Temporary-file cleanup must not mask the explanation result.
+        TempFiles.delete(path);
     }
 
     private static final class NativeReport {
