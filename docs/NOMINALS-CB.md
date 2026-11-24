@@ -2271,3 +2271,25 @@ the central substitutions that KM's Hyper uses outside it.
 - `f9001_90`: 1.50 s -> 1.45 s, and `x9416_0075` 169 s -> 182 s. Their
   readers are real (at-most clauses over the relayed definers), so demand does
   not help there.
+
+### 14.4 Nominal labels: where the remaining cost is
+
+On the f9001 family and on `x9416_0075` the remaining cost comes from labels
+of nominal concepts on individuals, `__nom__a(o)`, which mean `o = a`. Demand
+does not help there, because `∃r.{a}` reads them through `r(x, o)`.
+
+Example: an empty-core successor in the plugin's `getObjectPropertyValues`
+probe on `f9001_36`.
+- It collects about 80,000 clauses whose bodies combine such labels on
+  several individuals.
+- It takes more than 120 s, against 1.2 s with the offers off.
+
+A prototype sent the labels of nominal concepts over the grounded edges only.
+- It brought the probe to 1.2 s and `x9416_0075` to 36 s.
+- It left the acceptance set and the fixture scan unchanged.
+- It is incomplete. In `tests/fixtures/nominal_label_relay`, the `E` context
+  learns `o = a` as the label `__nom__a(o)` under its own core, and its
+  successor needs it.
+- The test `nominal_label_relay` holds every route to `E ⊑ ∃t.W`. A cheaper
+  route for these labels has to carry `o = a` to that successor in another
+  form.
