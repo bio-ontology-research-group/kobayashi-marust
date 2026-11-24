@@ -74,6 +74,22 @@ Details, reproducers and which releases have each item:
     blocker's unapplied restrictions (`c11e5db6`); after an interrupted query
     the plugin answers correctly and starts fresh runs (`43beadd0`).
 
+### Fixed since rc2
+
+- Wrong answer in rc1 and rc2 only: two values of a functional data property
+  on one individual were reported consistent when another individual also
+  had a value (`c616d963`, `1845fd9f`; regression from `bfb7be93`).
+- Plugin: `getDataPropertyValues` next to integer facet restrictions
+  (`1845fd9f`); no orphaned km processes, batch runs survive a per-call time
+  out, temporary files cleaned up (`39f1d6b4`). Open: a one-shot km started
+  by a JVM killed with SIGKILL runs to the end of its time limit.
+- Engine: demand-driven r-Succ offers with Lean module `CBRSuccDemand`
+  (`7616d8b7`): 407 of 503 newly silent sweep cases answer again;
+  `ore_ont_13584` data-value batch 2.0 s (51 s on rc2). KM builds on macOS
+  and Windows again.
+- Release candidates: rc1 `caf9c171`, rc2 `9e6761f3` (see
+  `docs/RELEASE-1.7.0.md`).
+
 ### Changed
 
 - Rule ontologies under certificate modes: the rules route runs first only
@@ -92,13 +108,12 @@ Details, reproducers and which releases have each item:
 
 ### Known limits
 
-- The complete r-Succ rule costs time on some synthetic nominal inputs. After
-  the root-edge fix, 350 of 503 newly silent sweep cases answer again; the
-  automatic route stays silent on 45 of 6,000 (`inv`), 39 of 3,000
-  (`invt`), 54 of 3,000 (`invu`) and 112 of about 25,000 (campaign "new")
-  cases against the pre-change head. Two `--realize --values --different`
-  examples are slower (29.7 s to 180 s; 101 s to 146 s). No pool input is
-  affected (`docs/NOMINALS-CB.md`, 13.2).
+- The complete r-Succ rule costs time on some synthetic nominal inputs. With
+  demand-driven offers, 407 of 503 newly silent sweep cases answer again.
+  The cost stays on inputs where many individuals may equal the same nominal
+  (the `f9001` family: one probe 1.2 s before the rule, over 120 s now) and
+  on two `--realize --values --different` examples (about 30 s to about
+  170 s). No pool input is affected (`docs/NOMINALS-CB.md`, 13.2 and 14).
 - `ore_ont_12451` takes about 44 s (6 s in v1.6.5). `ore_ont_10926`, `1673`
   and `12128` use 13 to 16 percent more memory.
 

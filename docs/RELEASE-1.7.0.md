@@ -57,8 +57,17 @@ issues #6 and #7) were reported by Michel Dumontier.
     answer that was right became wrong. On 100 more strict-rejected inputs,
     KM is right in 510 differing calls and HermiT in none; 467 calls stay
     undecided (KM lists more than HermiT). The plugin fix for values
-    through anonymous individuals (`b6cb3438`) came after that run and
-    needs a rerun: `[[TBD: parity rerun at the tag]]`.
+    through anonymous individuals (`b6cb3438`) came after that run.
+  - Later runs on the release candidates (`par4/PARITY4.md` on rc1,
+    `par5/PARITY5.md` on rc2). The one call where HermiT is right and KM
+    wrong on rc2 is `ore_ont_3205` (a negative data property assertion):
+    a regression from the n-ary singleton rule, fixed in rc3 (`c616d963`).
+    KM timeouts on the comparable sets: 1,573 at `800fc8f6`, 11,091 on rc1,
+    3,617 on rc2. With the demand-driven offers and the facet fix, the
+    lost-input harness (59 inputs) answers 317,683 calls, against 317,197 at
+    `800fc8f6` and 241,982 on rc1. 752 calls are still lost, 627 of them on
+    one synthetic input. Parity re-run at the tag:
+    `[[TBD: parity rerun at the tag]]`.
   - Earlier run (`docs/V1.7.0-PARITY-FINAL.md`, KM
     build at `1106b555`): of 545,108 compared calls, 2,106 differ. I decided
     each by the OWL 2 direct semantics. KM is right in 2,102 and HermiT in
@@ -321,10 +330,54 @@ datatype cases and one role-equivalence case HermiT is wrong there too. The
 hand proofs are in the agents' reports (for `r9600_0013`:
 `scratch/chainanon/HANDBACK-trans.md`).
 
+## Release candidates
+
+- **v1.7.0-rc1** (`caf9c171`, published pre-release). Known issues as
+  published: the complete r-Succ rule made many plugin calls time out
+  (11,091 KM timeouts on the parity comparable sets, against 1,573 before)
+  and `ore_ont_13584` data-value batch took over 300 s; 402
+  `getDataPropertyValues` calls were declined next to integer facet
+  restrictions; three rule inputs (`ore_ont_2526`, `6615`, `15063`) timed
+  out under the checkers; a one-individual functional data property case
+  was reported consistent (see below).
+- **v1.7.0-rc2** (`9e6761f3`, published pre-release). Adds the rules-first
+  budget and the root-edge offer fix. Known issues as published: KM
+  timeouts 3,617 on the parity comparable sets; `ore_ont_13584` data-value
+  batch 51 s; the 402 declined data-value calls; one right-to-wrong plugin
+  call (`ore_ont_3205`); batch runs and temporary files of the plugin not
+  yet cleaned up. Verification: the release chain above and the checkers-on
+  and sweep runs on `efa9ec33`.
+- **rc3** (the successor of this commit). Adds the fixes under "Fixed since
+  rc2".
+
+## Fixed since rc2
+
+- Wrong answer in rc1 and rc2 only (not in v1.6.5): one individual with two
+  values of a functional data property, when another individual also has a
+  value, was reported consistent. The n-ary singleton rule (`bfb7be93`) made
+  the clash axiom `DifferentIndividuals(b b)` vacuous. The projection now
+  writes `ClassAssertion(owl:Nothing b)` (`c616d963`, `1845fd9f`). It also
+  turned `isEntailed(NegativeDataPropertyAssertion(...))` on
+  `ore_ont_3205` from true to false in the plugin.
+- Plugin: `getDataPropertyValues` next to integer facet restrictions
+  answers again (402 declined calls on `ore_ont_2548`, `13700`, `9662`).
+- Plugin: no orphaned km processes; batch runs (data property values,
+  object property values, realization) survive a per-call time out and
+  answer the next call, while `interrupt()` discards them; temporary files
+  are deleted on every path (`39f1d6b4`; `protege/README.md`). Java suite
+  219 of 219; the plugin harness on 3,300 cases gives 3,287 answers, 13
+  time outs and no wrong rows.
+- Engine: demand-driven r-Succ offers (`7616d8b7`) with the Lean module
+  `CBRSuccDemand`; the CB gate audits the surface theorem
+  `certifiedCBDeferredLabelUnread`.
+- KM builds on macOS and Windows again (`tmpfile.rs`).
+
 ## Checks for this release
 
 Release chain on Ibex for the first candidate (`caf9c171`; pinned rustc
-1.95.0):
+1.95.0). The chain for the second candidate (`9e6761f3`) is all GO: gates
+elc 9, routing 311, ht 253, cb 44 and rules 40 tests, Rust step 3,806
+passed, Java 198, axiom audit clean. First candidate:
 
 - Five Lean gates pass with real checkers (elc 9, routing 310, ht 253, cb
   44, rules 40 tests), 0 `sorryAx`. Axiom audit: 66,756 constants; the
@@ -341,24 +394,35 @@ Release chain on Ibex for the first candidate (`caf9c171`; pinned rustc
   with real checkers and a paired pool gate with 0 answer differences on
   1,696 solved inputs.
 
-To be repeated from the tag: `[[TBD: full release chain at the tag]]`.
+Checkers-on pool run on `efa9ec33` (rc2): 1,696 solved, 1,622 certified, 0
+rejected. Two TBox sweeps on `efa9ec33`: 0 unsound and 0 incomplete on 12
+routes. The third candidate adds the demand-driven offers (five gates pass
+with real checkers; the cb gate audits `certifiedCBDeferredLabelUnread`;
+pool gate against `efa9ec33` with 0 differences; the known 21 library
+failures only; Java 202 of 202), the data-value fixes, and the plugin
+batch work (Java 219 of 219). To be repeated from the tag:
+`[[TBD: full release chain at the tag]]`.
 
 ## Known limits
 
-- The complete r-Succ rule costs time on some nominal inputs. After the
-  root-edge fix (`73223020`), 350 of 503 TBox sweep cases that had gone
-  silent on the automatic route (no answer within the limit) answer again,
-  and all agree with HermiT. Against the pre-change head, the automatic
-  route stays silent on `inv` 45 of 6,000, `invt` 39 of 3,000, `invu` 54 of
-  3,000, and the campaign "new" family 112 of about 25,000 cases. The
-  acceptance set of 46 hard nominal cases is right on all four routes for 44
-  cases, wrong on none, and silent on the automatic route for 1. Two
-  `--realize --values --different` examples are slower than before the rule
-  (29.7 s to 180 s; 101 s to 146 s). No pool input is affected. The
-  follow-up is in `docs/NOMINALS-CB.md`, 13.2. The forced nominal routes
-  are exact or silent on a few fixtures (`m2058`, `m2197`,
-  `cut_r129_pushback`, `merge_r1646`, the universal-role hub with data
-  values).
+- The complete r-Succ rule costs time on some nominal inputs. Demand-driven
+  offers (`7616d8b7`, `docs/NOMINALS-CB.md` 14) removed most of it:
+  of 503 TBox sweep cases that had gone silent on rc1, 407 answer again;
+  `ore_ont_13584` data-value batch takes 2.0 s (1.7 s before the complete
+  rule, 51 s on rc2). The cost that stays is on synthetic inputs where many
+  individuals may equal the same nominal (the `f9001` family; one probe
+  1.2 s before the rule, over 120 s now) and on two
+  `--realize --values --different` examples (about 30 s to about 170 s).
+  The acceptance set of 46 hard nominal cases is unchanged: right on all
+  four routes for 44, wrong on none, and silent on the automatic route for
+  1. No pool input is affected. The quick cut that would remove the
+  remaining cost is unsound (test `nominal_label_relay`; `docs/NOMINALS-CB.md`
+  13.2 and 14.4). The forced nominal routes are exact or silent on a few
+  fixtures (`m2058`, `m2197`, `cut_r129_pushback`, `merge_r1646`, the
+  universal-role hub with data values).
+- Plugin: a one-shot `km classify` or `explain` started by a JVM that is
+  killed with SIGKILL runs to the end of its own time limit. After a JVM
+  shutdown with SIGTERM or SIGINT, the plugin stops the km processes.
 - `ore_ont_12451` takes 44 s where v1.6.5 took 6 s (its speed came from the
   unsound cache confirmation). Three large inputs use 13 to 16 percent more
   memory than before the r-Succ change (`ore_ont_10926`, `1673`, `12128`).
