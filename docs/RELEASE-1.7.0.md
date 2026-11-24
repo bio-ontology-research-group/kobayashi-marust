@@ -1,8 +1,22 @@
 # KM 1.7.0 release notes
 
-Not yet released (date: unreleased). Numbers marked `[[TBD: ...]]` are not
-final. They are filled in from the release gate. Numbers marked
-"preliminary" come from a build before the last speed work.
+This is KM 1.7.0. Three release candidates were published first (see
+"Release candidates"). The numbers below were measured on the third
+candidate (`c63f3a44`) or on its parent `07fba7aa`, as each line says.
+
+### Open items, filled at the tag
+
+Five items come from the final tag. Each has one placeholder, and nothing
+else in this file or in the CHANGELOG evidence section is open.
+
+- Release date: `[[TBD: release date]]`
+- Release chain on the final commit (gate test counts, Rust step, Java
+  suite, axiom audit): `[[TBD: final-commit release chain numbers]]`
+- Held-out timing table against Konclude v0.7.0-1138, measured on the final
+  binary (the table below is from rc1): `[[TBD: final held-out timing table]]`
+- Checkers-on pool counts on the final commit (the counts below are from
+  `07fba7aa`): `[[TBD: final checkers-on counts]]`
+- Assets (names and checksums): `[[TBD: asset names and checksums]]`
 
 ## What changes
 
@@ -58,28 +72,27 @@ issues #6 and #7) were reported by Michel Dumontier.
     KM is right in 510 differing calls and HermiT in none; 467 calls stay
     undecided (KM lists more than HermiT). The plugin fix for values
     through anonymous individuals (`b6cb3438`) came after that run.
-  - Later runs on the release candidates (`par4/PARITY4.md` on rc1,
-    `par5/PARITY5.md` on rc2). The one call where HermiT is right and KM
-    wrong on rc2 is `ore_ont_3205` (a negative data property assertion):
-    a regression from the n-ary singleton rule, fixed in rc3 (`c616d963`).
-    KM timeouts on the comparable sets: 1,573 at `800fc8f6`, 11,091 on rc1,
-    3,617 on rc2. With the demand-driven offers and the facet fix, the
-    lost-input harness (59 inputs) answers 317,683 calls, against 317,197 at
-    `800fc8f6` and 241,982 on rc1. 752 calls are still lost, 627 of them on
-    one synthetic input. Parity re-run at the tag:
-    `[[TBD: parity rerun at the tag]]`.
+  - Release candidate runs (`par4/PARITY4.md` on rc1, `par5/PARITY5.md` on
+    rc2, `par6/PARITY6.md` on rc3). On rc3: 349 ontologies, 554,406
+    comparable calls equal, KM right in 2,153 differing calls, HermiT right
+    in 0, 46 declined. KM timeouts on the comparable sets: 1,573 at
+    `800fc8f6` (before the complete r-Succ rule), 11,091 on rc1, 3,617 on
+    rc2, 2,211 on rc3. Plugin calls that answered at `800fc8f6` and were
+    lost on the lost list: 61,688 on rc1, 42,686 on rc2, 673 on rc3 (627 of
+    them on one synthetic input). The one call where HermiT was right on
+    rc2, `ore_ont_3205` (a negative data property assertion), was a
+    regression from the n-ary singleton rule; it is fixed (`c616d963`).
   - Earlier run (`docs/V1.7.0-PARITY-FINAL.md`, KM
-    build at `1106b555`): of 545,108 compared calls, 2,106 differ. I decided
-    each by the OWL 2 direct semantics. KM is right in 2,102 and HermiT in
+    build at `1106b555`): of 545,108 compared calls, 2,106 differ. Each
+    difference was decided by the OWL 2 direct semantics. KM is right in 2,102 and HermiT in
     4. The 4 come from two causes: a role assertion that follows from a role
     chain through an anonymous individual, and empty value sets after an
     interrupted property classification. A later merge (`43beadd0`) fixes
-    answers after an interrupted query; I did not re-measure it against
-    HermiT. The first cause is fixed after that run (`b6cb3438`) and tested on 3,300
-    cases. That run used 51 of the 212
-    inputs that strict mode rejects; the rest did not run.
-  - KM did not answer 3,511 calls that HermiT answered (timeouts) and
-    refused or failed 46 more (parity run 2).
+    answers after an interrupted query. The first cause is fixed after that
+    run (`b6cb3438`) and tested on 3,300 cases. That run used 51 of the 212
+    inputs that strict mode rejects.
+  - In that run KM did not answer 3,511 calls that HermiT answered
+    (timeouts) and refused or failed 46 more.
 - **Lenient input.** `km classify --lenient` (and the plugin) accepts inputs
   that OWL API and HermiT load in Protégé but that strict OWL 2 DL checking
   rejects, by a source rewrite before reasoning (anonymous individuals in
@@ -112,6 +125,18 @@ issues #6 and #7) were reported by Michel Dumontier.
   no time or memory flags; 400 fresh cases with the route on and off, every
   differing row decided (old-path timeouts, unsound `DIFFERENT` rows of the
   old path, and HermiT listing errors).
+- **Full IRIs in output.** `km classify --iris full` (or `KM_IRIS=full`)
+  prints every entity as its full IRI, for every input syntax and in every
+  output row. The default (`--iris source`) is unchanged and may change in a
+  later version. See `docs/INPUT-FORMATS.md`, "Entity names in output"
+  (GitHub issue #8, reported by Michel Dumontier).
+- **Plugin runs.** No `km` process survives the end of a query, whichever
+  way it ends (normal end, time out, interrupt, dispose, JVM exit). A batch
+  query that hits the reasoner's time out keeps running in the background
+  and serves later calls; `interrupt()` discards it and returns after the
+  stopped runs have cleaned up. Temporary files are named
+  `kmarust-<pid>-...` in `java.io.tmpdir` and are removed when the query
+  ends. See `protege/README.md`.
 - **Input and output details.** Inverse property operands are read in
   `SubObjectPropertyOf`, `EquivalentObjectProperties`,
   `DisjointObjectProperties` and the property characteristics. DL-safe
@@ -138,21 +163,19 @@ engine is complete on every OWL 2 DL input.
   pool inputs. The other inputs have rows missing, a model that the checker
   took too long to check, or no model. The rows that were checked had no
   disagreement with KM. The checkers-on run below gives the current count.
-- **Checkers-on run.** One pool run with the Lean checkers switched on,
-  on the first release candidate (`caf9c171`): 1,693 inputs solved, 1,619
-  fully certified (a hint or refutation accepted, no checker rejected), 74
-  solved but not certified (67 declined, 7 timed out; reasons in
-  `scratch/certcount/results-rc1/summary.txt`), 15 unsolved, 0 rejected.
-  Three rule inputs (`ore_ont_2526`, `6615`, `15063`) timed out in that
-  run. The rules-first change (below) fixes them; to be re-run at the tag:
-  `[[TBD: checkers-on run at the tag]]`. Three inputs (`ore_ont_13483`,
-  `13690`, `3562`) give a different answer hash under the checkers. The
-  cause is a different listing of subsumption edges of unsatisfiable classes
-  between the in-process engine and the forked worker. The sets of
-  unsatisfiable classes are the same, and so is the closure for satisfiable
-  classes. The earlier run at `bbe67385` took 1.7 times the plain wall time
-  in total (median ratio 1.13; 1.01 on inputs over 5 s) and 1.5 times the
-  summed peak memory (median ratio 1.01).
+- **Checkers-on run.** One pool run with the Lean checkers switched on, on
+  `07fba7aa` (the parent of the third candidate; counts in
+  `scratch/certcount/results-rc3/summary.txt`): 1,696 inputs solved, 1,621
+  fully certified (a hint or refutation accepted, no checker rejected), 75
+  solved but not certified (65 declined, 10 timed out), 12 unsolved, 0
+  rejected. Three inputs (`ore_ont_13483`, `13690`, `3562`) give a
+  different answer hash under the checkers. The cause is a different
+  listing of subsumption edges of unsatisfiable classes between the
+  in-process engine and the forked worker. The sets of unsatisfiable classes
+  are the same, and so is the closure for satisfiable classes. An earlier
+  run (`bbe67385`) took 1.7 times the plain wall time in total (median ratio
+  1.13; 1.01 on inputs over 5 s) and 1.5 times the summed peak memory
+  (median ratio 1.01).
 - **Rule ontologies under certificate modes.** The ground-rule reduction
   has no Lean certificate. KM runs the older rules route first (which has
   one) only when a rules certificate is requested by name, with a 30 s
@@ -163,18 +186,15 @@ engine is complete on every OWL 2 DL input.
 - **Inconsistent inputs.** A refutation certificate and a checker proved in
   Lean cover inconsistent inputs. 42 of the 46 inputs on which KM answers
   "inconsistent" were certified (`docs/V1.7.0-INCONSISTENCY-CERT.md`); the
-  checkers-on run on `caf9c171` certifies 43 of 46. Of the four that stayed open
-  (`ore_ont_1123`, `4141`, `8445`, `10860`), `4141` is now certified, and
-  `1123`, `8445` and `10860` are not (all three declined in that run).
+  checkers-on run on `07fba7aa` certifies 43 of 46. Of the four that stayed
+  open (`ore_ont_1123`, `4141`, `8445`, `10860`), `4141` is certified, and
+  `1123`, `8445` and `10860` are not (all three declined).
 - **Proof scope.** According to the merge messages, completeness is proved
   on OWL EL, ALC and SHI (v1.6.3), and the v1.7.0 work adds SHIQ at the
   normal-form level, knowledge bases with an ABox, datatypes and the
   nominal fragment C2a, with role features. Inputs outside these parts have
-  checked-model certificates only. Release chain on the first candidate
-  (`caf9c171`): the five Lean gates pass (elc 9, routing 310, ht 253, cb 44,
-  rules 40 tests) with 0 `sorryAx`; the axiom audit covers 66,756 constants
-  and finds exactly `propext`, `Classical.choice` and `Quot.sound`. To be
-  re-run from the tag: `[[TBD: Lean certification from the tag]]`.
+  checked-model certificates only. The Lean gate results are under "Checks
+  for this release".
 - Soundness and completeness claims hold for the Lean statements, not for
   the Rust code. Tests, differential runs and the checkers compare the Rust
   answers with the statements.
@@ -182,7 +202,8 @@ engine is complete on every OWL 2 DL input.
 ### Speed and memory
 
 Ibex, 585 held-out inputs, one core, 240 s limit. First release candidate
-(`caf9c171`, PGO binary) and Konclude v0.7.0-1138 in the same run. Mean and
+(`caf9c171`, PGO binary; the engine is unchanged for these inputs in rc2 and
+rc3) and Konclude v0.7.0-1138 in the same run. Mean and
 median time are over the 577 inputs that both solve; memory is the peak.
 
 | | solved | mean time | median time | median memory | mean memory |
@@ -194,10 +215,9 @@ median time are over the 577 inputs that both solve; memory is the peak.
 KM is faster on 381 of the 577 common inputs and smaller on 463. The
 v1.6.5 row comes from a plain build, not PGO. The PGO to plain time ratio
 is 0.92 on 196 pool inputs with identical answers.
-Earlier preliminary runs (`ebe741b4`, `bbe67385`) gave 1.94 s and 1.37 s
-means and are superseded. Re-run at the tag:
-`[[TBD: held-out re-run at the tag]]`. Pool time against v1.6.5 and the
-baselines: `[[TBD: pool mean and median against v1.6.5 and the baselines]]`.
+The final binary is measured again at the tag (see "Open items"). On the
+pool, the gates for rc2 and rc3 show no time or memory regression against
+the previous candidate.
 
 What changed in the engine, from the merge messages. Each merge passed a
 paired pool gate on Ibex with 0 answer differences on 1,696 solved inputs
@@ -309,7 +329,7 @@ Evidence:
 - 5,000 targeted TBox fuzz cases on 8 routes against HermiT after the
   transitive fix: 0 KM errors (54 per CB route before).
 - 4,920 standard and 2,400 blocking random cases agree with HermiT.
-- On the first candidate (`caf9c171`): two TBox sweeps of 20,200 cases on
+- On `caf9c171` and `07fba7aa`: two TBox sweeps of 20,200 cases on
   12 routes with 0 unsound and 0 incomplete answers on every route, and the
   64,000-case campaign and the targeted nominal families with 0 wrong
   answers.
@@ -332,23 +352,39 @@ hand proofs are in the agents' reports (for `r9600_0013`:
 
 ## Release candidates
 
-- **v1.7.0-rc1** (`caf9c171`, published pre-release). Known issues as
-  published: the complete r-Succ rule made many plugin calls time out
-  (11,091 KM timeouts on the parity comparable sets, against 1,573 before)
-  and `ore_ont_13584` data-value batch took over 300 s; 402
-  `getDataPropertyValues` calls were declined next to integer facet
-  restrictions; three rule inputs (`ore_ont_2526`, `6615`, `15063`) timed
-  out under the checkers; a one-individual functional data property case
-  was reported consistent (see below).
-- **v1.7.0-rc2** (`9e6761f3`, published pre-release). Adds the rules-first
-  budget and the root-edge offer fix. Known issues as published: KM
-  timeouts 3,617 on the parity comparable sets; `ore_ont_13584` data-value
-  batch 51 s; the 402 declined data-value calls; one right-to-wrong plugin
-  call (`ore_ont_3205`); batch runs and temporary files of the plugin not
-  yet cleaned up. Verification: the release chain above and the checkers-on
-  and sweep runs on `efa9ec33`.
-- **rc3** (the successor of this commit). Adds the fixes under "Fixed since
-  rc2".
+Three pre-releases were published. The texts below follow their GitHub
+release notes.
+
+- **v1.7.0-rc1** (`caf9c171`). Known issues: inputs that combine nominals
+  with inverse properties, the universal property or data values can be much
+  slower than in v1.6.5 or give no answer in time (given answers are
+  correct); with `KM_LEAN_CHECKERS` set, three rule ontologies
+  (`ore_ont_2526`, `6615`, `15063`) time out; the commit does not compile on
+  macOS and Windows, so rc1 has only a Linux x86_64 binary and no plugin
+  jars.
+- **v1.7.0-rc2** (`9e6761f3`). Builds on macOS and Windows; plugin jars for
+  Protégé 5 and 6. Less slowdown on nominal inputs (about 330 of 503 test
+  cases that gave no answer on rc1 answer again); rule ontologies take the
+  default path under `KM_LEAN_CHECKERS`. Known issues: a wrong answer
+  (regression since rc1) when one individual has two values of a functional
+  data property and another individual also has a value (shown in the plugin
+  as `isEntailed` false for a negative data property assertion that holds;
+  `ore_ont_3205`; v1.6.5 not affected); plugin queries slower on inputs with
+  nominals (about 60 ORE ontologies); `getDataPropertyValues` declined on
+  some ontologies with integer facet restrictions; no answer in time on
+  about 0.4 percent more class-level test cases; the plugin jars carry the
+  version 1.7.0 internally.
+- **v1.7.0-rc3** (`c63f3a44`). Fixes the wrong answer above, sends labels of
+  individuals only on demand (with the Lean module `CBRSuccDemand`), fixes
+  `getDataPropertyValues` next to facets, cleans up plugin processes and
+  files, adds `--iris full`. Known issues: synthetic inputs in which many
+  individuals may equal the same nominal can be much slower than in v1.6.5,
+  and some property-value queries on them time out (627 of the 673 lost
+  calls on one small ontology); no answer within 60 s on about 0.25 percent
+  more class-level cases than before the complete rule (48 of 20,200 per
+  sweep); a `km` started by a JVM killed with SIGKILL runs to its own time
+  limit; 75 of 1,696 pool answers are not fully checked with the checkers on;
+  the plugin jars carry the version 1.7.0 internally.
 
 ## Fixed since rc2
 
@@ -356,60 +392,57 @@ hand proofs are in the agents' reports (for `r9600_0013`:
   values of a functional data property, when another individual also has a
   value, was reported consistent. The n-ary singleton rule (`bfb7be93`) made
   the clash axiom `DifferentIndividuals(b b)` vacuous. The projection now
-  writes `ClassAssertion(owl:Nothing b)` (`c616d963`, `1845fd9f`). It also
-  turned `isEntailed(NegativeDataPropertyAssertion(...))` on
-  `ore_ont_3205` from true to false in the plugin.
+  writes `ClassAssertion(owl:Nothing b)` (`c616d963`, `1845fd9f`).
 - Plugin: `getDataPropertyValues` next to integer facet restrictions
   answers again (402 declined calls on `ore_ont_2548`, `13700`, `9662`).
-- Plugin: no orphaned km processes; batch runs (data property values,
-  object property values, realization) survive a per-call time out and
-  answer the next call, while `interrupt()` discards them; temporary files
-  are deleted on every path (`39f1d6b4`; `protege/README.md`). Java suite
-  219 of 219; the plugin harness on 3,300 cases gives 3,287 answers, 13
-  time outs and no wrong rows.
+- Plugin: no orphaned km processes; batch runs survive a per-call time out,
+  `interrupt()` discards them and returns after cleanup; a stopped batch
+  always ends its call with the stop (`39f1d6b4`, `ad1411b3`).
 - Engine: demand-driven r-Succ offers (`7616d8b7`) with the Lean module
-  `CBRSuccDemand`; the CB gate audits the surface theorem
-  `certifiedCBDeferredLabelUnread`.
-- KM builds on macOS and Windows again (`tmpfile.rs`).
+  `CBRSuccDemand`.
+- `km classify --iris full` (`2f77686f`).
 
 ## Checks for this release
 
-Release chain on Ibex for the first candidate (`caf9c171`; pinned rustc
-1.95.0). The chain for the second candidate (`9e6761f3`) is all GO: gates
-elc 9, routing 311, ht 253, cb 44 and rules 40 tests, Rust step 3,806
-passed, Java 198, axiom audit clean. First candidate:
+Release chain on Ibex for the parent commit `07fba7aa` of the third
+candidate (pinned rustc 1.95.0, Lean 4.30.0-rc2; receipts
+`gates.json`, `gate-*.json`, `full-rust.json`, `java-receipt.json`
+attached to the candidate release). The third candidate adds only the plugin
+interrupt and cleanup fix and the `--iris` option; default output is
+byte-identical on 200 pool inputs.
 
-- Five Lean gates pass with real checkers (elc 9, routing 310, ht 253, cb
-  44, rules 40 tests), 0 `sorryAx`. Axiom audit: 66,756 constants; the
-  axioms are exactly `propext`, `Classical.choice` and `Quot.sound`.
-- Official Rust step: 3,804 passed, 0 failed, 12 ignored.
-- Plain `cargo test` of the library: 3,238 passed, 21 failed. The 21 are
-  the tests that need the built Lean checkers. All integration targets pass.
-- Java: 198 tests, 0 failures.
-- PGO build with rustc 1.95.0.
-- Pool (1,708 inputs, 240 s, one core): 1,696 solved, with answers identical
-  to every earlier gate.
-- The second candidate (`36aa4a7c`) adds the rules-first budget and the
-  root-edge offer fix. For both, the agents report the five gates passing
-  with real checkers and a paired pool gate with 0 answer differences on
-  1,696 solved inputs.
+- Five Lean gates pass with real checkers: elc 9, routing 311, ht 254, cb
+  44 and rules 40 tests, 0 failures, 0 `sorryAx`. The CB gate audits the
+  theorem `certifiedCBDeferredLabelUnread`. The whole-library axiom audit
+  (66,756 constants on rc1; clean on rc2) finds only `propext`,
+  `Classical.choice` and `Quot.sound`.
+- Official Rust step: 3,810 passed, 0 failed, 12 ignored. The plain
+  `cargo test` of the library fails 21 tests that need the built Lean
+  checkers; all integration targets pass.
+- Java: 219 tests, 0 failures, 0 errors. The interrupt fix was also run 20
+  times as the full Java suite on two cores, all green.
+- GitHub build of the third candidate: `km` for Linux x86_64 and aarch64,
+  macOS x86_64 and aarch64 and Windows x86_64; both plugin jars built,
+  tested and installed in stock Protégé.
+- PGO build with rustc 1.95.0: the PGO to plain time ratio is 0.92 on 196
+  pool inputs with identical answers.
+- Pool (1,708 inputs, 240 s, one core): 1,696 solved, with answers
+  identical to every earlier gate.
+- Differential testing against HermiT: two sweeps of 20,200 class-level
+  cases on 12 routes (0 unsound, 0 incomplete on every route), 5,000 role
+  cases, 3,300 cases with individuals (command line and plugin), a
+  64,000-case campaign and targeted families: no wrong KM answer. The
+  automatic route gives no answer on 176 and 197 of 20,200 cases in the two
+  rounds (129 and 151 before the complete r-Succ rule).
 
-Checkers-on pool run on `efa9ec33` (rc2): 1,696 solved, 1,622 certified, 0
-rejected. Two TBox sweeps on `efa9ec33`: 0 unsound and 0 incomplete on 12
-routes. The third candidate adds the demand-driven offers (five gates pass
-with real checkers; the cb gate audits `certifiedCBDeferredLabelUnread`;
-pool gate against `efa9ec33` with 0 differences; the known 21 library
-failures only; Java 202 of 202), the data-value fixes, and the plugin
-batch work (Java 219 of 219). To be repeated from the tag:
-`[[TBD: full release chain at the tag]]`.
+The final commit repeats the release chain (see "Open items").
 
 ## Known limits
 
 - The complete r-Succ rule costs time on some nominal inputs. Demand-driven
   offers (`7616d8b7`, `docs/NOMINALS-CB.md` 14) removed most of it:
   of 503 TBox sweep cases that had gone silent on rc1, 407 answer again;
-  `ore_ont_13584` data-value batch takes 2.0 s (1.7 s before the complete
-  rule, 51 s on rc2). The cost that stays is on synthetic inputs where many
+  the `ore_ont_13584` data-value batch takes 1.6 s (56 s on rc2). The cost that stays is on synthetic inputs where many
   individuals may equal the same nominal (the `f9001` family; one probe
   1.2 s before the rule, over 120 s now) and on two
   `--realize --values --different` examples (about 30 s to about 170 s).
@@ -420,9 +453,14 @@ batch work (Java 219 of 219). To be repeated from the tag:
   13.2 and 14.4). The forced nominal routes are exact or silent on a few
   fixtures (`m2058`, `m2197`, `cut_r129_pushback`, `merge_r1646`, the
   universal-role hub with data values).
-- Plugin: a one-shot `km classify` or `explain` started by a JVM that is
+- Plugin: a one-shot `km classify` or `km explain` started by a JVM that is
   killed with SIGKILL runs to the end of its own time limit. After a JVM
   shutdown with SIGTERM or SIGINT, the plugin stops the km processes.
+- With the checkers on, 75 of 1,696 pool answers are not fully checked
+  because a checker declines, or runs out of time or memory. No checker
+  rejects an answer.
+- `km classify --iris full` is off by default; names in the default output
+  are as the input spells them.
 - `ore_ont_12451` takes 44 s where v1.6.5 took 6 s (its speed came from the
   unsound cache confirmation). Three large inputs use 13 to 16 percent more
   memory than before the r-Succ change (`ore_ont_10926`, `1673`, `12128`).
@@ -433,7 +471,7 @@ batch work (Java 219 of 219). To be repeated from the tag:
 - Hint coverage is partial: some inputs have no model, a partial model, or a
   model the checker cannot check within the budget.
 - Inconsistent inputs: 43 of 46 are certified in the checkers-on run; the
-  others are `ore_ont_1123`, `8445` and `10860`. To be re-run at the tag.
+  others are `ore_ont_1123`, `8445` and `10860`.
 - Plugin: the parity runs covered 151 of the 212 strict-rejected inputs
   (51, then 100 more). Class
   expression queries with `ObjectMinCardinality` over a non-simple role are
@@ -456,5 +494,6 @@ batch work (Java 219 of 219). To be repeated from the tag:
 
 ## Assets
 
-`[[TBD: asset names and checksums]]` (the Protégé 5 and 6 jars, and the km
-executables for the five platforms, as in v1.6.5).
+The Protégé 5 and Protégé 6 plugin jars with bundled executables, `km` for
+the five platforms, and the checksum files, as for the release candidates.
+Names and checksums are listed under "Open items".
