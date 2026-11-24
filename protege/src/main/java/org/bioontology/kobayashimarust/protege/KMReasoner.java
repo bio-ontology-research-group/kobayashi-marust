@@ -1228,11 +1228,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      * synchronized: the computing thread holds the reasoner monitor.
      */
     @Override public void interrupt() {
+        // Set the flag first, so the running call sees the stop before the
+        // stopped batch runs below have ended.
+        boolean running = taskRunning;
+        if (running) interruptRequested = true;
         // A batch run that outlived a time out is native work of this
         // reasoner too: an interrupt stops it whether or not a call runs.
         cancelBatches();
-        if (!taskRunning) return;
-        interruptRequested = true;
+        if (!running) return;
         killNative();
     }
 
@@ -2769,6 +2772,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         while (true) {
             if (interruptRequested) {
                 cancelBatches();
+                // interrupt() may have taken the batch off the map first.
+                batch.cancel();
+                awaitEnd(Collections.singletonList(batch));
                 throw stopped();
             }
             if (timedOut) {
@@ -2778,6 +2784,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             try {
                 Object value = batch.result.get(20, java.util.concurrent.TimeUnit.MILLISECONDS);
                 batches.remove(key, batch);
+                // A stopped run can still end with an answer (its process
+                // finished just before the kill). The stop wins: interrupt()
+                // must end the call, not let it go on to its next run.
+                if (batch.cancelled) throw stopped();
                 return new Object[]{batch.context, value};
             } catch (java.util.concurrent.TimeoutException pending) {
                 // keep waiting
@@ -2812,6 +2822,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         // temporary files (README "Temporary files"). The native process is
         // already gone, so the run ends at once; the bound only guards
         // against a run that never started its process.
+        awaitEnd(stopping);
+    }
+
+    /** Wait (bounded) until the given stopped runs have ended and deleted their files. */
+    private static void awaitEnd(List<Batch> stopping) {
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(BATCH_STOP_SECONDS);
         boolean interrupted = Thread.interrupted();
         for (Batch batch : stopping) {
