@@ -226,6 +226,34 @@ is 0.92 on 196 pool inputs with identical answers. On the
 pool, the gates for rc2 and rc3 show no time or memory regression against
 the previous candidate.
 
+### All baseline reasoners (full pool)
+
+KM 1.7.0 (plain build of `e6257322`, pool run of 1,708 valid ORE 2015
+inputs, one core, 240 s) against the stored results of the comparative run
+of October 2026 (same node type and limits; results in
+`v145-comparative-20261004`). A baseline counts an input as solved when its
+answer agrees with another full OWL DL reasoner. Times and memory are over
+the inputs that KM 1.7.0 and the baseline both solve. The baselines were not
+run again for this release.
+
+| Reasoner | solved | mean time: KM / baseline | median time: KM / baseline | median memory: KM / baseline |
+|---|---:|---:|---:|---:|
+| KM 1.7.0 | 1,696 | | | |
+| Konclude 0.7.0 | 1,655 | 1.01 s / 2.92 s | 0.11 s / 0.27 s | 26 / 47 MiB |
+| HermiT | 1,539 | 0.59 s / 15.7 s | 0.09 s / 4.97 s | 24 / 168 MiB |
+| ELK | 1,411 | 1.05 s / 12.0 s | 0.09 s / 4.78 s | 24 / 165 MiB |
+| Openllet | 1,402 | 0.38 s / 16.3 s | 0.07 s / 4.89 s | 21 / 171 MiB |
+| Whelk | 1,380 | 0.86 s / 17.7 s | 0.09 s / 6.20 s | 23 / 194 MiB |
+| RustDL 0.4.28 | 1,212 | 0.83 s / 5.14 s | 0.09 s / 0.33 s | 23 / 25 MiB |
+| JFact | 1,101 | 0.17 s / 17.4 s | 0.05 s / 5.21 s | 17 / 172 MiB |
+| Sequoia | 629 | 0.69 s / 18.7 s | 0.06 s / 7.38 s | 18 / 254 MiB |
+
+KM 1.7.0 solves every input that ELK, JFact, RustDL and Sequoia solve, and
+all but one of the inputs that each of Konclude, HermiT, Openllet and Whelk
+solves. Its mean memory is also lower than each baseline's on the common
+inputs. Against RustDL the memory gap is small: KM uses less on 546 of the
+1,212 common inputs.
+
 What changed in the engine, from the merge messages. Each merge passed a
 paired pool gate on Ibex with 0 answer differences on 1,696 solved inputs
 and no flagged time or memory regressions, except where noted below.
