@@ -1,0 +1,68 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric,shapes.misc,arrows.meta,positioning,calc}
+\tikzset{
+  flow/.style={font=\footnotesize, >={Stealth[length=1.5mm]}},
+  step/.style={draw, rounded corners=1pt, align=center, text width=#1, inner sep=2pt, fill=white},
+  step/.default=48mm,
+  test/.style={draw, chamfered rectangle, chamfered rectangle xsep=2pt, align=center, text width=#1, inner sep=2pt, fill=gray!10},
+  test/.default=48mm,
+  term/.style={draw, rounded corners=5pt, align=center, text width=#1, inner sep=2pt, fill=gray!22},
+  term/.default=26mm,
+  lab/.style={font=\scriptsize, inner sep=1pt, fill=white}
+}
+
+\newcommand{\KM}{Kobayashi-MaRust}
+\newcommand{\km}{KM}
+\newcommand{\todo}[1]{\textcolor{red}{[#1]}}
+\newcommand{\EL}{$\mathcal{EL}^{++}$}
+
+% Numbers of the held-out comparison (KM, Konclude, OxidOWL).
+% Regenerate with scripts/summ.py from the Ibex records; see README.md.
+\input{generated/heldout.tex}
+
+\title{Kobayashi-MaRust: a hybrid OWL~2~DL reasoner in Rust}
+% Author list as on the earlier system description; to be confirmed.
+\author{Robert Hoehndorf$^{1}$ \quad Michel Dumontier$^{2}$\\[0.6em]
+\small $^{1}$Computer, Electrical and Mathematical Sciences and Engineering Division,\\
+\small King Abdullah University of Science and Technology (KAUST), Thuwal, Saudi Arabia\\
+\small $^{2}$Institute of Data Science, Maastricht University, Maastricht, the
+Netherlands}
+\date{Draft of 25 November 2026, describing KM v1.7.0}
+
+\begin{document}
+\maketitle
+
+\input{sections/abstract}
+\input{sections/intro}
+\input{sections/background}
+\input{sections/overview}
+\input{sections/procedures}
+\input{sections/routing}
+\input{sections/services}
+\input{sections/certification}
+\input{sections/evaluation}
+\input{sections/discussion}
+
+\appendix
+\input{sections/appendix}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

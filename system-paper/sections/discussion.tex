@@ -1,0 +1,84 @@
+\section{Discussion}
+\label{sec:discussion}
+
+KM shows that completion, consequence-based saturation, and hypertableau search
+can share one frontend, one clause representation, and one contract for
+publishing an answer, and that a router over source features then selects among
+them without access to the expected result.  On held-out inputs of the
+ORE~2015 pool this combination solves as many inputs as Konclude within the
+same limits, in less time and memory on the inputs both solve.  The
+consequence-based procedures answer most inputs, and the hypertableau
+procedures answer the inputs on which saturation exhausts its budget, which
+include GALEN and large $\mathcal{SRIQ}$ terminologies.  \todo{Add the
+per-route counts of the v1.7.0 pool run.}
+
+Three design decisions distinguish KM from the reasoners it builds on.  First,
+every procedure returns a complete answer or declines.  A fast procedure for a
+fragment can therefore be added without a proof that the router sends it only
+inputs of that fragment, because the procedure itself checks the clauses it
+receives.  Second, a procedure runs in its own process, which bounds the memory
+of a classification by the largest worker and makes a time or memory limit
+enforceable from outside.  Third, the evidence for an answer can be checked
+by a program derived from a Lean proof.  The checked model for a negative
+answer is the component that scales: it certifies 1,618 of 1,696 pool answers
+without a completeness proof for any optimised procedure.
+
+The port of Konclude's kernel deserves a separate remark.  Konclude's
+saturation, caching, and classification strategies are the result of a decade
+of engineering, and reimplementing them from the published descriptions would
+have produced a different and weaker system.  Translating the code function by
+function preserved that engineering, and the differential tests then found two
+defects that the port had inherited and that the original also shows.  The
+port is distributed under Konclude's licence, the LGPL~v3.
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+The evaluation corpus is ORE~2015.  The held-out half is disjoint from the
+inputs used for development decisions, and it is drawn from the same
+collection as the design half, so it measures generalisation within that
+collection.  A snapshot of 189 current OBO Foundry ontologies was classified
+with KM~v1.3.0 only; that release completed 97 of them against 139 for
+Konclude, mostly because its frontend refused inverse properties in positions
+that later releases accept.  Repeating this measurement with v1.7.0, and
+adding SNOMED~CT and the large OBO ontologies with imports merged, is the next
+evaluation step.
+
+Twelve admitted inputs of the pool remain unsolved within 240 seconds.  Inputs
+in which many individuals may be equal to the same nominal can take minutes,
+and some property-value queries on such inputs exceed the plugin's time limit.
+KM reads functional syntax, OWL/XML, RDF/XML, and Turtle; it does not read
+Manchester syntax, and it performs no network access, so imports must be
+merged into one document before classification.
+
+The Lean results cover the reasoning rules, the checkers, and reference
+procedures on fragments.  The optimised Rust procedures, the parser, and the
+router are validated by the checkers on individual answers and by tests; about
+5\% of the pool answers have no certificate because a checker declined or
+exceeded its budget.  Differential testing found wrong answers in every release
+line before v1.7.0, and the absence of a wrong answer in the v1.7.0 campaigns
+is evidence for the tested distributions of ontologies.
+
+\subsection{Availability}
+\label{sec:availability}
+
+KM is developed at
+\url{https://github.com/bio-ontology-research-group/kobayashi-marust}.  The
+release \texttt{v1.7.0} provides the \texttt{km} executable for Linux and macOS
+on x86-64 and ARM and for Windows on x86-64, and the plugin archives for
+Prot\'eg\'e~5.6 and Prot\'eg\'e~6.  The Rust and Lean sources and the plugin are
+released under the BSD 3-Clause licence, and the Konclude port under the
+LGPL~v3.  The repository contains the benchmark harness, the per-input result
+files of the measurements reported here, the errata with reproducers, and the
+scripts that run the Lean gates.  \todo{Archive the v1.7.0 release and the
+benchmark records with a DOI and cite it here.}
+
+\section{Conclusion}
+
+\KM{} combines the three families of OWL~2~DL classification procedures in one
+Rust executable, selects among them from features of the source, and publishes
+only complete answers.  It answers class, individual, and property queries,
+explains entailments, updates a classification after an edit, and runs inside
+Prot\'eg\'e.  On held-out ORE~2015 ontologies it solves as many inputs as
+Konclude with lower time and memory on common inputs, and Lean checkers certify
+95\% of its answers on the full pool.

@@ -1,0 +1,489 @@
+\subsection{Frontend and normalised clauses}
+\label{sec:frontend}
+
+The frontend accepts OWL functional syntax directly.  OWL/XML and RDF/XML are
+parsed with the Horned-OWL Rust library \cite{lord2024horned} and Turtle with a
+separate RDF parser; both paths produce a functional-syntax handoff into the
+same normaliser.  RDF input must map completely onto OWL structures; leftover
+triples or disconnected blank nodes produce an unsupported result instead of a
+partial ontology.  The classifier performs no network access, so an import
+closure must be merged into one document beforehand.  The frontend
+also checks the OWL~2~DL global restrictions and refuses an ontology that
+violates them with an explanation and a dedicated exit code, so that a
+malformed input is reported as such instead of being classified under a
+repaired reading.
+
+A streaming first pass resolves IRIs, builds a typed source representation,
+and records the source profile that drives routing: counts of logical TBox,
+RBox, ABox, rule, declaration, and annotation axioms; declared and distinct
+classes, properties, and individuals; counts of each axiom and concept
+constructor, including conjunction, disjunction, complement, existential and
+universal restrictions, cardinalities, nominals, value and self restrictions,
+and datatype use; occurrences of the bottom class and bottom properties; and
+the maximum concept depth, role-chain length, and cardinality bound.  The pass
+also computes a Konclude-compatible expressivity code by porting Konclude's
+expressiveness calculation, including its preprocessing effects for active
+transitive roles, inverse partners, and reachable nominal domains; on the 592
+benchmark ontologies every code matches the official Konclude binary.  The same
+pass evaluates several source-level certificates that the router uses, for
+example that a positive ABox cannot change any named-class subsumption, or
+that no number-restricted role shares a hierarchy component with an inverse,
+chained, or transitive role.
+
+Normalisation produces DL clauses $\Gamma\rightarrow\Delta$ whose body
+$\Gamma$ is a conjunction and whose head $\Delta$ is a disjunction of atoms.
+Atoms are concept atoms $A(t)$, role atoms $R(s,t)$, and equality atoms
+$s\approx t$; an inequality is an equality atom in a body.  Terms are the
+central variable $x$, its neighbour variables, named individuals, auxiliary
+constants, and function terms $f(t)$ standing for existential witnesses.  Atom
+lists are sorted and de-duplicated so that structurally equal clauses have one
+representation.  The clausifier follows the structural transformation used by
+hypertableau and consequence-based reasoners
+\cite{motik2009hypertableau,bate2018jair}: axioms are converted to negation
+normal form; each structurally distinct complex subconcept receives one fresh
+definer concept shared across its occurrences; a positive existential
+restriction $\exists R.C$ becomes the clauses $\Gamma\rightarrow R(x,f(x))$ and
+$\Gamma\rightarrow C(f(x))$ with a fresh function symbol $f$; a universal
+restriction receives introduction clauses only where it occurs at negative
+polarity; qualified number restrictions become at-least and at-most clauses
+whose heads contain equalities between witnesses, and are additionally
+recorded as first-class cardinality definitions for the cardinality routes; a
+nominal $\{o\}$ becomes a fresh proxy concept with a recorded mapping; inverse
+roles produce bridge clauses $R(x,y)\rightarrow S(y,x)$ and
+$S(x,y)\rightarrow R(y,x)$; and ABox assertions become ground clauses.  An
+augmentation pass adds transitivity, role-chain, domain, and range clauses,
+using role automata for chains, including chains with inverse members.
+
+Data ranges and literals are abstracted to concepts over data nodes.  A
+datatype oracle decides membership, equality, and inclusion between the data
+concepts that occur in the clause set according to the OWL~2 datatype map and
+emits an ordinary concept clause for each decided relation.  When a decision
+procedure returns unknown it emits nothing, so an unsupported datatype corner
+degrades to the sound abstraction.  Datatype reasoning therefore stays in the
+frontend, and no calculus rule or proof is specific to datatypes.  Side
+structures carry what a bare clause vector cannot: the internal-name-to-IRI
+map, named and declared classes, whether the RBox is EL-safe, ABox facts
+established during parsing, nominal and ABox provenance with a completeness
+flag, cardinality definitions, definer provenance, the normalised source TBox,
+DL-safe rules, the source profile, and the selected route.  A worker that
+receives clauses but would lose typed ABox or cardinality metadata must
+decline.  Large sources stream clauses to a file and side data to a meta file,
+so the clause set is never copied through an intermediate runtime or held
+twice in memory.
+
+\subsection{\EL{} completion}
+\label{sec:elc}
+
+The EL worker classifies ontologies in the \EL{} fragment without nominals and
+concrete domains.  It implements the completion procedure of Baader, Brandt,
+and Lutz \cite{baader2005el} with the indexing and scheduling of ELK
+\cite{kazakov2011concurrent,kazakov2014elk}, over the frontend's clauses.  Its
+output is the full set of subsumers of every class (KM computes no transitive
+reduction), the unsatisfiable classes, and the consistency of the ontology.
+Figure~\ref{fig:flow-el} shows the procedure and
+Table~\ref{tab:opt-el} in the appendix lists every optimisation with its
+default and origin.
+
+The worker first maps each clause onto one of seven normal forms,
+$A\sqsubseteq B$, $A\sqcap B\sqsubseteq C$, $A\sqsubseteq\exists R.B$,
+$\exists R.A\sqsubseteq B$, $A\sqsubseteq\bot$, $R\sqsubseteq S$, and
+$R\circ S\sqsubseteq T$, plus reflexive roles, with all names interned to dense
+integers.  An $n$-ary conjunction becomes a left-deep chain of binary
+conjunctions whose auxiliary concepts are shared between identical prefixes; a
+domain axiom becomes $\exists R.\top\sqsubseteq B$; and the two Skolem
+half-clauses $\Gamma\rightarrow R(x,f(x))$ and $\Gamma\rightarrow C(f(x))$ are
+reassembled into $A\sqsubseteq\exists R.C$.  Every clause that matches none of
+these shapes, such as a disjunctive head, an equality, a range, or an inverse
+bridge, goes to a residual list.  Under the automatic route a zero-copy screen
+that mirrors this mapping runs in the frontend, so an ontology whose residual
+would be non-empty never reaches the EL route.
+
+If the residual is empty and the ontology consists only of acyclic named
+subclass edges, the worker computes the closure in reverse topological order
+\cite{kahn1962topological} and returns without saturation; a cycle sends it to
+the general procedure.  Otherwise it builds a rule index that stores, for every
+trigger concept, one contiguous record of its subclass, conjunction,
+existential, and existential-left-side axioms, precomputes the
+reflexive-transitive closure of the role hierarchy, seeds every class with
+itself and $\top$, and saturates.  Saturation keeps, for every class, a label
+of derived subsumers, forward edges, backward links keyed by target and exact
+role, and a propagation store for left-side existentials.  A new subsumer $d$
+of $c$ fires, in this order, the subclass rule, the conjunction rule joined
+from the smaller side, the bottom rule, the existential rule that adds an edge
+$(c,R,F)$, the backward propagation of $\bot$ to all predecessors, and the
+registration of every axiom $\exists R.d\sqsubseteq e$ in the propagation store
+together with its application to existing predecessors.  A new edge
+$(c,r,d)$ fires the stored propagations of $(d,r)$, propagates $\bot$ from $d$,
+applies role chains in both directions, and lifts the edge to every super-role,
+so that the existential and chain rules match roles exactly.  Each two-premise
+rule fires from whichever premise arrives second, so the fixpoint is the same
+under any schedule.  Items are processed per context: a context is drained
+completely before the next is activated, which keeps its tables in cache.
+A class is unsatisfiable when $\bot$ is in its label, and the ontology is
+inconsistent when $\bot$ is in the label of $\top$.
+
+With the certificate off, which is the default and the setting of the
+\texttt{elc} route, a non-empty residual makes the worker decline before any
+saturation.  Two certificate modes extend the procedure beyond pure \EL{}.
+Both read the saturated state as an interpretation $\mathcal{I}$ whose elements
+are the satisfiable class nodes, with $x_C\in D^{\mathcal{I}}$ exactly when $D$
+is in the label of $C$ and role extensions given by the derived edges; at the
+fixpoint $\mathcal{I}$ satisfies every \EL{} clause.  The check mode compiles
+each residual clause into a constraint over $\mathcal{I}$, with every Skolem
+function pinned to its own witness node so that distinct functions denote
+distinct elements, and evaluates it by a bounded join.  If every residual
+clause holds, $\mathcal{I}$ is a model of the whole ontology, every entailed
+subsumption holds in it, and the \EL{} answer is exact.  The repair mode, used
+by the certified EL route and by the production portfolio, treats the \EL{}
+answer as a lower bound and builds upper bounds by repair, in the spirit of
+lower- and upper-bound reasoning \cite{zhou2015pagoda}: each of two to eight
+passes forks the saturated state, makes one head atom of every violated
+residual instance true, re-saturates, and repeats until every residual clause
+holds.  A choice that makes a satisfiable named class unsatisfiable is banned
+and the pass restarts, as in conflict-driven search
+\cite{marquessilva1999grasp}.  A class whose additional named subsumers in the
+repaired models have an empty intersection is answered exactly; if at most 64
+classes remain undecided, the worker publishes the rest and the
+consequence-based engine classifies the undecided classes, and otherwise it
+declines.
+
+Two further paths change only how the computation is scheduled.  Context-parallel
+saturation partitions the contexts statically over workers that exchange edge
+halves in batched messages and detect termination by credit counting
+\cite{mattern1989credit}; it rebuilds labels in sorted order so that its output
+is byte-identical to the serial run, and the router enables it only for large
+ABox-free \EL{} terminologies.  A source-level scanner classifies very large
+flat taxonomies before the frontend runs, and small structured sources are
+classified inside the supervisor process to avoid a serialisation round trip.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[flow, node distance=3.2mm and 9mm]
+\node[step=60mm] (a) {normalised DL clauses};
+\node[step=60mm, below=of a] (b) {map to NF1--NF7 and reflexive roles; collect residual};
+\node[test=60mm, below=of b] (c) {residual empty and acyclic subclass edges only?};
+\node[step=34mm, right=of c] (c1) {topological closure};
+\node[test=60mm, below=of c] (d) {residual present and certificate off?};
+\node[term=34mm, right=of d] (x) {decline};
+\node[step=60mm, below=of d] (e) {rule index, role closure; seed $C\sqsubseteq C$, $C\sqsubseteq\top$};
+\node[step=60mm, below=of e] (f) {saturate: context worklist, backward links, propagations; serial or context-parallel};
+\node[test=60mm, below=of f] (g) {residual present?};
+\node[step=34mm, right=of g] (h) {check or repair the canonical model; residue to CB};
+\node[term=80mm, below=7mm of g, xshift=10mm] (out) {subsumers, unsatisfiable classes, consistency};
+\draw[->] (a) -- (b); \draw[->] (b) -- (c);
+\draw[->] (c) -- node[lab,above]{yes} (c1);
+\draw[->] (c1.east) -- ++(0.3,0) |- (out.east);
+\draw[->] (c) -- node[lab,right]{no} (d);
+\draw[->] (d) -- node[lab,above]{yes} (x);
+\draw[->] (d) -- node[lab,right]{no} (e);
+\draw[->] (e) -- (f); \draw[->] (f) -- (g);
+\draw[->] (g) -- node[lab,above]{yes} (h);
+\draw[->] (h) -- node[lab,right]{fail} (x);
+\draw[->] (h.south) |- node[lab,pos=0.3,right]{pass} ($(out.north east)+(0,0)$);
+\draw[->] (g) -- node[lab,right]{no} (out);
+\end{tikzpicture}
+\caption{\EL{} completion.  The worker declines whenever a clause falls
+outside the normal forms and no certificate is requested; a certificate either
+proves that the canonical model satisfies the residual clauses, answers all
+but a bounded residue that the consequence-based engine classifies, or
+declines.}
+\label{fig:flow-el}
+\end{figure}
+
+\subsection{Disjunctive consequence-based engine}
+\label{sec:cb}
+
+The consequence-based (CB) engine implements the disjunctive context calculus
+of Bate et al.\ \cite{bate2016sriq,bate2018jair} with the nominal extension of
+Tena Cucala, Cuenca Grau, and Horrocks \cite{tenacucala2018ijcai}, and it
+follows the term order, literal ordering, and index design of the Sequoia
+reasoner \cite{tenacucala2019sequoia,tenacucala2021payg}.  It is the
+procedure of last resort for every ontology outside the EL fragment, and the
+nominal-aware variant is the exact fallback of every specialist route.
+Figure~\ref{fig:flow-cb} shows the procedure, and
+Tables~\ref{tab:rules-cb} and~\ref{tab:opt-cb} in the appendix give the rules and
+optimisations.
+
+The worker interns the frontend's clauses into an ordered term representation
+in which the variables, the neighbour variables, individuals, and function
+terms $f(x)$ and $f(o)$ are 32-bit integers whose numeric order is the term
+order, so function terms are maximal.  Body equalities move to the head as
+inequalities, and a clause whose role body atom avoids the central variable
+must already have been rewritten by the frontend, which compiles transitivity
+and role chains into fresh propagation concepts.  Individuals survive only in
+nominal mode; outside it, a clause that mentions one is dropped and counted.
+Two frontend options shape the clause set on the production route:
+polarity-gated definitional clausification, which emits only the direction of
+each definer that its occurrences need \cite{plaisted1986structure} and thereby
+removes unguarded excluded-middle disjunctions, and triggered absorption, which
+compiles triggerable antecedents into guarded clause bodies
+\cite{steigmiller2014absorption}.  The worker then prepares, once per
+classification, an immutable ontology shared by all threads: clause indexes by
+body predicate, a guarded-role index for the absorbed shape
+$C(y)\wedge R(x,y)\rightarrow D(x)$, trigger bits for the Succ rule, a quotient of
+asserted individual equalities, and recognised nominal enumerations
+$A\equiv\{o_1,\ldots,o_n\}$.
+
+Classification creates one root context with core $\{A(x)\}$ for every named
+query class $A$ and one for $\top$.  A context holds clauses
+$\Gamma\rightarrow\Delta$ over its central variable and neighbour terms and
+runs a given-clause loop: it pops a clause, discards it if an active clause
+subsumes it, and applies the inference rules to the head literals that the
+ordering makes maximal.  Hyper resolves an ontology clause with one maximal
+head literal of each premise under a substitution that keeps the central
+variable fixed, except in the ground context, where it may bind individuals.
+Eq paramodulates with maximal equalities, oriented with the larger term first;
+Ineq removes reflexive inequalities; and Factor merges two equalities with a
+common left side, which together handle functional roles and number
+restrictions in the manner of ordered paramodulation
+\cite{bachmair1994rewrite}.  Elim discards tautologies, duplicates, and clauses
+subsumed by an active clause, and removes active clauses that a new clause
+subsumes.  When a context derives a maximal trigger literal on $f(x)$, Succ
+creates or reuses the successor context for $f$ and installs the trigger there
+as a hypothesis $p\rightarrow p$; Pred returns to the predecessor every
+function-free clause whose body consists of hypotheses it was sent, with the
+successor's core added to the body.  In nominal mode a single ground context
+receives every assertion and every top-level fact instantiated at every
+individual, and the rules r-Succ, r-Pred, Join, and Nom of the nominal calculus
+exchange ground atoms with it; Nom introduces fresh nominals for an at-most
+restriction over a nominal neighbour in stable blocks, and a run that exceeds
+its budget of 4,096 fresh nominals declares itself incomplete.
+
+The successor schedule decides how many contexts are created.  The default
+central strategy keys a successor by the image of its unit triggers and of its
+conditionally derived single triggers, which follows the shape of the Succ
+rule in the published calculus \cite{bate2016sriq} and the eager strategies
+of the context framework \cite{simancik2014fpt}; every other trigger arrives as
+a hypothesis.  The per-function strategy, which creates one empty-core context
+per function symbol, is the schedule of the single-threaded retry.  The literal
+ordering is a port of Sequoia's: predecessor-trigger atoms are smallest and
+pairwise incomparable; distinct concepts on the same term are mutually
+incomparable by default, so Hyper resolves on every disjunct; and when some
+clause head contains a disjunction over an internal definer, the definers are
+totally ordered above the named concepts, which restores ordered resolution on
+the normaliser's definers.
+
+Contexts communicate only through Succ and Pred messages.  The driver takes all
+pending messages as one batch, applies each to its target, and then saturates
+and propagates every touched context once; propagation is semi-naive, scanning
+only clauses and edges that are new since the last round.  The loop stops when
+no message is pending.  The terms are restricted to the central and neighbour
+variables, individuals, and one level of function terms, contexts are keyed by
+finite atom sets, and clauses are sets, so the fixpoint is reached; a global
+cap of 25 million messages remains as a resource backstop and, if it fires,
+marks the run incomplete.  The subsumers of $A$ are the named $B$ with a unit
+clause $\top\rightarrow B(x)$ in the root context of $A$, $A$ is unsatisfiable
+when that context derives the empty clause, and the ontology is inconsistent
+when the $\top$ context or the ground context does.  Classes in one strongly
+connected component of told subclass edges share a root context.  Threads
+take batches of queries from a shared cursor and each runs an independent
+engine over the shared prepared ontology; because the subsumers of one query
+depend on no other query, the partition changes no result.  An incomplete run
+exits with a distinct status and publishes nothing.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[flow, node distance=3.2mm and 9mm]
+\node[step=64mm] (a) {intern clauses; drop and count unsupported terms};
+\node[step=64mm, below=of a] (b) {prepare the shared ontology: indexes, triggers, equality quotient, ordering mode};
+\node[step=64mm, below=of b] (c) {root context with core $\{A(x)\}$ per query; ground context in nominal mode};
+\node[step=64mm, below=of c] (d) {given-clause loop on maximal literals: Hyper, Eq, Ineq, Factor, Elim, Join, Nom};
+\node[step=64mm, below=of d] (e) {propagate: Succ to successors, Pred to predecessors, r-Succ, r-Pred};
+\node[test=64mm, below=of e] (f) {messages pending?};
+\node[step=32mm, right=of e] (g) {apply the batch; saturate each touched context};
+\node[term=32mm, right=of f] (x) {cap or budget hit: incomplete};
+\node[term=64mm, below=of f] (out) {read off units $\top\rightarrow B(x)$ and empty clauses};
+\draw[->] (a) -- (b); \draw[->] (b) -- (c); \draw[->] (c) -- (d); \draw[->] (d) -- (e); \draw[->] (e) -- (f);
+\draw[->] (f.east) -- ++(0.35,0) |- node[lab,pos=0.25,left]{yes} (g.west);
+\draw[->] (g.north) |- (d.east);
+\draw[->] (f.south east) -- node[lab,below]{cap} (x.south west);
+\draw[->] (f) -- node[lab,right]{no} (out);
+\end{tikzpicture}
+\caption{The consequence-based engine.  Each context saturates locally; Succ
+and Pred messages are applied in batched rounds until none is pending.  A run
+that hits a resource backstop publishes nothing.}
+\label{fig:flow-cb}
+\end{figure}
+
+\subsection{Hypertableau procedures}
+\label{sec:ht}
+
+KM contains two hypertableau procedures: a native one written for KM after
+HermiT's design \cite{motik2009hypertableau,glimm2014hermit}, and a
+function-by-function Rust port of Konclude's completion and classification
+algorithms \cite{steigmiller2014konclude,steigmiller2016thesis}, entered through
+a bridge.  Both read the output of a converter that turns DL clauses into
+hypertableau clauses.  The converter's only logical transformation is reverse
+Skolemisation: the pair $\Gamma\rightarrow R(x,f(x))$ and
+$\Gamma\rightarrow C(f(x))$ becomes the existential $\Gamma\rightarrow\exists R.C$,
+and a disjunctive Skolem head is left unfolded because folding it would
+strengthen a disjunction into a conjunction.  It also parses the role
+hierarchy, encodes transitivity by propagated markers for universal
+restrictions \cite{horrocks1999transinv}, emits equality clauses for at-most
+and functionality constraints, emits first-class at-least and at-most
+definitions when a role-separation certificate permits them, eliminates pairs
+of complementary definers whose folding is independently derivable, and fences
+the combinations it cannot carry, such as nominals with inverse roles or
+inverse roles with number restrictions.  It counts every dropped or fenced
+clause, and every hypertableau route declines if any clause relevant to it is
+dropped.  Figure~\ref{fig:flow-ht} shows the two
+procedures, and Tables~\ref{tab:opt-ht} and~\ref{tab:opt-bridge} in the appendix
+list their optimisations.
+
+The native procedure decides satisfiability by a depth-first search over a
+completion graph whose facts carry dependency sets, the sets of branch levels
+that support them.  Each step drains a queue of new facts through
+hyperresolution: a new concept fact re-matches only the clauses whose body
+contains it, a new edge only the clauses with that role in the body, and a new
+node the clauses with an empty body \cite{motik2007opt}.  A clause with an
+empty head raises a clash, a single atom is asserted, an existential becomes
+an obligation, and a disjunction becomes a pending choice.  The step then
+merges every node that carries a nominal into one survivor, expands
+existential and at-least obligations on nodes that are not blocked, and scans
+the pending disjunctions, which are watched so that only the ones touched by
+a change are re-examined.  A disjunction with one live disjunct is asserted;
+otherwise the search branches.  It tries the disjuncts in order of past
+failures, asserts the negation of each failed disjunct before trying the
+next, and returns a clash whose dependency set excludes the current level
+without trying the remaining disjuncts, which implements semantic branching and
+dependency-directed backjumping \cite{horrocks1999optimizing}.  When no choice
+remains, first-class at-most restrictions are enforced by choose and merge
+rules, and the graph is a model.  The default blocking condition is anywhere
+subset blocking, maintained incrementally; pairwise, double, and Konclude's
+optimised blocking are available for the shapes that need them
+\cite{horrocks1999practical,steigmiller2016thesis}.  Classification follows
+the model-based approach of HermiT \cite{glimm2012novel}.  The first phase tests
+each class $A$ for satisfiability and takes the root label of the model as the
+candidate subsumers of $A$; a node of an earlier model that already carries $A$
+serves as a witness without a new test.  Told subsumers are accepted without a
+test \cite{baader1994empirical}.  The second phase tests $A\sqcap\neg B$ for each
+remaining candidate $B$, and every satisfiable test is a further model of $A$
+that removes the candidates absent from its root label.  The tests of distinct
+classes run in parallel over a shared clause index.  A separate non-branching
+saturation classifier certifies its answer for nominal-free inputs with inverse
+roles and defers otherwise.
+
+The Konclude port is the largest component of KM (Section~\ref{sec:overview}). It comprises the completion
+algorithm in 36 units, the approximation saturation in 12, Konclude's process
+data model, caches, the classifier, and the role-chain automata
+preprocessor, with Konclude's pointers replaced by arena indices.  The bridge
+rebuilds Konclude's concept structures from the frontend's source axioms.
+Named left sides become lazily unfolded definitions \cite{horrocks2000axioms};
+structural left sides go to a triggered binary absorber that moves fully
+triggerable head complements into the antecedent and otherwise unfolds a
+partial trigger \cite{hudek2006binary,steigmiller2014absorption}; and
+preprocessing extracts disjuncts common to all branches of a disjunction and
+rewrites universal and existential restrictions over complex roles into
+automaton states \cite{horrocks2006sroiq}.  The completion rules are those of
+Konclude: conjunction, disjunction with alternatives ordered by Konclude's
+heuristics, existential and universal successor rules, triggered implication,
+at-least and at-most with merging, functionality, nominals and values, self
+restrictions, automaton transitions, and datatype rules.  Backtracking restores
+the complete state of an alternative from copy-on-write branch epochs, and the per-individual node table is itself stored in shared 256-entry
+chunks, so a branch copies only the chunk it writes.  Before any completion,
+Konclude's approximation saturation runs once over the terminology with one
+node per concept \cite{steigmiller2014coupling,steigmiller2015payg}.  A subject
+whose saturation node is clashed is unsatisfiable, a subject whose node is
+complete and sufficient has an exact subsumer row, and only certified labels
+enter the trusted subsumer sets.  Completion then reuses saturation results
+for successor expansion, blocking, and cached absorption.
+
+The remaining subjects are classified by Konclude's known- and
+possible-subsumer (KPSet) procedure.  Known pairs are seeded from the told and
+definitional closure of the source axioms.  In the first phase, a completion
+probe for each remaining subject either opens no disjunctive choice, in which
+case the named positive labels of the root are its exact subsumers, or
+reports deterministic and possible subsumers, with every class absent from the
+model refuted.  After a barrier over all subjects, the possible subsumptions
+are pruned by propagation up and down the known hierarchy.  In the second
+phase, each remaining candidate $c$ of a subject $s$ is accepted as a
+deterministic subsumer, refuted by a countermodel from an earlier probe or by
+transitivity through a known superclass, or decided by a probe of
+$s\sqcap\neg c$.  Konclude's pseudo-model precheck is ported but not used to
+refute candidates, because it produced a false refutation on one ORE ontology.
+The bridge returns a complete taxonomy or defers.  It defers when an input
+guard fails, when any clause cannot be encoded, when an ABox consistency
+check is undecided, when a probe exhausts its budget after its retries, or
+when any subject is left without a verdict.  It also defers on a condition
+specific to KM, which we call poisoning: a backtrack that cannot restore the
+failed alternative's state marks the affected nodes, after which a clash-free
+fixpoint is not accepted as a model, so satisfiability and read-off verdicts
+become unknown while unsatisfiability verdicts remain sound.
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[t]{0.48\textwidth}
+\centering
+\begin{tikzpicture}[flow, node distance=3.2mm and 6mm]
+\node[step=52mm] (a) {hypertableau clauses; clause index};
+\node[test=52mm, below=of a] (b) {ontology consistent?};
+\node[step=52mm, below=of b] (c) {phase 1 per class $A$: test $A$ or reuse a witness};
+\node[step=52mm, below=of c] (d) {expand: hyperresolution, nominal merges, existentials on unblocked nodes};
+\node[test=52mm, below=of d] (e) {open disjunction?};
+\node[step=52mm, below=of e] (f) {branch; on a clash backjump or assert the negation};
+\node[step=52mm, below=of f] (g) {model: root label gives candidates; accept told subsumers};
+\node[step=52mm, below=of g] (h) {phase 2: test $A\sqcap\neg B$; models prune candidates};
+\node[term=52mm, below=of h] (out) {taxonomy, closed transitively};
+\draw[->] (a) -- (b); \draw[->] (b) -- node[lab,right]{yes} (c); \draw[->] (c) -- (d); \draw[->] (d) -- (e);
+\draw[->] (e) -- node[lab,right]{yes} (f);
+\draw[->] (f.east) -- ++(0.25,0) |- (d.east);
+\draw[->] (e.west) -- ++(-0.25,0) |- node[lab,pos=0.25,left]{no} (g.west);
+\draw[->] (g) -- (h); \draw[->] (h) -- (out);
+\draw[->] (b.east) -- ++(0.55,0) |- node[lab,pos=0.05,above]{no} (out.east);
+\end{tikzpicture}
+
+\small (a) Native hypertableau
+\end{minipage}\hfill
+\begin{minipage}[t]{0.5\textwidth}
+\centering
+\begin{tikzpicture}[flow, node distance=3.2mm and 6mm]
+\node[step=56mm] (a) {source axioms and hypertableau clauses};
+\node[test=56mm, below=of a] (b) {guards pass and every clause encoded?};
+\node[step=56mm, below=of b] (c) {lazy unfolding, binary absorption, common disjuncts, role-chain automata};
+\node[step=56mm, below=of c] (d) {seed known pairs; approximation saturation answers certified subjects};
+\node[step=56mm, below=of d] (e) {phase 1: probe each remaining subject; read off or report possible subsumers};
+\node[step=56mm, below=of e] (f) {prune possible subsumptions};
+\node[step=56mm, below=of f] (g) {phase 2: accept, refute by countermodel, or probe $s\sqcap\neg c$};
+\node[test=56mm, below=of g] (h) {every subject decided?};
+\node[term=56mm, below=of h] (out) {complete taxonomy and consistency};
+\node[term=11mm, right=4mm of e] (x) {defer};
+\draw[->] (a) -- (b); \draw[->] (b) -- node[lab,right]{yes} (c); \draw[->] (c) -- (d); \draw[->] (d) -- (e); \draw[->] (e) -- (f); \draw[->] (f) -- (g); \draw[->] (g) -- (h);
+\draw[->] (h) -- node[lab,right]{yes} (out);
+\draw[->] (b.east) -| node[lab,pos=0.2,above]{no} (x.north);
+\draw[->] (h.east) -| node[lab,pos=0.2,below]{no} (x.south);
+\end{tikzpicture}
+
+\small (b) Konclude port through the bridge
+\end{minipage}
+\caption{The two hypertableau procedures.  (a) Phase 1 builds one model per
+class, phase 2 tests the remaining candidate subsumers, and every satisfiable
+test prunes the candidates further.  (b) Saturation answers the subjects it
+can certify, the KPSet phases decide the rest, and any undecided subject makes
+the whole classification defer.}
+\label{fig:flow-ht}
+\end{figure*}
+
+An ontology with DL-safe rules selects the rule route.  The frontend accepts
+rules whose atoms are class, object-property, and same- or different-individual
+atoms, including nominals, inverses, number restrictions, data variables that
+occur in the body only, and built-ins with finitely many solutions, and it
+normalises further rule forms into ordinary clauses.  A consistency
+stage seeds the ABox as named nominal nodes guarded by a marker concept, so
+that rule variables bind only to named individuals, fires the accepted rules,
+and reports inconsistency on a clash; otherwise the consequence-based engine
+classifies the TBox, which is exact because DL-safe rules range over named
+individuals only and cannot change a named-class subsumption.  Small rule and
+data sources may instead be ground into an equivalent rule-free source before
+the frontend runs.  A further complete-answer-or-defer specialist for
+$\mathcal{SHOIQ}$ typed ABoxes runs the native hypertableau without blocking
+and declines whenever a completed model has the configuration that would
+require the nominal-introduction rule of Horrocks and Sattler
+\cite{horrocks2007shoiq}.
+
+The rule shared by all of these mechanisms is complete answer or defer.  A
+specialist either returns the complete named-class taxonomy or exact
+consistency decision requested, together with the evidence for that result,
+or it returns a typed decline with no semantic output, after which the
+supervisor invokes a fallback route designed to be complete.  The fallback
+may still time out, exhaust memory, or decline, in which case KM publishes no
+classification and exits with a dedicated status code.

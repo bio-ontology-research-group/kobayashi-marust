@@ -1,0 +1,35 @@
+\begin{abstract}
+Classifying an OWL~2~DL ontology requires different procedures for different
+ontologies: completion for the \EL{} profile, consequence-based saturation for
+expressive terminologies, and tableau search where saturation does not
+terminate in practice.  The reasoners that implement these procedures are
+separate systems, most of them written in Java or C++ and several no longer
+maintained.  We describe \KM{} (KM), an OWL~2~DL reasoner written in Rust that
+combines an \EL{} completion procedure, a disjunctive consequence-based
+context calculus with nominals, and two hypertableau procedures, one of them a
+port of Konclude's completion and classification algorithms, behind a router
+that selects a procedure from features of the source ontology.  Each
+procedure either returns a complete answer or declines, and a decline passes
+the input to a fallback procedure.  KM computes the class hierarchy, the types
+and equalities of individuals, property values, the object and data property
+hierarchies, justifications, and incremental reclassification after an edit;
+it runs as a single executable and as a Prot\'eg\'e plugin that answers the
+reasoner interface calls that HermiT answers.  A Lean~4 development states the
+OWL~2 direct semantics, proves the reasoning rules sound, and provides
+checkers that accept or reject the evidence KM emits for an answer.
+
+On \HOInputs{} held-out ontologies of the ORE~2015 pool, with one core, 240
+seconds, and 20~GiB per ontology, KM~v1.7.0 solves \HOKMSolved{} and Konclude
+\HOKCSolved{}; on the inputs both solve, KM takes \HOKMMean{}~s in the mean
+and \HOKMMedian{}~s in the median against \HOKCMean{}~s and \HOKCMedian{}~s,
+with a median peak memory of \HOKMMemMedian{}~MiB against
+\HOKCMemMedian{}~MiB.  On the 1,708 admitted inputs of the full pool KM solves
+1,696, and with the Lean checkers enabled 1,618 of these answers carry an
+accepted certificate.  We also compare KM with OxidOWL, a second OWL~2~DL
+reasoner written in Rust \todo{one sentence with the result once the run is
+complete}.  KM is available under an open-source licence at
+\url{https://github.com/bio-ontology-research-group/kobayashi-marust}.
+\end{abstract}
+
+\noindent\textbf{Keywords:} OWL 2 DL; description logic reasoning;
+consequence-based reasoning; hypertableau; Lean; Rust; Prot\'eg\'e

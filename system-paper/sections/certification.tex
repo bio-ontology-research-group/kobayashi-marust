@@ -1,0 +1,61 @@
+\section{Lean proofs and checked answers}
+\label{sec:certification}
+
+Agreement between reasoners is the usual evidence that a classification is
+correct, and it fails when two reasoners share a defect.  KM therefore
+connects its answers to a Lean~4 development \cite{demoura2021lean4} in two
+ways: theorems about the reasoning rules, and checkers that examine the
+evidence for one answer.  The development contains no admitted proofs, and
+its public theorems depend only on Lean's standard axioms
+\texttt{propext}, \texttt{Classical.choice}, and \texttt{Quot.sound}.
+
+The development defines a clause language with a first-order interpretation
+semantics, the EL completion rules, hypertableau evidence, derivations of the
+context calculus, and the OWL~2 functional syntax with its direct semantics
+for the constructs of the fragments discussed below.  For each production
+procedure it defines an evidence format and an executable checker, and it
+proves that an accepted evidence document implies the answer.  A positive
+answer (a subsumption, a type, or an inconsistency) is accepted with a
+derivation whose every step is an instance of a rule proved sound.  A negative
+answer (a non-subsumption, a non-type, or consistency) is accepted with a
+finite model of the input in which the answer is visible: KM produces the
+model from its result rows or from its model export, and the checker verifies
+that the model satisfies the input.  Checking a model requires no proof that
+the procedure which found it is complete.  For an inconsistent input the
+evidence is a refutation.
+
+Completeness is proved for reference procedures on fragments.  A reference
+procedure is a direct implementation of a calculus inside Lean, with proofs of
+soundness and completeness with respect to the OWL~2 direct semantics; it is
+exponential and answers small inputs.  The development contains reference
+procedures for OWL~EL, $\mathcal{ALC}$, and $\mathcal{SHI}$, and v1.7.0
+extends the completeness results to $\mathcal{SHIQ}$ at the level of normal
+forms, to knowledge bases with an ABox, to datatypes, and to a fragment with
+nominals.  \todo{State each fragment and theorem precisely from
+\texttt{docs/V1.7.0-LEAN-INVENTORY.md} and \texttt{docs/CERTIFICATION-ROADMAP.md}.}
+The optimised Rust procedures carry no completeness proof; outside the
+fragments above, and for inputs too large for a reference procedure, the
+evidence for a negative answer is the checked model.
+
+The checkers are optional at run time and are enabled by one setting.  With
+the checkers enabled, a run publishes an answer together with the checker
+verdicts, and an answer whose evidence a checker rejects is withheld.  A
+checker can also decline an input or exhaust its time or memory budget, in
+which case the answer is published as solved and uncertified.
+Section~\ref{sec:eval-cert} reports how many answers on the ORE pool are
+certified.  The benchmark timings of Section~\ref{sec:evaluation} are measured
+with the checkers disabled, which is the default configuration.
+
+The trusted base of a certified answer consists of Lean's kernel and compiler,
+the statement of the OWL~2 semantics in Lean, and the code that reads the
+source ontology into the checker.  The Rust procedures, the router, and the
+Konclude port are outside the trusted base of a certified answer, because the
+checker examines their output.  For an uncertified answer the evidence is the
+agreement with other reasoners and the differential tests reported in
+Section~\ref{sec:eval-diff}.  Five gate scripts build the development and the
+checkers from the tagged source, fail on any admitted proof, list the axioms of
+every public theorem, run fixtures in which a valid evidence document is
+altered and must be rejected, and run the Rust integration tests that pass
+worker evidence through the checkers.  Every release passes these gates on the
+tagged commit; for v1.7.0 the gates comprise 658 tests, alongside 3,818 Rust
+tests and 219 Java tests.

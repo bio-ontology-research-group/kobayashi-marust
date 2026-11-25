@@ -1,0 +1,84 @@
+\section{Background and related work}
+\label{sec:background}
+
+An OWL~2 ontology is a finite set of axioms interpreted under the OWL~2 direct
+semantics \cite{w3c2012direct,w3c2012profiles}.  We write TBox for the
+terminological axioms, ABox for assertions about individuals, and RBox for role
+axioms.  Classification computes the entailed subsumption relation between
+named classes, the unsatisfiable named classes, and the consistency of the
+ontology; KM reports $A\sqsubseteq B$ exactly when every model of the ontology
+interprets $A$ as a subset of $B$.  Realisation computes, for every named
+individual, the named classes it belongs to in every model.
+
+Tableau procedures decide a subsumption $A\sqsubseteq B$ by trying to construct
+a model of the ontology in which an element belongs to $A$ and to the
+complement of $B$; the ontology entails the subsumption exactly when every
+attempt closes.  Blocking makes the construction finite, absorption rewrites
+general axioms into triggered rules to reduce nondeterminism, and dependency
+tracking lets the search backjump over irrelevant choices
+\cite{horrocks1999optimizing,horrocks2007implementation,tsarkov2007optimizing}.
+HermiT's hypertableau calculus reduces nondeterminism further by resolving
+entire clause bodies at once \cite{motik2009hypertableau,glimm2014hermit}.
+Konclude adds a saturation pass that decides most subsumption tests before any
+tableau search, extensive caching of satisfiable node labels, and parallel
+classification \cite{steigmiller2014konclude,steigmiller2014coupling}.  FaCT++
+and its Java port JFact, RacerPro, and Pellet and its continuation Openllet
+represent the earlier generation of tableau systems
+\cite{tsarkov2006factpp,palmisano2018jfact,haarslev2012racerpro,sirin2007pellet,galigator2019openllet}.
+These systems cover the full language, and their cost grows with the number
+and size of the models an ontology forces.
+
+Consequence-based procedures derive subsumptions without constructing models.
+For \EL{}, completion rules over a small set of normal forms compute all
+named subsumptions in polynomial time \cite{baader2005el}; CEL implemented
+them first \cite{baader2006cel}, and ELK added indexing and concurrent
+saturation that classify SNOMED~CT in seconds
+\cite{kazakov2011concurrent,kazakov2014elk}.  Kazakov's procedure carried the
+approach to Horn $\mathcal{SHIQ}$ \cite{kazakov2009horn}.  Beyond Horn
+ontologies a consequence-based procedure has to reason about disjunctions.
+The context calculus behind Sequoia keeps, for every symbolic element, a
+context whose clauses are derived by ordered resolution and exchanged with
+predecessor and successor contexts, and it has been extended to number
+restrictions, inverse roles, and nominals
+\cite{bate2016sequoia,bate2018consequence,tenacucala2018consequence,tenacucala2021payg}.
+These procedures are goal-directed and reuse consequences across subsumption
+tests; a context that accumulates many incomparable disjunctions can exhaust
+memory before it saturates.
+
+Because each family fails on ontologies that another handles, hybrid designs
+send an ontology, or a part of it, to the procedure that fits.  MORe extracts
+a module inside a tractable profile and sends the remainder to an expressive
+reasoner \cite{armasromero2012more}; PAGOdA brackets the answer between a
+lower and an upper bound computed by a tractable reasoner and calls an
+expressive one for the gap \cite{zhou2015pagoda}; R2O2* learns to rank
+external reasoners from ontology features \cite{kang2020r2o2}.  KM also routes
+on source features.  Its routed procedures are internal to one executable and
+share one clause representation, and each must return a complete answer or
+decline (Section~\ref{sec:procedures}).
+
+Reuse of existing implementations has precedents on which KM's port of
+Konclude builds.  JFact is a Java port of FaCT++ \cite{palmisano2018jfact},
+Whelk reimplements ELK's algorithm in Scala as an immutable data structure,
+and whelk-rs reimplements Whelk in Rust \cite{balhoff2024whelk,whelkrs}.  The
+Rust ecosystem for OWL also includes the Horned-OWL parsing library
+\cite{lord2024horned}, which KM uses for OWL/XML and RDF/XML input, and
+OxidOWL \cite{sieve2026oxidowlcodingagents,oxidowl}, a tableau and hypertableau
+reasoner for OWL~2~DL built on Horned-OWL and, like KM, developed with coding
+agents.  OxidOWL is the system closest to KM in language coverage and
+implementation language, and Section~\ref{sec:eval-oxidowl} compares the two.
+
+The correctness of an OWL reasoner's implementation is usually established by
+test suites and by agreement with other systems.  Konclude's authors compared
+its taxonomies with HermiT's and analysed the differences by hand
+\cite{steigmiller2014konclude}, Sequoia's evaluation hashed taxonomies and
+reported that each matched at least one other reasoner
+\cite{tenacucala2019sequoia}, and the ORE~2015 organisers adjudicated results
+by majority vote \cite{parsia2017ore}.  A justification-based comparison of
+four reasoners on BioPortal ontologies found correctness bugs in mature
+systems \cite{lee2015correctness}.  Two alternatives to agreement exist.  A
+reasoner can be derived from a mechanised calculus
+\cite{hidalgo2014verified,ileri2024vel}, or an optimised reasoner can emit
+evidence that a small verified checker validates \cite{baader2020certify}.  KM
+follows the second approach for its optimised procedures and the first for
+reference procedures on fragments of the language
+(Section~\ref{sec:certification}).

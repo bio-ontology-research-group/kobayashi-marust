@@ -1,0 +1,100 @@
+\section{Reasoning services and interfaces}
+\label{sec:services}
+
+\subsection{Queries beyond the class hierarchy}
+
+An ontology editor asks a reasoner about individuals and properties as well as
+classes.  KM answers these queries by reduction to classification: it extends
+the input with fresh named classes whose position in the taxonomy encodes the
+answer, classifies the extended ontology once, and reads the rows off the
+result.  For example, the types of an individual $a$ are the named superclasses
+of a fresh class equivalent to the nominal $\{a\}$, and two individuals are
+equal when their nominal classes are equivalent.  The command-line options of
+Table~\ref{tab:rows} select the rows.  The reductions are exact; the plugin
+computes a part of some answers in Java, and the repository lists each
+reduction with the part computed outside the engine.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Result rows of \texttt{km classify}.  The class hierarchy,
+unsatisfiable classes, and consistency are always reported.}
+\label{tab:rows}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Option & Rows added \\
+\midrule
+\texttt{--realize} & the named classes each individual belongs to, and pairs of equal individuals \\
+\texttt{--values} & every entailed object property assertion between named individuals, and data property values \\
+\texttt{--different} & every entailed pair of different named individuals \\
+\texttt{--properties} & the object property hierarchy, domains, and ranges \\
+\texttt{--data-properties} & the data property hierarchy, empty data properties, domains, and disjoint data properties \\
+\texttt{--top} & the classes equivalent to \texttt{owl:Thing} \\
+\texttt{--export-model} & a finite model of a consistent input: elements with their classes and individuals, property edges closed under the RBox, data values, and merged individuals \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Input}
+
+KM reads OWL~2 functional syntax directly and OWL/XML, RDF/XML, and Turtle
+through a conversion to functional syntax.  In its default strict mode KM
+refuses an ontology that violates the OWL~2~DL global restrictions, with a
+message that names the violation.  Of the 1,920 ontologies of the ORE~2015
+pool, 212 are refused for this reason, most often because anonymous individuals
+break the forest condition of the structural specification.  Other reasoners
+and the OWL API load many of these ontologies, so KM provides a lenient mode
+that rewrites the source before reasoning, for example by replacing an
+anonymous individual in a value restriction, and prints one row for each
+rewrite.  A separate option treats a datatype outside the OWL~2 datatype map
+as a fresh datatype with opaque literals.  The Prot\'eg\'e plugin enables both,
+which matches what Prot\'eg\'e users obtain from HermiT.
+
+\subsection{Explanations}
+
+KM explains named-class subsumption, named-class unsatisfiability, and
+ontology inconsistency in terms of source axioms.  The explanation procedure
+classifies a subset of the source axioms with the automatic route, verifies
+that the subset entails the query, minimises it by deletion or by delta
+debugging, checks the final subset again, and uses a hitting-set tree to
+search for further justifications
+\cite{kalyanpur2007debugging,horridge2011justification}.  Each published
+justification entails the query and loses the entailment when any one of its
+axioms is deleted, which by monotonicity makes it minimal with respect to set
+inclusion.  Budgets bound the number of source axioms, classification calls,
+and returned justifications; when a budget is exhausted, KM discards the
+unfinished justification and marks the enumeration as incomplete.
+
+\subsection{Incremental classification}
+
+For an ontology under edit, KM keeps a session that owns the source axioms
+with stable identifiers, the normalised clauses, the selected route, the state
+of the procedure, and the last answer.  An update is a transaction.  KM applies
+the changed axioms to a private revision of the source, normalises the
+revision, profiles and routes it, and either applies a delta to the retained
+state or moves the session to another procedure.  It commits the new source,
+state, and answer together, and it keeps the preceding revision unchanged when
+any step fails.  The retained state depends on the procedure: the EL
+procedure keeps labels, role edges, and indexes; the consequence-based engine
+keeps contexts, clauses, and derivation dependencies; and the hypertableau
+procedures keep completed models and their dependencies.  KM also reuses
+results at the level of source modules, so that an update that touches one
+part of the ontology reclassifies the affected module only.
+
+\subsection{OWL API and Prot\'eg\'e}
+
+A Java module implements the reasoner factory and lifecycle of the OWL API
+\cite{horridge2011owlapi}, including buffering and non-buffering modes,
+interruption, and disposal, and it implements the OWL Explanation API for
+named subclass entailments.  The Prot\'eg\'e plugin, built for Prot\'eg\'e~5.6
+and Prot\'eg\'e~6, adds KM to the Reasoner menu and to the Explain action.  The
+plugin answers the methods of the reasoner interface that HermiT answers:
+types, instances, equal and different individuals, the object and data
+property hierarchies, domains and ranges, property values, class expression
+queries as used by the DL Query tab, disjoint classes and properties,
+entailment checks for the axiom types, and precomputation.  It follows
+HermiT's conventions for interruption, time-outs, and inconsistent ontologies.
+The plugin archive contains the \texttt{km} executable for five platforms, so
+the user installs one file.  Every query runs \texttt{km} as a child process,
+and the plugin terminates the process tree when the query ends, is
+interrupted, or times out.
