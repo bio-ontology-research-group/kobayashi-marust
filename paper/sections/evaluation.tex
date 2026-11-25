@@ -114,23 +114,42 @@ of its superclasses, and this file carries neither the unsatisfiable classes
 nor the consistency of the ontology; a second command reports consistency,
 and a third lists the unsatisfiable classes.  We therefore measure three
 OxidOWL runs per input, each under the full limits: classification,
-consistency, and consistency with unsatisfiable classes.  We score OxidOWL at
-two levels.  The hierarchy is correct when, for every class that a reference
-reasoner finds satisfiable, the set of named superclasses in OxidOWL's
-classification file equals the reference set.  The full answer is correct
-when the hierarchy, the list of unsatisfiable classes, and the consistency
-value together equal a reference answer, which is the criterion applied to KM
-and Konclude.  Time and memory in Table~\ref{tab:heldout} are those of the
-classification run alone, the choice most favourable to OxidOWL.
+consistency, and consistency with unsatisfiable classes.  We score the
+hierarchy as correct when, for every class that a reference reasoner finds
+satisfiable, the set of named superclasses in OxidOWL's classification file
+equals the reference set, and we compare the consistency value of the second
+command with the references.  Time and memory in Table~\ref{tab:heldout} are
+those of the classification run alone, the choice most favourable to OxidOWL.
 
-\todo{Results pending; the run of 25 November 2026 on Ibex
-(\texttt{oxidowl-bench-20261125}) is in progress.  To report: inputs on which
-classification finishes (\OXFinished), with a correct hierarchy
-(\OXHierarchyCorrect) and with a wrong hierarchy (\OXHierarchyWrong);
-time-outs (\OXTimeout), memory (\OXMemout), and errors (\OXError); full answers
-correct (\OXFullCorrect); consistency verdicts against the references; the
-paired time and memory comparison on common inputs; and an analysis of the
-wrong hierarchies by cause.}
+OxidOWL's classification finishes on \OXFinished{} of the \HOInputs{} inputs;
+it reaches the time limit on \OXTimeout{}, the memory limit on \OXMemout{}, and
+stops with an error on \OXError.  KM solves 174 of the \OXTimeout{} inputs on
+which OxidOWL reaches the time limit, with a median of 1.08~s.  OxidOWL writes
+some IRIs in a spelling that differs from the source, with percent-encoded
+characters and with three slashes after \texttt{file:}, and we map these
+spellings to the source IRIs before the comparison.  Of the \OXFinished{}
+hierarchies, \OXHierarchyCorrect{} equal a reference hierarchy and
+\OXHierarchyWrong{} differ from every reference; the remaining 18 belong to
+inputs that the references find inconsistent, for which the hierarchy is not
+scored.  We compared each differing hierarchy with a reference class by class.
+In 137 of the \OXHierarchyWrong, OxidOWL omits subsumptions between named
+classes that the references entail; the omitted pairs amount to 26\% of the
+reference pairs in the median (interquartile range 1.4\% to 67\%).  In 14,
+OxidOWL reports subsumptions that no reference entails, and 12 of these 14
+also omit entailed subsumptions.
+
+KM solves each of the \OXCommon{} inputs for which OxidOWL's hierarchy is
+correct.  On these inputs KM takes \OXKMMean{}~s in the mean and
+\OXKMMedian{}~s in the median, and OxidOWL takes \OXMean{}~s and
+\OXMedian{}~s; KM is the faster system on 199 inputs and uses less memory on
+184 (Table~\ref{tab:heldout}).  Konclude takes 0.46~s in the mean and
+0.070~s in the median on the same inputs.
+
+OxidOWL's consistency command finishes on 384 inputs.  The four references
+agree on the consistency of 372 of these, and OxidOWL returns the reference
+value for 353: it reports 15 consistent ontologies as inconsistent and 4
+inconsistent ontologies as consistent.  The command that also lists the
+unsatisfiable classes finishes on 204 inputs.
 
 \subsection{Other reasoners on the full pool}
 \label{sec:eval-pool}

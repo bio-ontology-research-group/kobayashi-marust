@@ -72,7 +72,9 @@ decided by agreement with Konclude, HermiT, Openllet, and JFact.  On
 \HOKCSolved{}, and KM is faster and uses less memory in the mean and in the
 median on the inputs both solve.  We compare KM with OxidOWL
 \cite{sieve2026oxidowlcodingagents}, a hypertableau reasoner for OWL~2~DL
-that is also written in Rust, under the same protocol.  We further report
+that is also written in Rust, under the same protocol; OxidOWL finishes
+classification on \OXFinished{} of these ontologies and returns the reference
+hierarchy on \OXHierarchyCorrect.  We further report
 differential tests against HermiT on generated ontologies, a call-by-call
 comparison of the Prot\'eg\'e plugin with HermiT, and the fraction of answers
 that the Lean checkers certify.
