@@ -11,19 +11,28 @@ and refuses to publish an answer it cannot justify as complete.</p>
   <li>Adds <b>Kobayashi-MaRust</b> to the <b>Reasoner</b> menu.</li>
   <li>Computes the inferred class hierarchy, equivalent classes, unsatisfiable
       classes and ontology consistency, over the loaded imports closure.</li>
+  <li>Answers queries about individuals: inferred types, instances of a
+      class, same and different individuals, and object and data property
+      values.</li>
+  <li>Computes the inferred object and data property hierarchies, inverses,
+      domains and ranges.</li>
+  <li>Answers class expression queries in the <b>DL Query</b> tab.</li>
   <li>Keeps a native session, so later edits update the hierarchy
       incrementally.</li>
   <li>Explains inferred named-class subclass relations, unsatisfiable classes
       and inconsistency with verified, minimal sets of source axioms, through
-      Protégé's <b>Explain inference</b> button.</li>
+      Prot&eacute;g&eacute;'s <b>Explain inference</b> button.</li>
 </ul>
+
+<p>Since version 1.7.0 the plugin answers the reasoner queries that HermiT
+answers in Prot&eacute;g&eacute;.</p>
 
 <h3>What it does not do</h3>
 <ul>
-  <li>No inferred object or data property hierarchy.</li>
-  <li>No individual queries (types, property values, realization).</li>
-  <li>No explanations for anonymous class expressions or property and
+  <li>No explanations for anonymous class expressions or for property and
       individual entailments.</li>
+  <li>No entailment checks for keys, DL-safe rules and datatype
+      definitions.</li>
 </ul>
 
 <h3>Platforms</h3>
