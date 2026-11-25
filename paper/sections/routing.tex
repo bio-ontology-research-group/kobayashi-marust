@@ -1,0 +1,78 @@
+\section{Automatic routing and supervision}
+\label{sec:routing}
+
+The router decides, for each ontology, which of the procedures of
+Section~\ref{sec:procedures} runs, with which options, and which procedure
+runs if the first declines.  It reads only the source profile computed by the
+frontend: counts of axiom and constructor kinds, distinct names, sizes,
+depths, and bounds, the Konclude-compatible expressivity code, and
+source-level certificates.  The router reads no ontology identifier and no
+expected answer, and \texttt{km profile} prints the profile and the selected
+route for a source.
+
+The route is selected after the first parse pass and before normalisation,
+because options such as triggered absorption and cardinality metadata change
+the normalised clause set.  The decision has three parts.  A fragment gate
+first fixes which procedures are semantically applicable.  Every ontology with
+DL-safe rules selects the rule route.  Every ontology with an ABox or with
+nominals selects a procedure that represents individuals, unless a
+source-level certificate shows that the ABox cannot change a named-class
+subsumption.  That certificate holds when the source has only positive
+assertions and contains no bottom class or role, complement, disjointness,
+number restriction, universal role, rule, key, or datatype constraint; for
+such a source, interpreting every class and role as full and every individual
+as one element is a model, and nominal-free $\mathcal{SRIQ}$ is preserved
+under disjoint unions, so the TBox alone determines the taxonomy.  Within the
+set of applicable procedures, the policy then selects a procedure from
+fragment membership, from the presence of constructs, and from further
+source certificates, for example that no number-restricted role shares a
+hierarchy component with an inverse, chained, or transitive role.  The size of
+the source enters only into resource decisions such as thread counts and
+in-process execution.  An input that the policy cannot assign to a specialist
+goes to a portfolio of procedures that are designed to be complete for the
+input's fragment.  \todo{Check this paragraph against \texttt{docs/ROUTING.md}
+and the routing source at v1.7.0, and add the figure and the predicate table
+for the general policy; the earlier manuscript documents the v1.5.3 selector,
+which the v1.5.4 policy replaced.}
+
+Each route is a named bundle of options that replaces the ambient settings, so
+that a later frontend pass cannot be routed a second time.  An atomic route
+runs one worker.  When that worker declines, fails, or exceeds its memory
+limit, the supervisor reruns the classification under a fallback bundle: the
+portfolio for nominal-free sources and sources with a certified ABox, and the
+nominal-aware consequence-based engine for every other source.  The portfolio
+composes several workers.  A small source that passes the EL clause screen is
+classified by EL completion inside the supervisor.  Otherwise the
+consequence-based engine runs beside a hypertableau worker and a certified EL
+worker in repair mode, and the supervisor accepts the first complete answer
+under acceptance rules that prefer the consequence-based answer.  A
+finite-cover route handles ontologies that entail $\top\sqsubseteq\{o_1,\ldots,
+o_k\}$ for two to four individuals: every model then has at most $k$ elements,
+and the route decides the classification by a SAT search over those elements.
+With a cover of one individual, the consequence-based engine merges every
+individual into the single element.
+
+Every reasoning worker is a child process that reads the clause file and
+writes its answer to a temporary file, which the supervisor parses as a
+stream, so a taxonomy of several gigabytes is never held in a string or in an
+undrained pipe.  A watchdog polls the resident set size of the child and the
+wall clock and notices the child's exit through a process descriptor.  A child
+that exceeds its memory or time limit is killed and reaped; a portfolio arm
+that answers first causes the remaining workers to be killed.  When the
+parallel run of the consequence-based engine exceeds its memory limit, the
+supervisor retries once on one thread with the per-function successor
+schedule.  Transparent huge pages are disabled for the process tree, and the
+supervisor returns freed heap pages before it waits for a worker, which
+reduces the memory of a small classification by 20 to 30~MiB.
+
+A worker answers in an internal vocabulary.  The supervisor maps every internal
+name to its source IRI, discards generated names, drops reflexive pairs, and
+collects subsumption by the bottom class into the set of unsatisfiable named
+classes.  The result of \texttt{km classify} contains a consistency value, the
+sorted named subsumption pairs, the sorted unsatisfiable classes, and the
+number of dropped clauses, which is zero for a published answer.  Three
+consistency rules combine frontend facts with the taxonomy: an individual
+asserted into two disjoint named classes, a clash in the rule stage, or an
+unsatisfiable class with an asserted member each makes the ontology
+inconsistent.  A worker that reports incompleteness, a decline, or a nonzero
+exit status publishes nothing.

@@ -1,0 +1,61 @@
+\section{Architecture}
+\label{sec:overview}
+
+KM is one Rust executable, \texttt{km}.  The command \texttt{km classify
+ontology.owl} acts as a supervisor that re-executes the same binary as an OWL
+frontend, an EL worker, a consequence-based worker, or a hypertableau worker.
+Running each worker as a process returns its memory to the operating system
+when it finishes and lets a watchdog over the process tree enforce time and
+memory limits; small inputs are classified inside the supervisor process to
+avoid the cost of a process start.
+
+A classification passes through six stages, and every stage can stop the run
+before an answer becomes visible (Figure~\ref{fig:pipeline}).  First, the
+frontend parses the source, rejects syntax it cannot represent and inputs
+outside OWL~2~DL, and records a profile of the source.  Second, the router
+selects a procedure from that profile (Section~\ref{sec:routing}).  Third,
+normalisation translates the axioms into DL clauses and declines constructs
+that the clause language cannot carry.  Fourth, the selected procedure, or a
+portfolio of procedures, runs under the watchdog.  Fifth, checks specific to
+the procedure turn an unsupported case, or a case with insufficient evidence,
+into a decline, which sends the input to the fallback procedure.  Sixth, the
+supervisor maps the answer back to the IRIs of the source and applies
+consistency rules that combine facts established by the frontend with the
+taxonomy.  KM reports the three outcomes with distinct exit codes: an answer,
+a refusal of an input that is outside OWL~2~DL (code 2), and the absence of a
+complete answer within the limits (code 3).
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.91\linewidth}
+\centering
+OWL source $\longrightarrow$ streaming parser and source profile
+$\longrightarrow$ route\\[0.4em]
+$\searrow$ \EL{} completion \quad $\downarrow$ consequence-based saturation
+\quad $\swarrow$ complete-or-defer hypertableau\\[0.4em]
+$\longrightarrow$ evidence checks; fallback on a decline
+$\longrightarrow$ taxonomy, consistency, and further rows keyed by IRI
+\end{minipage}}
+\caption{The KM classification pipeline.  A route chooses a procedure and a
+fallback order; an answer is published only if the procedure reports it as
+complete.}
+\label{fig:pipeline}
+\end{figure}
+
+The repository at tag \texttt{v1.7.0} contains more than half a million lines
+of Rust, over half of which are the port of Konclude's hypertableau kernel,
+about 234,000 lines of Lean in 717 files, and about 21,000 lines of Java for
+the OWL API adapter and the Prot\'eg\'e plugin.  \todo{Regenerate these counts
+with the counting script of the earlier manuscript so that vendored and
+generated code are excluded consistently.}  Release binaries are built with
+profile-guided optimisation for Linux and macOS on x86-64 and ARM and for
+Windows on x86-64.
+
+\section{Reasoning procedures}
+\label{sec:procedures}
+
+All procedures read the same normalised clauses, which the frontend produces
+from the OWL source.  We first describe the frontend and then the \EL{}
+completion procedure, the consequence-based engine, and the two hypertableau
+procedures.
+

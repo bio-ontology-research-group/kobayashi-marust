@@ -1,0 +1,203 @@
+\section{Algorithm details}
+\label{app:algorithms}
+
+This appendix lists the optimisations that the procedures of
+Section~\ref{sec:procedures} implement and the inference rules of the
+consequence-based engine.  ``Default'' gives the setting with no option set in
+the worker; ``auto'' marks a technique that the automatic route enables; a
+named variable is the switch that enables or disables it.  ``KM'' in the origin
+column marks a technique with no published counterpart that we know of.
+\todo{The tables were compiled from the v1.5.3 source; recheck defaults and add
+the v1.6 and v1.7 techniques (finite-cover route, demand-driven r-Succ offers,
+core-blocking marking, chunked saturation pools) against the v1.7.0 tag.}
+
+\subsection{\EL{} completion}
+
+\begin{small}
+\begin{longtable}{@{}p{0.21\textwidth}p{0.39\textwidth}p{0.155\textwidth}p{0.155\textwidth}@{}}
+\caption{Optimisations of the EL worker (\texttt{elcomplete.rs} unless noted).}
+\label{tab:opt-el}\\
+\toprule
+Technique & Effect & Default & Origin\\
+\midrule
+\endfirsthead
+\toprule
+Technique & Effect & Default & Origin\\
+\midrule
+\endhead
+Dense interning & concepts, roles, and auxiliary names become integers; $\top$ and $\bot$ are 0 and 1 & on & \cite{kazakov2014elk}\\
+Shared prefix conjunctions & $n$-ary conjunctions become binary chains whose auxiliary concepts are shared by identical prefixes & on & \cite{baader2005el}; sharing KM\\
+Frontend pure-EL screen & a zero-copy scan equal to the normal-form mapping withdraws the EL route before any worker starts & auto & KM\\
+Decline before saturation & a residual with the certificate off returns before indexing & on & KM\\
+Acyclic subclass closure & topological sort and reverse-order closure for NF1-only hierarchies; declines on a cycle & on & \cite{kahn1962topological}\\
+Source-level flat scanner (\texttt{orchestrate/flat\_nf1.rs}) & classifies very large flat or sparse Horn sources without the frontend; closure rows produced per subject at output & auto & KM\\
+Packed rule index & one contiguous record per trigger concept for all four concept-level normal forms & on & KM, after \cite{kazakov2014elk}\\
+Backward links by exact role & the existential left-side join reads one bucket per role & on & \cite{kazakov2014elk}\\
+Propagation store & each (link, propagation) pair fires once, from the premise that arrives second & on & \cite{kazakov2014elk}\\
+Smaller-side conjunction join & scan candidates or the label, whichever is smaller, with binary search & on & \cite{kazakov2014elk}\\
+Role closure and edge lifting & the role hierarchy is closed once; every super-role edge is materialised, so rules match roles exactly & on & \cite{baader2005el,baader2006cel}\\
+Reflexive roles as self-edges & reflexivity is handled by the existing edge rules & on & \cite{baader2005el}\\
+Context-local worklist & a context is drained before the next is activated & on (\texttt{KM\_ELC\_FIFO} off) & \cite{kazakov2011concurrent,kazakov2014elk}\\
+Context-parallel saturation & static ownership of contexts, batched messages, credit-counting termination, sorted label rebuild & auto for large EL terminologies (\texttt{KM\_ELC\_PAR\_CTX}) & \cite{kazakov2011concurrent,mattern1989credit}; partition KM\\
+Parallel frontier batch & groups runs of new edges by parent and computes missing existential conclusions in parallel & auto on one giant profile (\texttt{KM\_ELC\_PAR\_NF4}) & KM\\
+Early release & drops the parse tree before saturation and the indexes before output & on & KM\\
+Compact and binary hand-off & dictionary-coded output rows and length-prefixed binary clause input & on & KM\\
+In-process execution & small structured sources run in the supervisor & on & KM\\
+Vacuous-role pruning and inverse-bridge orientation & exact rewrites that shrink the residual before a certificate & certificate modes & KM\\
+Canonical-model check & residual clauses evaluated on the saturated model with pinned Skolem witnesses & \texttt{KM\_ELC\_CERT=1} & KM; cf.\ \cite{grau2012completeness}\\
+Repair certificate & model passes with forced-first choices, disjointness-aware greedy choice, banned choices and restarts; per-subject intersection; residue to CB & auto on certified EL and the portfolio (\texttt{KM\_ELC\_CERT=2}) & \cite{zhou2015pagoda,marquessilva1999grasp}; criterion KM\\
+Copy-free clean certificate & checks the unchanged model first and reuses its index & on in repair & KM\\
+Journal-delta enumeration index & refreshes the certificate's member lists from a journal of label additions & on in repair & KM\\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\subsection{Consequence-based engine}
+
+\begin{small}
+\begin{longtable}{@{}p{0.12\textwidth}p{0.43\textwidth}p{0.37\textwidth}@{}}
+\caption{Inference rules of the consequence-based engine as implemented
+(\texttt{engine.rs}).  $\Gamma\rightarrow\Delta$ denotes a context clause.}
+\label{tab:rules-cb}\\
+\toprule
+Rule & Premises and side conditions & Conclusion\\
+\midrule
+\endfirsthead
+\toprule
+Rule & Premises and side conditions & Conclusion\\
+\midrule
+\endhead
+Core & $A$ in the context core & $\top\rightarrow A$\\
+Hyper & ontology clause $\bigwedge_i A_i\rightarrow\Delta$; one maximal head literal $A_i\sigma$ in a clause of the context for every $i$; $\sigma$ fixes the central variable except in the ground context & $\bigwedge_i\Gamma_i\rightarrow\Delta\sigma\vee\bigvee_i\Delta_i$\\
+Eq & $\Gamma_1\rightarrow\Delta_1\vee s\approx t$ and $\Gamma_2\rightarrow\Delta_2\vee L[s]$, both literals maximal, $s$ maximal in $L$ & $\Gamma_1\wedge\Gamma_2\rightarrow\Delta_1\vee\Delta_2\vee L[t]$\\
+Ineq & head literal $t\not\approx t$ & the clause without it\\
+Factor & $\Gamma\rightarrow\Delta\vee s\approx t\vee s\approx t'$ & $\Gamma\rightarrow\Delta\vee t\not\approx t'\vee s\approx t'$\\
+Elim & new clause against the active set & discard if subsumed or tautological; remove the active clauses it subsumes\\
+Succ & maximal trigger literal on $f(x)$ & edge to the successor for $f$; hypothesis $p\rightarrow p$ there, or core atom under the central strategy\\
+Pred & function-free clause of the successor whose body consists of hypotheses sent over the edge & the clause back-substituted into the predecessor, with the successor's core in the body, joined against matching maximal literals\\
+r-Succ, r-Pred & maximal ground atoms $B(o)$, $R(x,o)$, $R(o,x)$; blocked when a merge clause makes the atom redundant & edge to the ground context labelled $o$; ground conclusions returned per discharged atom\\
+Join & consumer with a ground body atom and providers with that atom maximal, or a bridge clause $\top\rightarrow\Delta\vee x\approx o$ & resolvent combining both\\
+Nom & grounded Hyper whose head equalities instantiate to $y\approx y$ or $y\approx f(o)$ & disjunction over $K+K''$ fresh nominals, allocated in a stable block per firing, within a budget of 4,096\\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\begin{small}
+\begin{longtable}{@{}p{0.21\textwidth}p{0.39\textwidth}p{0.155\textwidth}p{0.155\textwidth}@{}}
+\caption{Optimisations of the consequence-based engine (\texttt{engine.rs},
+\texttt{calc.rs}, \texttt{clause.rs}, \texttt{reasoner.rs}).}
+\label{tab:opt-cb}\\
+\toprule
+Technique & Effect & Default & Origin\\
+\midrule
+\endfirsthead
+\toprule
+Technique & Effect & Default & Origin\\
+\midrule
+\endhead
+Ordered integer terms & term order equals integer order; composite $f(o)$ identifiers keep the order of their individuals & on & \cite{tenacucala2019sequoia}; packing KM\\
+Interned clause arena & each distinct clause is stored once per ordering domain; contexts hold identifiers & on & KM\\
+Interned Pred payloads & back-substituted Pred clauses stored once with per-receiver deduplication & on & KM\\
+Shared closure base layer & the closure of the empty-core context is computed once and shared by every context, which keeps only its delta & on & KM\\
+Maximal-head indexes & by predicate and by maximal term & on & \cite{tenacucala2019sequoia}\\
+Minimum-head redundancy index & each active clause is indexed once by its least head literal, so forward subsumption visits each candidate once & on & KM, after \cite{tenacucala2019sequoia}\\
+Signature prefilter & 64-bit body and head signatures reject non-subsumers before the subset test & on & KM\\
+Work-off subsumption, units first, early unsat & standard given-clause scheduling & on & \cite{bachmair1994rewrite}; scheduling KM\\
+Backtracking Hyper join & binds the body position with fewest candidates first over a trail & on & KM\\
+Semijoin narrowing & arc-consistency reduction of large candidate products, hash probes for determined positions & on (\texttt{KM\_NO\_HYPER\_NARROW}) & KM\\
+Symmetric-group pruning & enumerates one ordering of exchangeable neighbour variables in number-restriction clauses & on & KM\\
+Guarded-role index & indexes $C(y)\wedge R(x,y)\rightarrow D(x)$ by $(R,C)$ & on & KM\\
+Batched message rounds & apply all pending messages, then saturate and propagate each touched context once & on & KM\\
+Semi-naive propagation & append-only pools with high-water marks; clean contexts skipped & on & KM\\
+Antichain Pred join & keeps only the strengthening antichain of partial results & on & \cite{tenacucala2019sequoia}; incremental join KM\\
+Central successor strategy & successors keyed by unit and single conditional triggers & on (\texttt{KM\_NO\_CENTRAL} off) & \cite{bate2016sriq,simancik2014fpt}\\
+Redundant-trigger skip, class subsumption of hypotheses & withhold triggers and hypotheses the successor already derives & on & KM\\
+Definer ordering & definers totally ordered above incomparable named concepts when a head disjunction contains a definer & auto & \cite{tenacucala2021payg}\\
+Query-equivalence collapse & one root context per strongly connected component of told subclass edges & on & KM\\
+Individual-equality quotient, nominal enumeration shortcut, demand-driven ground facts, merge subscriptions & nominal-mode reductions of ground work & nominal mode & \cite{tenacucala2018ijcai}; realisations KM\\
+Central-label forwarding & forwards maximal central concepts to successors when some clause has a role into the central variable & auto & KM\\
+Shared prepared ontology, query-parallel classification & immutable indexes shared by thread engines that take query batches from an atomic cursor & on & KM\\
+Adaptive retry & 18-GiB and 190-second caps on the parallel run; single-threaded per-function retry & auto on the portfolio & KM\\
+Polarity-gated definitions, triggered absorption (frontend) & remove unguarded excluded-middle clauses; compile triggerable antecedents into guarded bodies & auto on the portfolio & \cite{plaisted1986structure,steigmiller2014absorption}\\
+\bottomrule
+\end{longtable}
+\end{small}
+
+Three further strategies are implemented but off in every route: root-ordered
+resolution with a refutation read-out, splitting of residual disjunctions,
+and core minimisation.  The literal ordering is partial, and the Lean
+development models Hyper as resolution on an arbitrary maximal atom.
+
+\subsection{Hypertableau procedures}
+
+\begin{small}
+\begin{longtable}{@{}p{0.21\textwidth}p{0.39\textwidth}p{0.155\textwidth}p{0.155\textwidth}@{}}
+\caption{Optimisations of the native hypertableau (\texttt{hypertableau.rs}).
+``Worker'' marks a switch that the supervisor sets for every hypertableau
+worker it starts.}
+\label{tab:opt-ht}\\
+\toprule
+Technique & Effect & Default & Origin\\
+\midrule
+\endfirsthead
+\toprule
+Technique & Effect & Default & Origin\\
+\midrule
+\endhead
+Hyperresolution with delta matching & new facts re-match only the clauses they can trigger & on & \cite{motik2009hypertableau,motik2007opt}\\
+Watched disjunctions & re-examine only disjunctions touched by a change & on & \cite{moskewicz2001chaff}\\
+Dependency sets and backjumping & clashes carry branch levels; levels absent from a clash are skipped & on & \cite{horrocks1999optimizing}\\
+Semantic branching & assert the negation of a failed disjunct before the next & worker & \cite{horrocks1999optimizing}\\
+Failure-ordered disjuncts & try disjuncts that failed least first & worker & KM\\
+Deferred global disjunctions & expand top-level disjunctions only on unblocked nodes & worker & KM\\
+Anywhere subset blocking, incremental & a node is blocked by any earlier node whose label contains its own; recomputed for the changed suffix & worker & \cite{motik2007opt,motik2009hypertableau}; incremental KM\\
+Pairwise, double, Konclude optimised blocking & alternative conditions for inverse, cardinality, and certified modes & per arm & \cite{horrocks1999practical,horrocks2007shoiq,steigmiller2016thesis}\\
+First-class at-least and at-most & cardinality rules with distinct edges, choose and merge, instead of slot encodings & cardinality arm & \cite{horrocks1999practical,steigmiller2014konclude}\\
+At-most recognition by counting & derive an at-most marker deterministically & cardinality arm & KM\\
+Nominal merge rule & merge all carriers of one nominal & nominal arms & \cite{horrocks2007shoiq}\\
+Told subsumers & accepted without a test & on & \cite{baader1994empirical}\\
+Model-based candidates, witness reuse, model pruning & one model per class gives candidates; satisfiable tests prune them & worker & \cite{glimm2012novel}\\
+Parallel class tests & phases sharded over threads with a shared index & worker & KM\\
+Role-chain unfolding & automaton-state markers as Horn clauses & on & \cite{horrocks2006sroiq}\\
+Non-branching saturation classifier & certify-or-defer classification for nominal-free inputs with inverse bridges & portfolio arm & \cite{glimm2012novel,steigmiller2014coupling}\\
+Conflict learning, restarts, satisfiability caches, label folding, trigger absorption, contrapositives, common-disjunct harvest & implemented and off & opt-in & \cite{marquessilva1999grasp,luby1993optimal,horrocks1999optimizing,horrocks2000axioms}; others KM\\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\begin{small}
+\begin{longtable}{@{}p{0.21\textwidth}p{0.39\textwidth}p{0.155\textwidth}p{0.155\textwidth}@{}}
+\caption{Techniques of the Konclude port reached through the bridge
+(\texttt{konclude\_ht/}).  Unless marked KM, each is a port of the Konclude
+mechanism cited.}
+\label{tab:opt-bridge}\\
+\toprule
+Technique & Effect & Default & Origin\\
+\midrule
+\endfirsthead
+\toprule
+Technique & Effect & Default & Origin\\
+\midrule
+\endhead
+Lazy unfolding & named left sides unfold only when the name occurs & production routes & \cite{horrocks2000axioms}\\
+Binary and partial triggered absorption & move triggerable complements into the antecedent; existential structure becomes an inverse-role propagation chain & production routes & \cite{hudek2006binary,steigmiller2014absorption}\\
+Common-disjunct extraction & add disjuncts shared by every branch as facts & on & \cite{steigmiller2016thesis}\\
+Role-chain automata & universal and existential restrictions over complex roles become automaton states & on & \cite{horrocks2006sroiq}\\
+Approximation saturation & one non-branching pass answers clashed and sufficient subjects & on, 180-second budget & \cite{steigmiller2014coupling,steigmiller2015payg}\\
+Saturation coupling and caches & completion reuses saturation for successor expansion, blocking, and cached absorption; associated-expansion and signature caches & on after saturation & \cite{steigmiller2012extended,steigmiller2015payg}\\
+KPSet classification & known and possible subsumers, top-down order, pruning up and down & on & \cite{glimm2012novel,steigmiller2016thesis}\\
+Told and definitional seeding & known pairs from the source closure & on & \cite{baader1994empirical}\\
+Deterministic read-off and subsumers & branch-free probes give exact subsumers; deterministic candidates accepted without a probe & on (\texttt{KM\_HT\_NO\_DET\_SUBSUMER}) & \cite{glimm2012novel,steigmiller2016thesis}\\
+Countermodel refutation & absent labels of earlier models and known-super transitivity refute candidates & on & \cite{glimm2012novel}\\
+Optimised anywhere blocking & subset blocking with linked candidate hashing and core candidates & on & \cite{steigmiller2016thesis,motik2009hypertableau}\\
+Backend expansion blocking & ABox representative cache & ABox routes & \cite{steigmiller2021parallel}\\
+Dependency-directed backjumping & Konclude's clashed backtracking & opt-in; on for the cardinality-nominal ABox profile & \cite{horrocks1999optimizing,steigmiller2012extended}\\
+Unsatisfiability cache & learned nogoods & opt-in & \cite{steigmiller2012extended}\\
+Copy-on-write branch epochs & complete restore of an alternative's state; shared satellites copied on first write & production routes & \cite{steigmiller2016thesis}; realisation KM\\
+Chunked node table & 256-entry shared chunks for the per-individual node table & on & KM\\
+Poisoning & a backtrack that cannot restore state invalidates satisfiability verdicts & on & KM\\
+Pseudo-model precheck & ported; not used to refute & off & \cite{haarslev2001pseudo}\\
+\bottomrule
+\end{longtable}
+\end{small}
+

@@ -1,0 +1,265 @@
+\section{Evaluation}
+\label{sec:evaluation}
+
+The evaluation addresses five questions.  How many ontologies does KM
+classify correctly under a fixed resource limit, and how do its time and
+memory compare with Konclude, the reasoner that won most categories of the
+last ORE competition?  How does KM compare with OxidOWL, the other OWL~2~DL
+reasoner written in Rust?  How does KM compare with the Java reasoners and
+with other Rust reasoners on the full corpus?  Do KM's answers survive
+differential testing on generated ontologies, and do the answers of the
+Prot\'eg\'e plugin agree with HermiT's?  How many answers do the Lean checkers
+certify?
+
+\subsection{Corpus, protocol, and correctness}
+\label{sec:eval-protocol}
+
+The corpus is the classification pool of the ORE~2015 competition
+\cite{parsia2017ore2015,parsia2016oreresources}, 1,920 ontologies drawn from
+BioPortal, the Oxford Ontology Library, and MOWLCorp.  KM's strict mode
+refuses 212 of them because they violate the OWL~2~DL global restrictions;
+the remaining 1,708 admitted inputs form the denominator of every count
+below.  A 592-ontology sample of the pool served as the regression panel
+during development.  To obtain a test set that played no part in development
+decisions, we split the admitted inputs by the parity of the SHA-256 digest of
+each file into a design half of 1,123 inputs, which contains the sample, and a
+held-out half of 585 inputs, which is run once on a frozen release candidate.
+
+Every measurement uses one CPU core, a limit of 240 seconds of wall time, and
+a limit of 20~GiB of memory for the complete process tree of the reasoner, on
+Intel Xeon Gold 6248 nodes of the KAUST Ibex cluster.  A watchdog restricted to
+the process tree of the reasoner samples the summed resident set size every 20
+milliseconds, so a reasoner that starts worker processes is charged for all of
+them.  Java reasoners run with a 16-GiB heap and one available processor.
+Konclude reads OWL/XML only; we convert each source once, verify that the
+conversion preserves the logical axioms and the signature, and exclude the
+conversion from the measured time.  KM runs as the release binary built with
+profile-guided optimisation, in its default configuration and with the Lean
+checkers disabled.
+
+A reasoner's answer is reduced to a canonical form: the harness closes the
+subsumption relation transitively, condenses equivalent classes, keys classes
+by full IRI, and stores for every satisfiable class the set of its named
+superclasses together with the set of unsatisfiable classes and the
+consistency value.  Reference answers come from Konclude~v0.7.0-1138,
+HermiT~1.4.5.519, Openllet~2.6.5, and JFact~5.0.3, each run on the full pool
+under the same limits.  We count an input as solved by a reasoner when the
+reasoner finishes within the limits and its canonical answer equals that of at
+least one reference reasoner other than itself.  \todo{The release documents
+use two slightly different definitions (agreement with every reference that
+answered; Konclude's same-day answer equal to its pinned answer); recompute
+all three systems in Table~\ref{tab:heldout} with one definition from the
+per-input records.}
+
+\subsection{Held-out comparison with Konclude}
+\label{sec:eval-heldout}
+
+We first ask whether KM matches Konclude on inputs that were not used during
+development.  Both reasoners were run on the \HOInputs{} held-out inputs in
+the same batch job on 24 November 2026.  Table~\ref{tab:heldout} reports the
+result.  KM solves \HOKMSolved{} inputs and Konclude \HOKCSolved{}.  On the
+\HOCommonKMKC{} inputs that both solve, KM needs \HOKMMean{}~s in the mean and
+\HOKMMedian{}~s in the median, against \HOKCMean{}~s and \HOKCMedian{}~s for
+Konclude, and KM's peak memory is \HOKMMemMedian{}~MiB in the median against
+\HOKCMemMedian{}~MiB.  KM is the faster of the two on \HOKMFaster{} of the
+\HOCommonKMKC{} common inputs and uses less memory on \HOKMSmaller{}.  The
+mean is dominated by a few inputs on which one reasoner needs tens of
+seconds; the largest gap in Konclude's favour is ORE ontology 762, which KM
+classifies in 49~s and Konclude in 9~s.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Held-out half of the ORE~2015 pool (\HOInputs{} inputs), one core,
+240~s, 20~GiB.  Time and memory of KM and Konclude are over the
+\HOCommonKMKC{} inputs both solve.  The OxidOWL row counts inputs whose class
+hierarchy is correct (Section~\ref{sec:eval-oxidowl}); its time and memory are
+over the \OXCommon{} inputs on which both KM and OxidOWL are correct, and the
+last row gives KM on the same inputs.}
+\label{tab:heldout}
+\begin{tabular}{lrrrrr}
+\toprule
+Reasoner & Solved & Mean s & Median s & Median MiB & Mean MiB \\
+\midrule
+KM v1.7.0 & \HOKMSolved & \HOKMMean & \HOKMMedian & \HOKMMemMedian & \HOKMMemMean \\
+Konclude v0.7.0-1138 & \HOKCSolved & \HOKCMean & \HOKCMedian & \HOKCMemMedian & \HOKCMemMean \\
+\midrule
+OxidOWL v2.1.1 & \OXHierarchyCorrect & \OXMean & \OXMedian & \OXMemMedian & \OXMemMean \\
+KM v1.7.0, same inputs & & \OXKMMean & \OXKMMedian & \OXKMMemMedian & \OXKMMemMean \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+On the full pool, KM~v1.7.0 solves 1,696 of the 1,708 admitted inputs under
+the same limits, and the 12 unsolved inputs exceed the time or memory limit.
+The count was identical, with identical answers, in every one of the paired
+runs that gated a change during the release cycle.
+
+\subsection{Comparison with OxidOWL}
+\label{sec:eval-oxidowl}
+
+OxidOWL \cite{sieve2026oxidowlcodingagents,oxidowl} is a tableau and
+hypertableau reasoner for OWL~2~DL written in Rust, with a polynomial
+procedure for the EL profile, and it is the system closest to KM in scope and
+implementation language.  We built OxidOWL~v2.1.1 (commit \texttt{530beb1})
+from source with its default features and release profile, using the same
+compiler version as for KM, and ran it on the \HOInputs{} held-out inputs
+under the protocol of Section~\ref{sec:eval-protocol}.  OxidOWL's default
+configuration limits its memory to 4~GiB; we raised this limit to the 20~GiB
+of the protocol.
+
+KM reports the class hierarchy, the unsatisfiable classes, and consistency in
+one run.  OxidOWL's classification command writes, for every class, the list
+of its superclasses, and this file carries neither the unsatisfiable classes
+nor the consistency of the ontology; a second command reports consistency,
+and a third lists the unsatisfiable classes.  We therefore measure three
+OxidOWL runs per input, each under the full limits: classification,
+consistency, and consistency with unsatisfiable classes.  We score OxidOWL at
+two levels.  The hierarchy is correct when, for every class that a reference
+reasoner finds satisfiable, the set of named superclasses in OxidOWL's
+classification file equals the reference set.  The full answer is correct
+when the hierarchy, the list of unsatisfiable classes, and the consistency
+value together equal a reference answer, which is the criterion applied to KM
+and Konclude.  Time and memory in Table~\ref{tab:heldout} are those of the
+classification run alone, the choice most favourable to OxidOWL.
+
+\todo{Results pending; the run of 25 November 2026 on Ibex
+(\texttt{oxidowl-bench-20261125}) is in progress.  To report: inputs on which
+classification finishes (\OXFinished), with a correct hierarchy
+(\OXHierarchyCorrect) and with a wrong hierarchy (\OXHierarchyWrong);
+time-outs (\OXTimeout), memory (\OXMemout), and errors (\OXError); full answers
+correct (\OXFullCorrect); consistency verdicts against the references; the
+paired time and memory comparison on common inputs; and an analysis of the
+wrong hierarchies by cause.}
+
+\subsection{Other reasoners on the full pool}
+\label{sec:eval-pool}
+
+The remaining established reasoners were compared with earlier KM releases
+under the same protocol, corpus, and node type, and we report those
+measurements with the KM version that each used.  Table~\ref{tab:pool} lists
+the reasoners that were scored against the four references.  KM~v1.5.3 solved
+1,662 inputs, Konclude 1,655, RustDL~v0.4.41 1,428, and ELK 1,411; ELK is
+complete for the EL profile only and returns an answer for nearly every input,
+so its count is the number of inputs on which ignoring the axioms outside EL
+leaves the taxonomy unchanged.  On the inputs that KM~v1.5.3 and Konclude both
+solve, KM needed 2.12~s in the mean and 0.134~s in the median, against 2.93~s
+and 0.267~s.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Admitted inputs of the full ORE~2015 pool (1,708) solved under one
+core, 240~s, and 20~GiB.  The Konclude, ELK, and RustDL rows are from the
+measurement campaigns of October 2026; the common columns compare the listed
+system with the KM release of that campaign (v1.5.3 for Konclude and ELK,
+v1.5.2 for RustDL) on the inputs both solve.}
+\label{tab:pool}
+\begin{tabular}{lrrrr}
+\toprule
+ & & & \multicolumn{2}{c}{Common inputs, mean / median s} \\
+Reasoner & Solved & Common $n$ & KM & Other \\
+\midrule
+KM v1.7.0 & 1,696 & & & \\
+KM v1.5.3 & 1,662 & & & \\
+Konclude v0.7.0-1138 & 1,655 & 1,642 & 2.12 / 0.134 & 2.93 / 0.267 \\
+RustDL v0.4.41 & 1,428 & 1,419 & 2.36 / 0.246 & 8.37 / 0.626 \\
+ELK v0.6.0 & 1,411 & 1,399 & 1.71 / 0.106 & 11.73 / 4.746 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A wider panel was measured with KM~v1.4.5 on 4 October 2026 and compared pair
+by pair on the inputs for which KM and the other reasoner return the same
+answer (Table~\ref{tab:java}).  Against each of the Java reasoners, KM's
+median time is lower by a factor of 8 to 26 and its median memory by a factor
+of 7 to 11.  Each measurement is one classification started from the command line and
+includes the start of the Java virtual machine and the loading of the ontology
+through the OWL API.  HermiT and KM agree on all 1,436
+inputs for which both returned an answer and a comparison was possible.
+\todo{Rerun this panel with KM~v1.7.0 so that every row of
+Tables~\ref{tab:pool} and~\ref{tab:java} uses the current release.}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Pairwise comparison of KM~v1.4.5 with other reasoners on the full
+pool: number of inputs with identical answers, and median time and peak memory
+on those inputs.}
+\label{tab:java}
+\begin{tabular}{lrrrrr}
+\toprule
+ & & \multicolumn{2}{c}{Median time (s)} & \multicolumn{2}{c}{Median memory (MiB)} \\
+Reasoner & Inputs & Other & KM & Other & KM \\
+\midrule
+HermiT 1.4.5.519 & 1,476 & 4.84 & 0.544 & 166 & 24 \\
+Openllet 2.6.5 & 1,344 & 4.79 & 0.346 & 171 & 20 \\
+JFact 5.0.3 & 1,069 & 5.17 & 0.198 & 172 & 16 \\
+ELK 0.6.0 & 1,368 & 4.75 & 0.611 & 164 & 24 \\
+Whelk 1.2.1 & 1,334 & 6.20 & 0.565 & 193 & 24 \\
+Sequoia 0.6.1-alpha & 627 & 7.38 & 0.612 & 254 & 24 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Differential testing}
+\label{sec:eval-diff}
+
+The ORE corpus exercises the constructs that ontology authors use, and
+several combinations of constructs occur in it rarely.  To test those
+combinations we generated small random ontologies and compared KM with HermiT
+on each.  For v1.7.0 this comprised two sweeps of 20,200 class-level cases,
+each run on 12 of KM's routes, 5,000 cases that target role axioms, 3,300 cases
+with individuals, run through the command line and through the plugin, and a
+campaign of 64,000 further cases.  Where the two reasoners disagreed, the
+entailment was decided by hand from the direct semantics.  On the release
+candidate, KM gave an unsound or incomplete answer on none of these cases.
+The automatic route returned no answer within 60 seconds on 176 and 197 of the
+20,200 cases of the two sweeps.
+
+The same tests found 15 defects in earlier KM releases, each a missed
+inconsistency, unsatisfiable class, or subsumption, and none of them changed
+the answer of a pool input.  The errata document of the repository lists each
+defect with a reproducer and the releases it affects.  Two of the reproducers
+also give a wrong answer with Konclude~v0.7.0-1138, and HermiT's entailment
+check is wrong on a small number of datatype cases and one role-equivalence
+case, which is why the campaigns use HermiT's consistency test as the oracle
+and decide disagreements by hand.
+
+\subsection{Agreement of the Prot\'eg\'e plugin with HermiT}
+\label{sec:eval-parity}
+
+The plugin answers the calls of the OWL API reasoner interface, and for these
+calls HermiT is the reference that Prot\'eg\'e users know.  We issued the same
+calls to KM and to HermiT on 349 ontologies, with a time limit per call.  KM
+and HermiT returned
+the same result on 554,406 calls.  On the 2,153 calls with different results
+that we could decide from the direct semantics, KM's result was the correct
+one in every case.  KM declined 46 calls and returned no result within the limit on 2,211 calls
+that HermiT answered.
+
+\subsection{Certified answers}
+\label{sec:eval-cert}
+
+Finally we measure how many answers the Lean checkers certify.  One run over
+the pool with the checkers enabled on the final commit solved the same 1,696
+inputs.  For 1,618 of them every checker accepted the evidence; for 78 a
+checker declined the input (67) or exceeded its time or memory budget (11);
+and no checker rejected an answer.  Of the 46 inputs that KM reports as
+inconsistent, 43 carry an accepted refutation.  In an earlier run of the same
+kind the checkers increased the total wall time by a factor of 1.7, with a
+median ratio per input of 1.13, and the summed peak memory by a factor of 1.5.
+
+\subsection{Incremental classification}
+\label{sec:eval-incremental}
+
+The incremental benchmark was measured with KM~v1.5.3 on 80 ontologies from
+the pool, each with nine source revisions: an initial snapshot, six additions,
+removals, and restorative edits of one or several TBox axioms, and two broader
+updates that touch the RBox, nominals, or the ABox.  A retained session was
+compared with a classification of each revision from scratch, in five paired
+repetitions per ontology with counterbalanced order.  Of the 80 sessions, 79
+completed; in all 632 update steps of the completed sessions the median ratio
+of retained to fresh time was below one, on the command line and through the
+OWL API, and the answers of the two arms were identical in every revision.
+\todo{Repeat with v1.7.0.}

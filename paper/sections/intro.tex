@@ -1,0 +1,88 @@
+\section{Introduction}
+
+Classifying an OWL~2~DL ontology means computing, for every pair of named
+classes, whether the ontology entails that one is a subclass of the other,
+together with the unsatisfiable classes and the consistency of the ontology.
+The input is a finite set of axioms in the description logic $\mathcal{SROIQ}$
+with datatypes: Boolean constructors, existential and universal restrictions,
+role hierarchies and chains, inverse roles, nominals, and qualified number
+restrictions.  The output is the entailed named-class taxonomy under the OWL~2
+direct semantics \cite{w3c2012direct}.  Ontology editors and applications ask
+further questions of the same kind: the types of each individual, the
+individuals that are equal or different, the values of each property, and the
+hierarchies of object and data properties.  The problem is decidable and
+N2ExpTime-complete, and biomedical ontologies with hundreds of thousands of
+axioms are large enough that a procedure needs extensive engineering to answer
+within seconds.
+
+Three families of procedures address this problem.  Tableau and hypertableau
+reasoners such as FaCT++, Pellet, HermiT, and Konclude construct models and
+refute candidate subsumptions; they handle the full language, and their
+practical performance rests on absorption, blocking, caching, and dependency
+tracking \cite{tsarkov2006factpp,sirin2007pellet,motik2009hypertableau,
+steigmiller2014konclude}.  Consequence-based reasoners derive subsumptions by
+saturating clauses.  ELK does this for the tractable \EL{} profile in
+polynomial time \cite{kazakov2014elk}, and Sequoia extends the approach to
+disjunctions, number restrictions, inverse roles, and nominals through a
+context calculus \cite{bate2016sequoia,tenacucala2018consequence}.  Modular
+and portfolio approaches such as MORe split an ontology between a tractable
+and an expressive reasoner \cite{armasromero2012more}.  Each family has
+ontologies on which it is the only practical choice, and the ORE competitions
+showed that no single system dominates \cite{parsia2017ore}.
+
+A user who wants the best procedure for each ontology therefore has to install
+several reasoners and choose among them.  The reasoners differ in input
+syntaxes, in the queries they answer, and in how they report an input they
+cannot handle; ELK, for example, classifies an ontology outside \EL{} by
+ignoring the axioms it cannot represent.  Several of the systems are barely
+maintained \cite{abicht2023owl}, and most run on the Java virtual machine,
+whose start-up time and memory dominate the cost of classifying a small
+ontology.  Correctness is established by agreement between systems, and the
+systems disagree on a measurable fraction of real ontologies
+\cite{lee2015correctness,parsia2017ore}.
+
+\KM{} (KM) addresses these limitations in one system.  KM is a single Rust
+executable that contains an \EL{} completion procedure, a disjunctive
+consequence-based context calculus with nominals, a native hypertableau
+procedure, and a Rust port of Konclude's completion and classification
+algorithms.  A router selects a procedure from features of the source
+ontology.  Every procedure follows one contract: it returns a complete answer
+or it declines, and a decline passes the input to a fallback procedure, so an
+input outside the fragment of a fast procedure is answered by a slower one
+instead of being approximated.  KM refuses an input that violates the OWL~2~DL
+global restrictions and reports the violation.  For the correctness of its
+answers KM adds a second line of evidence to agreement with other reasoners:
+a Lean~4 development \cite{demoura2021lean4} states the OWL~2 direct
+semantics, proves the reasoning rules sound, and provides checkers that accept
+or reject the evidence a KM run emits for its answer.
+
+Beyond classification, KM computes the types and equalities of individuals,
+property values, the object and data property hierarchies, justifications for
+entailments, a finite model of a consistent ontology, and incremental
+reclassification after an edit.  A Prot\'eg\'e plugin, which bundles the
+executable for five platforms, answers the calls of the OWL API reasoner
+interface that HermiT answers.  Almost all of KM's code and proofs were
+written by large-language-model coding agents under human direction; this
+paper describes the resulting system and its evaluation.
+
+We evaluate KM v1.7.0 on the ORE~2015 corpus \cite{parsia2017ore} under a
+protocol of one core, 240 seconds, and 20~GiB per ontology, with correctness
+decided by agreement with Konclude, HermiT, Openllet, and JFact.  On
+\HOInputs{} held-out ontologies KM solves \HOKMSolved{} and Konclude
+\HOKCSolved{}, and KM is faster and uses less memory in the mean and in the
+median on the inputs both solve.  We compare KM with OxidOWL
+\cite{sieve2026oxidowlcodingagents}, a hypertableau reasoner for OWL~2~DL
+that is also written in Rust, under the same protocol.  We further report
+differential tests against HermiT on generated ontologies, a call-by-call
+comparison of the Prot\'eg\'e plugin with HermiT, and the fraction of answers
+that the Lean checkers certify.
+
+KM is available at
+\url{https://github.com/bio-ontology-research-group/kobayashi-marust} under
+the BSD 3-Clause licence, with the Konclude port under the LGPL~v3.
+Section~\ref{sec:background} reviews the procedures KM combines.
+Sections~\ref{sec:overview} to~\ref{sec:routing} describe the architecture,
+the procedures, and the router; Section~\ref{sec:services} describes the
+reasoning services and interfaces; Section~\ref{sec:certification} describes
+the Lean development; and Section~\ref{sec:evaluation} reports the
+evaluation.
