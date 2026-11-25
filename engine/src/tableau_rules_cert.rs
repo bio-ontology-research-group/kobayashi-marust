@@ -979,6 +979,7 @@ mod tests {
 
     #[test]
     fn inconsistent_rule_input_records_a_closed_proof() {
+        let _test_env = crate::test_env::read();
         let t = tableau(rule_clauses(true));
         assert!(t.cert_test(Claim::Inconsistent, None).is_none());
         let sink = t.cert.as_ref().unwrap().lock().unwrap();
@@ -992,6 +993,7 @@ mod tests {
 
     #[test]
     fn consistent_rule_input_records_a_model_that_satisfies_the_clauses() {
+        let _test_env = crate::test_env::read();
         let t = tableau(rule_clauses(false));
         assert!(t.cert_test(Claim::Unsat(2), Some(2)).is_some());
         let sink = t.cert.as_ref().unwrap().lock().unwrap();
@@ -1011,6 +1013,7 @@ mod tests {
 
     #[test]
     fn disjunction_records_one_child_per_head_atom() {
+        let _test_env = crate::test_env::read();
         // {a} ⊑ C, C ⊑ A ∨ B, A ⊑ ⊥, B ⊑ ⊥ (4 = C).
         let clauses = vec![
             Clause::new(vec![con(1, 0)], vec![con(4, 0)]),

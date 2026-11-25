@@ -131,6 +131,51 @@ fn chain_role(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) -> 
     Some(role)
 }
 
+/// Role names of a property axiom's operands, as `parse::property_axiom_roles`
+/// gives them: the base roles when every operand is inverted, otherwise the
+/// converse proxy for each inverted operand (its definition recorded once).
+fn property_axiom_roles(reg: &mut IriRegistry, nodes: &[&Node], out: &mut Vec<RboxRecord>) -> Option<Vec<String>> {
+    let mut operands = Vec::new();
+    for node in nodes {
+        match node {
+            Node::Atom(s) => operands.push((reg.short(s), false)),
+            Node::List("ObjectInverseOf", inner) => match inner.as_slice() {
+                [Node::Atom(base)] => operands.push((reg.short(base), true)),
+                _ => return None,
+            },
+            _ => return None,
+        }
+    }
+    if operands.iter().all(|(_, inverse)| *inverse) {
+        return Some(operands.into_iter().map(|(role, _)| role).collect());
+    }
+    Some(operands.into_iter().map(|(role, inverse)| {
+        if inverse {
+            let proxy = format!("__inv__{role}");
+            let record = RboxRecord::Inverse(role, proxy.clone());
+            if !out.contains(&record) {
+                out.push(record);
+            }
+            proxy
+        } else {
+            role
+        }
+    }).collect())
+}
+
+/// The base role of `r` or `ObjectInverseOf(r)` (characteristics other than
+/// (inverse) functionality are the same for a role and its inverse).
+fn base_role(reg: &mut IriRegistry, node: &Node) -> Option<String> {
+    match node {
+        Node::Atom(s) => Some(reg.short(s)),
+        Node::List("ObjectInverseOf", inner) => match inner.as_slice() {
+            [Node::Atom(base)] => Some(reg.short(base)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Port of `_plain_class`: named class -> Some(short); ⊤ -> Some(""); ⊥/complex
 /// -> None.
 fn plain_class(reg: &mut IriRegistry, node: &Node) -> Option<String> {
@@ -202,6 +247,9 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                     }
                 } else if let (Some(rsub), Some(rsup)) = (plain_role(reg, sub), ssup) {
                     out.push(RboxRecord::Subrole(rsub, rsup));
+                } else if let Some(roles) = property_axiom_roles(reg, &[sub, sup], out) {
+                    // E9: an inverted operand uses its converse proxy.
+                    out.push(RboxRecord::Subrole(roles[0].clone(), roles[1].clone()));
                 } else {
                     out.push(RboxRecord::Fenced(
                         "inverse-role".to_string(),
@@ -250,8 +298,19 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
             "InverseObjectProperties" => {
                 let a = plain_role(reg, args[0]);
                 let b = plain_role(reg, args[1]);
+                let inverted = |node: &Node| node.head() == Some("ObjectInverseOf");
+                let (ai, bi) = (inverted(args[0]), inverted(args[1]));
+                let (a, b) = match (a, b) {
+                    (Some(a), Some(b)) => (Some(a), Some(b)),
+                    _ => (base_role(reg, args[0]), base_role(reg, args[1])),
+                };
                 match (a, b) {
-                    (Some(a), Some(b)) => out.push(RboxRecord::Inverse(a, b)),
+                    (Some(a), Some(b)) if ai == bi => out.push(RboxRecord::Inverse(a, b)),
+                    // `P ≡ Q⁻` with one operand inverted equates the bases.
+                    (Some(a), Some(b)) => {
+                        out.push(RboxRecord::Subrole(a.clone(), b.clone()));
+                        out.push(RboxRecord::Subrole(b, a));
+                    }
                     _ => out.push(RboxRecord::Fenced(
                         "inverse-role".to_string(),
                         format!("InverseObjectProperties {:?}", args),
@@ -264,7 +323,10 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                 // from the AST `RoleInclusion`s; these records drive routing /
                 // relevance / domain-range propagation). Any inverse member
                 // fences the whole axiom to the CB engine.
-                let roles: Vec<Option<String>> = args.iter().map(|a| plain_role(reg, a)).collect();
+                let roles: Vec<Option<String>> = match property_axiom_roles(reg, &args, out) {
+                    Some(roles) => roles.into_iter().map(Some).collect(),
+                    None => vec![None],
+                };
                 if roles.iter().any(|r| r.is_none()) {
                     out.push(RboxRecord::Fenced(
                         "inverse-role".to_string(),
@@ -285,7 +347,7 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                 // Always retain this as RBox side data. Consumers decide
                 // whether to compile it; dropping it here made that decision
                 // depend on an environment variable during parsing.
-                if let Some(r) = plain_role(reg, args[0]) {
+                if let Some(r) = base_role(reg, args[0]) {
                     out.push(RboxRecord::Transitive(r));
                 }
             }
@@ -308,7 +370,12 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                 out.push(RboxRecord::Fenced("irreflexivity".to_string(), r));
             }
             "FunctionalObjectProperty" => {
-                // in-fragment for SHQ, not fenced
+                // in-fragment for SHQ, not fenced; `Functional(r⁻)` is the
+                // inverse functionality of `r`.
+                if args[0].head() == Some("ObjectInverseOf") {
+                    let r = base_role(reg, args[0]).unwrap_or_else(|| format!("{:?}", args[0]));
+                    out.push(RboxRecord::Fenced("inverse-functional".to_string(), r));
+                }
             }
             "InverseFunctionalObjectProperty" => {
                 let r = plain_role(reg, args[0]).unwrap_or_else(|| format!("{:?}", args[0]));
@@ -378,6 +445,7 @@ mod tests {
 
     #[test]
     fn arbitrary_named_chain_is_retained_without_changing_binary_rows() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(\
             SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) \
             SubObjectPropertyOf(ObjectPropertyChain(<r> <s> <u>) <v>))";
@@ -396,6 +464,7 @@ mod tests {
 
     #[test]
     fn retained_rbox_replay_matches_full_second_parse_bytes() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(\
             Declaration(Class(<http://decl.example#A>)) \
             SubObjectPropertyOf(<http://one.example#r> <http://one.example#s>) \

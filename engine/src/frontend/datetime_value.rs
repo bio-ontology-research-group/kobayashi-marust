@@ -75,6 +75,7 @@ mod tests {
     use super::*;
     #[test]
     fn identity_normalizes_clock_but_retains_timezone() {
+        let _test_env = crate::test_env::read();
         assert_eq!(parse("2000-02-29T24:00:00.000Z", false), parse("2000-03-01T00:00:00+00:00", false));
         let a = parse("1956-06-25T04:00:00-05:00", false).unwrap();
         let b = parse("1956-06-25T10:00:00+01:00", false).unwrap();
@@ -85,6 +86,7 @@ mod tests {
     }
     #[test]
     fn lexical_limits_and_leap_days_are_checked() {
+        let _test_env = crate::test_env::read();
         for text in ["1900-02-29T00:00:00", "2001-04-31T00:00:00", "2000-01-01T24:00:01", "2000-01-01T00:00:00+14:01", "2000-01-01T00:00:00."] {
             assert!(parse(text, false).is_none(), "{text}");
         }

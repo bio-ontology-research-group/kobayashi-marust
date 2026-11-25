@@ -101,8 +101,8 @@ impl<T> std::fmt::Debug for Id<T> {
 /// id for the object's whole life. `truncate_to` rewinds allocation on backtrack
 /// (the pool-reset analogue) — callers must ensure no live id past the watermark
 /// survives, exactly as Konclude relies on the branch structure to guarantee.
-pub struct Arena<T> {
-    items: Vec<T>,
+pub struct Arena<T, S: ArenaStore<T> = Vec<T>> {
+    items: S,
     /// Use bounded geometric growth for exceptionally large append-only pools.
     /// `Vec` normally doubles at capacity, which can request multiple GiB at
     /// once for saturation arenas containing tens of millions of records.
@@ -121,6 +121,252 @@ pub struct Arena<T> {
     journal_stack: Vec<EpochJournalFrame<T>>,
 }
 
+/// Elements per chunk of `ChunkStore` beyond the first (2^16).
+const CHUNK_SHIFT: usize = 16;
+const CHUNK_LEN: usize = 1 << CHUNK_SHIFT;
+
+/// Backing storage of an `Arena`. `Vec<T>` (the default) keeps every item in
+/// one contiguous allocation; `ChunkStore<T>` keeps items in fixed chunks that
+/// never move. Ids, epochs and iteration are the same for both.
+pub trait ArenaStore<T>:
+    Default + std::ops::Index<usize, Output = T> + std::ops::IndexMut<usize>
+{
+    type Iter<'a>: Iterator<Item = &'a T> + DoubleEndedIterator + ExactSizeIterator
+    where
+        Self: 'a,
+        T: 'a;
+    fn len(&self) -> usize;
+    fn push(&mut self, v: T);
+    fn pop(&mut self) -> Option<T>;
+    fn truncate(&mut self, len: usize);
+    fn clear(&mut self);
+    fn capacity(&self) -> usize;
+    /// Bounded growth for tight arenas: at most 25 % spare room at a time.
+    fn reserve_tight_for_push(&mut self);
+    fn iter(&self) -> Self::Iter<'_>;
+}
+
+impl<T> ArenaStore<T> for Vec<T> {
+    type Iter<'a> = std::slice::Iter<'a, T> where T: 'a;
+    #[inline]
+    fn len(&self) -> usize {
+        <[T]>::len(self)
+    }
+    #[inline]
+    fn push(&mut self, v: T) {
+        Vec::push(self, v)
+    }
+    #[inline]
+    fn pop(&mut self) -> Option<T> {
+        Vec::pop(self)
+    }
+    #[inline]
+    fn truncate(&mut self, len: usize) {
+        Vec::truncate(self, len)
+    }
+    #[inline]
+    fn clear(&mut self) {
+        Vec::clear(self)
+    }
+    #[inline]
+    fn capacity(&self) -> usize {
+        Vec::capacity(self)
+    }
+    #[inline]
+    fn reserve_tight_for_push(&mut self) {
+        if Vec::len(self) == Vec::capacity(self) {
+            let additional = (Vec::capacity(self) / 4).max(4_096);
+            self.reserve_exact(additional);
+        }
+    }
+    #[inline]
+    fn iter(&self) -> std::slice::Iter<'_, T> {
+        <[T]>::iter(self)
+    }
+}
+
+impl<T> ArenaStore<T> for ChunkStore<T> {
+    type Iter<'a> = ChunkIter<'a, T> where T: 'a;
+    #[inline]
+    fn len(&self) -> usize {
+        ChunkStore::len(self)
+    }
+    #[inline]
+    fn push(&mut self, v: T) {
+        ChunkStore::push(self, v)
+    }
+    #[inline]
+    fn pop(&mut self) -> Option<T> {
+        ChunkStore::pop(self)
+    }
+    #[inline]
+    fn truncate(&mut self, len: usize) {
+        ChunkStore::truncate(self, len)
+    }
+    #[inline]
+    fn clear(&mut self) {
+        ChunkStore::clear(self)
+    }
+    #[inline]
+    fn capacity(&self) -> usize {
+        ChunkStore::capacity(self)
+    }
+    #[inline]
+    fn reserve_tight_for_push(&mut self) {
+        ChunkStore::reserve_tight_for_push(self)
+    }
+    #[inline]
+    fn iter(&self) -> ChunkIter<'_, T> {
+        ChunkStore::iter(self)
+    }
+}
+
+/// An arena whose items live in fixed chunks (see `ChunkStore`), for the few
+/// very large saturation pools. Every other arena keeps one `Vec`.
+pub type ChunkedArena<T> = Arena<T, ChunkStore<T>>;
+
+/// Arena backing store: chunk 0 grows like a `Vec` up to `CHUNK_LEN`
+/// elements, every later chunk is allocated once with exactly `CHUNK_LEN`
+/// slots and never moves. Element `i` lives at `chunks[i >> CHUNK_SHIFT]
+/// [i & (CHUNK_LEN - 1)]`; every chunk below the one holding the last element
+/// is full. A single `Vec` reallocated and copied the whole pool on every
+/// growth step: on ore_ont_7361 that memmove was a third of the HT worker's
+/// CPU (the 1.2 GB successor-record arena growing by 25 % at a time), and it
+/// briefly held the old and new pool together.
+pub struct ChunkStore<T> {
+    chunks: Vec<Vec<T>>,
+    len: usize,
+}
+
+impl<T> ChunkStore<T> {
+    pub fn new() -> Self {
+        ChunkStore { chunks: Vec::new(), len: 0 }
+    }
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    #[inline]
+    pub fn push(&mut self, v: T) {
+        let chunk = self.len >> CHUNK_SHIFT;
+        if chunk == self.chunks.len() {
+            self.chunks.push(if chunk == 0 { Vec::new() } else { Vec::with_capacity(CHUNK_LEN) });
+        }
+        self.chunks[chunk].push(v);
+        self.len += 1;
+    }
+    /// Bounded growth for the first chunk, which grows like a `Vec`: at most
+    /// 25 % (at least 4,096 slots, never beyond `CHUNK_LEN`). Later chunks are
+    /// allocated at their full size once, so at most one chunk is unused.
+    #[inline]
+    pub fn reserve_tight_for_push(&mut self) {
+        if self.len < CHUNK_LEN {
+            if self.chunks.is_empty() {
+                self.chunks.push(Vec::new());
+            }
+            let first = &mut self.chunks[0];
+            if first.len() == first.capacity() {
+                let additional = (first.capacity() / 4).max(4_096).min(CHUNK_LEN - first.len());
+                first.reserve_exact(additional);
+            }
+        }
+    }
+    #[inline]
+    pub fn pop(&mut self) -> Option<T> {
+        if self.len == 0 {
+            return None;
+        }
+        self.len -= 1;
+        self.chunks[self.len >> CHUNK_SHIFT].pop()
+    }
+    /// Keep the first `len` elements. Emptied chunks keep their allocation, as
+    /// `Vec::truncate` keeps its capacity.
+    pub fn truncate(&mut self, len: usize) {
+        if len >= self.len {
+            return;
+        }
+        for chunk in (len >> CHUNK_SHIFT)..self.chunks.len() {
+            let keep = len.saturating_sub(chunk << CHUNK_SHIFT).min(CHUNK_LEN);
+            self.chunks[chunk].truncate(keep);
+        }
+        self.len = len;
+    }
+    pub fn clear(&mut self) {
+        self.truncate(0);
+    }
+    pub fn capacity(&self) -> usize {
+        self.chunks.iter().map(Vec::capacity).sum()
+    }
+    #[inline]
+    pub fn get(&self, index: usize) -> &T {
+        &self.chunks[index >> CHUNK_SHIFT][index & (CHUNK_LEN - 1)]
+    }
+    #[inline]
+    pub fn get_mut(&mut self, index: usize) -> &mut T {
+        &mut self.chunks[index >> CHUNK_SHIFT][index & (CHUNK_LEN - 1)]
+    }
+    pub fn iter(&self) -> ChunkIter<'_, T> {
+        ChunkIter { store: self, front: 0, back: self.len }
+    }
+}
+
+impl<T> Default for ChunkStore<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> std::ops::Index<usize> for ChunkStore<T> {
+    type Output = T;
+    #[inline]
+    fn index(&self, index: usize) -> &T {
+        self.get(index)
+    }
+}
+
+impl<T> std::ops::IndexMut<usize> for ChunkStore<T> {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut T {
+        self.get_mut(index)
+    }
+}
+
+/// In-order iterator over a `ChunkStore`.
+pub struct ChunkIter<'a, T> {
+    store: &'a ChunkStore<T>,
+    front: usize,
+    back: usize,
+}
+
+impl<'a, T> Iterator for ChunkIter<'a, T> {
+    type Item = &'a T;
+    #[inline]
+    fn next(&mut self) -> Option<&'a T> {
+        if self.front == self.back {
+            return None;
+        }
+        let item = self.store.get(self.front);
+        self.front += 1;
+        Some(item)
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let n = self.back - self.front;
+        (n, Some(n))
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for ChunkIter<'a, T> {
+    fn next_back(&mut self) -> Option<&'a T> {
+        if self.front == self.back {
+            return None;
+        }
+        self.back -= 1;
+        Some(self.store.get(self.back))
+    }
+}
+
+impl<'a, T> ExactSizeIterator for ChunkIter<'a, T> {}
+
 /// One run of open epochs' first-touch save frame (see
 /// [`Arena::get_mut_journaled`]). Only the innermost depth `hi` of the run can
 /// receive saves: the shallower depths of the run were never touched while
@@ -133,10 +379,10 @@ pub struct EpochJournalFrame<T> {
     saves: Vec<(usize, T)>,
 }
 
-impl<T> Default for Arena<T> {
+impl<T, S: ArenaStore<T>> Default for Arena<T, S> {
     fn default() -> Self {
         Arena {
-            items: Vec::new(),
+            items: S::default(),
             tight_growth: false,
             wm_stack: Vec::new(),
             open_depth: 0,
@@ -153,6 +399,22 @@ impl<T> Arena<T> {
     /// IDs, indexing, epoch rollback, and object lifetime are identical to
     /// `new`; only unused capacity and reallocation granularity differ.
     pub fn new_tight() -> Self {
+        Self::with_tight_growth()
+    }
+}
+
+impl<T> ChunkedArena<T> {
+    pub fn new_chunked() -> Self {
+        Self::default()
+    }
+    /// `new_tight` for a chunked arena: the first chunk grows by at most 25 %.
+    pub fn new_tight_chunked() -> Self {
+        Self::with_tight_growth()
+    }
+}
+
+impl<T, S: ArenaStore<T>> Arena<T, S> {
+    fn with_tight_growth() -> Self {
         Arena {
             tight_growth: true,
             ..Self::default()
@@ -161,11 +423,10 @@ impl<T> Arena<T> {
     #[inline]
     pub fn push(&mut self, v: T) -> Id<T> {
         self.materialize_epoch_frame();
-        if self.tight_growth && self.items.len() == self.items.capacity() {
-            let additional = (self.items.capacity() / 4).max(4_096);
-            self.items.reserve_exact(additional);
-        }
         let id = Id::new(self.items.len() as Cint64);
+        if self.tight_growth {
+            self.items.reserve_tight_for_push();
+        }
         self.items.push(v);
         id
     }
@@ -255,13 +516,13 @@ impl<T> Arena<T> {
     pub fn clear_releasing_capacity(&mut self) {
         let tight_growth = self.tight_growth;
         *self = if tight_growth {
-            Self::new_tight()
+            Self::with_tight_growth()
         } else {
-            Self::new()
+            Self::default()
         };
     }
     #[inline]
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+    pub fn iter(&self) -> S::Iter<'_> {
         self.items.iter()
     }
 
@@ -289,6 +550,41 @@ impl<T> Arena<T> {
     pub fn epoch_open(&self) -> bool {
         self.open_depth > 0 || !self.wm_stack.is_empty()
     }
+    /// Number of open journaled epochs.
+    #[inline]
+    pub fn open_depth(&self) -> usize {
+        self.open_depth
+    }
+    /// True if any item below `watermark` has been saved (mutated in place)
+    /// in any journal frame opened after `base_open_depth`.
+    #[inline]
+    pub fn has_saves_below_since_depth(&self, watermark: usize, base_open_depth: usize) -> bool {
+        self.journal_stack
+            .iter()
+            .rev()
+            .take_while(|frame| frame.hi > base_open_depth)
+            .any(|frame| frame.saves.iter().any(|&(ix, _)| ix < watermark))
+    }
+    /// True if any item below `watermark` saved in a journal frame opened
+    /// after `base_open_depth` satisfies `predicate(index, saved_original, current)`.
+    #[inline]
+    pub fn has_matching_save_below_since_depth(
+        &self,
+        watermark: usize,
+        base_open_depth: usize,
+        mut predicate: impl FnMut(usize, &T, &T) -> bool,
+    ) -> bool {
+        self.journal_stack
+            .iter()
+            .rev()
+            .take_while(|frame| frame.hi > base_open_depth)
+            .any(|frame| {
+                frame
+                    .saves
+                    .iter()
+                    .any(|(ix, orig)| *ix < watermark && predicate(*ix, orig, &self.items[*ix]))
+            })
+    }
     /// Materialize the frame of the innermost open journaled epoch before the
     /// first change of this arena inside it. Every open depth above the last
     /// materialized frame was opened while the arena was untouched, so the
@@ -313,7 +609,7 @@ impl<T> Arena<T> {
     }
 }
 
-impl<T: Clone> Arena<T> {
+impl<T: Clone, S: ArenaStore<T>> Arena<T, S> {
     /// Open a JOURNALED epoch: allocations are dropped on pop AND in-place
     /// mutations of pre-epoch slots are rolled back (first-touch clone).
     #[inline]
@@ -350,6 +646,42 @@ impl<T: Clone> Arena<T> {
                 self.items[ix] = v;
             }
         }
+    }
+    /// Merge all open journaled epochs above `target_depth` into `target_depth`
+    /// without rolling back their mutations. When `target_depth == 0`, all open
+    /// journaled epochs are committed permanently into depth 0 and their saved
+    /// rollback clones are released. When `target_depth > 0`, epochs
+    /// `target_depth..=open_depth` collapse into a single epoch at
+    /// `target_depth` that retains only the earliest pre-`target_depth` clone
+    /// per slot below `target_depth`'s watermark.
+    pub fn coalesce_epochs_to(&mut self, target_depth: usize) {
+        if self.open_depth <= target_depth {
+            return;
+        }
+        self.open_depth = target_depth;
+        if target_depth == 0 {
+            self.journal_stack.clear();
+            self.journal_stack.shrink_to_fit();
+            return;
+        }
+        let first_idx = self
+            .journal_stack
+            .partition_point(|frame| frame.hi < target_depth);
+        if first_idx >= self.journal_stack.len() {
+            return;
+        }
+        let watermark = self.journal_stack[first_idx].watermark;
+        let tail: Vec<EpochJournalFrame<T>> = self.journal_stack.drain((first_idx + 1)..).collect();
+        let target_frame = &mut self.journal_stack[first_idx];
+        target_frame.hi = target_depth;
+        for frame in tail {
+            for (ix, val) in frame.saves {
+                if ix < watermark && target_frame.saved_keys.insert(ix) {
+                    target_frame.saves.push((ix, val));
+                }
+            }
+        }
+        target_frame.saves.shrink_to_fit();
     }
     /// The mutate path under branch epochs: the first mutation of a
     /// pre-epoch slot in the CURRENT epoch saves a rollback clone (zero-cost
@@ -412,6 +744,7 @@ mod tests {
 
     #[test]
     fn arena_clear_preserves_storage_but_invalidates_objects_and_epochs() {
+        let _test_env = crate::test_env::read();
         let mut arena = Arena::new();
         for value in 0..32 {
             arena.push(value);
@@ -439,6 +772,7 @@ mod tests {
 
     #[test]
     fn arena_releasing_clear_drops_storage_and_preserves_growth_policy() {
+        let _test_env = crate::test_env::read();
         let mut arena = Arena::new_tight();
         for value in 0..32_768 {
             arena.push(value);
@@ -457,8 +791,58 @@ mod tests {
         assert!(arena.capacity() <= 4_096);
     }
 
+    /// Chunked storage must behave as one `Vec` across chunk boundaries:
+    /// push, pop, truncate (inside and across chunks), journaled rollback and
+    /// iteration in both directions, for tight and ordinary arenas.
+    #[test]
+    fn chunked_arena_matches_vec_across_chunk_boundaries() {
+        let _test_env = crate::test_env::read();
+        let chunk = super::CHUNK_LEN;
+        for tight in [false, true] {
+            let mut arena: super::ChunkedArena<usize> = if tight {
+                super::ChunkedArena::new_tight_chunked()
+            } else {
+                super::ChunkedArena::new_chunked()
+            };
+            let mut model: Vec<usize> = Vec::new();
+            for value in 0..(3 * chunk + 17) {
+                assert_eq!(arena.push(value).index(), value);
+                model.push(value);
+            }
+            assert!(arena.iter().copied().eq(model.iter().copied()));
+            assert!(arena.iter().rev().copied().eq(model.iter().rev().copied()));
+            assert_eq!(arena.iter().len(), model.len());
+            for cut in [3 * chunk, 2 * chunk + 1, chunk - 1, chunk + 5] {
+                if cut < model.len() {
+                    arena.truncate_to(cut);
+                    model.truncate(cut);
+                } else {
+                    while model.len() < cut {
+                        let v = model.len() * 3;
+                        arena.push(v);
+                        model.push(v);
+                    }
+                }
+                assert_eq!(arena.len(), model.len());
+                assert!(arena.iter().copied().eq(model.iter().copied()), "cut {cut}");
+            }
+            let last = super::Id::new((model.len() - 1) as super::Cint64);
+            assert!(arena.pop_last_if(last));
+            model.pop();
+            arena.push_epoch();
+            *arena.get_mut_journaled(super::Id::new(chunk as super::Cint64 + 2)) = 1;
+            *arena.get_mut_journaled(super::Id::new(3)) = 2;
+            for v in 0..(2 * chunk) {
+                arena.push(v);
+            }
+            arena.pop_epoch();
+            assert!(arena.iter().copied().eq(model.iter().copied()));
+            assert!(arena.capacity() >= arena.len());
+        }
+    }
     #[test]
     fn tight_arena_bounds_capacity_without_changing_ids_or_epoch_rollback() {
+        let _test_env = crate::test_env::read();
         let mut arena = Arena::new_tight();
         for value in 0..10_000 {
             let id = arena.push(value);
@@ -483,6 +867,7 @@ mod tests {
     /// stack of (length, full snapshot) per open epoch.
     #[test]
     fn lazy_epoch_frames_match_eager_snapshots_under_random_operations() {
+        let _test_env = crate::test_env::read();
         let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
         let mut next = move |bound: u64| {
             seed ^= seed << 13;
@@ -545,5 +930,49 @@ mod tests {
                 assert!(arena.iter().copied().eq(snapshot.iter().copied()));
             }
         }
+    }
+
+    #[test]
+    fn coalesce_epochs_to_preserves_earliest_pre_target_saves_and_watermark() {
+        let _test_env = crate::test_env::read();
+        let mut arena: Arena<String> = Arena::new();
+        let id0 = arena.push("a0".to_string());
+        let id1 = arena.push("b0".to_string());
+
+        // Epoch 1: mutate slot 0 ("a0" -> "a1") and allocate slot 2 ("c1").
+        arena.push_epoch();
+        *arena.get_mut_journaled(id0) = "a1".to_string();
+        let id2 = arena.push("c1".to_string());
+
+        // Epoch 2: mutate slot 0 again ("a1" -> "a2"), mutate slot 1 for the
+        // first time ("b0" -> "b2"), and allocate slot 3 ("d2").
+        arena.push_epoch();
+        *arena.get_mut_journaled(id0) = "a2".to_string();
+        *arena.get_mut_journaled(id1) = "b2".to_string();
+        let id3 = arena.push("d2".to_string());
+
+        // Epoch 3: mutate slot 1 again ("b2" -> "b3") and mutate slot 2 ("c1" -> "c3").
+        arena.push_epoch();
+        *arena.get_mut_journaled(id1) = "b3".to_string();
+        *arena.get_mut_journaled(id2) = "c3".to_string();
+        assert_eq!(arena.open_depth(), 3);
+
+        // Coalesce epochs 1..=3 into target_depth = 1. Current live values must
+        // remain unchanged while the open depth collapses to 1.
+        arena.coalesce_epochs_to(1);
+        assert_eq!(arena.open_depth(), 1);
+        assert_eq!(arena.len(), 4);
+        assert_eq!(arena.get(id0), "a2");
+        assert_eq!(arena.get(id1), "b3");
+        assert_eq!(arena.get(id2), "c3");
+        assert_eq!(arena.get(id3), "d2");
+
+        // Popping the single coalesced epoch 1 must restore the exact pre-epoch-1
+        // state: length 2 with ["a0", "b0"] (not the intermediate "a1" or "b2").
+        arena.pop_epoch();
+        assert_eq!(arena.open_depth(), 0);
+        assert_eq!(arena.len(), 2);
+        assert_eq!(arena.get(id0), "a0");
+        assert_eq!(arena.get(id1), "b0");
     }
 }

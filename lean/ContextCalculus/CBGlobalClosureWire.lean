@@ -111,7 +111,7 @@ theorem WireCBGlobalClosureDocument.check_sound
       unaryMonotoneCondition decoded.order.eqClosure.literalOrder.termOrder = true ∧
       ∀ context ∈ decoded.rsucc.contexts,
         ∀ offer ∈ rSuccOffers (sendCoverageOf decoded.rsucc.succ)
-            decoded.rsucc.reachConcepts
+            decoded.rsucc.reachConcepts decoded.rsucc.groundedConcepts
             decoded.rsucc.succ.join3.hyper.literalOrder
             context.sourceIndex.val
             ((productionOf decoded.rsucc.succ).contexts.get

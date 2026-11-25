@@ -5,18 +5,94 @@
 use super::{data_rules, ground_rules, iri::IriRegistry, parse, profile::SourceProfileBuilder,
     sexpr::{Node, Parser}, syntax::{Axiom, Concept, Role, RuleAtom}};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
 
+#[derive(Clone)]
 pub struct GroundedRuleSource {
     pub text: String,
     pub source_rules: u64,
     pub instances: usize,
     pub private_classes: BTreeSet<String>,
 }
+
+static CACHED_GROUNDED_SOURCE: Mutex<Option<(Arc<str>, usize, Result<GroundedRuleSource, String>)>> =
+    Mutex::new(None);
 fn render(node: &Node<'_>) -> String {
     match node {
         Node::Atom(s) => s.to_string(),
         Node::List(h,args) => format!("{h}({})", args.iter().map(render).collect::<Vec<_>>().join(" ")),
     }
+}
+
+/// `text` with every `<iri>` that `source` spells as one prefixed name in
+/// that spelling, and with the prefix declarations of `source` that `text`
+/// lacks. Quoted literals are copied unchanged.
+fn respell_as_source(text: &str, source: &str) -> String {
+    let mut prefixes: Vec<(String, String, String)> = Vec::new();
+    let mut parser = Parser::new(source);
+    while parser.peek() == Some("Prefix") {
+        let Ok(node) = parser.parse() else { break };
+        let declaration = render(&node);
+        let Node::List(_, args) = node else { break };
+        let parts: Option<Vec<&str>> = args.iter().map(Node::as_atom).collect();
+        let Some(definition) = parts.map(|p| p.concat()) else { continue };
+        if let Some((prefix, value)) = definition.split_once(":=") {
+            if let Some(iri) = value.strip_prefix('<').and_then(|v| v.strip_suffix('>')) {
+                prefixes.push((prefix.to_string(), iri.to_string(), declaration));
+            }
+        }
+    }
+    let mut spelled: std::collections::HashMap<String, Option<String>> = Default::default();
+    for token in super::sexpr::tokens(source) {
+        if token.starts_with('"') || token.starts_with('<') { continue }
+        let Some((prefix, local)) = token.split_once(':') else { continue };
+        if local.starts_with('=') { continue }
+        let Some((_, ns, _)) = prefixes.iter().find(|(p, _, _)| p == prefix) else { continue };
+        let entry = spelled.entry(format!("{ns}{local}")).or_insert_with(|| Some(token.to_string()));
+        if entry.as_deref() != Some(token) { *entry = None }
+    }
+    // An IRI the source also writes in full keeps its full form.
+    for token in super::sexpr::tokens(source) {
+        if let Some(iri) = token.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
+            if let Some(entry) = spelled.get_mut(iri) { *entry = None }
+        }
+    }
+    let mut out = String::with_capacity(text.len());
+    for (prefix, _, declaration) in &prefixes {
+        if !text.contains(&format!("Prefix({prefix}:=")) {
+            out.push_str(declaration);
+            out.push('\n');
+        }
+    }
+    let bytes = text.as_bytes();
+    let (mut i, mut start) = (0usize, 0usize);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    if bytes[i] == b'\\' { i += 1 }
+                    i += 1;
+                }
+                i += 1;
+            }
+            b'<' => match text[i + 1..].find('>') {
+                Some(len) => {
+                    let iri = &text[i + 1..i + 1 + len];
+                    if let Some(Some(token)) = spelled.get(iri) {
+                        out.push_str(&text[start..i]);
+                        out.push_str(token);
+                        start = i + len + 2;
+                    }
+                    i += len + 2;
+                }
+                None => i += 1,
+            },
+            _ => i += 1,
+        }
+    }
+    out.push_str(&text[start.min(text.len())..]);
+    out
 }
 
 fn retained_axiom(node: &Node<'_>, definitions:&mut BTreeMap<String,String>,
@@ -46,30 +122,77 @@ fn retained_axiom(node: &Node<'_>, definitions:&mut BTreeMap<String,String>,
 }
 
 pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, String> {
-    if text.len() > 4 * 1024 * 1024 { return Err("ground-rule source exceeds development size bound".into()); }
+    if text.len() > 16 * 1024 * 1024 { return Err("ground-rule source exceeds development size bound".into()); }
+    if let Some((_, _, cached)) = CACHED_GROUNDED_SOURCE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .filter(|(src, max_inst, _)| *max_inst == max_instances && &**src == text)
+    {
+        return cached.clone();
+    }
+    let result = compile_uncached(text, max_instances);
+    *CACHED_GROUNDED_SOURCE.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some((Arc::from(text), max_instances, result.clone()));
+    result
+}
+
+fn compile_uncached(text: &str, max_instances: usize) -> Result<GroundedRuleSource, String> {
+    if text.len() > 16 * 1024 * 1024 { return Err("ground-rule source exceeds development size bound".into()); }
     // Prototype integration: guarded finite numeric profiles precede rule
     // compilation; every resulting source axiom still faces native admission.
     let normalized = super::numeric_source::normalize(text, 256)?;
+    let original = text;
     let text = normalized.as_deref().unwrap_or(text);
     let mut registry = IriRegistry::new();
     let mut profile = SourceProfileBuilder::new();
-    let ontology = parse::parse_axioms_observed(&mut registry,text,|node| profile.observe(node))
-        .map_err(|e|e.0)?;
+    let mut finite_scan = (text.contains("DLSafeRule") && text.contains("DataPropertyAtom"))
+        .then(|| super::finite_data_rules::Scan::new(text));
+    let ontology = parse::parse_axioms_observed(&mut registry,text,|node| {
+        profile.observe(node);
+        if let Some(scan) = &mut finite_scan {
+            scan.observe(node);
+        }
+    }).map_err(|e|e.0)?;
     let names = profile.rule_individual_names().iter().map(|n|registry.short(n)).collect::<BTreeSet<_>>();
     let source = profile.finish(text.len() as u64).source;
     if source.imports != 0 { return Err("ground-rule source imports require closure evidence".into()); }
+    if source.rule_axioms == 0 && text.len() > 4 * 1024 * 1024 {
+        return Err("ground-rule source exceeds development size bound".into());
+    }
     let has_data_assertions = ["DataPropertyAssertion", "NegativeDataPropertyAssertion"]
         .iter().any(|kind| source.axiom_types.get(*kind).copied().unwrap_or(0) != 0);
     if source.rule_axioms == 0 && !has_data_assertions {
         return Err("source has neither rules nor data assertions to normalize".into());
     }
+    let mut finite_values = finite_scan.as_ref().map(|s| s.values.clone()).unwrap_or_default();
+    finite_values.sort();
+    finite_values.dedup();
     let mut rules: Vec<Axiom> = ontology.rules().cloned().collect();
+    let mut covered_rules = rules.len() as u64;
     for rule in ontology.datatype_rules() {
-        rules.push(data_rules::constant_data_rule_plan(rule)
-            .ok_or("concrete rule requires exact nonconstant normalization")?);
+        if let Some(lowered) = data_rules::constant_data_rule_plan(rule) {
+            rules.push(lowered);
+            covered_rules += 1;
+        } else if finite_scan.as_ref().is_some_and(super::finite_data_rules::Scan::certified) {
+            let lowered = data_rules::finite_data_rule_plan(rule, &finite_values, 100_000)
+                .ok_or("concrete rule requires exact nonconstant normalization")?;
+            rules.extend(lowered);
+            covered_rules += 1;
+        } else {
+            return Err("concrete rule requires exact nonconstant normalization".into());
+        }
     }
-    if rules.len() as u64 != source.rule_axioms {
+    if covered_rules != source.rule_axioms {
         return Err("ground-rule source/parsed rule coverage mismatch".into());
+    }
+    let role_bound = if source.rule_axioms > 0 && (names.len() >= 16 || rules.len() >= 16) {
+        super::named_role_bound::NamedRoleBound::compute(text)
+    } else {
+        None
+    };
+    if let Some(bound) = &role_bound {
+        rules.retain(|rule| bound.has_reachable_binding(rule));
     }
     let mut occupied: BTreeSet<_> = registry.owned_names().into_iter().collect();
     occupied.extend(super::sexpr::tokens(text).map(super::iri::short_base));
@@ -77,6 +200,7 @@ pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, S
     // The grounded object joins then refer to atomic classes, without moving a
     // datatype expression into an unsupported compound source-axiom position.
     let mut definitions: BTreeMap<Concept,String> = BTreeMap::new();
+    let mut alias_definitions: BTreeMap<String, Concept> = BTreeMap::new();
     let mut next=0usize;
     for rule in &mut rules {
         let Axiom::Rule(body,head)=rule else {unreachable!()};
@@ -87,15 +211,48 @@ pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, S
                 let name=format!("__ground_rule_atom_{next}");next+=1;
                 if occupied.insert(name.clone()) {break name}
             }).clone();
+            alias_definitions.insert(alias.clone(), c.clone());
             *c=Concept::Name(alias);
         }
     }
-    let paths = super::rule_paths::plan(&rules, &names, &occupied, max_instances)
-        .map_err(str::to_owned)?;
-    occupied.extend(paths.domain.iter().cloned());
-    let plan = ground_rules::plan(&paths.rules,&names,&occupied,max_instances - paths.instances)
-        .map_err(str::to_owned)?;
-    let generated: BTreeMap<_,_> = std::iter::once(&plan.anchor).chain(plan.links.values())
+    let (paths, plan) = if let Some((bound_axioms, bound_instances)) = role_bound
+        .as_ref()
+        .and_then(|bound| bound.compile_rules(&rules, &alias_definitions, max_instances))
+    {
+        (
+            super::rule_paths::PathPlan {
+                rules: Vec::new(),
+                axioms: bound_axioms,
+                domain: None,
+                instances: bound_instances,
+            },
+            ground_rules::GroundRulePlan {
+                anchor: String::new(),
+                cover: None,
+                links: BTreeMap::new(),
+                axioms: Vec::new(),
+                instances: 0,
+            },
+        )
+    } else {
+        let paths = super::rule_paths::plan(&rules, &names, &occupied, max_instances)
+            .map_err(str::to_owned)?;
+        occupied.extend(paths.domain.iter().cloned());
+        let plan = if paths.rules.is_empty() {
+            ground_rules::GroundRulePlan {
+                anchor: String::new(),
+                cover: None,
+                links: BTreeMap::new(),
+                axioms: Vec::new(),
+                instances: 0,
+            }
+        } else {
+            ground_rules::plan(&paths.rules,&names,&occupied,max_instances - paths.instances)
+                .map_err(str::to_owned)?
+        };
+        (paths, plan)
+    };
+    let generated: BTreeMap<_,_> = (!plan.anchor.is_empty()).then_some(&plan.anchor).into_iter().chain(plan.links.values())
         .chain(plan.cover.iter()).chain(paths.domain.iter()).chain(definitions.values())
         .map(|name|(name.clone(),format!("<urn:km:ground-rule#{name}>"))).collect();
     let name = |n: &str| -> Result<String,String> {
@@ -134,9 +291,10 @@ pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, S
         axioms.push(format!("Declaration(Class({alias}))"));
         axioms.push(format!("EquivalentClasses({alias} {expression})"));
     }
-    for iri in generated.values() {
-        // Object property declarations are emitted separately below.
-        if iri==&generated[&plan.anchor] {axioms.push(format!("Declaration(NamedIndividual({iri}))"));}
+    if !plan.anchor.is_empty() {
+        if let Some(iri) = generated.get(&plan.anchor) {
+            axioms.push(format!("Declaration(NamedIndividual({iri}))"));
+        }
     }
     for link in plan.links.values().chain(plan.cover.iter()) {axioms.push(format!("Declaration(ObjectProperty({}))",name(link)?));}
     for (expression,alias) in &definitions {
@@ -152,7 +310,12 @@ pub fn compile(text: &str, max_instances: usize) -> Result<GroundedRuleSource, S
             _=>return Err("unexpected ground-rule axiom".into()),
         });
     }
-    Ok(GroundedRuleSource{text:format!("{}\nOntology(\n{}\n)\n",prefixes.join("\n"),axioms.join("\n")),
+    let compiled = format!("{}\nOntology(\n{}\n)\n",prefixes.join("\n"),axioms.join("\n"));
+    // The numeric normalization writes every IRI in full and drops the prefix
+    // declarations, so the classifier, and every row it publishes, spelled the
+    // source's prefixed names as full IRIs. Spell them back as the source does.
+    let compiled = if normalized.is_some() { respell_as_source(&compiled, original) } else { compiled };
+    Ok(GroundedRuleSource{text:compiled,
         source_rules:source.rule_axioms,instances:plan.instances + paths.instances,
         private_classes:definitions.values().chain(paths.domain.iter()).map(|n|generated[n].trim_matches(['<','>']).to_owned())
             .chain(assertion_definitions.values().map(|n|n.trim_matches(['<','>']).to_owned())).collect()})
@@ -196,6 +359,7 @@ mod tests {
         Head(ClassAtom(<http://km.test/Bad> Variable(<http://km.test/y>)))))"#;
     #[test]
     fn source_translation_retains_non_rule_axioms_and_concrete_values() {
+        let _test_env = crate::test_env::read();
         let compiled=compile(SOURCE,4).unwrap();
         assert_eq!(compiled.source_rules,1); assert_eq!(compiled.instances,2);
         assert!(!compiled.text.contains("DLSafeRule("));
@@ -213,6 +377,7 @@ mod tests {
     }
     #[test]
     fn source_translation_rejects_missing_coverage_and_nonexact_literals() {
+        let _test_env = crate::test_env::read();
         assert!(compile(SOURCE,1).is_err());
         assert!(compile(&SOURCE.replace("^^xsd:string","^^rdfs:Literal"),4).is_err());
         assert!(compile(&SOURCE.replace("ObjectPropertyAtom(","UnknownAtom("),4).is_err());
@@ -220,6 +385,7 @@ mod tests {
     }
     #[test]
     fn fresh_anchor_does_not_capture_source_names() {
+        let _test_env = crate::test_env::read();
         let source=SOURCE.replace("Ontology(","Ontology(Declaration(NamedIndividual(<urn:km:ground-rule#__ground_rule_0>))");
         let compiled=compile(&source,9).unwrap();
         assert_eq!(compiled.instances,3);
@@ -227,6 +393,7 @@ mod tests {
     }
     #[test]
     fn negative_data_assertion_keeps_polarity_and_annotation() {
+        let _test_env = crate::test_env::read();
         let text=r#"NegativeDataPropertyAssertion(Annotation(<http://km.test/note> "retained") <http://km.test/p> <http://km.test/a> "NULL"^^xsd:string)"#;
         let node=Parser::new(text).parse().unwrap();
         let mut definitions=BTreeMap::new(); let mut occupied=BTreeSet::new();
@@ -239,6 +406,7 @@ mod tests {
 
     #[test]
     fn assertion_aliases_keep_lowest_free_names_and_reuse_duplicates() {
+        let _test_env = crate::test_env::read();
         let mut definitions = BTreeMap::new();
         let mut occupied = [0, 2, 5].into_iter()
             .map(|i| format!("__ground_assertion_{i}")).collect();

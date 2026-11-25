@@ -8,9 +8,11 @@ import ContextCalculus.OWL.Names
 Runs `ContextCalculus.OWL.parse` on an OWL 2 functional-syntax file and
 prints one JSON object on stdout:
 
-* `{"status":"ok","classes":[..],"objectProperties":[..],"axiomCounts":{..}}`
-  with the sorted `Ontology.classNames` / `Ontology.objectPropertyNames` and
-  the number of axioms per `Axiom` constructor, or
+* `{"status":"ok","classes":[..],"objectProperties":[..],"dataProperties":[..],
+  "individuals":[..],"axiomCounts":{..}}` with the sorted
+  `Ontology.classNames` / `Ontology.objectPropertyNames` /
+  `Ontology.dataPropertyNames` / `Ontology.individualNames` and the number of
+  axioms per `Axiom` constructor, or
 * `{"status":"rejected","reason":".."}`.
 
 Read and parse times go to stderr. Exit code 0 for both answers, 2
@@ -33,11 +35,44 @@ def axiomKind : Axiom → String
   | .symmetric _ => "symmetric"
   | .declareClass _ => "declareClass"
   | .declareObjectProperty _ => "declareObjectProperty"
+  | .disjointUnion .. => "disjointUnion"
+  | .disjointObjectProperties _ => "disjointObjectProperties"
+  | .functional _ => "functional"
+  | .inverseFunctional _ => "inverseFunctional"
+  | .reflexive _ => "reflexive"
+  | .irreflexive _ => "irreflexive"
+  | .asymmetric _ => "asymmetric"
+  | .subDataPropertyOf .. => "subDataPropertyOf"
+  | .equivalentDataProperties _ => "equivalentDataProperties"
+  | .disjointDataProperties _ => "disjointDataProperties"
+  | .dataDomain .. => "dataDomain"
+  | .dataRange .. => "dataRange"
+  | .functionalData _ => "functionalData"
+  | .datatypeDefinition .. => "datatypeDefinition"
+  | .hasKey .. => "hasKey"
+  | .sameIndividual _ => "sameIndividual"
+  | .differentIndividuals _ => "differentIndividuals"
+  | .classAssertion .. => "classAssertion"
+  | .objectPropertyAssertion .. => "objectPropertyAssertion"
+  | .negativeObjectPropertyAssertion .. => "negativeObjectPropertyAssertion"
+  | .dataPropertyAssertion .. => "dataPropertyAssertion"
+  | .negativeDataPropertyAssertion .. => "negativeDataPropertyAssertion"
+  | .declareDataProperty _ => "declareDataProperty"
+  | .declareNamedIndividual _ => "declareNamedIndividual"
+  | .declareDatatype _ => "declareDatatype"
+  | .declareAnnotationProperty _ => "declareAnnotationProperty"
 
 def kinds : List String :=
   ["subClassOf", "equivalentClasses", "disjointClasses", "domain", "range",
    "subObjectPropertyOf", "equivalentObjectProperties", "inverseObjectProperties",
-   "transitive", "symmetric", "declareClass", "declareObjectProperty"]
+   "transitive", "symmetric", "declareClass", "declareObjectProperty",
+   "disjointUnion", "disjointObjectProperties", "functional", "inverseFunctional",
+   "reflexive", "irreflexive", "asymmetric", "subDataPropertyOf",
+   "equivalentDataProperties", "disjointDataProperties", "dataDomain", "dataRange",
+   "functionalData", "datatypeDefinition", "hasKey", "sameIndividual",
+   "differentIndividuals", "classAssertion", "objectPropertyAssertion", "negativeObjectPropertyAssertion",
+   "dataPropertyAssertion", "negativeDataPropertyAssertion", "declareDataProperty", "declareNamedIndividual",
+   "declareDatatype", "declareAnnotationProperty"]
 
 def axiomCounts (O : Ontology) : Json :=
   let counts : Std.HashMap String Nat :=
@@ -71,7 +106,9 @@ def main (args : List String) : IO UInt32 := do
       let classes := O.classNames
       let roles := O.objectPropertyNames
       let out := Json.mkObj [("status", "ok"), ("classes", sortedJson classes),
-        ("objectProperties", sortedJson roles), ("axiomCounts", axiomCounts O)]
+        ("objectProperties", sortedJson roles),
+        ("dataProperties", sortedJson O.dataPropertyNames),
+        ("individuals", sortedJson O.individualNames), ("axiomCounts", axiomCounts O)]
       IO.eprintln s!"read {t1 - t0} ms, parse {t2 - t1} ms"
       IO.println out.compress
       return 0

@@ -475,6 +475,7 @@ mod tests {
     /// both orientations, on pseudo-random hierarchies and ABoxes.
     #[test]
     fn endpoint_indexed_disjoint_scan_matches_every_pair_scan() {
+        let _test_env = crate::test_env::read();
         let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
         let mut next = |bound: u64| {
             seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
@@ -533,6 +534,7 @@ mod tests {
     /// assertion never reached any layer).
     #[test]
     fn negative_assertion_clash_is_detected() {
+        let _test_env = crate::test_env::read();
         let o = ont(vec![
             Axiom::RoleAssertion("r".into(), "a".into(), "b".into()),
             Axiom::NegativeRoleAssertion("r".into(), "a".into(), "b".into()),
@@ -545,6 +547,7 @@ mod tests {
     /// not fire (the precheck may only report provable clashes).
     #[test]
     fn negative_assertion_on_other_pair_is_consistent() {
+        let _test_env = crate::test_env::read();
         let o = ont(vec![
             Axiom::RoleAssertion("r".into(), "a".into(), "b".into()),
             Axiom::NegativeRoleAssertion("r".into(), "b".into(), "a".into()),
@@ -557,6 +560,7 @@ mod tests {
     /// hierarchy (`s(a,b)`, `s ⊑ r`, `¬r(a,b)`) and SameIndividual merging.
     #[test]
     fn negative_assertion_clash_closes_under_subroles_and_same_individual() {
+        let _test_env = crate::test_env::read();
         let o = ont(vec![
             Axiom::RoleAssertion("s".into(), "a".into(), "b".into()),
             Axiom::NegativeRoleAssertion("r".into(), "a2".into(), "b".into()),
@@ -571,6 +575,7 @@ mod tests {
     /// negative assertions ⇒ nothing to collect.
     #[test]
     fn collect_still_skips_without_disjointness_or_negatives() {
+        let _test_env = crate::test_env::read();
         let o = ont(vec![Axiom::RoleAssertion(
             "r".into(),
             "a".into(),
@@ -581,6 +586,7 @@ mod tests {
 
     #[test]
     fn union_equivalence_reveals_asserted_disjointness_without_rules() {
+        let _test_env = crate::test_env::read();
         let mut registry = super::super::iri::IriRegistry::new();
         let ontology = super::super::parse::parse_axioms(&mut registry, r#"Ontology(
             DisjointClasses(<Key> <NonKey>)
@@ -594,6 +600,7 @@ mod tests {
 
     #[test]
     fn named_projection_respects_boolean_polarity() {
+        let _test_env = crate::test_env::read();
         let name = |n: &str| Concept::Name(n.into());
         let mut edges = HashMap::new();
         collect_named_inclusion_edges(&Concept::And([name("A"), name("B")].into_iter().collect()),
@@ -609,6 +616,7 @@ mod tests {
 
     #[test]
     fn complement_subclass_clash_is_detected() {
+        let _test_env = crate::test_env::read();
         let o = ont(vec![
             Axiom::SubClassOf(
                 Concept::Name("A".into()),
@@ -623,6 +631,7 @@ mod tests {
 
     #[test]
     fn asserted_bottom_subclass_is_detected() {
+        let _test_env = crate::test_env::read();
         let o = ont(vec![
             Axiom::SubClassOf(Concept::Name("A".into()), Concept::Bottom),
             Axiom::ConceptAssertion(Concept::Name("A".into()), "a".into()),
@@ -633,6 +642,7 @@ mod tests {
 
     #[test]
     fn complement_subclass_without_joint_membership_remains_consistent() {
+        let _test_env = crate::test_env::read();
         let o = ont(vec![
             Axiom::SubClassOf(
                 Concept::Name("A".into()),
@@ -654,6 +664,7 @@ mod tests {
     /// taxonomy and hides that.
     #[test]
     fn derived_abox_contradictions_are_not_detected() {
+        let _test_env = crate::test_env::read();
         // `A ⊑ ⊥` with `ClassAssertion(A a)`: globally inconsistent, but ⊥ is
         // not an asserted disjoint pair, so the collection does not even start.
         let bottom = ont(vec![
@@ -687,6 +698,7 @@ mod tests {
 
     #[test]
     fn singleton_and_larger_nominal_enumeration_clash_with_different() {
+        let _test_env = crate::test_env::read();
         let ontology = ont(vec![
             Axiom::EquivalentClasses(Concept::Name("C".into()), Concept::Nominal("a".into())),
             Axiom::EquivalentClasses(
@@ -704,6 +716,7 @@ mod tests {
 
     #[test]
     fn asserted_singleton_member_clashes_with_different() {
+        let _test_env = crate::test_env::read();
         let ontology = ont(vec![
             Axiom::EquivalentClasses(Concept::Name("C".into()), Concept::Nominal("a".into())),
             Axiom::ConceptAssertion(Concept::Name("C".into()), "b".into()),
@@ -714,6 +727,7 @@ mod tests {
 
     #[test]
     fn distinct_members_of_one_enumeration_do_not_clash() {
+        let _test_env = crate::test_env::read();
         let ontology = ont(vec![
             Axiom::EquivalentClasses(
                 Concept::Name("C".into()),
@@ -854,6 +868,7 @@ mod gated_projection_tests {
 
     #[test]
     fn gated_projection_matches_the_reference_on_every_gate_shape() {
+        let _test_env = crate::test_env::read();
         let variants: Vec<Vec<Axiom>> = vec![
             hierarchy(),
             hierarchy()

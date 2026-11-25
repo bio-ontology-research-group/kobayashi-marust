@@ -323,11 +323,20 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             .process_context_mut()
                             .sat_critical_ind_node_con_test_set_mut(critical_indi_node_con_test_set)
                             .insert_concept_tested_for_individual(concept, depending_node);
-                        if self.is_critical_or_concept_descriptor_insufficient(
-                            con_des,
-                            &mut depending_node,
-                            calc_alg_context,
-                        ) {
+                        let insufficient = if concept_type == CCT_NOMINAL {
+                            self.is_critical_nominal_concept_descriptor_insufficient(
+                                con_des,
+                                &mut depending_node,
+                                calc_alg_context,
+                            )
+                        } else {
+                            self.is_critical_or_concept_descriptor_insufficient(
+                                con_des,
+                                &mut depending_node,
+                                calc_alg_context,
+                            )
+                        };
+                        if insufficient {
                             self.update_direct_not_dependent_adding_individual_status_flags(
                                 depending_node,
                                 IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
@@ -387,6 +396,136 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 );
             }
         }
+    }
+
+    /// Whether the forwarded CCT_NOMINAL shortcut is sound for an unattached
+    /// ABox template node: its saturated label holds no concept whose test
+    /// depends on the role edges of the nodes that copy the template.
+    ///
+    /// The shortcut marks only the template insufficient, not its dependent
+    /// representatives, and forwards the nominal check alone. A representative
+    /// relies on the template for the critical tests of its copied label (the
+    /// at-most test of a substituted node is skipped), and those tests stop at
+    /// the template once it is insufficient. With an at-most, universal,
+    /// self, disjunction or value restriction on an object role in the
+    /// template's label (or on a data role while a representative carries a
+    /// data value) that loses answers: `⊤ ⊑ ≤1 r.G`, `r(a5,a4)`, `r(a5,a1)`, `G(a4)`, `G(a1)`,
+    /// disjoint `C(a4)`, `F(a1)` and the probe `P5 ≡ {a5}` came out
+    /// consistent (78bbeb27). Such a template stays insufficient for its
+    /// dependents too, as before 78bbeb27. Labels of atoms, conjunctions,
+    /// existentials, nominals and implication triggers keep the shortcut
+    /// (ore_ont_10949: `C_i ⊑ {a_i}`).
+    fn template_label_free_of_edge_restrictions(
+        &mut self,
+        node: SatNodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        use super::super::model::op;
+        let mut role_restriction = false;
+        {
+            let pc = calc_alg_context.process_context();
+            let label = pc.sat_node(node).reapply_con_sat_label_set;
+            if label.is_none() {
+                return false;
+            }
+            let arenas = calc_alg_context.ontology_arenas();
+            let mut descriptor = pc
+                .reapply_con_sat_label_set(label)
+                .get_concept_saturation_description_linker();
+            let mut walked = 0usize;
+            while descriptor.is_some() {
+                walked += 1;
+                if walked > pc.con_sat_desc_count() {
+                    return false;
+                }
+                let d = pc.con_sat_desc(descriptor);
+                let negated = d.get_negation();
+                let code = arenas.concept(d.get_concept()).get_operator_code();
+                let plain = if negated {
+                    matches!(code, op::CCATOM | op::CCSUB | op::CCBOTTOM)
+                } else {
+                    matches!(
+                        code,
+                        op::CCATOM
+                            | op::CCSUB
+                            | op::CCTOP
+                            | op::CCAND
+                            | op::CCSOME
+                            | op::CCNOMINAL
+                            | op::CCIMPLTRIG
+                            | op::CCIMPL
+                            | op::CCEQ
+                            | op::CCBRANCHTRIG
+                            | op::CCDATATYPE
+                            | op::CCDATALITERAL
+                    )
+                };
+                // Universal and at-most restrictions constrain only the
+                // edges of a node.
+                let edge_restriction = matches!(
+                    (negated, code),
+                    (false, op::CCALL)
+                        | (false, op::CCATMOST)
+                        | (true, op::CCSOME)
+                        | (true, op::CCATLEAST)
+                        | (false, op::CCIMPLALL)
+                        | (false, op::CCAQALL)
+                        | (false, op::CCIMPLAQALL)
+                        | (false, op::CCBRANCHALL)
+                        | (false, op::CCBRANCHAQALL)
+                );
+                if !plain && !edge_restriction {
+                    return false;
+                }
+                role_restriction |= edge_restriction;
+                descriptor = d.get_next_concept_desciptor();
+            }
+        }
+        if !role_restriction {
+            return true;
+        }
+        // With a universal or at-most restriction in the template, every
+        // representative that depends on it must be free of edges: no
+        // linked successor or predecessor and no data value. Such a
+        // restriction then holds at the representative without a test.
+        let mut stack = vec![node];
+        let mut seen = crate::fxhash::FxHashSet::default();
+        while let Some(current) = stack.pop() {
+            if !seen.insert(current) {
+                continue;
+            }
+            let dependents: Vec<SatNodeId> = calc_alg_context
+                .process_context()
+                .sat_node(current)
+                .get_copy_depending_individual_node_linker()
+                .iter()
+                .map(|link| link.target)
+                .collect();
+            for mut dependent in dependents {
+                if calc_alg_context.process_context().sat_node(dependent).has_data_value_applied() {
+                    return false;
+                }
+                self.collect_linked_successor_nodes(&mut dependent, calc_alg_context, INVALID);
+                let linked = IndividualSaturationProcessNode::get_linked_role_successor_hash_in_context(
+                    calc_alg_context.process_context_mut(),
+                    dependent,
+                    false,
+                );
+                if linked.is_some() {
+                    let pc = calc_alg_context.process_context();
+                    let any_edge = pc
+                        .linked_role_sat_succ_hash(linked)
+                        .role_succ_data_hash
+                        .values()
+                        .any(|&data| data.is_some() && pc.linked_role_sat_succ_data(data).succ_count > 0);
+                    if any_edge {
+                        return false;
+                    }
+                }
+                stack.push(dependent);
+            }
+        }
+        true
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::checkCriticalConceptsForNode`
@@ -646,7 +785,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // ---- 4. CCT_NOMINAL (cpp 3124-3148) ----
         loop {
             let (insufficient, clashed) = indirect_flags!();
-            if insufficient || clashed {
+            let unattached_abox_template = {
+                let node_ref = calc_alg_context
+                    .process_context()
+                    .sat_node(*indi_proc_sat_node);
+                node_ref.is_abox_individual_representation_node()
+                    && node_ref.get_nominal_individual().is_none()
+            };
+            if clashed || (insufficient && !unattached_abox_template) {
                 break;
             }
             let Some((critical_con_proc_des, critical_con_des, already_tested)) =
@@ -661,12 +807,33 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     calc_alg_context,
                 ) {
                     self.insufficient_nominal_count += 1;
-                    self.update_direct_adding_individual_status_flags(
-                        *indi_proc_sat_node,
-                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
-                        calc_alg_context,
-                    );
-                    self.set_insufficient_node_occured(calc_alg_context);
+                    if unattached_abox_template
+                        && self.template_label_free_of_edge_restrictions(
+                            *indi_proc_sat_node,
+                            calc_alg_context,
+                        )
+                    {
+                        self.update_direct_not_dependent_adding_individual_status_flags(
+                            *indi_proc_sat_node,
+                            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                            calc_alg_context,
+                        );
+                        self.set_insufficient_node_occured(calc_alg_context);
+                        self.add_critical_or_concept_tested_for_dependent_nodes(
+                            critical_con_des,
+                            CCT_NOMINAL,
+                            indi_proc_sat_node,
+                            critical_indi_node_con_test_set,
+                            calc_alg_context,
+                        );
+                    } else {
+                        self.update_direct_adding_individual_status_flags(
+                            *indi_proc_sat_node,
+                            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                            calc_alg_context,
+                        );
+                        self.set_insufficient_node_occured(calc_alg_context);
+                    }
                 } else {
                     self.add_critical_concept_for_dependent_nodes(
                         critical_con_des,
@@ -1044,6 +1211,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     == target_tag
         });
         if con_set.is_some() {
+            let own_nominal = {
+                let node_ref = calc_alg_context.process_context().sat_node(*indi_proc_sat_node);
+                if node_ref.is_abox_individual_representation_node() {
+                    node_ref.get_nominal_individual()
+                } else {
+                    super::super::model::IndividualId::NONE
+                }
+            };
             let op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
                 .ontology_arenas()
                 .concept(concept)
@@ -1066,7 +1241,19 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     con_set,
                     op_checking_concept,
                     calc_alg_context,
-                ) == Some(checking_negation);
+                ) == Some(checking_negation)
+                    || (own_nominal.is_some()
+                        && !checking_negation
+                        && calc_alg_context
+                            .ontology_arenas()
+                            .concept(op_checking_concept)
+                            .get_operator_code()
+                            == super::super::model::op::CCNOMINAL
+                        && calc_alg_context
+                            .ontology_arenas()
+                            .concept(op_checking_concept)
+                            .get_nominal_individual()
+                            == own_nominal);
                 if debug_target {
                     eprintln!(
                         "SAT-OR-CHECK node={} or-tag={} or-neg={} operand-tag={} operand-neg={} checking-tag={} checking-neg={} contained={}",
@@ -1126,6 +1313,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .sat_node(*indi_proc_sat_node)
             .reapply_con_sat_label_set;
         if con_set.is_some() {
+            let own_nominal = {
+                let node_ref = calc_alg_context.process_context().sat_node(*indi_proc_sat_node);
+                if node_ref.is_abox_individual_representation_node() {
+                    node_ref.get_nominal_individual()
+                } else {
+                    super::super::model::IndividualId::NONE
+                }
+            };
             let op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
                 .ontology_arenas()
                 .concept(concept)
@@ -1133,11 +1328,24 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .to_vec();
             for op_linker_it in op_linker {
                 // conSet->containsConcept(opConcept, opLinker->isNegated() ^ conceptNegation)
+                let op_negation = op_linker_it.negated ^ concept_negation;
                 let contained = Self::sat_label_set_contains_concept_get_negation(
                     con_set,
                     op_linker_it.target,
                     calc_alg_context,
-                ) == Some(op_linker_it.negated ^ concept_negation);
+                ) == Some(op_negation)
+                    || (own_nominal.is_some()
+                        && !op_negation
+                        && calc_alg_context
+                            .ontology_arenas()
+                            .concept(op_linker_it.target)
+                            .get_operator_code()
+                            == super::super::model::op::CCNOMINAL
+                        && calc_alg_context
+                            .ontology_arenas()
+                            .concept(op_linker_it.target)
+                            .get_nominal_individual()
+                            == own_nominal);
                 if contained {
                     return false;
                 }
@@ -1403,6 +1611,34 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        if con_des.is_none()
+            || con_des.index() >= calc_alg_context.process_context().con_sat_desc_count()
+            || indi_proc_sat_node.is_none()
+            || indi_proc_sat_node.index() >= calc_alg_context.process_context().sat_node_count()
+        {
+            return true;
+        }
+        let (concept, con_negation) = {
+            let desc = calc_alg_context.process_context().con_sat_desc(con_des);
+            (desc.get_concept(), desc.get_negation())
+        };
+        if concept.is_none()
+            || concept.index() >= calc_alg_context.ontology_arenas().concept_count() as usize
+        {
+            return true;
+        }
+        let nominal = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_nominal_individual();
+        let node_ref = calc_alg_context.process_context().sat_node(*indi_proc_sat_node);
+        if !con_negation
+            && node_ref.is_abox_individual_representation_node()
+            && nominal.is_some()
+            && node_ref.get_nominal_individual() == nominal
+        {
+            return false;
+        }
         // Native-ABox bridge equivalent of Konclude's cached deterministic /
         // non-deterministic consistency task pair. The snapshot stores exactly
         // the non-deterministic prefix before the deterministic label head.
@@ -1411,29 +1647,6 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .native_consistency_nominal_nondeterministic_prefix
             .as_ref()
         {
-            if con_des.is_none()
-                || con_des.index() >= calc_alg_context.process_context().con_sat_desc_count()
-                || indi_proc_sat_node.is_none()
-                || indi_proc_sat_node.index() >= calc_alg_context.process_context().sat_node_count()
-            {
-                return true;
-            }
-            let nominal = {
-                let concept = calc_alg_context
-                    .process_context()
-                    .con_sat_desc(con_des)
-                    .get_concept();
-                if concept.is_none()
-                    || concept.index()
-                        >= calc_alg_context.ontology_arenas().concept_count() as usize
-                {
-                    return true;
-                }
-                calc_alg_context
-                    .ontology_arenas()
-                    .concept(concept)
-                    .get_nominal_individual()
-            };
             if nominal.is_none()
                 || nominal.index() >= calc_alg_context.ontology_arenas().individual_count() as usize
             {
@@ -1633,6 +1846,43 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             let mut added = 0usize;
             let mut common_ops: std::collections::BTreeMap<Cint64, usize> =
                 std::collections::BTreeMap::new();
+            let (target_copy_node, target_copy_head) = {
+                let target_node = calc_alg_context.process_context().sat_node(*indi_proc_sat_node);
+                let copy_node = target_node.get_copy_individual_node();
+                let target_label = target_node.reapply_con_sat_label_set;
+                let head = if copy_node.is_some() && target_label.is_some() {
+                    let copy_label = calc_alg_context
+                        .process_context()
+                        .sat_node(copy_node)
+                        .reapply_con_sat_label_set;
+                    if copy_label.is_some() {
+                        let candidate = calc_alg_context
+                            .process_context()
+                            .reapply_con_sat_label_set(copy_label)
+                            .get_concept_saturation_description_linker();
+                        if candidate.is_some() {
+                            let desc = calc_alg_context.process_context().con_sat_desc(candidate);
+                            if Self::sat_label_set_contains_concept_get_negation(
+                                target_label,
+                                desc.get_concept(),
+                                calc_alg_context,
+                            ) == Some(desc.get_negation())
+                            {
+                                candidate
+                            } else {
+                                ConceptSaturationDescriptorId::NONE
+                            }
+                        } else {
+                            ConceptSaturationDescriptorId::NONE
+                        }
+                    } else {
+                        ConceptSaturationDescriptorId::NONE
+                    }
+                } else {
+                    ConceptSaturationDescriptorId::NONE
+                };
+                (copy_node, head)
+            };
             let mut extraction_linker = calc_alg_context
                 .process_context()
                 .sat_disjunct_common_concept_extraction_data(extraction_data)
@@ -1652,6 +1902,17 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .process_context_mut()
                     .sat_node_reapply_concept_saturation_label_set(disjunct_node, false);
                 if label_set.is_some() {
+                    let shared_copy_head = if target_copy_head.is_some()
+                        && calc_alg_context
+                            .process_context()
+                            .sat_node(disjunct_node)
+                            .get_copy_individual_node()
+                            == target_copy_node
+                    {
+                        target_copy_head
+                    } else {
+                        ConceptSaturationDescriptorId::NONE
+                    };
                     let mut node_scanned = 0usize;
                     let mut node_ops: std::collections::BTreeMap<Cint64, usize> =
                         std::collections::BTreeMap::new();
@@ -1664,7 +1925,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         .sat_disjunct_extraction_linker_mut(extraction_linker)
                         .set_last_examined_concept_saturation_descriptor(new_last);
                     let mut descriptor = new_last;
-                    while descriptor.is_some() && descriptor != last_examined {
+                    while descriptor.is_some()
+                        && descriptor != last_examined
+                        && descriptor != shared_copy_head
+                    {
                         scanned += 1;
                         node_scanned += 1;
                         let (concept, negation, next) = {
@@ -2033,6 +2297,7 @@ mod tests {
 
     #[test]
     fn native_nominal_prefix_equal_is_sufficient() {
+        let _test_env = crate::test_env::read();
         let (prefixes, saturated) = nominal_prefix_fixture();
         assert!(!native_nominal_prefix_is_insufficient(
             Some(&prefixes),
@@ -2043,6 +2308,7 @@ mod tests {
 
     #[test]
     fn native_nominal_prefix_missing_snapshot_fails_closed() {
+        let _test_env = crate::test_env::read();
         let (_, saturated) = nominal_prefix_fixture();
         assert!(native_nominal_prefix_is_insufficient(
             None,
@@ -2053,6 +2319,7 @@ mod tests {
 
     #[test]
     fn native_nominal_prefix_missing_literal_is_insufficient() {
+        let _test_env = crate::test_env::read();
         let (prefixes, _) = nominal_prefix_fixture();
         assert!(native_nominal_prefix_is_insufficient(
             Some(&prefixes),
@@ -2063,6 +2330,7 @@ mod tests {
 
     #[test]
     fn native_nominal_prefix_polarity_mismatch_is_insufficient() {
+        let _test_env = crate::test_env::read();
         let (prefixes, _) = nominal_prefix_fixture();
         let saturated = HashSet::from_iter([(ConceptId::new(17), true)]);
         assert!(native_nominal_prefix_is_insufficient(
@@ -2074,6 +2342,7 @@ mod tests {
 
     #[test]
     fn s09_disjunct_common_extraction_adds_only_common_label() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let make_concept = |ctx: &mut CalculationAlgorithmContextBase, tag| {
@@ -2178,6 +2447,7 @@ mod tests {
 
     #[test]
     fn s09_has_next_critical_concepts_reads_critical_queue() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx
@@ -2196,6 +2466,7 @@ mod tests {
 
     #[test]
     fn s09_add_critical_concept_descriptor_enqueues_typed_queue_and_node_once() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_add_critical_concepts_to_queues = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2275,6 +2546,7 @@ mod tests {
 
     #[test]
     fn s09_add_critical_concept_descriptor_directly_marks_insufficient() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_directly_critical_to_insufficient = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2305,6 +2577,7 @@ mod tests {
 
     #[test]
     fn s09_critical_or_fanout_retests_only_negated_copy_dependents() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let make_atom = |ctx: &mut CalculationAlgorithmContextBase, tag| {
@@ -2391,6 +2664,7 @@ mod tests {
 
     #[test]
     fn s09_add_critical_concept_for_dependent_nodes_enqueues_all_without_flag_check() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_add_critical_concepts_to_queues = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2449,6 +2723,7 @@ mod tests {
 
     #[test]
     fn s09_add_critical_concept_for_dependent_nodes_respects_direct_or_indirect_flags() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_add_critical_concepts_to_queues = true;
         let mut ctx = CalculationAlgorithmContextBase::new();

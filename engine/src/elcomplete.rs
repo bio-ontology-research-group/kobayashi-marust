@@ -1861,6 +1861,100 @@ impl Idx {
     }
 }
 
+/// A map from `(context, role)` to a list, stored per context: `rows[d]` holds
+/// `(role, list)` entries sorted by role. It replaces a `HashMap<(u32, u32),
+/// Vec<u32>>` for `in_by_role` and `prop`: the keys and each key's list are the
+/// same, only the lookup differs (an index plus a binary search over the few
+/// roles of one context, instead of hashing the pair and rehashing every key
+/// as the map grows; on ore_ont_12567 that rehash alone was 8 % of the EL
+/// worker). Iteration visits contexts in index order and roles in sorted
+/// order; no rule depends on it.
+#[derive(Clone, Default)]
+struct ContextRoleMap {
+    rows: Vec<Vec<(u32, Vec<u32>)>>,
+}
+
+struct ContextRoleEntry<'a> {
+    map: &'a mut ContextRoleMap,
+    key: (u32, u32),
+}
+
+impl<'a> ContextRoleEntry<'a> {
+    #[inline]
+    fn or_default(self) -> &'a mut Vec<u32> {
+        self.map.get_or_insert_default(self.key)
+    }
+}
+
+impl ContextRoleMap {
+    #[inline]
+    fn position(row: &[(u32, Vec<u32>)], role: u32) -> Result<usize, usize> {
+        row.binary_search_by_key(&role, |entry| entry.0)
+    }
+    #[inline]
+    fn get(&self, key: &(u32, u32)) -> Option<&Vec<u32>> {
+        let row = self.rows.get(key.0 as usize)?;
+        Self::position(row, key.1).ok().map(|i| &row[i].1)
+    }
+    #[inline]
+    fn get_mut(&mut self, key: &(u32, u32)) -> Option<&mut Vec<u32>> {
+        let row = self.rows.get_mut(key.0 as usize)?;
+        match Self::position(row, key.1) {
+            Ok(i) => Some(&mut row[i].1),
+            Err(_) => None,
+        }
+    }
+    #[inline]
+    fn contains_key(&self, key: &(u32, u32)) -> bool {
+        self.get(key).is_some()
+    }
+    #[inline]
+    fn get_or_insert_default(&mut self, key: (u32, u32)) -> &mut Vec<u32> {
+        let d = key.0 as usize;
+        if d >= self.rows.len() {
+            self.rows.resize_with(d + 1, Vec::new);
+        }
+        let row = &mut self.rows[d];
+        let i = match Self::position(row, key.1) {
+            Ok(i) => i,
+            Err(i) => {
+                row.insert(i, (key.1, Vec::new()));
+                i
+            }
+        };
+        &mut row[i].1
+    }
+    #[inline]
+    fn entry(&mut self, key: (u32, u32)) -> ContextRoleEntry<'_> {
+        ContextRoleEntry { map: self, key }
+    }
+    fn insert(&mut self, key: (u32, u32), value: Vec<u32>) -> Option<Vec<u32>> {
+        let slot = self.get_or_insert_default(key);
+        let old = std::mem::replace(slot, value);
+        (!old.is_empty()).then_some(old)
+    }
+    fn remove(&mut self, key: &(u32, u32)) -> Option<Vec<u32>> {
+        let row = self.rows.get_mut(key.0 as usize)?;
+        match Self::position(row, key.1) {
+            Ok(i) => Some(row.remove(i).1),
+            Err(_) => None,
+        }
+    }
+    fn clear(&mut self) {
+        self.rows.clear();
+    }
+    fn extend<I: IntoIterator<Item = ((u32, u32), Vec<u32>)>>(&mut self, entries: I) {
+        for (key, value) in entries {
+            *self.get_or_insert_default(key) = value;
+        }
+    }
+    fn iter(&self) -> impl Iterator<Item = ((u32, u32), &Vec<u32>)> + '_ {
+        self.rows.iter().enumerate().flat_map(|(d, row)| {
+            row.iter().map(move |(r, list)| ((d as u32, *r), list))
+        })
+    }
+}
+
 /// Mutable saturation state. Kept separate from `Idx` so a rule can iterate an
 /// index immutably while pushing conclusions here mutably.
 struct State {
@@ -1879,7 +1973,7 @@ struct State {
     // stays small because backward links concentrate (1194's saturated structure
     // holds 43.9M links over ~203k distinct `(node, role)` keys), and the flat
     // form's `(u32, u32)` pairs become bare `u32` parents.
-    in_by_role: HashMap<(u32, u32), Vec<u32>>,
+    in_by_role: ContextRoleMap,
     // The roles a node actually has backward links along (first-arrival order),
     // so the rules that need EVERY predecessor (⊥ back-propagation, role
     // composition, repair merges) can still enumerate them without scanning the
@@ -1895,9 +1989,8 @@ struct State {
     // whole filler label crossed with the role closure (`role_supers(r) ×
     // nf4_label[d]`). This is the ELK join: each (backward link, propagation)
     // pair fires exactly once -- whichever of the two is created second triggers
-    // it. Keyed globally (one map, sparse) rather than a Vec-per-context so a
-    // 400k-node giant pays only for the contexts that actually carry fillers.
-    prop: HashMap<(u32, u32), Vec<u32>>,
+    // it. Stored per context (see `ContextRoleMap`).
+    prop: ContextRoleMap,
     // Pending items, scheduled per context by default (see `Worklist`): the
     // rules of one activated context run back to back while its label and
     // edge tables are hot, instead of interleaving every context's items
@@ -2304,6 +2397,7 @@ impl LeanElCertificate {
             subsumptions,
             inconsistent: self.public_inconsistent,
             compact: None,
+            exported_model: None,
         }
     }
 }
@@ -3351,9 +3445,9 @@ fn init_state_with(nfs: &Nfs, n: usize, worklist: Worklist) -> State {
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
         edges: vec![HashSet::default(); n],
-        in_by_role: HashMap::default(),
+        in_by_role: ContextRoleMap::default(),
         in_roles: vec![Vec::new(); n],
-        prop: HashMap::default(),
+        prop: ContextRoleMap::default(),
         worklist,
         sub_journal: None,
         edge_epoch: 0,
@@ -3585,6 +3679,17 @@ fn fire_nf2(cands: &[[u32; 2]], st: &mut State, scratch: &mut Vec<u32>, prof: &m
 /// Scheduling only: nothing derived depends on when memory is returned, the
 /// value is unreachable either way, and a failed spawn drops the closure (and
 /// so the value) inline exactly as without the flag.
+/// `release`, or, in the worker process about to exit with a small compact
+/// answer, leave the dead saturation state to process exit: freeing millions
+/// of small allocations cost seconds and returns nothing the answer needs.
+fn release_or_leak<T: Send + 'static>(value: T, background: bool, leak: bool) {
+    if leak {
+        std::mem::forget(value);
+    } else {
+        release(value, background);
+    }
+}
+
 fn release<T: Send + 'static>(value: T, background: bool) {
     if !background {
         drop(value);
@@ -4933,8 +5038,8 @@ fn collect_shards(shards: Vec<Shard<'_>>, n: usize, workers: usize, prof: &mut P
     let mut sub_super: Vec<HashSet<u32>> = vec![HashSet::default(); n];
     let mut edges: Vec<HashSet<(u32, u32)>> = vec![HashSet::default(); n];
     let mut in_roles: Vec<Vec<u32>> = vec![Vec::new(); n];
-    let mut in_by_role: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
-    let mut prop: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    let mut in_by_role = ContextRoleMap::default();
+    let mut prop = ContextRoleMap::default();
     let mut edge_epoch = 0u64;
     for (id, shard) in shards.into_iter().enumerate() {
         for (slot, label) in shard.sub_super.into_iter().enumerate() {
@@ -7343,6 +7448,39 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, st: &State, debug: bool) -> boo
 /// subsumptions, unsatisfiable classes, and consistency alike. Any other
 /// outcome fails conservatively (context-engine fallback). Never an
 /// approximation.
+/// Nodes of a repair-pass model that cannot exist: those whose label holds ⊥
+/// and, backwards along the edges, every node with an edge to such a node
+/// (an existential successor that does not exist leaves its parent without
+/// a model).
+fn repair_pass_dead_nodes(st: &State) -> Vec<bool> {
+    let n = st.sub_super.len();
+    let mut parents: Vec<Vec<u32>> = vec![Vec::new(); n];
+    for (x, edges) in st.edges.iter().enumerate() {
+        for &(_, y) in edges {
+            if (y as usize) < n {
+                parents[y as usize].push(x as u32);
+            }
+        }
+    }
+    let mut dead = vec![false; n];
+    let mut work: Vec<u32> = Vec::new();
+    for (x, labels) in st.sub_super.iter().enumerate() {
+        if labels.contains(&BOTTOM) {
+            dead[x] = true;
+            work.push(x as u32);
+        }
+    }
+    while let Some(y) = work.pop() {
+        for &x in &parents[y as usize] {
+            if !dead[x as usize] {
+                dead[x as usize] = true;
+                work.push(x);
+            }
+        }
+    }
+    dead
+}
+
 /// Union-find representative with path halving.
 fn uf_find(repr: &mut [u32], mut x: u32) -> u32 {
     while repr[x as usize] != x {
@@ -11166,7 +11304,16 @@ fn repair_certify(
     // unresolved residue; everything else is answered exactly.
     const REFINE_CAP: usize = 8;
     let mut refine = 0usize;
+    // Per pass, the nodes that cannot exist in it: a node with ⊥, and every
+    // node with an edge to one. The repair closure does not always carry a
+    // ⊥ that a repair adds at a shared witness back to its parents, so a pass
+    // could keep a node alive whose existential successor is dead and read
+    // its label as a model.
+    let mut pass_dead: Vec<Vec<bool>> = Vec::new();
     loop {
+        while pass_dead.len() < pass_states.len() {
+            pass_dead.push(repair_pass_dead_nodes(&pass_states[pass_dead.len()].0));
+        }
         let mut unsat_subjects: Vec<u32> = Vec::new();
         let mut undet: Vec<(u32, u32)> = Vec::new();
         let subjects: Vec<u32> = if rooted_domain {
@@ -11180,8 +11327,8 @@ fn repair_certify(
                 continue;
             }
             let mut inter: Option<HashSet<u32>> = None;
-            for (st, _) in &pass_states {
-                if st.sub_super[c].contains(&BOTTOM) {
+            for ((st, _), dead) in pass_states.iter().zip(&pass_dead) {
+                if dead[c] {
                     continue;
                 }
                 let extras: HashSet<u32> = st.sub_super[c]
@@ -11329,7 +11476,7 @@ fn repair_certify(
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(64);
-            if rooted_domain || unresolved.len() <= cap {
+            if rooted_domain || (unresolved.len() <= cap && unresolved.len() < base_alive_named.len()) {
                 if debug {
                     eprintln!(
                         "KM_ELC_CERT partial: {} unresolved subject(s) left for the \
@@ -11431,6 +11578,10 @@ pub struct ElResult {
     /// and then re-interning millions of repeated superclass strings.
     #[serde(skip)]
     pub(crate) compact: Option<crate::json_io::CompactElcOutput>,
+    /// Canonical model extracted directly from the answering run's completion
+    /// state when `KM_EXPORT_MODEL_ACTIVE` is set.
+    #[serde(skip)]
+    pub(crate) exported_model: Option<Result<ElModel, String>>,
 }
 
 /// Decide consistency of a positive ground ABox against a pure EL++ TBox.
@@ -11699,7 +11850,9 @@ fn positive_abox_classify_mode(
     compact: bool,
     merged_overapprox: bool,
 ) -> Result<Option<PositiveAboxResult>, ()> {
-    let Some(prepared) = prepare_positive_abox_mode(clauses, meta, merged_overapprox) else {
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let merge_all = merged_overapprox && !(export_active && !meta.different.is_empty());
+    let Some(prepared) = prepare_positive_abox_mode(clauses, meta, merge_all) else {
         return Ok(None);
     };
     let PositiveAboxPreparation::Clauses { clauses, roots } = prepared else {
@@ -11709,7 +11862,7 @@ fn positive_abox_classify_mode(
         }));
     };
     let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
-    let result = match if compact {
+    let mut result = match if compact {
         classify_compact(clauses)
     } else {
         classify(clauses)
@@ -11741,11 +11894,85 @@ fn positive_abox_classify_mode(
                 .is_some_and(|supers| supers.iter().any(|sup| sup == "owl:Nothing"))
         })
     };
-    if merged_overapprox && node_unsat && !result.inconsistent {
+    if merge_all && node_unsat && !result.inconsistent {
         return Err(());
     }
+    let consistent = !result.inconsistent && !node_unsat;
+    if export_active && !meta.individuals.is_empty() {
+        if let Some(Ok(ref mut model)) = result.exported_model {
+            if !consistent {
+                model.inconsistent = true;
+                model.contexts.clear();
+                model.labels.clear();
+                model.edges.clear();
+            } else {
+                let ids: std::collections::HashMap<&str, usize> = meta
+                    .individuals
+                    .iter()
+                    .enumerate()
+                    .map(|(i, entry)| (entry.individual.as_str(), i))
+                    .collect();
+                let mut parent: Vec<usize> = (0..ids.len()).collect();
+                fn find(parent: &mut [usize], mut node: usize) -> usize {
+                    let mut root = node;
+                    while parent[root] != root {
+                        root = parent[root];
+                    }
+                    while parent[node] != node {
+                        let next = parent[node];
+                        parent[node] = root;
+                        node = next;
+                    }
+                    root
+                }
+                for (left, right) in &meta.same {
+                    if let (Some(&li), Some(&ri)) = (ids.get(left.as_str()), ids.get(right.as_str()))
+                    {
+                        let l = find(&mut parent, li);
+                        let r = find(&mut parent, ri);
+                        if l != r {
+                            parent[r] = l;
+                        }
+                    }
+                }
+                let mut node_to_noms: std::collections::HashMap<String, (String, Vec<String>)> =
+                    std::collections::HashMap::new();
+                for (index, entry) in meta.individuals.iter().enumerate() {
+                    let root = if merge_all {
+                        0
+                    } else {
+                        find(&mut parent, index)
+                    };
+                    let key = if merge_all {
+                        "__km_abox_merged".to_string()
+                    } else {
+                        format!("__km_abox_node_{root}")
+                    };
+                    let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+                    let self_nom = format!("__nom__{}", entry.individual);
+                    let slot = node_to_noms.entry(key).or_insert((root_nom, Vec::new()));
+                    slot.1.push(self_nom);
+                }
+                for (u, ctx_name) in model.contexts.iter_mut().enumerate() {
+                    if let Some((root_nom, members)) = node_to_noms.get(ctx_name.as_str()) {
+                        let old_key = ctx_name.clone();
+                        *ctx_name = root_nom.clone();
+                        let lbl = &mut model.labels[u];
+                        lbl.retain(|c| c != &old_key);
+                        for m in members {
+                            if !lbl.contains(m) {
+                                lbl.push(m.clone());
+                            }
+                        }
+                        lbl.sort();
+                        lbl.dedup();
+                    }
+                }
+            }
+        }
+    }
     Ok(Some(PositiveAboxResult {
-        consistent: !result.inconsistent && !node_unsat,
+        consistent,
         classification: Some(result),
     }))
 }
@@ -12182,9 +12409,9 @@ impl IncrementalElClassifier {
         let mut state = State {
             sub_super: vec![HashSet::default(); next_len],
             edges: vec![HashSet::default(); next_len],
-            in_by_role: HashMap::default(),
+            in_by_role: ContextRoleMap::default(),
             in_roles: vec![Vec::new(); next_len],
-            prop: HashMap::default(),
+            prop: ContextRoleMap::default(),
             worklist: Worklist::from_env(next_len),
             sub_journal: None,
             edge_epoch: 0,
@@ -12297,6 +12524,7 @@ impl IncrementalElClassifier {
             subsumptions,
             inconsistent: self.is_inconsistent(),
             compact: None,
+            exported_model: None,
         }
     }
 
@@ -12386,8 +12614,23 @@ pub(crate) fn classify_worker(clauses: Vec<JClause>) -> Option<ElResult> {
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
     let compact_nf1_output = std::env::var_os("KM_ELC_OUTPUT_BINARY").is_some()
         && std::env::var_os("KM_NO_ELC_OUTPUT_BINARY").is_none();
-    classify_inner_mode(clauses, cert, debug, compact_nf1_output, false)
+    let dense = compact_nf1_output.then(elc_output_binary_min_relations);
+    classify_inner_mode_dense(clauses, cert, debug, compact_nf1_output, false, dense)
 }
+
+/// The relation count from which the worker hands a complete taxonomy over in
+/// the compact binary form (`KM_ELC_OUTPUT_BINARY_MIN_RELATIONS`, default two
+/// million). Sparser taxonomies keep the JSON contract.
+pub(crate) fn elc_output_binary_min_relations() -> usize {
+    std::env::var("KM_ELC_OUTPUT_BINARY_MIN_RELATIONS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(2_000_000)
+}
+
+/// Set by the `elc` worker process, which exits right after writing its
+/// answer: state that is dead once the answer is built need not be freed.
+pub(crate) static ELC_WORKER_PROCESS: AtomicBool = AtomicBool::new(false);
 
 /// Orchestrator entry point for the exact in-process EL leaf: the complete
 /// fixpoint is returned dictionary-coded (`ElResult::compact`) instead of as
@@ -12398,6 +12641,367 @@ pub(crate) fn classify_compact(clauses: Vec<JClause>) -> Option<ElResult> {
     // Both output-producing branches must retain dictionary coding: acyclic
     // NF1 returns before the general fixpoint-output branch is reached.
     classify_inner_mode(clauses, cert, debug, true, true)
+}
+
+/// The canonical model of an EL clause set, read off a plain serial
+/// completion (`km classify --export-model`, `docs/MODEL-EXPORT.md`).
+///
+/// One element per satisfiable concept context (every concept name of the
+/// normal form, `⊤` included), labelled with its saturated superconcepts;
+/// one edge `(c, r, d)` per derived link. The completion lifts every link to
+/// the told super-roles and composes the chains (`R ∘ S ⊑ T`, transitivity),
+/// so the edges of a role are its full extension in the model. This is the
+/// standard EL canonical model: a model of the clause set when `⊤` is
+/// satisfiable, and the element of a concept `A` satisfies exactly the
+/// concepts the clause set entails for `A`.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ElModel {
+    /// Internal name of each element's context (`⊤` for the top context).
+    pub contexts: Vec<String>,
+    /// Saturated superconcepts of each element (internal names, `⊤` omitted).
+    pub labels: Vec<Vec<String>>,
+    /// `(from, role, to)` over element indices.
+    pub edges: Vec<(usize, String, usize)>,
+    pub inconsistent: bool,
+    pub partial_reason: Option<String>,
+}
+
+fn extract_el_model_from_state(st: &State, it: &Interner) -> Result<ElModel, String> {
+    let inconsistent = st.sub_super[TOP as usize].contains(&BOTTOM);
+    let mut model = ElModel {
+        contexts: Vec::new(),
+        labels: Vec::new(),
+        edges: Vec::new(),
+        inconsistent,
+        partial_reason: None,
+    };
+    if inconsistent {
+        return Ok(model);
+    }
+    let name = |id: u32| it.debug_name(id);
+    let mut contexts: Vec<u32> = (0..st.sub_super.len() as u32)
+        .filter(|&c| {
+            c != BOTTOM
+                && !st.sub_super[c as usize].is_empty()
+                && !st.sub_super[c as usize].contains(&BOTTOM)
+        })
+        .collect();
+    contexts.sort_by_key(|&c| (c != TOP, name(c)));
+    let mut element_of: HashMap<u32, usize> = HashMap::default();
+    for &c in &contexts {
+        let ctx_name = name(c);
+        element_of.insert(c, model.contexts.len());
+        let mut label: Vec<String> = st.sub_super[c as usize]
+            .iter()
+            .filter(|&&d| d != TOP)
+            .map(|&d| name(d))
+            .collect();
+        for item in &label {
+            if item.starts_with("__nom__") && item != &ctx_name {
+                return Err(
+                    "el-canonical declines nominal appearing in non-nominal context label"
+                        .to_string(),
+                );
+            }
+        }
+        label.sort();
+        label.dedup();
+        model.contexts.push(ctx_name);
+        model.labels.push(label);
+    }
+    for &c in &contexts {
+        let from = element_of[&c];
+        let mut out: Vec<(usize, String, usize)> = st.edges[c as usize]
+            .iter()
+            .filter_map(|&(r, d)| element_of.get(&d).map(|&to| (from, name(r), to)))
+            .collect();
+        out.sort();
+        model.edges.extend(out);
+    }
+    Ok(model)
+}
+
+/// [`ElModel`] of `input`, or `None` when the ontology lies outside EL++ (plus
+/// positive ABox and residual clauses certified by [`check_certificate`]).
+pub(crate) fn el_model(
+    input: &crate::json_io::JInput,
+    el_rbox_safe: bool,
+    abox_inconsistent: bool,
+) -> Option<ElModel> {
+    if !el_rbox_safe || !input.rules.is_empty() {
+        return None;
+    }
+    if abox_inconsistent {
+        return Some(ElModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            inconsistent: true,
+            partial_reason: None,
+        });
+    }
+    let meta = &input.nominal_abox;
+    let mut clauses = input.clauses.clone();
+    let mut ids: HashMap<&str, usize> = HashMap::default();
+    let mut parent: Vec<usize> = Vec::new();
+    let mut root_noms: HashSet<String> = HashSet::default();
+    let mut extra_noms_for_root: HashMap<String, Vec<String>> = HashMap::default();
+
+    fn find(parent: &mut [usize], mut node: usize) -> usize {
+        let mut root = node;
+        while parent[root] != root {
+            root = parent[root];
+        }
+        while parent[node] != node {
+            let next = parent[node];
+            parent[node] = root;
+            node = next;
+        }
+        root
+    }
+
+    if !meta.is_empty() {
+        if !meta.complete || !meta.unsupported.is_empty() {
+            return None;
+        }
+        ids = meta
+            .individuals
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| (entry.individual.as_str(), i))
+            .collect();
+        for (left, right) in meta.same.iter().chain(meta.different.iter()) {
+            if !ids.contains_key(left.as_str()) || !ids.contains_key(right.as_str()) {
+                return None;
+            }
+        }
+        for edge in meta
+            .role_assertions
+            .iter()
+            .chain(meta.negative_role_assertions.iter())
+        {
+            if !ids.contains_key(edge.source.as_str()) || !ids.contains_key(edge.target.as_str()) {
+                return None;
+            }
+        }
+        parent = (0..ids.len()).collect();
+        for (left, right) in &meta.same {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l != r {
+                parent[r] = l;
+            }
+        }
+        for (left, right) in &meta.different {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l == r {
+                return Some(ElModel {
+                    contexts: Vec::new(),
+                    labels: Vec::new(),
+                    edges: Vec::new(),
+                    inconsistent: true,
+                    partial_reason: None,
+                });
+            }
+        }
+
+        let mut nom_alias: HashMap<String, String> = HashMap::default();
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            if entry.assertions.len() != entry.assertion_markers.len() {
+                return None;
+            }
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            let self_nom = format!("__nom__{}", entry.individual);
+            root_noms.insert(root_nom.clone());
+            extra_noms_for_root
+                .entry(root_nom.clone())
+                .or_default()
+                .push(self_nom.clone());
+            if self_nom != root_nom {
+                nom_alias.insert(self_nom, root_nom.clone());
+            }
+            for proxy in &entry.proxies {
+                if proxy != &root_nom {
+                    nom_alias.insert(proxy.clone(), root_nom.clone());
+                }
+            }
+        }
+        if !nom_alias.is_empty() {
+            for clause in &mut clauses {
+                for atom in clause.body.iter_mut().chain(clause.head.iter_mut()) {
+                    if let JAtom::Concept { concept, .. } = atom {
+                        if let Some(target) = nom_alias.get(concept.as_str()) {
+                            *concept = target.clone();
+                        }
+                    }
+                }
+            }
+        }
+        let var = || JTerm::Var {
+            name: "x".to_string(),
+        };
+        let concept = |name: String, term: JTerm| JAtom::Concept {
+            concept: name,
+            term,
+        };
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            for marker in &entry.assertion_markers {
+                clauses.push(JClause {
+                    body: vec![concept(root_nom.clone(), var())],
+                    head: vec![concept(marker.clone(), var())],
+                });
+            }
+        }
+        for (edge_index, edge) in meta.role_assertions.iter().enumerate() {
+            let source = find(&mut parent, ids[edge.source.as_str()]);
+            let target = find(&mut parent, ids[edge.target.as_str()]);
+            let source_nom = format!("__nom__{}", meta.individuals[source].individual);
+            let target_nom = format!("__nom__{}", meta.individuals[target].individual);
+            let fun = JTerm::Fun {
+                function: format!("__km_abox_edge_{edge_index}"),
+                arg: Box::new(var()),
+            };
+            clauses.push(JClause {
+                body: vec![concept(source_nom.clone(), var())],
+                head: vec![JAtom::Role {
+                    role: edge.role.clone(),
+                    source: var(),
+                    target: fun.clone(),
+                }],
+            });
+            clauses.push(JClause {
+                body: vec![concept(source_nom, var())],
+                head: vec![concept(target_nom, fun)],
+            });
+        }
+        for root_nom in &root_noms {
+            clauses.push(JClause {
+                body: vec![concept(root_nom.clone(), var())],
+                head: vec![concept(root_nom.clone(), var())],
+            });
+        }
+    }
+
+    if std::env::var_os("KM_ELC_NO_BRIDGE_PREP").is_none() {
+        prepare_inverse_bridges(&mut clauses, false);
+    }
+    let mut it = Interner::new();
+    let (mut nfs, residual, skolem_target) = to_nf(&clauses, &mut it)?;
+    nfs.concept_names.insert(TOP);
+    let rcs = if residual.is_empty() {
+        Vec::new()
+    } else {
+        compile_residual(&residual, &mut it, &mut nfs, &skolem_target)?.clauses
+    };
+    let n = it.len();
+    let idx = build_idx(&nfs, n);
+    let mut st = init_state(&nfs, n);
+    seed_reflexive_edges(&nfs, &idx, &mut st);
+    let mut prof = Prof::default();
+    run(&idx, &mut st, &mut prof);
+    let mut inconsistent = st.sub_super[TOP as usize].contains(&BOTTOM);
+    if !inconsistent {
+        for rnom in &root_noms {
+            if let Some(id) = it.id(rnom) {
+                if st.sub_super[id as usize].contains(&BOTTOM) {
+                    inconsistent = true;
+                    break;
+                }
+            }
+        }
+    }
+    let mut element_of: HashMap<u32, usize> = HashMap::default();
+    let mut model = ElModel {
+        contexts: Vec::new(),
+        labels: Vec::new(),
+        edges: Vec::new(),
+        inconsistent,
+        partial_reason: None,
+    };
+    if inconsistent {
+        return Some(model);
+    }
+    if !rcs.is_empty() && !check_certificate(&rcs, &nfs, &st, false) {
+        return None;
+    }
+    for (left, right) in &meta.different {
+        let l_root = find(&mut parent, ids[left.as_str()]);
+        let r_root = find(&mut parent, ids[right.as_str()]);
+        let l_nom = format!("__nom__{}", meta.individuals[l_root].individual);
+        let r_nom = format!("__nom__{}", meta.individuals[r_root].individual);
+        if let (Some(l_id), Some(r_id)) = (it.id(&l_nom), it.id(&r_nom)) {
+            if st.sub_super[l_id as usize].contains(&r_id)
+                || st.sub_super[r_id as usize].contains(&l_id)
+            {
+                return None;
+            }
+        }
+    }
+    for neg in &meta.negative_role_assertions {
+        let s_root = find(&mut parent, ids[neg.source.as_str()]);
+        let t_root = find(&mut parent, ids[neg.target.as_str()]);
+        let s_nom = format!("__nom__{}", meta.individuals[s_root].individual);
+        let t_nom = format!("__nom__{}", meta.individuals[t_root].individual);
+        if let (Some(s_id), Some(r_id), Some(t_id)) =
+            (it.id(&s_nom), it.id(&neg.role), it.id(&t_nom))
+        {
+            if st.edges[s_id as usize].contains(&(r_id, t_id)) {
+                if rcs.is_empty() {
+                    model.inconsistent = true;
+                    return Some(model);
+                }
+                return None;
+            }
+        }
+    }
+    let name = |id: u32| it.debug_name(id);
+    let mut contexts: Vec<u32> = (0..st.sub_super.len() as u32)
+        .filter(|&c| {
+            c != BOTTOM
+                && !st.sub_super[c as usize].is_empty()
+                && !st.sub_super[c as usize].contains(&BOTTOM)
+        })
+        .collect();
+    contexts.sort_by_key(|&c| (c != TOP, name(c)));
+    for &c in &contexts {
+        let ctx_name = name(c);
+        element_of.insert(c, model.contexts.len());
+        let mut label: Vec<String> = st.sub_super[c as usize]
+            .iter()
+            .filter(|&&d| d != TOP)
+            .map(|&d| name(d))
+            .collect();
+        for item in &label {
+            if item.starts_with("__nom__") && item != &ctx_name {
+                return None;
+            }
+        }
+        if let Some(extras) = extra_noms_for_root.get(&ctx_name) {
+            for extra in extras {
+                if !label.contains(extra) {
+                    label.push(extra.clone());
+                }
+            }
+        }
+        label.sort();
+        label.dedup();
+        model.contexts.push(ctx_name);
+        model.labels.push(label);
+    }
+    for &c in &contexts {
+        let from = element_of[&c];
+        let mut out: Vec<(usize, String, usize)> = st.edges[c as usize]
+            .iter()
+            .filter_map(|&(r, d)| element_of.get(&d).map(|&to| (from, name(r), to)))
+            .collect();
+        out.sort();
+        model.edges.extend(out);
+    }
+    Some(model)
 }
 
 /// `KM_ELC_TIMING` phase laps inside the completion itself (the worker's
@@ -12745,6 +13349,44 @@ fn acyclic_nf1_taxonomy(
     drop(outgoing);
     drop(indegree);
 
+    let exported_model = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").map(|_| {
+        let mut sorted_concepts: Vec<u32> = nfs
+            .concept_names
+            .iter()
+            .copied()
+            .filter(|&c| c != BOTTOM)
+            .collect();
+        sorted_concepts.sort_by_key(|&c| (c != TOP, it.debug_name(c)));
+        let mut contexts = Vec::with_capacity(sorted_concepts.len());
+        let mut labels = Vec::with_capacity(sorted_concepts.len());
+        for c in sorted_concepts {
+            if c == TOP {
+                contexts.push("⊤".to_string());
+                labels.push(Vec::new());
+            } else {
+                let cname = it.debug_name(c);
+                let mut lbl: Vec<String> = closure[c as usize]
+                    .iter()
+                    .copied()
+                    .filter(|&d| d != TOP)
+                    .map(|d| it.debug_name(d))
+                    .collect();
+                lbl.push(cname.clone());
+                lbl.sort();
+                lbl.dedup();
+                contexts.push(cname);
+                labels.push(lbl);
+            }
+        }
+        Ok(ElModel {
+            contexts,
+            labels,
+            edges: Vec::new(),
+            inconsistent: false,
+            partial_reason: None,
+        })
+    });
+
     if compact_output && (force_compact_output || expected >= 1_000) {
         let mut rows = Vec::new();
         for &concept in &nfs.concept_names {
@@ -12767,6 +13409,7 @@ fn acyclic_nf1_taxonomy(
                 inconsistent: false,
                 dropped: 0,
             }),
+            exported_model,
         });
     }
 
@@ -12792,6 +13435,7 @@ fn acyclic_nf1_taxonomy(
         subsumptions,
         inconsistent: false,
         compact: None,
+        exported_model,
     })
 }
 
@@ -12805,6 +13449,22 @@ fn classify_inner_mode(
     debug: bool,
     compact_nf1_output: bool,
     compact_fixpoint_output: bool,
+) -> Option<ElResult> {
+    classify_inner_mode_dense(clauses, cert, debug, compact_nf1_output, compact_fixpoint_output, None)
+}
+
+/// `classify_inner_mode`, where `dense_fixpoint_min_relations = Some(n)` also
+/// returns a complete, unrooted fixpoint dictionary-coded when it has at least
+/// 1,000 subject rows and `n` relations: exactly the answers the worker would
+/// otherwise turn into strings and then re-encode into the same binary
+/// handoff (`cli::run_elc`).
+fn classify_inner_mode_dense(
+    clauses: Vec<JClause>,
+    cert: CertMode,
+    debug: bool,
+    compact_nf1_output: bool,
+    compact_fixpoint_output: bool,
+    dense_fixpoint_min_relations: Option<usize>,
 ) -> Option<ElResult> {
     let elc_timing = std::env::var_os("KM_ELC_TIMING").is_some();
     let mut elc_lap = std::time::Instant::now();
@@ -13321,6 +13981,24 @@ fn classify_inner_mode(
                         .collect()
                 })
         });
+    let exported_model = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").map(|_| {
+        if el_inconsistent {
+            Ok(ElModel {
+                contexts: Vec::new(),
+                labels: Vec::new(),
+                edges: Vec::new(),
+                inconsistent: true,
+                partial_reason: None,
+            })
+        } else if !unresolved.is_empty() {
+            Err("el-canonical completion left unresolved repair subjects".to_string())
+        } else if !rcs.is_empty() && !check_certificate(&rcs, &nfs, &res, false) {
+            Err("el-canonical residual clauses require per-subject model repair".to_string())
+        } else {
+            extract_el_model_from_state(&res, &it)
+        }
+    });
+
     // Everything below reads only the completed relation (`sub_super`) and the
     // interner names. The rule indexes, the normal forms, the residual, the
     // compiled residual clauses, and the role graph (`edges` / `in_by_role` /
@@ -13339,7 +14017,32 @@ fn classify_inner_mode(
         sub_journal,
         edge_epoch: _,
     } = res;
-    release(
+    // The worker's dense handoff: the same rows and relations the string map
+    // below would hold (subjects other than TOP and BOTTOM with a concept
+    // node, each superclass other than itself and TOP).
+    let compact_fixpoint_output = compact_fixpoint_output
+        || (unresolved.is_empty()
+            && rooted_output_names.is_none()
+            && dense_fixpoint_min_relations.is_some_and(|min_relations| {
+                let (mut rows, mut relations) = (0usize, 0usize);
+                for (c, sups) in sub_super.iter().enumerate() {
+                    let cid = c as u32;
+                    if cid == TOP || cid == BOTTOM || sups.is_empty() {
+                        continue;
+                    }
+                    let out = sups.len()
+                        - usize::from(sups.contains(&cid))
+                        - usize::from(sups.contains(&TOP));
+                    if out > 0 || !crate::calc::is_internal_concept(it.name(cid)) {
+                        rows += 1;
+                    }
+                    relations += out;
+                }
+                rows >= 1_000 && relations >= min_relations
+            }));
+    let leak_dead_state =
+        compact_fixpoint_output && unresolved.is_empty() && ELC_WORKER_PROCESS.load(Ordering::Relaxed);
+    release_or_leak(
         (
             idx,
             nfs,
@@ -13354,6 +14057,7 @@ fn classify_inner_mode(
             sub_journal,
         ),
         background_release,
+        leak_dead_state,
     );
     elc_timing_lap(elc_timing, &mut elc_lap, "release");
 
@@ -13394,6 +14098,7 @@ fn classify_inner_mode(
                 inconsistent: el_inconsistent,
                 dropped: 0,
             }),
+            exported_model,
         });
     }
 
@@ -13453,6 +14158,7 @@ fn classify_inner_mode(
         inconsistent: el_inconsistent,
         unresolved,
         compact: None,
+        exported_model,
     })
 }
 
@@ -13464,7 +14170,6 @@ fn classify_inner_mode(
 mod tests {
     use super::*;
 
-    static ROOTED_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     struct EnvRestore(&'static str, Option<std::ffi::OsString>);
 
@@ -13493,6 +14198,7 @@ mod tests {
 
     #[test]
     fn repair_violation_cap_override_is_bounded_and_fail_safe() {
+        let _test_env = crate::test_env::read();
         assert_eq!(repair_viol_cap_from(None), REPAIR_VIOL_CAP);
         assert_eq!(repair_viol_cap_from(Some("invalid")), REPAIR_VIOL_CAP);
         assert_eq!(repair_viol_cap_from(Some("0")), 1);
@@ -13502,6 +14208,7 @@ mod tests {
 
     #[test]
     fn repair_choice_mixer_gives_binary_heads_distinct_seed_assignments() {
+        let _test_env = crate::test_env::read();
         let assignments: HashSet<Vec<usize>> = (0..8)
             .map(|pass| {
                 (100_000..100_064)
@@ -13514,6 +14221,7 @@ mod tests {
 
     #[test]
     fn lean_certificate_reconstructs_and_audits_the_production_fixpoint() {
+        let _test_env = crate::test_env::write();
         let mut concepts = HashSet::default();
         concepts.extend([TOP, BOTTOM, 2, 3]);
         let mut roles = HashSet::default();
@@ -13610,6 +14318,7 @@ mod tests {
 
     #[test]
     fn compact_fixpoint_output_matches_the_string_map() {
+        let _test_env = crate::test_env::write();
         use std::collections::{BTreeMap, BTreeSet};
         // NF1, NF2, NF3 (existential pair), NF4, and a bottom conjunction, so
         // the general fixpoint runs (the acyclic NF1 shortcut declines).
@@ -13667,6 +14376,62 @@ mod tests {
         assert!(expected["B"].contains("E"));
     }
 
+    /// The worker's dense handoff returns the same rows as the string map, and
+    /// a fixpoint under the relation threshold keeps the string map.
+    #[test]
+    fn dense_worker_fixpoint_output_matches_the_string_map() {
+        let _test_env = crate::test_env::write();
+        use std::collections::{BTreeMap, BTreeSet};
+        let mut parts = vec![
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("B", "x"), c("C", "x")], &[c("D", "x")]),
+            cl(&[c("A", "x")], &[c("C", "x")]),
+            cl(&[c("B", "x")], &[cf("F", "f", "x")]),
+            cl(&[c("B", "x")], &[rf("r", "x", "f")]),
+            cl(&[r("r", "x", "y"), c("F", "y")], &[c("E", "x")]),
+            cl(&[c("G", "x"), c("B", "x")], &[]),
+            cl(&[c("H", "x")], &[c("G", "x")]),
+            cl(&[c("A", "x")], &[c("G", "x")]),
+        ];
+        for i in 0..1_200 {
+            parts.push(cl(&[c(&format!("X{i}"), "x")], &[c(if i % 2 == 0 { "B" } else { "H" }, "x")]));
+        }
+        let cs = clauses(&format!("[{}]", parts.join(",")));
+        let expected = classify_inner_mode(cs.clone(), CertMode::Off, false, false, false)
+            .expect("pure EL input");
+        assert!(expected.compact.is_none());
+        let sparse = classify_inner_mode_dense(cs.clone(), CertMode::Off, false, true, false, Some(usize::MAX))
+            .expect("pure EL input");
+        assert!(sparse.compact.is_none(), "under the relation threshold");
+        assert_eq!(sparse.subsumptions, expected.subsumptions);
+        let dense = classify_inner_mode_dense(cs, CertMode::Off, false, true, false, Some(1))
+            .expect("pure EL input");
+        assert!(dense.subsumptions.is_empty());
+        let dense = dense.compact.expect("dense fixpoint is dictionary-coded");
+        assert_eq!(dense.inconsistent, expected.inconsistent);
+        let mut rebuilt: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for (subject, supers) in &dense.rows {
+            let supers = supers
+                .iter()
+                .map(|&d| {
+                    if d == BOTTOM {
+                        "owl:Nothing".to_string()
+                    } else {
+                        dense.names[d as usize].to_string()
+                    }
+                })
+                .collect();
+            assert!(rebuilt
+                .insert(dense.names[*subject as usize].to_string(), supers)
+                .is_none());
+        }
+        assert_eq!(rebuilt, expected.subsumptions, "same rows, same superclass order");
+        assert!(expected.subsumptions.len() >= 1_000);
+        let x0: BTreeSet<&str> = expected.subsumptions["X0"].iter().map(String::as_str).collect();
+        assert!(x0.contains("E"));
+        assert!(expected.subsumptions["A"].iter().any(|sup| sup == "owl:Nothing"));
+    }
+
     fn positive_abox_consistency(ofn: &str) -> Option<bool> {
         let _environment_lock = crate::frontend::lock_test_environment();
         crate::frontend::with_ofn_to_clauses_requested_route(
@@ -13679,6 +14444,7 @@ mod tests {
 
     #[test]
     fn positive_abox_completion_respects_identity_and_conjunction_clashes() {
+        let _test_env = crate::test_env::write();
         let consistent = r#"Ontology(
             SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
             ClassAssertion(<urn:A> <urn:a>)
@@ -13698,6 +14464,7 @@ mod tests {
 
     #[test]
     fn positive_abox_completion_materializes_ground_role_edges() {
+        let _test_env = crate::test_env::write();
         let inconsistent = r#"Ontology(
             SubClassOf(ObjectSomeValuesFrom(<urn:r> <urn:B>) owl:Nothing)
             ObjectPropertyAssertion(<urn:r> <urn:a> <urn:b>)
@@ -13708,6 +14475,7 @@ mod tests {
 
     #[test]
     fn positive_abox_completion_retains_the_exact_named_taxonomy() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             Declaration(Class(<urn:A>))
             Declaration(Class(<urn:B>))
@@ -13742,6 +14510,7 @@ mod tests {
 
     #[test]
     fn compact_positive_abox_completion_matches_string_result() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             Declaration(Class(<urn:A>))
             Declaration(Class(<urn:B>))
@@ -13793,6 +14562,7 @@ mod tests {
 
     #[test]
     fn merged_positive_abox_proves_safe_separated_individuals() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
             ClassAssertion(<urn:A> <urn:a>)
@@ -13821,6 +14591,7 @@ mod tests {
 
     #[test]
     fn merged_positive_abox_declines_a_spurious_cross_individual_clash() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
             ClassAssertion(<urn:A> <urn:a>)
@@ -13848,6 +14619,7 @@ mod tests {
 
     #[test]
     fn compact_positive_abox_detects_node_local_bottom() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
             ClassAssertion(<urn:A> <urn:a>)
@@ -13896,6 +14668,7 @@ mod tests {
 
     #[test]
     fn lean_v5_certificate_checks_source_partition_and_rejects_tampering() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
             return;
         };
@@ -14036,6 +14809,7 @@ mod tests {
 
     #[test]
     fn acyclic_nf1_fast_path_is_exact_on_chain_and_diamond() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{}]",
             cl(&[c("A", "x")], &[c("B", "x")]),
@@ -14058,6 +14832,7 @@ mod tests {
 
     #[test]
     fn acyclic_nf1_fast_path_declines_cycles_and_bottom() {
+        let _test_env = crate::test_env::write();
         for cs in [
             clauses(&format!(
                 "[{},{}]",
@@ -14083,6 +14858,7 @@ mod tests {
 
     #[test]
     fn acyclic_nf1_worker_keeps_dictionary_coded_rows() {
+        let _test_env = crate::test_env::write();
         let mut interner = Interner::new();
         let mut concepts = HashSet::default();
         concepts.insert(TOP);
@@ -14119,6 +14895,7 @@ mod tests {
 
     #[test]
     fn pure_el_screen_matches_all_cert_off_normal_forms() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{},{},{},{},{}]",
             cl(&[c("A", "x")], &[c("B", "x")]),
@@ -14140,6 +14917,7 @@ mod tests {
 
     #[test]
     fn pure_el_screen_rejects_every_cert_off_residual_and_orphan() {
+        let _test_env = crate::test_env::write();
         let disjunction = clauses(&format!(
             "[{}]",
             cl(&[c("A", "x")], &[c("B", "x"), c("C", "x")])
@@ -14180,6 +14958,7 @@ mod tests {
     /// the canonical role, with no mirror edge materialised.
     #[test]
     fn exact_inverse_substitution_removes_bridges_and_keeps_the_constraint() {
+        let _test_env = crate::test_env::write();
         // A ⊑ ∃R.F, ∃R.F ⊑ D, S = R⁻, and the residual ⊥-clause
         // `S(x,y) ∧ G(y) → ⊥` (an empty head keeps it out of the normal forms).
         // `S` occurs only there and in the bridges.
@@ -14214,6 +14993,7 @@ mod tests {
     /// and NF4 axioms).
     #[test]
     fn inverse_pair_with_el_rules_on_both_sides_is_left_alone() {
+        let _test_env = crate::test_env::write();
         let mut cs = clauses(&format!(
             "[{},{},{},{},{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14239,6 +15019,7 @@ mod tests {
     /// vacuous-role argument.
     #[test]
     fn one_way_bridge_is_never_substituted_but_may_be_vacuous() {
+        let _test_env = crate::test_env::write();
         let one_way = clauses(&format!(
             "[{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14269,6 +15050,7 @@ mod tests {
     /// roles) is skipped rather than quotiented.
     #[test]
     fn ambiguous_inverse_graph_is_refused() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14298,6 +15080,7 @@ mod tests {
     /// completion has no normal form for.
     #[test]
     fn orientation_sensitive_role_inclusions_and_chains_block_substitution() {
+        let _test_env = crate::test_env::read();
         let inclusion = clauses(&format!(
             "[{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14321,6 +15104,7 @@ mod tests {
     /// role.
     #[test]
     fn substitution_rewrites_fun_term_residuals() {
+        let _test_env = crate::test_env::write();
         let mut cs = clauses(&format!(
             "[{},{},{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14360,6 +15144,7 @@ mod tests {
     /// further role head-free.
     #[test]
     fn vacuous_role_pruning_reaches_a_fixpoint() {
+        let _test_env = crate::test_env::read();
         let mut cs = clauses(&format!(
             "[{},{},{}]",
             // U is head-free; deleting `U ⊑ T` makes T head-free; then `T ⊑ S`.
@@ -14378,6 +15163,7 @@ mod tests {
     /// role explicitly emptied.
     #[test]
     fn vacuous_prune_preserves_the_certified_classification() {
+        let _test_env = crate::test_env::write();
         let base = format!(
             "{},{},{}",
             cl(&[c("A", "x")], &[rf("R", "x", "f")]),
@@ -14425,6 +15211,7 @@ mod tests {
     /// calculus — the CB engine — not single-name EL completion.
     #[test]
     fn reverse_oriented_inverse_nf4_would_be_unsound() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14457,6 +15244,7 @@ mod tests {
     /// declines (exit-3 defer to the CB engine) and the pure-EL screen rejects.
     #[test]
     fn adversarial_variable_wiring_is_rejected_to_residual() {
+        let _test_env = crate::test_env::write();
         // R(x,y) ∧ A(y) → B(y) is A ⊓ ∃R⁻.⊤ ⊑ B, not ∃R.A ⊑ B.
         let head_on_target = clauses(&format!(
             "[{}]",
@@ -14532,6 +15320,7 @@ mod tests {
 
     #[test]
     fn output_tail_semantics_preserved() {
+        let _test_env = crate::test_env::write();
         // Pins the exact semantics of classify_inner's output loop, which now
         // frees the saturation state before (and while) materialising the
         // string map: an unsatisfiable subject reports owl:Nothing; ⊤/⊥ never
@@ -14558,6 +15347,7 @@ mod tests {
 
     #[test]
     fn reflexive_role_fires_nf4_elimination() {
+        let _test_env = crate::test_env::write();
         // A ⊑ B, ∃R.B ⊑ C, Reflexive(R) ⟹ A ⊑ C (the reflexive self-edge at A,
         // whose target A is ⊑ B, satisfies ∃R.B at A). Without reflexivity there
         // is no edge and A ⋢ C.
@@ -14579,6 +15369,7 @@ mod tests {
 
     #[test]
     fn nf4_backward_join_selects_only_the_exact_role_bucket() {
+        let _test_env = crate::test_env::write();
         // Both NF4 axioms share filler B. An R backward link must select every
         // R conclusion and no S conclusion; an S link must do the converse.
         // This pins the role-range index used by the Sub side of the join.
@@ -14604,6 +15395,7 @@ mod tests {
 
     #[test]
     fn reflexive_role_composes_with_chain() {
+        let _test_env = crate::test_env::write();
         // Reflexive(R), R∘S ⊑ T, A ⊑ ∃S.B, ∃T.B ⊑ D ⟹ A ⊑ D.
         // The self-edge (A,R,A) composes with the S-edge (A,S,B) via R∘S⊑T to a
         // T-edge (A,T,B), which fires the NF4 ∃T.B⊑D. This is the reflexive-role-
@@ -14627,6 +15419,7 @@ mod tests {
 
     #[test]
     fn cert_passes_when_disjunction_already_decided() {
+        let _test_env = crate::test_env::write();
         // EL: A ⊑ B. Residual: A → B ∨ D (every A-node has B). Must classify
         // and keep the EL answer.
         let cs = clauses(&format!(
@@ -14641,6 +15434,7 @@ mod tests {
 
     #[test]
     fn cert_fails_on_live_disjunction() {
+        let _test_env = crate::test_env::write();
         // Residual: A → D ∨ E with neither derivable: the canonical model
         // violates it, so elc must hand off to the context engine.
         let cs = clauses(&format!(
@@ -14653,6 +15447,7 @@ mod tests {
 
     #[test]
     fn elc_hoist_recovers_common_disjunct_super() {
+        let _test_env = crate::test_env::write();
         // Completed EL relation: A⊑X, B⊑X. Parked residual: D ⊑ A ∨ B.
         // ⊔-distribution ⟹ D ⊑ X (a subsumption hidden in the parked disjunction).
         let mut it = Interner::new();
@@ -14676,6 +15471,7 @@ mod tests {
 
     #[test]
     fn elc_hoist_skips_when_no_common_super() {
+        let _test_env = crate::test_env::write();
         // A⊑X, B⊑Y. D ⊑ A ∨ B has no common super ⟹ nothing recovered.
         let mut it = Interner::new();
         let (a, b, x, y, _d) = (
@@ -14697,6 +15493,7 @@ mod tests {
 
     #[test]
     fn cert_checks_range_clause_over_edges() {
+        let _test_env = crate::test_env::write();
         // EL: A ⊑ ∃R.B (pair of half-clauses). Residual range: R(x,y) → C(y).
         // Fails without B ⊑ C, passes with it.
         let base = format!(
@@ -14720,6 +15517,7 @@ mod tests {
 
     #[test]
     fn cert_checks_cardinality_eq_head() {
+        let _test_env = crate::test_env::write();
         // EL: A ⊑ ∃R.B and A ⊑ ∃R.C. Residual (≤1 R): R(x,y) ∧ R(x,z) → y = z.
         // Two distinct successors violate it.
         let cs = clauses(&format!(
@@ -14757,6 +15555,7 @@ mod tests {
 
     #[test]
     fn cert_keeps_distinct_skolem_witnesses_with_the_same_filler() {
+        let _test_env = crate::test_env::write();
         // A ≥2 R.B normalises to two R/B witness pairs plus a constraint that
         // rejects interpretations where the two skolem functions coincide.
         // Their common filler concept B must not collapse the two witnesses.
@@ -14829,6 +15628,7 @@ mod tests {
 
     #[test]
     fn pure_el_existential_gets_an_identity_witness_record() {
+        let _test_env = crate::test_env::write();
         // `D ⊑ ∃r.A` with no residual: before v1.5.5 the Skolem pair stayed in
         // the direct partition, which the Lean v5 checker cannot normalize,
         // so every certificate with an existential was rejected (E1).
@@ -14867,6 +15667,7 @@ mod tests {
 
     #[test]
     fn lean_checker_accepts_an_existential_with_an_unsatisfiable_filler() {
+        let _test_env = crate::test_env::write();
         // `D ⊑ ∃r.A`, `A ⊑ ⊥`: the identity witness A is dead, so no alive
         // element is below D and the Skolem pair holds vacuously.
         let cs = clauses(&format!(
@@ -14891,6 +15692,7 @@ mod tests {
 
     #[test]
     fn lean_checker_accepts_a_bottom_head_normal_form() {
+        let _test_env = crate::test_env::write();
         // `C ⊑ A`, `A ⊓ B ⊑ ⊥` normalizes to `nf2 A B ⊥`; the checker used to
         // demand that ⊥ be both active and inactive (E2).
         let cs = clauses(&format!(
@@ -14911,6 +15713,7 @@ mod tests {
 
     #[test]
     fn residual_source_variables_cannot_alias_function_pin_slots() {
+        let _test_env = crate::test_env::write();
         // The source variable is deliberately named exactly like the Skolem
         // function. They inhabit different namespaces: pinning x(·) must not
         // pin the universally quantified source variable `x`.
@@ -14940,6 +15743,7 @@ mod tests {
 
     #[test]
     fn lean_residual_compilation_payload_accepts_and_tampering_fails() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{}]",
             cl(&[c("A", "u")], &[rf("R", "u", "x")]),
@@ -15049,6 +15853,7 @@ mod tests {
 
     #[test]
     fn cert_bails_on_nominal_terms_before_saturation() {
+        let _test_env = crate::test_env::write();
         // ind terms are not modelled: classify must return None (context engine).
         let cs = clauses(
             "[{\"body\":[],\"head\":[{\"kind\":\"concept\",\"concept\":\"A\",\
@@ -15059,6 +15864,7 @@ mod tests {
 
     #[test]
     fn pure_el_unchanged() {
+        let _test_env = crate::test_env::write();
         // No residual: behaves exactly as before.
         let cs = clauses(&format!(
             "[{},{}]",
@@ -15072,6 +15878,7 @@ mod tests {
 
     #[test]
     fn cert_handles_empty_head_constraint_over_edges() {
+        let _test_env = crate::test_env::write();
         // Residual constraint: A(x) ∧ R(x,y) ∧ D(y) → ⊥ (no head). Satisfied
         // when no A-node has an R-successor in D; violated when one exists.
         let base = format!(
@@ -15106,6 +15913,7 @@ mod tests {
 
     #[test]
     fn repair_passes_on_inert_covering_disjunction() {
+        let _test_env = crate::test_env::write();
         // ⊤ → A ∨ B (covering), A and B otherwise unconstrained, EL: C ⊑ D.
         // The plain check fails (live disjunction); repair builds the
         // choose-A and choose-B models, whose intersection adds nothing, so
@@ -15144,6 +15952,7 @@ mod tests {
 
     #[test]
     fn repair_fails_when_disjunction_forces_subsumption() {
+        let _test_env = crate::test_env::write();
         // ⊤ → A ∨ B with A ⊑ D and B ⊑ D entails C ⊑ D for every class C,
         // which EL completion cannot derive: D survives in the intersection at
         // the C node, so C must NOT be answered by the certificate — it is
@@ -15174,6 +15983,7 @@ mod tests {
 
     #[test]
     fn repair_fails_when_both_choices_force_bottom() {
+        let _test_env = crate::test_env::write();
         // ⊤ → A ∨ B with both disjuncts unsatisfiable: the ontology is
         // inconsistent but EL completion does not see it. Every repair choice
         // kills every node, so no pass model can witness C's satisfiability:
@@ -15204,6 +16014,7 @@ mod tests {
 
     #[test]
     fn repair_handles_inert_inverse_bridge_via_edge_addition() {
+        let _test_env = crate::test_env::write();
         // EL: A ⊑ ∃R.B. Residual inverse bridge R(x,y) → S(y,x) with S unused:
         // repair adds the S-edge, nothing else fires, both pass models agree
         // with the base, certificate passes with the EL answer.
@@ -15222,6 +16033,7 @@ mod tests {
 
     #[test]
     fn repair_shortcuts_when_base_model_already_complete() {
+        let _test_env = crate::test_env::write();
         // Residual already satisfied by the canonical model: repair mode must
         // pass without needing a second pass (adds == 0 shortcut).
         let cs = clauses(&format!(
@@ -15235,6 +16047,7 @@ mod tests {
 
     #[test]
     fn repair_after_failed_base_check_uses_handed_off_index() {
+        let _test_env = crate::test_env::write();
         // The base check rejects the live cover. Its prebuilt enumeration
         // index is then reused by the first repair pass, which must still
         // produce the same exact range consequence without leaking a choice.
@@ -15316,6 +16129,7 @@ mod tests {
 
     #[test]
     fn repair_assigns_cardinality_partitions_without_merging_pinned_witnesses() {
+        let _test_env = crate::test_env::write();
         // Two independent partitions with opposite cover orientations, so
         // neither polarity seed can reach a model by trying the other side
         // first. Each partition has more subjects than the restart budget, so a
@@ -15354,6 +16168,7 @@ mod tests {
 
     #[test]
     fn repair_still_merges_at_most_successors_that_are_not_pinned_apart() {
+        let _test_env = crate::test_env::write();
         // The same `≤1 R.C` bound, but with no `≥2` clause pinning the two
         // witnesses apart. Identifying them is legal and is the only way to
         // satisfy the bound, so the search must still do it. This is the
@@ -15387,6 +16202,7 @@ mod tests {
 
     #[test]
     fn repair_fails_closed_when_both_partition_sides_are_impossible() {
+        let _test_env = crate::test_env::write();
         // The at-most side is locally unsatisfiable at `A` (two pinned-apart
         // successors against a bound of one) and the other side is
         // unsatisfiable outright. No pass model can witness `A`, so the
@@ -15468,6 +16284,7 @@ mod tests {
 
     #[test]
     fn residual_pin_must_name_an_alive_canonical_domain_element() {
+        let _test_env = crate::test_env::write();
         let clause = rc(
             1,
             vec![RAtom::C { cid: 2, v: 0 }],
@@ -15492,6 +16309,7 @@ mod tests {
 
     #[test]
     fn residual_pin_is_vacuous_when_its_exact_source_guard_is_empty() {
+        let _test_env = crate::test_env::write();
         let mut clause = rc(
             2,
             vec![RAtom::C { cid: 2, v: 0 }],
@@ -15509,6 +16327,7 @@ mod tests {
 
     #[test]
     fn rooted_pin_guard_activation_uses_domain_members_not_canonical_node() {
+        let _test_env = crate::test_env::write();
         let mut clause = rc(
             2,
             vec![RAtom::C { cid: 2, v: 0 }],
@@ -15550,6 +16369,7 @@ mod tests {
 
     #[test]
     fn rooted_domain_expands_edges_and_only_active_guarded_witnesses() {
+        let _test_env = crate::test_env::write();
         let mut guarded = rc(
             2,
             vec![RAtom::C { cid: 7, v: 0 }],
@@ -15579,6 +16399,7 @@ mod tests {
 
     #[test]
     fn inverse_functional_existentials_get_source_specific_fresh_targets() {
+        let _test_env = crate::test_env::write();
         let ifun = rc(
             3,
             vec![
@@ -15619,6 +16440,7 @@ mod tests {
 
     #[test]
     fn rooted_existing_inverse_existential_edge_is_redirected() {
+        let _test_env = crate::test_env::write();
         let mut st = state_of(16, &[], &[(1, 8, 9)]);
         let mut fresh = FreshInverseWitnesses {
             roles: HashSet::from_iter([8]),
@@ -15671,6 +16493,7 @@ mod tests {
 
     #[test]
     fn rooted_fresh_pair_is_limited_to_active_sources_and_exact_fillers() {
+        let _test_env = crate::test_env::write();
         let mut st = state_of(16, &[], &[]);
         let mut fresh = FreshInverseWitnesses {
             roles: HashSet::from_iter([8]),
@@ -15695,6 +16518,7 @@ mod tests {
 
     #[test]
     fn rooted_fresh_depth_reuses_canonical_filler_at_cutoff() {
+        let _test_env = crate::test_env::write();
         let mut st = state_of(16, &[], &[]);
         let mut fresh = FreshInverseWitnesses {
             roles: HashSet::from_iter([8]),
@@ -15721,6 +16545,7 @@ mod tests {
 
     #[test]
     fn rooted_fresh_deep_frontier_can_differ_from_first_layer() {
+        let _test_env = crate::test_env::write();
         let mut st = state_of(16, &[], &[]);
         let mut fresh = FreshInverseWitnesses {
             roles: HashSet::from_iter([8, 11]),
@@ -15746,6 +16571,7 @@ mod tests {
 
     #[test]
     fn rooted_fresh_bottom_sources_do_not_consume_live_witness_budget() {
+        let _test_env = crate::test_env::write();
         // A doomed source has two existential obligations, with room for only
         // one fresh witness. Its obligations must not prevent the unrelated
         // live source from getting that witness and deriving its NF4 result.
@@ -15810,6 +16636,7 @@ mod tests {
 
     #[test]
     fn rooted_trace_blames_existential_source_before_successor_choice() {
+        let _test_env = crate::test_env::write();
         // Root 1 reaches bottom because its R-successor 2 is dead. Both nodes
         // carry direct repair choices, but banning the target-local choice can
         // repeat once per generated successor. The source choice that enabled
@@ -15913,7 +16740,7 @@ mod tests {
 
     #[test]
     fn rooted_publication_emits_only_the_checked_subject() {
-        let _lock = ROOTED_ENV_LOCK.lock().expect("rooted environment lock");
+        let _lock = crate::test_env::write();
         let _cert = EnvRestore::set("KM_ELC_CERT", "2");
         let _domain = EnvRestore::set("KM_ELC_REPAIR_ROOT_DOMAIN", "1");
         let _publish = EnvRestore::set("KM_ELC_REPAIR_ROOT_PUBLISH", "1");
@@ -15962,7 +16789,7 @@ mod tests {
 
     #[test]
     fn rooted_batch_reuses_one_fixpoint_but_certifies_each_subject() {
-        let _lock = ROOTED_ENV_LOCK.lock().expect("rooted environment lock");
+        let _lock = crate::test_env::write();
         let preserve_file = std::env::temp_dir().join(format!(
             "km-root-batch-{}-{}.txt",
             std::process::id(),
@@ -16052,9 +16879,9 @@ mod tests {
         let mut st = State {
             sub_super: vec![HashSet::default(); n],
             edges: vec![HashSet::default(); n],
-            in_by_role: HashMap::default(),
+            in_by_role: ContextRoleMap::default(),
             in_roles: vec![Vec::new(); n],
-            prop: HashMap::default(),
+            prop: ContextRoleMap::default(),
             worklist: Worklist::contextual(n),
             sub_journal: None,
             edge_epoch: 0,
@@ -16078,6 +16905,7 @@ mod tests {
 
     #[test]
     fn card_guide_reads_bounds_and_pins_off_clause_wiring() {
+        let _test_env = crate::test_env::write();
         let guide = CardGuide::new(&[at_most_one(7, 3, 9), pin_apart(7, 11, 12)]);
         assert_eq!(guide.bounds.len(), 1);
         assert_eq!(guide.bounds[0].bound, 1);
@@ -16118,6 +16946,7 @@ mod tests {
 
     #[test]
     fn recognize_at_most_rejects_near_miss_shapes() {
+        let _test_env = crate::test_env::write();
         // `≤2 R.C`: three successors, all three unordered pairs in the head
         let three = |pairs: Vec<RAtom>| {
             rc(
@@ -16188,6 +17017,7 @@ mod tests {
 
     #[test]
     fn recognize_distinct_pins_rejects_near_miss_shapes() {
+        let _test_env = crate::test_env::write();
         assert_eq!(
             recognize_distinct_pins(&pin_apart(7, 11, 12)),
             Some((11, 12))
@@ -16211,6 +17041,7 @@ mod tests {
 
     #[test]
     fn card_guide_refuses_pinned_merges_modulo_the_quotient() {
+        let _test_env = crate::test_env::write();
         let guide = CardGuide::new(&[pin_apart(7, 11, 12)]);
         let mut repr: Vec<u32> = (0..16).collect();
         let mut round = CardRound::default();
@@ -16231,6 +17062,7 @@ mod tests {
 
     #[test]
     fn rooted_card_guide_enforces_only_nonempty_guarded_pins() {
+        let _test_env = crate::test_env::write();
         let mut clause = pin_apart(7, 11, 12);
         clause.pin_guards.push((0, 7, 0));
         let guide = CardGuide::new(&[clause]);
@@ -16250,6 +17082,7 @@ mod tests {
 
     #[test]
     fn card_guide_demotes_only_over_full_all_pinned_choices() {
+        let _test_env = crate::test_env::write();
         // node 0 --R--> {1, 2}, both in filler 9; bound is ≤1 R.9 guarded by 7
         let guide = CardGuide::new(&[at_most_one(7, 3, 9), pin_apart(7, 1, 2)]);
         let st = state_of(
@@ -16310,6 +17143,7 @@ mod tests {
 
     #[test]
     fn card_guide_counts_merged_successors_once() {
+        let _test_env = crate::test_env::write();
         // the two successors are pinned apart, but a merge has already folded
         // one into the other: the node is back inside its bound and the choice
         // must not be demoted
@@ -16327,6 +17161,7 @@ mod tests {
 
     #[test]
     fn repair_rechecks_stale_cover_after_forced_residual() {
+        let _test_env = crate::test_env::write();
         // The inverse-position singleton is residual: every R-target must be A.
         // The same target also has the residual cover A ∨ B and A/B are
         // disjoint. A repair round can collect both violations at once. It must
@@ -16350,6 +17185,7 @@ mod tests {
 
     #[test]
     fn domain_axiom_is_decided_without_a_certificate() {
+        let _test_env = crate::test_env::write();
         // `∃R.⊤ ⊑ D` together with `A ⊑ ∃R.B` entails `A ⊑ D`. The clause set
         // must screen as pure EL and the cert-off worker must answer it: this
         // is the shape ObjectPropertyDomain normalises to, and parking it in
@@ -16371,6 +17207,7 @@ mod tests {
 
     #[test]
     fn role_body_with_head_off_the_source_is_not_a_domain_axiom() {
+        let _test_env = crate::test_env::write();
         // `R(x,y) → D(y)` is `∃R⁻.⊤ ⊑ D` and `R(x,x) → D(x)` is a self
         // restriction. Reading either as `∃R.⊤ ⊑ D` would be unsound, so both
         // must stay in the residual and the cert-off worker must decline.
@@ -16417,9 +17254,9 @@ mod tests {
         State {
             sub_super: vec![HashSet::default(); n],
             edges: vec![HashSet::default(); n],
-            in_by_role: HashMap::default(),
+            in_by_role: ContextRoleMap::default(),
             in_roles: vec![Vec::new(); n],
-            prop: HashMap::default(),
+            prop: ContextRoleMap::default(),
             worklist: Worklist::contextual(n),
             sub_journal: None,
             edge_epoch: 0,
@@ -16491,6 +17328,7 @@ mod tests {
 
     #[test]
     fn lazy_complement_recognizer_accepts_only_the_regular_fragment() {
+        let _test_env = crate::test_env::write();
         let (rcs, mut nfs, known_bottom, it, positive, negative, role) = lazy_complement_fixture();
         // An unrelated conjunction must not reject the candidate. This pins
         // the boolean grouping in the NF2 occurrence check.
@@ -16603,6 +17441,7 @@ mod tests {
 
     #[test]
     fn lazy_complement_fires_only_observable_rooted_consumers() {
+        let _test_env = crate::test_env::write();
         let (rcs, mut nfs, known_bottom, mut it, positive, negative, role) =
             lazy_complement_fixture();
         // Isolate implicit-target firing here. The recognizer test separately
@@ -16700,6 +17539,7 @@ mod tests {
 
     #[test]
     fn lazy_complement_prefers_exact_positive_cover_before_known_bottom() {
+        let _test_env = crate::test_env::write();
         let (rcs, mut nfs, known_bottom, mut it, positive, _negative, role) =
             lazy_complement_fixture();
         let source = it.id("Source").unwrap();
@@ -16746,6 +17586,7 @@ mod tests {
 
     #[test]
     fn lazy_local_complement_consumer_is_deferred_before_known_bottom() {
+        let _test_env = crate::test_env::write();
         let (rcs, mut nfs, known_bottom, mut it, positive, negative, _role) =
             lazy_complement_fixture();
         let source = it.id("Source").unwrap();
@@ -16813,6 +17654,7 @@ mod tests {
 
     #[test]
     fn shared_nf1_nf2_bucket_preserves_the_serial_horn_closure() {
+        let _test_env = crate::test_env::write();
         const ROOT: u32 = 2;
         const A: u32 = 3;
         const B: u32 = 4;
@@ -16872,6 +17714,7 @@ mod tests {
 
     #[test]
     fn nf2_join_fires_in_both_arrival_orders_from_either_side() {
+        let _test_env = crate::test_env::write();
         // One ordinary conjunction A ⊓ B ⊑ E, plus a hub H that is an operand
         // of 64 conjunctions H ⊓ X_i ⊑ E_i. The hub's candidate list is far
         // longer than any label here, so a Sub(_, H) item takes the
@@ -17033,6 +17876,7 @@ mod tests {
 
     #[test]
     fn pooled_rule_index_matches_a_direct_per_trigger_construction() {
+        let _test_env = crate::test_env::write();
         for seed in 0..32 {
             let (nfs, n) = random_terminology(seed);
             assert_pool_matches_direct(&nfs, n);
@@ -17050,6 +17894,7 @@ mod tests {
 
     #[test]
     fn pooled_rule_index_keeps_flag_only_and_duplicate_records() {
+        let _test_env = crate::test_env::write();
         const A: u32 = 2;
         const B: u32 = 3;
         const E: u32 = 4;
@@ -17097,6 +17942,7 @@ mod tests {
 
     #[test]
     fn interner_distinguishes_long_names_at_every_chunk_boundary() {
+        let _test_env = crate::test_env::write();
         // The hasher folds 8-byte words, then a 4-byte half, then single
         // bytes. Names differing inside each of those regions, and names of
         // lengths 8k, 8k+1..3, 8k+4, 8k+5.., must stay distinct symbols while
@@ -17127,6 +17973,7 @@ mod tests {
 
     #[test]
     fn interner_shares_symbol_storage_and_preserves_external_names() {
+        let _test_env = crate::test_env::write();
         let mut it = Interner::new();
         let iri = "http://example.org/a/deliberately/long/concept/name";
         let id = it.intern(iri);
@@ -17335,6 +18182,7 @@ mod tests {
 
     #[test]
     fn saturation_matches_the_naive_fixpoint_on_random_terminologies() {
+        let _test_env = crate::test_env::write();
         // Differential oracle for the indexed completion (`build_idx`, the
         // dense rule records, the min-side NF2 join, the backward-link guard
         // of the sub-side NF4 join, and `run`'s scheduling): 32 random
@@ -17376,6 +18224,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_fires_when_edge_arrives_after_propagation() {
+        let _test_env = crate::test_env::write();
         // ∃R.B ⊑ E. A ⊑ B is completed FIRST, registering prop[(A,R)] = [E]
         // with no edge present; the later edge (X,R,A) must fire the stored
         // propagation edge-side.
@@ -17400,6 +18249,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_fires_when_propagation_arrives_after_edge() {
+        let _test_env = crate::test_env::write();
         // Same axioms, opposite creation order: the edge (X,R,A) is completed
         // first (nothing fires), then A ⊑ B arrives and the Sub-side backward
         // join over the backward links of A must produce X ⊑ E.
@@ -17423,6 +18273,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_self_edge_fires_bucket_that_grows_after_the_edge() {
+        let _test_env = crate::test_env::write();
         // Self-edge (A,R,A) processed while prop[(A,R)] = [E1]: the in-place
         // edge-side iteration yields A ⊑ E1, whose Sub item then grows the
         // SAME bucket (∃R.E1 ⊑ E2) and must still reach A ⊑ E2 sub-side.
@@ -17444,6 +18295,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_self_edge_cascade_from_a_single_run() {
+        let _test_env = crate::test_env::write();
         // Everything seeded before one `run`: the self-edge and the cascade
         // ∃R.A ⊑ E1, ∃R.E1 ⊑ E2, ∃R.E2 ⊑ E3 interleave edge-side and
         // sub-side firings on the growing prop[(A,R)] bucket at c == d.
@@ -17465,6 +18317,7 @@ mod tests {
 
     #[test]
     fn parallel_nf4_frontier_deduplicates_parent_conclusions_exactly() {
+        let _test_env = crate::test_env::write();
         const R: u32 = 0;
         const PARENT: u32 = 2;
         const E1: u32 = 3;
@@ -17506,6 +18359,7 @@ mod tests {
 
     #[test]
     fn sparse_nf4_frontier_declines_once_and_keeps_the_serial_join() {
+        let _test_env = crate::test_env::write();
         const R: u32 = 0;
         const PARENT: u32 = 2;
         const SUP: u32 = 3;
@@ -17533,6 +18387,7 @@ mod tests {
 
     #[test]
     fn frontier_batch_keeps_the_serial_join_on_the_contextual_worklist() {
+        let _test_env = crate::test_env::write();
         // The parallel frontier batch is defined over the global FIFO. On the
         // context-local worklist it declines without touching the queue, and
         // the ordinary edge-side join reaches the same closure in one
@@ -17566,6 +18421,7 @@ mod tests {
 
     #[test]
     fn contextual_worklist_drains_one_activated_context_at_a_time() {
+        let _test_env = crate::test_env::write();
         let mut wl = Worklist::contextual(8);
         assert!(wl.is_empty());
         assert_eq!(wl.pop(), None);
@@ -17633,6 +18489,7 @@ mod tests {
 
     #[test]
     fn contextual_scheduling_reaches_the_fifo_closure_on_random_terminologies() {
+        let _test_env = crate::test_env::write();
         // The two disciplines process the same items with the same rule
         // code: the closure, the item counts and the per-item scan counters
         // must agree, and only the contextual queue activates contexts.
@@ -17682,6 +18539,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_closure_is_input_order_invariant() {
+        let _test_env = crate::test_env::write();
         // NF1 + NF3 + NF4 + a role inclusion + a genuine self-edge (C ⊑ ∃T.C):
         // permuting the input clauses flips which of {edge, propagation} is
         // created first at each context, and the closure must not change.
@@ -17743,6 +18601,7 @@ mod tests {
 
     #[test]
     fn sub_nf4_joins_only_the_exact_role_backlinks() {
+        let _test_env = crate::test_env::write();
         // Four backward links into A over three roles; NF4 axioms exist for R
         // and S but not Q. When A ⊑ B arrives, the sub-side join must fire each
         // axiom into exactly the parents whose edge role matches it.
@@ -17787,6 +18646,7 @@ mod tests {
 
     #[test]
     fn sub_nf4_self_edge_backlink_joins_repeatedly() {
+        let _test_env = crate::test_env::write();
         // A self-edge (A,R,A) is a backward link of A along R whose parent is A
         // itself. Each new subsumer of A that is an NF4 filler must join over
         // that same in-place parent slice: A ⊑ B gives A ⊑ E, whose Sub item
@@ -17810,6 +18670,7 @@ mod tests {
 
     #[test]
     fn bottom_backpropagates_across_every_incoming_role() {
+        let _test_env = crate::test_env::write();
         // The ⊥ back-propagation is an all-edge consumer: once A ⊑ ⊥ is
         // processed, every parent of A must go to ⊥ regardless of edge role,
         // via the `in_roles` walk over the role-keyed index.
@@ -17858,6 +18719,7 @@ mod tests {
 
     #[test]
     fn role_chain_symmetric_join_reads_role_keyed_backlinks() {
+        let _test_env = crate::test_env::write();
         // The symmetric NF7 join consumes the backward links of the new edge's
         // SOURCE: with r1 ∘ r2 ⊑ s, the existing link (P, r1, C) plus the new
         // edge (C, r2, D) must yield (P, s, D), while the non-composing
@@ -17888,6 +18750,7 @@ mod tests {
 
     #[test]
     fn merge_redirects_backlinks_per_role_and_clears_merged_node() {
+        let _test_env = crate::test_env::write();
         // The repair merge is an all-edge consumer: merging B into A must
         // redirect every backward link of B (over all roles) onto A, empty B's
         // index entries, and leave the redirected links joinable by NF4.
@@ -17927,6 +18790,7 @@ mod tests {
 
     #[test]
     fn multi_role_backlinks_are_input_order_invariant() {
+        let _test_env = crate::test_env::write();
         // Three roles into the same filler target, NF4 axioms on two of them:
         // every rotation of the input clauses must reach the same closure, with
         // each axiom fired only into its exact-role parents.
@@ -17982,6 +18846,7 @@ mod tests {
 
     #[test]
     fn incremental_reuse_extends_backlink_index_for_new_roles() {
+        let _test_env = crate::test_env::write();
         // Retained-fixpoint additions: first a subsumption that makes an old
         // backlink joinable (A ⊑ B activates ∃R.B ⊑ ER over the retained edge
         // (X, R, A)), then a whole new role S into the same retained target.
@@ -18022,6 +18887,7 @@ mod tests {
 
     #[test]
     fn incremental_restart_rebuilds_backlink_index() {
+        let _test_env = crate::test_env::write();
         // Completing a one-sided existential (X ⊑ ∃R.⊤ gains its filler half)
         // rewrites an NF3, so the session must restart from Init; the rebuilt
         // backlink index must serve the NF4 join in the fresh completion.
@@ -18114,6 +18980,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_matches_a_rebuild_after_new_labels() {
+        let _test_env = crate::test_env::write();
         // The repair's own additions are the common case: labels grow, the
         // domain and the edges do not. The delta-merged `members` must be the
         // list a rebuild produces, in `nodes` order and without duplicates —
@@ -18151,6 +19018,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_rebuilds_the_edge_half_when_an_edge_arrives() {
+        let _test_env = crate::test_env::write();
         // A new edge can permute `edges[c]`'s iteration order, so the role
         // index cannot be patched — the epoch must force it to be rebuilt.
         const R: u32 = 1;
@@ -18180,6 +19048,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_rebuilds_both_halves_when_a_node_dies() {
+        let _test_env = crate::test_env::write();
         // A node driven to ⊥ leaves the domain, so it has to leave every
         // `members` bucket and every edge pair that mentions it. That is not a
         // delta the merge can express: the refresh must fall back to a rebuild.
@@ -18210,6 +19079,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_tracks_a_witness_mirror_resync() {
+        let _test_env = crate::test_env::write();
         // The repair's merge re-syncs a merged-away node as a mirror of its
         // representative by wholesale assignment, which bypasses `add_sub` and
         // `add_edge`. The pass records that itself; here we check the two
@@ -18266,6 +19136,7 @@ mod tests {
 
     #[test]
     fn base_check_index_refreshed_over_fork_matches_fresh_build() {
+        let _test_env = crate::test_env::write();
         let (rcs, names, mut st) = idx_fixture();
         const A: u32 = 2;
         const P: u32 = 4;
@@ -18291,6 +19162,7 @@ mod tests {
 
     #[test]
     fn cert_index_invalidation_discards_a_stale_delta() {
+        let _test_env = crate::test_env::write();
         // The escape hatch the mirror re-sync uses when it would DELETE from a
         // label: after `invalidate` the next refresh must ignore whatever delta
         // it is handed and rebuild from the structure.
@@ -18318,6 +19190,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_keeps_the_multi_round_repair_verdict() {
+        let _test_env = crate::test_env::write();
         // End to end over a repair that needs more than one round: the same
         // clause set the stale-cover test uses, which forces a residual, then
         // re-checks the cover against the incrementally repaired state. The
@@ -18351,6 +19224,7 @@ mod tests {
 
     #[test]
     fn reciprocal_bridge_rewrite_is_conservative_when_the_dropped_role_is_idle() {
+        let _test_env = crate::test_env::write();
         // `S` occurs only in the two bridges, so rewriting `S(x,y) := R(y,x)`
         // deletes both clauses and leaves a pure-EL set. The rewritten set must
         // answer exactly what the certified original answers -- the rewrite
@@ -18381,6 +19255,7 @@ mod tests {
 
     #[test]
     fn a_bridge_whose_body_role_is_never_derived_is_discharged_by_the_base_model() {
+        let _test_env = crate::test_env::write();
         // ORE 1194 carries two bridges of this shape (`has_distal_part` and
         // `has_proximal_part` occur in no other clause). Nothing ever adds an
         // edge to the body role, so the clause is satisfied by the base model
@@ -18400,6 +19275,7 @@ mod tests {
 
     #[test]
     fn a_reverse_rule_at_a_shared_witness_would_assert_a_named_subsumption() {
+        let _test_env = crate::test_env::write();
         // The completion gives every filler concept ONE node, so the node for
         // `B` is at once the witness of `A ⊑ ∃R.B` for every context that
         // inherits `A`, and the named class `B` itself. Canonicalising
@@ -18450,6 +19326,7 @@ mod tests {
 
     #[test]
     fn a_one_way_bridge_is_not_a_role_definition() {
+        let _test_env = crate::test_env::write();
         // `R(x,y) → S(y,x)` alone says `R⁻ ⊑ S`, not `S ≡ R⁻`: `S` may hold
         // where the transpose of `R` does not. Reading it as a definition adds
         // the converse, and the converse changes the taxonomy -- here a
@@ -18494,6 +19371,7 @@ mod tests {
 
     #[test]
     fn conjunction_aux_names_are_component_boundary_injective() {
+        let _test_env = crate::test_env::read();
         let left = vec!["a/b".to_string(), "c".to_string()];
         let right = vec!["a".to_string(), "b/c".to_string()];
         assert_eq!(
@@ -18510,6 +19388,7 @@ mod tests {
 
     #[test]
     fn conjunction_origins_record_exact_sorted_source_prefix_ids() {
+        let _test_env = crate::test_env::write();
         let input = clauses(&format!(
             "[{}]",
             cl(&[c("C", "x"), c("A", "x"), c("B", "x")], &[c("D", "x")])
@@ -18528,6 +19407,7 @@ mod tests {
 
     #[test]
     fn the_canonicalised_reverse_forms_are_outside_to_nf() {
+        let _test_env = crate::test_env::write();
         // Rewriting `S := R⁻` deletes the bridge clauses but does not delete
         // the work: `∃S.C ⊑ D` becomes `R(y,x) ∧ C(y) → D(x)`, whose head sits
         // on the role TARGET, and `P ⊑ ∃S.C` becomes `P(x) → R(f(x),x)`, whose
@@ -18611,13 +19491,13 @@ mod tests {
     /// appends them in a different order but must build the same multisets.
     fn link_facts(st: &State) -> (Vec<(u32, u32, u32)>, Vec<(u32, u32, u32)>) {
         let mut links: Vec<(u32, u32, u32)> = Vec::new();
-        for (&(d, r), parents) in st.in_by_role.iter() {
+        for ((d, r), parents) in st.in_by_role.iter() {
             for &p in parents {
                 links.push((d, r, p));
             }
         }
         let mut props: Vec<(u32, u32, u32)> = Vec::new();
-        for (&(c, r), sups) in st.prop.iter() {
+        for ((c, r), sups) in st.prop.iter() {
             for &e in sups {
                 props.push((c, r, e));
             }
@@ -18695,6 +19575,7 @@ mod tests {
 
     #[test]
     fn context_parallel_saturation_matches_the_serial_fixpoint() {
+        let _test_env = crate::test_env::write();
         // The sharded engine against the serial one (itself pinned to the
         // naive rule-by-rule fixpoint by
         // `saturation_matches_the_naive_fixpoint_on_random_terminologies`) on
@@ -18752,6 +19633,7 @@ mod tests {
 
     #[test]
     fn context_parallel_labels_iterate_identically_for_every_worker_count() {
+        let _test_env = crate::test_env::write();
         // Byte-level determinism of the state the output is written from: the
         // label of a context iterates in the same order whatever the worker
         // count and whatever the interleaving, so the classification bytes do
@@ -18791,6 +19673,7 @@ mod tests {
 
     #[test]
     fn context_parallel_stress_matches_the_serial_fixpoint_over_repeated_runs() {
+        let _test_env = crate::test_env::write();
         // Volume plus repetition: four terminologies of a few hundred contexts
         // with every normal form live, each run four times at four workers
         // against the serial engine.
@@ -18830,6 +19713,7 @@ mod tests {
 
     #[test]
     fn context_parallel_classification_is_byte_identical_across_worker_counts() {
+        let _test_env = crate::test_env::write();
         // End to end through `classify`: NF1 chains, a conjunction, an
         // existential pair, an NF4 axiom, a role inclusion, a role chain and
         // an unsatisfiable conjunction, classified serially and at one, two
@@ -18916,6 +19800,7 @@ mod tests {
 
     #[test]
     fn context_parallel_plan_keeps_the_order_sensitive_modes_serial() {
+        let _test_env = crate::test_env::read();
         // The policy, without the environment: the parallel engine is opt-in
         // and declines wherever the serial construction ORDER is load-bearing.
         let plan = |requested, par_nf4, fifo, cert, lean, symbols, available| {
@@ -18951,6 +19836,7 @@ mod tests {
 
     #[test]
     fn shard_queue_drains_one_activated_context_at_a_time() {
+        let _test_env = crate::test_env::write();
         // The shard-local counterpart of
         // `contextual_worklist_drains_one_activated_context_at_a_time`, over
         // owner slots instead of context ids.
@@ -18978,6 +19864,7 @@ mod tests {
 
     #[test]
     fn context_parallel_propagates_bottom_and_chains_across_shards() {
+        let _test_env = crate::test_env::write();
         // A targeted cross-shard case: consecutive concept ids land on
         // different workers under `c % W`, so this chain of edges forces the
         // ⊥ back-propagation, the NF4 join and the role composition to travel

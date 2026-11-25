@@ -125,6 +125,7 @@ mod tests {
 
     #[test]
     fn storing_cursor_defaults_and_localizes_exact_state() {
+        let _test_env = crate::test_env::read();
         let mut previous = IndividualNodeSatisfiableExpandingCacheStoringData::new();
         previous
             .set_individual_node_or_successor_branched_concept(true)

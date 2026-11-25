@@ -1211,6 +1211,7 @@ mod tests {
 
     #[test]
     fn sat1_role_backward_propagation_hash_create_false_preserves_null() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
 
@@ -1224,6 +1225,7 @@ mod tests {
 
     #[test]
     fn sat1_role_backward_propagation_hash_create_allocates_and_initializes() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
 
@@ -1240,6 +1242,7 @@ mod tests {
 
     #[test]
     fn sat1_role_backward_propagation_hash_reuses_existing_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
 
@@ -1257,6 +1260,7 @@ mod tests {
 
     #[test]
     fn sat1_coping_node_copies_role_backward_hash_and_successor_nominals() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
         let target = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
@@ -1321,13 +1325,14 @@ mod tests {
             .get_next()
             .is_none());
 
-        let copied_other_data = ctx
+        if let Some(copied_other_data) = ctx
             .role_backward_sat_prop_hash(target_hash)
             .role_back_prop_data_hash
             .get(&other_role)
-            .unwrap();
-        assert!(copied_other_data.link_linker.is_none());
-        assert!(!copied_other_data.self_connected);
+        {
+            assert!(copied_other_data.link_linker.is_none());
+            assert!(!copied_other_data.self_connected);
+        }
 
         let source_nominal_set = ctx.sat_node_successor_connected_nominal_set_existing(source);
         let target_nominal_set = ctx.sat_node_successor_connected_nominal_set_existing(target);
@@ -1351,6 +1356,7 @@ mod tests {
 
     #[test]
     fn sat1_coping_context_copies_reapply_concept_saturation_label_set() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
         let target = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
@@ -1400,6 +1406,7 @@ mod tests {
 
     #[test]
     fn sat1_coping_context_flat_copy_moves_source_main_to_additional() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
         let target = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
@@ -1451,6 +1458,7 @@ mod tests {
 
     #[test]
     fn sat1_layered_flat_copy_preserves_newest_values_and_unique_iteration() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
         let first_copy = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
@@ -1527,6 +1535,7 @@ mod tests {
 
     #[test]
     fn sat1_initialized_and_completed_use_konclude_status_flag_masks() {
+        let _test_env = crate::test_env::read();
         let mut node = IndividualSaturationProcessNode::new(INVALID);
 
         node.set_initialized(true);
@@ -1561,6 +1570,7 @@ mod tests {
 
     #[test]
     fn sat1_insufficient_and_clashed_use_konclude_status_flag_masks() {
+        let _test_env = crate::test_env::read();
         let mut flags = IndividualSaturationProcessNodeStatusFlags::default();
 
         assert!(!flags.has_insufficient_flag());
@@ -1596,6 +1606,7 @@ mod tests {
 
     #[test]
     fn sat1_individual_extension_data_context_allocates_and_reuses() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(777));
 
@@ -1637,6 +1648,7 @@ mod tests {
 
     #[test]
     fn sat1_successor_extension_data_context_create_false_preserves_null() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(887));
 
@@ -1653,6 +1665,7 @@ mod tests {
 
     #[test]
     fn sat1_successor_extension_data_context_create_allocates_and_initializes() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(889));
 
@@ -1686,6 +1699,7 @@ mod tests {
 
     #[test]
     fn sat1_successor_extension_data_context_reuses_existing_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(890));
 
@@ -1704,6 +1718,7 @@ mod tests {
 
     #[test]
     fn sat1_successor_extension_data_setters_and_getters_preserve_values() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(891));
         let succ_ext = IndividualSaturationProcessNode::get_successor_extension_data_in_context(
@@ -1741,6 +1756,7 @@ mod tests {
 
     #[test]
     fn sat1_critical_predecessor_role_cardinality_hash_context_allocates_through_extension_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(895));
 
@@ -1779,6 +1795,7 @@ mod tests {
 
     #[test]
     fn sat1_critical_predecessor_role_cardinality_add_prepends_and_copy_is_shallow() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(896));
         let hash =
@@ -1838,6 +1855,7 @@ mod tests {
 
     #[test]
     fn sat1_disjunct_common_concept_extraction_data_context_allocates_through_extension_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(897));
 
@@ -1892,6 +1910,7 @@ mod tests {
 
     #[test]
     fn sat1_disjunct_common_concept_count_hash_counts_and_negation_match() {
+        let _test_env = crate::test_env::read();
         let mut onto = OntologyArenas::new();
         let concept = onto.alloc_concept(Concept::new());
         onto.concept_mut(concept).set_concept_tag(7001);
@@ -1929,6 +1948,7 @@ mod tests {
 
     #[test]
     fn sat1_disjunct_extraction_linker_prepends_and_tracks_last_examined() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let owner = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(899));
         let disj_a = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(900));
@@ -1991,6 +2011,7 @@ mod tests {
 
     #[test]
     fn sat1_atmost_successor_merging_data_context_allocates_through_extension_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(902));
 
@@ -2048,6 +2069,7 @@ mod tests {
 
     #[test]
     fn sat1_atmost_successor_merging_hash_creates_defaults_and_copies() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(903));
         let data = IndividualSaturationProcessNode::get_atmost_successor_merging_data_in_context(
@@ -2103,6 +2125,7 @@ mod tests {
 
     #[test]
     fn sat1_atmost_successor_merging_concept_linker_prepends_and_takes_next() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(904));
         let data = IndividualSaturationProcessNode::get_atmost_successor_merging_data_in_context(
@@ -2150,6 +2173,7 @@ mod tests {
 
     #[test]
     fn sat1_atmost_successor_merging_lazily_materializes_helper_hashes() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(905));
         let data = IndividualSaturationProcessNode::get_atmost_successor_merging_data_in_context(
@@ -2214,6 +2238,7 @@ mod tests {
 
     #[test]
     fn sat1_linked_role_successor_hash_context_allocates_through_extension_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(888));
 
@@ -2244,6 +2269,7 @@ mod tests {
 
     #[test]
     fn sat1_linked_role_successor_hash_adds_and_deactivates_extension_successors() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(889));
         let succ_node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(890));
@@ -2282,7 +2308,7 @@ mod tests {
         assert_eq!(ctx.sat_succ_data(succ_data).get_active_count(), 1);
         assert!(ctx.sat_succ_data(succ_data).extension);
         assert_eq!(
-            ctx.sat_succ_data(succ_data).creation_role_linker,
+            ctx.sat_succ_creation_roles(succ_data),
             vec![NegLink {
                 target: creation_role,
                 negated: false
@@ -2302,7 +2328,7 @@ mod tests {
         assert_eq!(ctx.sat_succ_data(succ_data).get_successor_count(), 0);
         assert_eq!(ctx.sat_succ_data(succ_data).get_active_count(), 0);
         assert_eq!(
-            ctx.sat_succ_data(succ_data).creation_role_linker,
+            ctx.sat_succ_creation_roles(succ_data),
             vec![NegLink {
                 target: creation_role,
                 negated: true
@@ -2311,8 +2337,70 @@ mod tests {
         );
     }
 
+    /// Shared creation-role lists keep the value semantics of the former
+    /// per-record copies: each `forceNewCreation` record sees the list its
+    /// predecessor had plus its own additions (newest first); negating a role
+    /// in the newest record leaves the lists of older records unchanged; and
+    /// branch rollback restores the pre-epoch list.
+    #[test]
+    fn sat1_shared_creation_role_lists_keep_per_record_values() {
+        let _test_env = crate::test_env::read();
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(901));
+        let succ_node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(902));
+        let role = RoleId::new(41);
+        let (r1, r2, r3) = (RoleId::new(43), RoleId::new(47), RoleId::new(53));
+        let link = |target, negated| NegLink { target, negated };
+        let hash = IndividualSaturationProcessNode::get_linked_role_successor_hash_in_context(
+            &mut ctx, node, true,
+        );
+        let d1 = ctx.linked_role_successor_hash_add_linked_successor(hash, role, succ_node, r1, 1);
+        let d2 = ctx.linked_role_successor_hash_add_linked_successor(hash, role, succ_node, r2, 1);
+        let d3 = ctx.linked_role_successor_hash_add_linked_successor(hash, role, succ_node, r1, 1);
+        let d4 = ctx.linked_role_successor_hash_add_linked_successor(hash, role, succ_node, r3, 1);
+        assert_eq!(ctx.sat_succ_creation_roles(d1).to_vec(), vec![link(r1, false)]);
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d2).to_vec(),
+            vec![link(r2, false), link(r1, false)]
+        );
+        assert_eq!(ctx.sat_succ_creation_roles(d3), ctx.sat_succ_creation_roles(d2));
+        let d4_roles = vec![link(r3, false), link(r2, false), link(r1, false)];
+        assert_eq!(ctx.sat_succ_creation_roles(d4).to_vec(), d4_roles);
+
+        assert!(ctx.linked_role_successor_hash_deactivate_linked_successor(
+            hash, role, succ_node, r2
+        ));
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d4).to_vec(),
+            vec![link(r3, false), link(r2, true), link(r1, false)]
+        );
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d3).to_vec(),
+            vec![link(r2, false), link(r1, false)],
+            "older records keep their own list"
+        );
+
+        ctx.push_branch_epoch();
+        assert!(ctx.linked_role_successor_hash_deactivate_linked_successor(
+            hash, role, succ_node, r1
+        ));
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d4).to_vec(),
+            vec![link(r3, false), link(r2, true), link(r1, true)]
+        );
+        ctx.pop_branch_epoch();
+        assert_eq!(
+            ctx.sat_succ_creation_roles(d4).to_vec(),
+            vec![link(r3, false), link(r2, true), link(r1, false)]
+        );
+        let from = ctx.creation_role_list_from(&d4_roles);
+        assert_eq!(ctx.creation_roles(from).to_vec(), d4_roles);
+        assert!(ctx.creation_roles(super::super::super::saturation::satellites::CreationRoleList::EMPTY).is_empty());
+    }
+
     #[test]
     fn sat1_linked_data_value_assertion_data_context_allocates_through_extension_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(890));
 
@@ -2351,6 +2439,7 @@ mod tests {
 
     #[test]
     fn sat1_data_value_assertion_add_prepends_roles_and_copy_is_shallow() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(891));
         let data = IndividualSaturationProcessNode::get_linked_data_value_assertion_data_in_context(
@@ -2398,6 +2487,7 @@ mod tests {
 
     #[test]
     fn sat1_role_assertion_linker_context_prepends_and_allocates() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(892));
         let dest_a = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(893));
@@ -2487,6 +2577,7 @@ mod tests {
 
     #[test]
     fn sat1_critical_concept_type_queues_context_allocates_through_extension_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(889));
 
@@ -2520,6 +2611,7 @@ mod tests {
 
     #[test]
     fn sat1_applied_datatype_data_context_allocates_through_extension_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(890));
 
@@ -2572,6 +2664,7 @@ mod tests {
 
     #[test]
     fn sat1_coping_context_copies_applied_datatype_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(891));
         let target = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(892));
@@ -2606,6 +2699,7 @@ mod tests {
 
     #[test]
     fn sat1_coping_context_adds_copy_dependency_linker_to_source() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(893));
         let target_a = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(894));
@@ -2636,6 +2730,7 @@ mod tests {
 
     #[test]
     fn sat1_nominal_and_successor_connected_context_getters_follow_konclude_chain() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(999));
 
@@ -2679,6 +2774,7 @@ mod tests {
 
     #[test]
     fn sat1_concept_saturation_process_linker_direct_methods_preserve_chain() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let first = ctx.alloc_con_sat_proc_linker(ConceptSaturationProcessLinker::new());
         let second = ctx.alloc_con_sat_proc_linker(ConceptSaturationProcessLinker::new());
@@ -2706,6 +2802,7 @@ mod tests {
 
     #[test]
     fn sat1_context_concept_saturation_process_linker_helpers_preserve_chain() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
         let old_head = ctx.alloc_con_sat_proc_linker(ConceptSaturationProcessLinker::new());
@@ -2744,6 +2841,7 @@ mod tests {
 
     #[test]
     fn sat1_initializing_backward_propagation_links_append_like_konclude() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let old_head = ctx.alloc_backward_sat_prop_link(BackwardSaturationPropagationLink::new());
         let first = ctx.alloc_backward_sat_prop_link(BackwardSaturationPropagationLink::new());
@@ -2761,6 +2859,7 @@ mod tests {
 
     #[test]
     fn sat1_clashed_concept_saturation_descriptor_linker_appends_chain() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let old_head = ctx.alloc_con_sat_desc(ConceptSaturationDescriptor::new());
         let first = ctx.alloc_con_sat_desc(ConceptSaturationDescriptor::new());
@@ -2785,6 +2884,7 @@ mod tests {
 
     #[test]
     fn sat1_completion_node_linker_context_allocates_and_tracks_queue_flag() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
 
@@ -2824,6 +2924,7 @@ mod tests {
 
     #[test]
     fn sat1_reapply_concept_saturation_label_set_false_does_not_allocate() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(123));
 
@@ -2836,6 +2937,7 @@ mod tests {
 
     #[test]
     fn sat1_reapply_concept_saturation_label_set_true_allocates_and_initializes_once() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_sat_node(IndividualSaturationProcessNode::new(456));
 
@@ -2869,6 +2971,7 @@ mod tests {
 
     #[test]
     fn sat1_reapply_concept_saturation_label_set_none_node_returns_none() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
 
         let label_set = ctx.sat_node_reapply_concept_saturation_label_set(SatNodeId::NONE, true);

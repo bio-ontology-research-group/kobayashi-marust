@@ -5579,9 +5579,16 @@ pub struct Ht {
     /// KM_HT_CARD_RECOG: propagation-based `≤n` RECOGNITION. Replaces the frontend's
     /// per-node `⊤→Q∨NQ` excluded-middle recognition (which branches on every node
     /// and causes disjunction non-convergence on cardinality giants) with a
-    /// deterministic counting rule run at `Scan::Sat` (`card_recog_step`). The
+    /// counting decision taken at `Scan::Sat` (`card_recog_candidate`). The
     /// clausal excluded middle is dropped by cb_to_ht when this is set.
     card_recog: bool,
+    /// Concept pairs that occur together in the head of a body-free clause:
+    /// a `≤n` marker and its `≥(n+1)` partner with their excluded middle still
+    /// in the clause set (cb_to_ht drops it only in its two-disjunct shape; a
+    /// sorted input keeps `⊤ → Q ∨ NQ ∨ __data__`). The search branches on
+    /// that clause itself, so recognition leaves those markers alone. Built on
+    /// first use.
+    card_recog_em_pairs: Option<HashSet<(C, C)>>,
     /// KM_HT_PHASE: label-keyed phase saving. `phase[c]` = was concept `c` true in
     /// the most recent clash-free model. `order_disjuncts` tries a disjunct whose
     /// concept was last-true first, so each per-query witness rebuild warm-starts
@@ -10992,7 +10999,7 @@ impl Ht {
     ) -> Result<bool, String> {
         static CANDIDATE_NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let nonce = CANDIDATE_NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
+        let path = crate::orchestrate::tmpfile::run_dir().join(format!(
             "km-ht-decision-candidate-{}-{nonce}.json",
             std::process::id()
         ));
@@ -18771,6 +18778,7 @@ impl Ht {
             cert_exact_cardinality_markers: HashSet::default(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             card_recog: std::env::var_os("KM_NO_HT_CARD_RECOG").is_none(),
+            card_recog_em_pairs: None,
             pc_tainted: Vec::new(),
             pc_candidates: Vec::new(),
             pc_unsat_candidates: Vec::new(),
@@ -19016,6 +19024,7 @@ impl Ht {
             .extend(defs.values().map(|definition| definition.role));
         self.card_defs = defs;
         self.cert_card_defs_override = None;
+        self.card_recog_em_pairs = None;
         self.card = true;
     }
 
@@ -20927,7 +20936,7 @@ impl Ht {
     }
 
     /// Is `filler` IMPOSSIBLE at node `s` — would asserting it clash given the
-    /// current (saturated) model? Used by `card_recog_step` to qualify an otherwise
+    /// current (saturated) model? Used by `card_recog_candidate` to qualify an otherwise
     /// unqualified `≤n` successor as `¬filler` (so it does not count toward the
     /// bound). Tentatively adds `filler`, propagates the consequences, reads the
     /// clash, then backtracks to leave the model exactly as it was. Returns the
@@ -20955,33 +20964,84 @@ impl Ht {
         result
     }
 
-    /// KM_HT_CARD_RECOG: propagation-based `≤n` RECOGNITION. Run only at a saturated
-    /// model (`Scan::Sat`), where every node's `r.F`-successor count is FINAL. For
-    /// each `≤n role.filler` marker `Q` (a `Max` `card_def`) and each canonical node
-    /// `v` not already carrying `Q`, count `v`'s distinct `role`-successors: those
-    /// provably carrying `filler` (definite), those carrying `¬filler` (excluded),
-    /// and the still-unqualified rest. If `definite + unqualified ≤ n`, then AT MOST
-    /// `n` of them can be the filler in any extension, so `≤n role.filler` holds and
-    /// we DERIVE `Q` deterministically (no branch). This replaces the frontend's
-    /// `⊤→Q∨NQ` excluded middle (dropped by cb_to_ht under the same flag), which
-    /// branched on every node. Sound: deriving `Q` only enables the first-class `≤n`
-    /// enforcement (`card_max`) + the recognition chains, both of which already hold
-    /// for a node that satisfies `≤n`; any later branch that pushes the count over
-    /// `n` clashes against that enforcement with `Q`'s conservative dep, so
-    /// backjumping stays correct. Monotone (markers are only ever added), so it
-    /// reaches a fixpoint. Returns true iff it derived a new marker.
-    fn card_recog_step(&mut self) -> bool {
+    /// KM_HT_CARD_RECOG: propagation-based `≤n` RECOGNITION, run only at a
+    /// saturated model (`Scan::Sat`). For each `≤n role.filler` marker `Q` (a
+    /// `Max` `card_def`) and each canonical node `v` carrying neither `Q` nor
+    /// its partner, count `v`'s distinct `role`-successors: those provably
+    /// carrying `filler` (definite), those carrying `¬filler` (excluded), and the
+    /// still-unqualified rest. If `definite + unqualified ≤ n`, the model
+    /// satisfies `≤n role.filler` at `v` as it stands. This replaces the
+    /// frontend's `⊤→Q∨NQ` excluded middle (dropped by cb_to_ht under the same
+    /// flag), which branched on every node at every step; the decision is now
+    /// taken only at complete models, where the count already favours `Q`.
+    ///
+    /// The count holds only for the successors the model has now; a later
+    /// branch can add successors, and the marker's consequences can clash
+    /// (with `F ⊓ E ⊑ ⊥`, `≤1 s0 ⊑ E`, a node `F` without successors got the
+    /// marker, then `E`, then a clash with no decision behind it, so `F` came
+    /// out unsatisfiable; tbox sweep htcard_min.ofn). The derivation is
+    /// therefore a decision: this returns the first `(node, marker, partner,
+    /// dep)` to decide, and `branch_recog` tries the marker and then its
+    /// `≥(n+1)` partner, the two sides of the dropped excluded middle. A
+    /// marker without a partner had no excluded middle to replace and is not
+    /// derived: it holds only where a clause puts it.
+    fn card_recog_candidate(&mut self) -> Option<(Node, C, C, DepSet)> {
         if self.card_defs.is_empty() {
-            return false;
+            return None;
         }
-        let maxdefs: Vec<(C, CardDef)> = self
+        let maxdefs: Vec<(C, CardDef, C)> = self
             .card_defs
             .iter()
             .filter(|(_, d)| d.kind == CardKind::Max)
-            .map(|(&c, &d)| (c, d))
+            .filter_map(|(&c, &d)| {
+                let partner = self
+                    .card_defs
+                    .iter()
+                    .filter(|(_, p)| {
+                        p.kind == CardKind::Min
+                            && p.n == d.n + 1
+                            && p.role == d.role
+                            && p.filler == d.filler
+                    })
+                    .map(|(&pc, _)| pc)
+                    .min()?;
+                Some((c, d, partner))
+            })
             .collect();
         if maxdefs.is_empty() {
-            return false;
+            return None;
+        }
+        if self.card_recog_em_pairs.is_none() {
+            let mut pairs = HashSet::default();
+            for (clause, _, _) in &self.index.clauses {
+                if !clause.body.is_empty() {
+                    continue;
+                }
+                let heads: Vec<C> = clause
+                    .head
+                    .iter()
+                    .filter_map(|atom| match atom {
+                        Atom::Concept { lit, .. } if !lit.neg => Some(lit.c),
+                        _ => None,
+                    })
+                    .collect();
+                for &a in &heads {
+                    for &b in &heads {
+                        if a != b {
+                            pairs.insert((a, b));
+                        }
+                    }
+                }
+            }
+            self.card_recog_em_pairs = Some(pairs);
+        }
+        let em_pairs = self.card_recog_em_pairs.as_ref().expect("built above");
+        let maxdefs: Vec<(C, CardDef, C)> = maxdefs
+            .into_iter()
+            .filter(|(marker, _, partner)| !em_pairs.contains(&(*marker, *partner)))
+            .collect();
+        if maxdefs.is_empty() {
+            return None;
         }
         let nn = self.ext.num_nodes();
         if std::env::var_os("KM_HT_RECOG_DBG").is_some() {
@@ -20992,19 +21052,20 @@ impl Ht {
                 nn
             );
         }
-        let mut made = false;
         for raw in 0..nn {
             let v = self.ext.resolve(raw);
             // canonical nodes only (a merged victim is dead; its survivor is visited).
             if v != raw || self.ext.merged[v].is_some() {
                 continue;
             }
-            for &(marker, def) in &maxdefs {
+            for &(marker, def, partner) in &maxdefs {
                 let qlit = CLit {
                     neg: false,
                     c: marker,
                 };
-                if self.ext.has_concept(v, qlit) {
+                if self.ext.has_concept(v, qlit)
+                    || self.ext.has_concept(v, CLit { neg: false, c: partner })
+                {
                     continue;
                 }
                 let comp = CLit {
@@ -21076,12 +21137,47 @@ impl Ht {
                         if could <= def.n { "DERIVE" } else { "skip" }
                     );
                 }
-                if could <= def.n && self.ext.add_concept(v, qlit, &dep) {
-                    made = true;
+                if could <= def.n {
+                    return Some((v, marker, partner, dep));
                 }
             }
         }
-        made
+        None
+    }
+
+    /// Decide a `≤n` recognition marker found by `card_recog_candidate`: the
+    /// marker first, then its `≥(n+1)` partner, with the dependency-directed
+    /// backjumping of `branch_choose`. Sound: `≤n r.F ⊔ ≥(n+1) r.F` holds at
+    /// every element, so the two branches cover every model, and each branch
+    /// only adds a concept whose enforcement rules are the ordinary ones.
+    fn branch_recog(&mut self, v: Node, marker: C, partner: C, base: &DepSet, depth: Level) -> Out {
+        let level = depth + 1;
+        self.branch_pushes += 1;
+        let mut fail = dep_empty();
+        for &c in &[marker, partner] {
+            self.disjunct_tries += 1;
+            let mark = self.ext.mark();
+            let dep = dep_add(base, level);
+            self.ext.add_concept(v, CLit { neg: false, c }, &dep);
+            let sub = self.dfs(level);
+            match sub {
+                Out::Sat => return Out::Sat,
+                Out::Restart => {
+                    self.ext.backtrack_to(mark);
+                    return Out::Restart;
+                }
+                Out::Conflict(cd) => {
+                    self.backtracks += 1;
+                    self.ext.backtrack_to(mark);
+                    if !dep_contains(&cd, level) {
+                        self.backjumps += 1;
+                        return Out::Conflict(cd);
+                    }
+                    fail = dep_union(&fail, &cd);
+                }
+            }
+        }
+        Out::Conflict(dep_remove(&fail, level))
     }
 
     /// KM_HT_CARD choose branch (Konclude `applyAutomatChooseRule`): a `≤n`-counted
@@ -21609,13 +21705,14 @@ impl Ht {
                             return self.branch_merge(mid, depth);
                         }
                     }
-                    // KM_HT_CARD_RECOG: derive any ≤n recognition marker that now
-                    // provably holds at this saturated model (deterministic, no
-                    // branch). A newly derived marker fires recognition chains and
-                    // ≤n enforcement, so re-propagate and re-scan before declaring
-                    // the model complete.
-                    if self.card_recog && self.card_recog_step() {
-                        continue;
+                    // KM_HT_CARD_RECOG: decide a ≤n recognition marker that holds
+                    // in this saturated model, marker first, then its ≥(n+1)
+                    // partner (`branch_recog`). Each branch re-propagates and
+                    // re-scans before the model counts as complete.
+                    if self.card_recog {
+                        if let Some((v, marker, partner, dep)) = self.card_recog_candidate() {
+                            return self.branch_recog(v, marker, partner, &dep, depth);
+                        }
                     }
                     return Out::Sat;
                 }
@@ -22757,10 +22854,58 @@ impl Ht {
         // only the number of Phase-1 sat-tests changes. The orchestrator enables
         // it for production workers; direct worker users can still select it with
         // the environment flag.
+        // Told subsumers (Mechanism 1, from the HermiT trace): structural
+        // A(x) -> B(x) clauses give A ⊑ B with no tableau test. Skipping those
+        // tests and propagating their transitive closure when a subsumption is
+        // confirmed (A ⊑ B and B ⊑* X told ⇒ A ⊑ X) cuts the per-pair test count
+        // while leaving the result set identical. Gated KM_HT_NO_TOLD.
+        let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
+        let mut told: HashMap<C, Vec<C>> = HashMap::default();
+        let mut supers_of: HashMap<C, HashSet<C>> = HashMap::default();
+        let mut subs_of: HashMap<C, HashSet<C>> = HashMap::default();
+        if use_told && !naive {
+            for (c, _, _) in &self.index.clauses {
+                if c.body.len() == 1 && c.head.len() == 1 {
+                    if let (Atom::Concept { lit: lb, t: tb }, Atom::Concept { lit: lh, t: th }) =
+                        (&c.body[0], &c.head[0])
+                    {
+                        if !lb.neg && !lh.neg && tb == th && lb.c != lh.c {
+                            told.entry(lb.c).or_default().push(lh.c);
+                        }
+                    }
+                }
+            }
+            for &u in told.keys() {
+                let mut stack: Vec<C> = told.get(&u).cloned().unwrap_or_default();
+                let mut visited: HashSet<C> = HashSet::default();
+                while let Some(x) = stack.pop() {
+                    if x != u && visited.insert(x) {
+                        supers_of.entry(u).or_default().insert(x);
+                        subs_of.entry(x).or_default().insert(u);
+                        if let Some(next) = told.get(&x) {
+                            stack.extend(next.iter().copied());
+                        }
+                    }
+                }
+            }
+        }
+
         let witreuse = std::env::var_os("KM_HT_WITREUSE").is_some();
+        let modelprune = std::env::var_os("KM_HT_MODELPRUNE").is_some();
+        let mut root_models: Vec<HashSet<C>> = Vec::new();
         let mut wit: HashMap<C, Vec<C>> = HashMap::default();
         let mut wit_hits = 0u64;
-        for (qi, &a) in queries.iter().enumerate() {
+        let mut p1_queries: Vec<C> = queries.to_vec();
+        if witreuse && use_told && !naive {
+            p1_queries.sort_by_key(|&a| {
+                (
+                    subs_of.get(&a).map_or(0, |s| s.len()),
+                    std::cmp::Reverse(supers_of.get(&a).map_or(0, |s| s.len())),
+                    a,
+                )
+            });
+        }
+        for (qi, &a) in p1_queries.iter().enumerate() {
             if witreuse {
                 if let Some(lab) = wit.get(&a) {
                     // already witnessed SAT by a prior model that carries `a`.
@@ -22825,7 +22970,17 @@ impl Ht {
             } else {
                 sat_q.push(a);
                 if !naive {
-                    labels.push((a, self.root_pos_label()));
+                    let r_lab = self.root_pos_label();
+                    if modelprune && self.ext.merged.get(0).copied().flatten().is_none() {
+                        root_models.push(
+                            r_lab
+                                .iter()
+                                .copied()
+                                .filter(|c| qset.contains(c))
+                                .collect(),
+                        );
+                    }
+                    labels.push((a, r_lab));
                     // branch-free build ⇒ this concept's root label is exact.
                     if hornfast && self.branch_pushes == bp0 {
                         exact.insert(a);
@@ -22881,27 +23036,6 @@ impl Ht {
             );
         }
 
-        // Told subsumers (Mechanism 1, from the HermiT trace): structural
-        // A(x) -> B(x) clauses give A ⊑ B with no tableau test. Skipping those
-        // tests and propagating their transitive closure when a subsumption is
-        // confirmed (A ⊑ B and B ⊑* X told ⇒ A ⊑ X) cuts the per-pair test count
-        // while leaving the result set identical. Gated KM_HT_NO_TOLD.
-        let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
-        let mut told: HashMap<C, Vec<C>> = HashMap::default();
-        if use_told && !naive {
-            for (c, _, _) in &self.index.clauses {
-                if c.body.len() == 1 && c.head.len() == 1 {
-                    if let (Atom::Concept { lit: lb, t: tb }, Atom::Concept { lit: lh, t: th }) =
-                        (&c.body[0], &c.head[0])
-                    {
-                        if !lb.neg && !lh.neg && tb == th && lb.c != lh.c {
-                            told.entry(lb.c).or_default().push(lh.c);
-                        }
-                    }
-                }
-            }
-        }
-
         // Phase 2: confirm candidate subsumptions A ⊑ B.
         let mut subs = Vec::new();
         if naive {
@@ -22914,100 +23048,137 @@ impl Ht {
             }
         } else {
             let satset: HashSet<C> = sat_q.iter().copied().collect();
-            // Multi-model pruning (HermiT QuasiOrderClassification, the
-            // m_possibleSubsumptions.removeAll step). Every model of A built
-            // during classification has A in its root label; any query concept
-            // ABSENT from that label is witnessed non-subsumed (A ⊓ ¬C is
-            // satisfiable in that model), so it can be dropped from A's candidate
-            // set WITHOUT a test. Phase 1 supplies one A-model (`lab`); each
-            // Phase-2 test that returns SAT (A ⋢ b) supplies a fresh A-model
-            // whose root label shrinks the residual we still have to test. Sound
-            // (only proven non-subsumers are removed) and output-identical to the
-            // un-pruned run; it only changes which/how-many tests fire. Gated
-            // KM_HT_MODELPRUNE for clean A/B. `tests` counts Phase-2 SAT calls so
-            // KM_HT_STATS can report the per-classify test count (the HermiT
-            // metric: O(classes), not O(classes^2)). The orchestrator enables it
-            // for production workers; direct worker users can still select it
-            // with the environment flag.
-            let modelprune = std::env::var_os("KM_HT_MODELPRUNE").is_some();
-            let mut tests: u64 = 0;
+            let add_entailed_edge = |u: C,
+                                     v: C,
+                                     supers_of: &mut HashMap<C, HashSet<C>>,
+                                     subs_of: &mut HashMap<C, HashSet<C>>| {
+                if u == v || supers_of.get(&u).is_some_and(|s| s.contains(&v)) {
+                    return;
+                }
+                let mut lefts: Vec<C> = subs_of
+                    .get(&u)
+                    .map(|s| s.iter().copied().collect())
+                    .unwrap_or_default();
+                lefts.push(u);
+                let mut rights: Vec<C> = supers_of
+                    .get(&v)
+                    .map(|s| s.iter().copied().collect())
+                    .unwrap_or_default();
+                rights.push(v);
+                for l in lefts {
+                    for &r in &rights {
+                        if l != r && supers_of.entry(l).or_default().insert(r) {
+                            subs_of.entry(r).or_default().insert(l);
+                        }
+                    }
+                }
+            };
+            let mut possible_map: HashMap<C, HashSet<C>> = HashMap::default();
             for (a0, lab) in &labels {
+                let a = *a0;
+                let mut p: HashSet<C> = lab
+                    .iter()
+                    .copied()
+                    .filter(|b| *b != a && qset.contains(b) && satset.contains(b))
+                    .collect();
+                p.shrink_to_fit();
+                possible_map.insert(a, p);
+            }
+            if modelprune {
+                for m in &root_models {
+                    for &d in m {
+                        if let Some(p) = possible_map.get_mut(&d) {
+                            p.retain(|c| m.contains(c));
+                        }
+                    }
+                }
+            }
+            drop(root_models);
+            let mut order: Vec<usize> = (0..labels.len()).collect();
+            order.sort_by_key(|&i| {
+                let a = labels[i].0;
+                (possible_map.get(&a).map_or(0, |s| s.len()), a)
+            });
+            let mut tests: u64 = 0;
+            for idx in order {
+                let (a0, lab) = &labels[idx];
                 let a = *a0;
                 // HORNFAST: branch-free build ⇒ unique model ⇒ root label is the
                 // exact subsumer set; emit it without any Phase-2 SAT test.
                 if hornfast && exact.contains(&a) {
                     for &b in lab {
                         if b != a && qset.contains(&b) && satset.contains(&b) {
-                            subs.push((a, b));
+                            add_entailed_edge(a, b, &mut supers_of, &mut subs_of);
                         }
                     }
                     continue;
                 }
-                // known = transitive closure of A's told subsumers (no test).
-                let mut known: HashSet<C> = HashSet::default();
-                let mut stack: Vec<C> = told.get(&a).cloned().unwrap_or_default();
-                while let Some(x) = stack.pop() {
-                    if known.insert(x) {
-                        if let Some(v) = told.get(&x) {
-                            stack.extend(v.iter().copied());
-                        }
-                    }
-                }
-                let mut local: Vec<C> = known
-                    .iter()
-                    .copied()
-                    .filter(|b| *b != a && qset.contains(b) && satset.contains(b))
-                    .collect();
-                // candidates: model-label minus those already entailed by told.
-                let mut cand: Vec<C> = lab
-                    .iter()
-                    .copied()
-                    .filter(|b| {
-                        *b != a && qset.contains(b) && satset.contains(b) && !known.contains(b)
-                    })
-                    .collect();
+                let mut cand: Vec<C> = if modelprune {
+                    possible_map
+                        .get(&a)
+                        .into_iter()
+                        .flatten()
+                        .copied()
+                        .filter(|b| !supers_of.get(&a).is_some_and(|s| s.contains(b)))
+                        .collect()
+                } else {
+                    lab.iter()
+                        .copied()
+                        .filter(|b| {
+                            *b != a
+                                && qset.contains(b)
+                                && satset.contains(b)
+                                && !supers_of.get(&a).is_some_and(|s| s.contains(b))
+                        })
+                        .collect()
+                };
                 cand.sort_unstable();
                 cand.dedup();
-                // `possible` is the live residual; SAT models prune it as we go.
-                let mut possible: HashSet<C> = if modelprune {
-                    cand.iter().copied().collect()
-                } else {
-                    HashSet::default()
-                };
+                cand.sort_by_key(|&b| {
+                    (
+                        std::cmp::Reverse(supers_of.get(&b).map_or(0, |s| s.len())),
+                        possible_map.get(&b).map_or(0, |s| s.len()),
+                        b,
+                    )
+                });
                 for b in cand {
-                    if known.contains(&b) {
+                    if supers_of.get(&a).is_some_and(|s| s.contains(&b)) {
                         continue;
                     }
-                    if modelprune && !possible.contains(&b) {
-                        continue; // a prior A-model already witnessed A ⋢ b
+                    if modelprune
+                        && !possible_map.get(&a).is_some_and(|s| s.contains(&b))
+                    {
+                        continue; // a prior model already witnessed A ⋢ b
                     }
                     tests += 1;
                     if !self.consistent(&[CLit::pos(a), CLit::neg(b)])? {
-                        local.push(b);
-                        known.insert(b);
-                        // A ⊑ b and b ⊑* x (told) ⇒ A ⊑ x: record + skip its test.
-                        let mut st: Vec<C> = told.get(&b).cloned().unwrap_or_default();
-                        while let Some(x) = st.pop() {
-                            if known.insert(x) {
-                                if x != a && qset.contains(&x) && satset.contains(&x) {
-                                    local.push(x);
-                                }
-                                if let Some(v) = told.get(&x) {
-                                    st.extend(v.iter().copied());
+                        add_entailed_edge(a, b, &mut supers_of, &mut subs_of);
+                    } else if modelprune {
+                        let m: HashSet<C> = self
+                            .root_pos_label()
+                            .into_iter()
+                            .filter(|c| qset.contains(c))
+                            .collect();
+                        if let Some(p) = possible_map.get_mut(&a) {
+                            p.retain(|c| m.contains(c));
+                        }
+                        if self.ext.merged.get(0).copied().flatten().is_none() {
+                            for &d in &m {
+                                if let Some(p) = possible_map.get_mut(&d) {
+                                    p.retain(|c| m.contains(c));
                                 }
                             }
                         }
-                    } else if modelprune {
-                        // SAT: this fresh A-model (A true, b false at root)
-                        // excludes every query concept missing from its root
-                        // label. Intersect the residual with it. True subsumers
-                        // hold in every A-model, so they survive.
-                        let m: HashSet<C> = self.root_pos_label().into_iter().collect();
-                        possible.retain(|c| m.contains(c));
                     }
                 }
-                for b in local {
-                    subs.push((a, b));
+            }
+            for (&u, vs) in &supers_of {
+                if qset.contains(&u) && satset.contains(&u) {
+                    for &v in vs {
+                        if u != v && qset.contains(&v) && satset.contains(&v) {
+                            subs.push((u, v));
+                        }
+                    }
                 }
             }
             if self.stats {
@@ -25644,6 +25815,7 @@ mod tests {
 
     #[test]
     fn pm_prune_concept_deterministic() {
+        let _test_env = crate::test_env::read();
         // A = {A det, S det}; subsumer S = {S det} ⇒ possible (S's det ⊆ A).
         let a = pm_one(&[(1, true), (2, true)], &[]);
         let s = pm_one(&[(2, true)], &[]);
@@ -25658,6 +25830,7 @@ mod tests {
 
     #[test]
     fn pm_prune_cardinality() {
+        let _test_env = crate::test_env::read();
         // B needs ≥3 on role r (det); A's model has only 1 successor ⇒ PRUNE.
         let a = pm_one(
             &[],
@@ -25693,6 +25866,7 @@ mod tests {
 
     #[test]
     fn propagate_each_obligation_reuses_a_stronger_witness() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
@@ -25712,6 +25886,7 @@ mod tests {
 
     #[test]
     fn subset_blocking_bit_labels_track_add_and_backtrack() {
+        let _test_env = crate::test_env::read();
         let mut ext = Ext::new();
         ext.incr2 = true;
         ext.enable_block_bits();
@@ -25765,6 +25940,7 @@ mod tests {
 
     #[test]
     fn certified_mode6_accepts_a_blocked_leaf_address_frontier() {
+        let _test_env = crate::test_env::read();
         certified_repeating_pairwise_chain(false)
             .certified_mode6_address_invariant()
             .expect("the repeated pairwise signature is an unexpanded leaf");
@@ -25772,6 +25948,7 @@ mod tests {
 
     #[test]
     fn certified_mode6_rejects_expansion_beyond_a_blocked_address() {
+        let _test_env = crate::test_env::read();
         let error = certified_repeating_pairwise_chain(true)
             .certified_mode6_address_invariant()
             .expect_err("a blocked node must not retain a generated child");
@@ -25780,6 +25957,7 @@ mod tests {
 
     #[test]
     fn certified_mode6_rejects_repeated_signature_on_unblocked_path() {
+        let _test_env = crate::test_env::read();
         let mut reasoner = certified_repeating_pairwise_chain(false);
         let frontier = reasoner.ext.num_nodes() - 1;
         reasoner.ext.blockable[frontier] = false;
@@ -25791,6 +25969,7 @@ mod tests {
 
     #[test]
     fn certified_mode6_addresses_distinguish_roots_and_validate_witness_slots() {
+        let _test_env = crate::test_env::read();
         let mut reasoner = Ht::new_certified(Vec::new());
         let left = reasoner.ext.new_root();
         let right = reasoner.ext.new_root();
@@ -25813,12 +25992,14 @@ mod tests {
 
     #[test]
     fn default_ht_does_not_allocate_certificate_address_metadata() {
+        let _test_env = crate::test_env::read();
         let reasoner = Ht::new(Vec::new());
         assert!(reasoner.ext.address_step.is_none());
     }
 
     #[test]
     fn certified_mode6_rejects_unaddressed_or_malformed_witness_nodes() {
+        let _test_env = crate::test_env::read();
         let mut unaddressed = Ht::new_certified(Vec::new());
         let root = unaddressed.ext.new_root();
         unaddressed.ext.new_node(Some(root));
@@ -25869,12 +26050,14 @@ mod tests {
 
     #[test]
     fn depset_max_and_contains() {
+        let _test_env = crate::test_env::read();
         let d = dep_add(&dep_add(&dep_empty(), 3), 7);
         assert_eq!(dep_max(&d), 7);
         assert!(dep_contains(&d, 7) && dep_contains(&d, 3) && !dep_contains(&d, 5));
     }
     #[test]
     fn depset_union_and_remove() {
+        let _test_env = crate::test_env::read();
         let a = dep_add(&dep_add(&dep_empty(), 1), 4);
         let b = dep_add(&dep_add(&dep_empty(), 4), 8);
         let u = dep_union(&a, &b);
@@ -25885,6 +26068,7 @@ mod tests {
     }
     #[test]
     fn clash_union_dep_is_backjump_target() {
+        let _test_env = crate::test_env::read();
         let mut e = Ext::new();
         let n = e.new_root();
         e.add_concept(n, lit(false, 0), &dep_add(&dep_empty(), 5));
@@ -25899,6 +26083,7 @@ mod tests {
 
     #[test]
     fn ni_certificate_accepts_direct_number_role_successor() {
+        let _test_env = crate::test_env::read();
         let mut t = ht(Vec::new());
         t.cert_number_roles.insert(R0);
         let root = t.ext.new_root();
@@ -25909,6 +26094,7 @@ mod tests {
 
     #[test]
     fn ni_certificate_rejects_non_successor_number_role_neighbour() {
+        let _test_env = crate::test_env::read();
         let mut t = ht(Vec::new());
         t.cert_number_roles.insert(R0);
         let root = t.ext.new_root();
@@ -25920,6 +26106,7 @@ mod tests {
 
     #[test]
     fn resumed_model_rechecks_ni_certificate_before_accepting_witness() {
+        let _test_env = crate::test_env::read();
         let mut t = ht(Vec::new());
         t.cert_no_blocking = true;
         t.cert_number_roles.insert(R0);
@@ -25940,6 +26127,7 @@ mod tests {
 
     #[test]
     fn distinct_pair_merge_clashes() {
+        let _test_env = crate::test_env::read();
         // Konclude `isIndividualNodesMergeable`: merging an asserted-distinct pair
         // is a clash. The clash dep carries BOTH the merge cause and the
         // inequality witness, so it backjumps past whichever is shallower.
@@ -25955,6 +26143,7 @@ mod tests {
 
     #[test]
     fn distinct_self_is_clash() {
+        let _test_env = crate::test_env::read();
         // a ≠ a is an immediate contradiction.
         let mut e = Ext::new();
         let a = e.new_root();
@@ -25964,6 +26153,7 @@ mod tests {
 
     #[test]
     fn distinct_backtrack_undoes_then_mergeable() {
+        let _test_env = crate::test_env::read();
         // The inequality is trail-recorded: a backtrack past it makes the pair
         // mergeable again with no clash.
         let mut e = Ext::new();
@@ -25980,6 +26170,7 @@ mod tests {
 
     #[test]
     fn card_atleast_sat_builds_successors() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ≥2 R0.FC : satisfiable; builds two distinct FC-successors.
         const MK: C = 20;
         const FC: C = 21;
@@ -26001,6 +26192,7 @@ mod tests {
 
     #[test]
     fn card_atleast_unsat_via_filler_clash() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ≥1 R0.FC, FC ⊑ ⊥ ⇒ {A} unsat: the required successor carries FC,
         // which clashes (FC ⊑ G and FC ⊑ ¬G). Confirms the rule creates the
         // successor and propagates the filler.
@@ -26029,6 +26221,7 @@ mod tests {
 
     #[test]
     fn card_atleast_recursive_terminates_via_blocking() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ≥1 R0.A : an infinite R0-chain that MUST be folded by blocking. The
         // ≥n rule is gated by blocking exactly like ∃, so the successor (label
         // {A, marker}) is blocked by the root and spawns no further successors ⇒
@@ -26052,6 +26245,7 @@ mod tests {
 
     #[test]
     fn card_atmost_distinct_clash() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ≥3 R0.FC ⊓ ≤2 R0.FC : three pairwise-distinct FC-successors cannot
         // fit into ≤2 (no mergeable pair) ⇒ {A} unsat. Exercises the ≤n
         // distinct-clash path against the ≥n distinct successors.
@@ -26088,6 +26282,7 @@ mod tests {
 
     #[test]
     fn card_atmost_merge_sat() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃R0.G0 ⊓ ∃R0.G1 ⊓ ≤1 R0.FC, G0⊑FC, G1⊑FC: two NON-distinct
         // FC-successors merge to satisfy ≤1 ⇒ SAT.
         const MX: C = 21;
@@ -26118,6 +26313,7 @@ mod tests {
 
     #[test]
     fn card_atmost_merge_clash() {
+        let _test_env = crate::test_env::read();
         // Same shape but G0⊑P, G1⊑¬P: the ≤1-forced merge of the two FC-successors
         // clashes (P ⊓ ¬P) and there is no other option ⇒ {A} unsat.
         const MX: C = 21;
@@ -26151,6 +26347,7 @@ mod tests {
 
     #[test]
     fn card_atmost_choose_picks_negative() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ≤0 R0.FC ⊓ ∃R0.G1, G1 unrelated to FC: the unqualified successor must
         // be labelled ¬FC by the choose rule (≤0 forbids FC) ⇒ SAT. Exercises
         // `branch_choose` (the FC branch clashes, the ¬FC branch is the model).
@@ -26178,6 +26375,7 @@ mod tests {
 
     #[test]
     fn distinct_propagates_through_merge() {
+        let _test_env = crate::test_env::read();
         // a≠c, then merge b into a's survivor; if later we try to merge the
         // survivor with c it must clash (the inequality followed the merge).
         // Build: c≠a (distinct), merge a,b (ok, survivor=min). survivor still ≠ c.
@@ -26196,6 +26394,7 @@ mod tests {
 
     #[test]
     fn clash_a_and_not_a() {
+        let _test_env = crate::test_env::read();
         assert_eq!(
             ht(vec![]).consistent(&[CLit::pos(A), CLit::neg(A)]),
             Some(false)
@@ -26203,10 +26402,12 @@ mod tests {
     }
     #[test]
     fn simple_sat() {
+        let _test_env = crate::test_env::read();
         assert_eq!(ht(vec![]).consistent(&[CLit::pos(A)]), Some(true));
     }
     #[test]
     fn existential_then_universal_clash() {
+        let _test_env = crate::test_env::read();
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(
@@ -26218,6 +26419,7 @@ mod tests {
     }
     #[test]
     fn existential_universal_consistent() {
+        let _test_env = crate::test_env::read();
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(
@@ -26229,6 +26431,7 @@ mod tests {
     }
     #[test]
     fn disjunction_unsat_both_branches_clash() {
+        let _test_env = crate::test_env::read();
         let cls = vec![
             Clause::new(
                 vec![con(false, A, X)],
@@ -26241,6 +26444,7 @@ mod tests {
     }
     #[test]
     fn disjunction_one_branch_open() {
+        let _test_env = crate::test_env::read();
         let cls = vec![
             Clause::new(
                 vec![con(false, A, X)],
@@ -26252,6 +26456,7 @@ mod tests {
     }
     #[test]
     fn unit_propagation_via_dead_disjunct() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊔ D, A ⊑ ¬B ⇒ D forced; {A,¬D} unsat. Exercises scan unit-prop.
         let cls = vec![
             Clause::new(
@@ -26267,6 +26472,7 @@ mod tests {
     }
     #[test]
     fn horn_chain_delta() {
+        let _test_env = crate::test_env::read();
         // A→B, B→D ; {A,¬D} unsat — exercises delta trigger chaining.
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![con(false, B, X)]),
@@ -26279,6 +26485,7 @@ mod tests {
     }
     #[test]
     fn forall_propagation_delta_both_triggers() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.B (succ gets B), B ⊑ C? no: A ⊑ ∀r.D and successor has B; check
         // ∀ fires whether the edge or the guard concept arrives first.
         // A→∃r.B ; A ∧ r(x,y) → D(y) ; D⊓B disjoint at y via D→¬B? use: A⊑∀r.¬B.
@@ -26296,6 +26503,7 @@ mod tests {
     }
     #[test]
     fn infinite_chain_blocks_and_terminates() {
+        let _test_env = crate::test_env::read();
         let cls = vec![Clause::new(
             vec![con(false, A, X)],
             vec![exists(R0, false, A, X)],
@@ -26304,6 +26512,7 @@ mod tests {
     }
     #[test]
     fn inverse_role_propagates_universal_back() {
+        let _test_env = crate::test_env::read();
         // r and s = r⁻ with the cb_to_ht bridging clauses. A ⊑ ∃r.B and
         // B ⊑ ∀r⁻.¬A: the r-successor's back r⁻-edge to the root forces ¬A at
         // the root, which carries A ⇒ {A} is unsat. Verifies that an inverse
@@ -26324,6 +26533,7 @@ mod tests {
     }
     #[test]
     fn inverse_role_consistent_without_clash() {
+        let _test_env = crate::test_env::read();
         // Same shape, but the back-propagated universal is ∀r⁻.¬D and D never
         // holds at the root, so no clash ⇒ {A} is consistent. Guards against a
         // spurious inverse clash (over-propagation).
@@ -26338,6 +26548,7 @@ mod tests {
     }
     #[test]
     fn functional_merge_forces_clash() {
+        let _test_env = crate::test_env::write();
         // KM_HT_NUMBER: r functional (≤1 r): r(x,y1) ∧ r(x,y2) → y1 = y2.
         // A ⊑ ∃r.B, A ⊑ ∃r.C, B ⊓ C ⊑ ⊥. The two distinct r-successors are
         // merged by the functional clause; the survivor then carries both B and
@@ -26362,6 +26573,7 @@ mod tests {
     }
     #[test]
     fn merge_inverse_existential_terminates() {
+        let _test_env = crate::test_env::write();
         // Functional r merges A's two r-successors; the merged node carries B,
         // which fires ∃ over the inverse role s=r⁻, and the bridging clauses
         // re-materialise edges. Exercises merge × inverse × ∃-over-inverse
@@ -26387,6 +26599,7 @@ mod tests {
     }
     #[test]
     fn functional_merge_consistent_when_compatible() {
+        let _test_env = crate::test_env::write();
         // Same functional r, but the two successors carry B and D which are NOT
         // disjoint, so the merge yields a consistent survivor ⇒ {A} sat. Guards
         // against a spurious merge clash.
@@ -26403,6 +26616,7 @@ mod tests {
     }
     #[test]
     fn atmost2_qualified_merge_branch_sat() {
+        let _test_env = crate::test_env::write();
         // KM_HT_QMERGE: ≤2 r.F with three F-successors forces identifying one pair
         // (the AtMost rule's non-deterministic merge). y0:P, y1:Q, y2:P with
         // P⊓Q⊑⊥, so only merging the two P-successors avoids a clash — the search
@@ -26449,6 +26663,7 @@ mod tests {
     }
     #[test]
     fn atmost2_qualified_merge_branch_unsat() {
+        let _test_env = crate::test_env::write();
         // KM_HT_QMERGE: ≤2 r.F with three PAIRWISE-disjoint F-successors. Every
         // identification clashes, so the AtMost cannot be satisfied ⇒ {A} unsat.
         // Exercises the all-choices-fail conflict path of the merge branch.
@@ -26496,6 +26711,7 @@ mod tests {
     }
     #[test]
     fn atleast2_recognition_dead_merge_unsat() {
+        let _test_env = crate::test_env::write();
         // KM_HT_NUMBER: the ≥n recognition head `r(x,y0)∧F(y0)∧r(x,y1)∧F(y1) →
         // Q(x) ∨ y0≈y1` (the contrapositive of `≥2 r.F ⊑ Q`). A has two
         // r-successors in F that cannot merge (one carries P, the other ¬P), and
@@ -26534,6 +26750,7 @@ mod tests {
     }
     #[test]
     fn atleast2_recognition_branch_asserts_concept_unsat() {
+        let _test_env = crate::test_env::write();
         // ≥2 recognition BRANCH: Q is live and the merge is dead (P / ¬P), so the
         // mixed head `Q ∨ y0≈y1` is a 2-option deferred branch. Q ⊑ Z conflicts
         // with A ⊑ ¬Z, and the merge clashes — both options fail ⇒ {A} unsat. This
@@ -26573,6 +26790,7 @@ mod tests {
     }
     #[test]
     fn atleast2_recognition_concept_branch_sat() {
+        let _test_env = crate::test_env::write();
         // Same shape, but the recognized Q is consistent (no ¬Z), so asserting Q
         // in the recognition branch yields a model ⇒ {A} sat. Guards against a
         // spurious recognition clash (the Q branch must be explored and succeed).
@@ -26608,6 +26826,7 @@ mod tests {
     }
     #[test]
     fn nominal_choice_on_merged_node_keeps_merge_and_choice_dependencies() {
+        let _test_env = crate::test_env::read();
         let mut e = Ext::new();
         let left = e.new_root();
         let right = e.new_root();
@@ -26637,6 +26856,7 @@ mod tests {
 
     #[test]
     fn nominal_pending_choices_preserve_consistent_wine_fragment() {
+        let _test_env = crate::test_env::read();
         let input: crate::tableau::TInput = serde_json::from_str(include_str!(
             "../tests/fixtures/wine_nominal_pending_choice.json"
         )).unwrap();
@@ -26656,6 +26876,7 @@ mod tests {
 
     #[test]
     fn nominal_orule_merge_clash_unsat() {
+        let _test_env = crate::test_env::read();
         // Nominals: A has an r-successor in {o}⊓P and an s-successor in {o}⊓Q with
         // P⊓Q⊑⊥. The o-rule merges the two {o}-carriers (a singleton) into one
         // node, uniting P and Q ⇒ clash ⇒ {A} unsat. Exercises process_nominals
@@ -26681,6 +26902,7 @@ mod tests {
     }
     #[test]
     fn nominal_orule_merge_sat() {
+        let _test_env = crate::test_env::read();
         // Same shape, but both {o}-carriers carry the SAME concept P (no clash):
         // the o-rule merges them into one individual and the model is SAT.
         const N: C = 20;
@@ -26702,6 +26924,7 @@ mod tests {
     }
     #[test]
     fn anywhere_blocking_also_terminates() {
+        let _test_env = crate::test_env::read();
         let cls = vec![Clause::new(
             vec![con(false, A, X)],
             vec![exists(R0, false, A, X)],
@@ -26718,6 +26941,7 @@ mod tests {
     /// seed-103 core of docs/HYBRID-CB-HT.md section 9).
     #[test]
     fn checked_subset_blocking_incremental_matches_full_scan() {
+        let _test_env = crate::test_env::read();
         const NA: C = 4;
         const T: R = 1;
         let y: Var = 1;
@@ -26764,6 +26988,7 @@ mod tests {
     }
     #[test]
     fn subset_gain_rejects_a_blocker_witnessed_through_its_predecessor() {
+        let _test_env = crate::test_env::read();
         let t = ht(inverse_witness_clauses());
         let gain = SubsetGain::build(&t.index.clauses, &HashMap::default(), &[]);
         assert!(gain.back_possible());
@@ -26811,6 +27036,7 @@ mod tests {
     /// with a clause that reads two role atoms between the same nodes.
     #[test]
     fn subset_gain_keeps_predecessor_witnesses_on_counted_roles() {
+        let _test_env = crate::test_env::read();
         let y: Var = 1;
         let z: Var = 2;
         let build = |extra: Clause| {
@@ -26850,6 +27076,7 @@ mod tests {
     }
     #[test]
     fn inverse_witness_incremental_matches_full_scan() {
+        let _test_env = crate::test_env::read();
         for mode in [1u8, 5] {
             let mut t = ht(inverse_witness_clauses());
             t.block_mode = mode;
@@ -26864,6 +27091,7 @@ mod tests {
     }
     #[test]
     fn backjump_skips_irrelevant_branch() {
+        let _test_env = crate::test_env::read();
         const P: C = 6;
         const Q: C = 7;
         const R_: C = 8;
@@ -26886,6 +27114,7 @@ mod tests {
     }
     #[test]
     fn global_axiom_empty_body() {
+        let _test_env = crate::test_env::read();
         // ⊤ ⊑ B (empty body), ⊤ ⊑ ¬B ⇒ KB inconsistent (clash on the root node).
         let cls = vec![
             Clause::new(vec![], vec![con(false, B, X)]),
@@ -26895,11 +27124,13 @@ mod tests {
     }
     #[test]
     fn luby_sequence_prefix() {
+        let _test_env = crate::test_env::read();
         let got: Vec<u64> = (1..=15).map(luby).collect();
         assert_eq!(got, vec![1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4, 8]);
     }
     #[test]
     fn search_modes_answer_invariant() {
+        let _test_env = crate::test_env::read();
         // The unsat-both-branches and one-branch-open KBs must give the same
         // verdict under every ord/pick/restart setting (search is exhaustive).
         let unsat = || {
@@ -26950,6 +27181,7 @@ mod tests {
     }
     #[test]
     fn role_hierarchy_head_propagates_edge() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.B ; r ⊑ s ; A ⊓ ∀s.¬B  ⇒  the r-successor (has B) also gets the
         // s-edge (head role atom), ∀s.¬B fires ¬B on it ⇒ clash ⇒ A unsat.
         const S: R = 1;
@@ -26962,6 +27194,7 @@ mod tests {
     }
     #[test]
     fn role_hierarchy_head_consistent() {
+        let _test_env = crate::test_env::read();
         // same shape but ∀s.E (E ≠ ¬B): the successor gets B and E, no clash.
         const S: R = 1;
         const E: C = 4;
@@ -26977,6 +27210,7 @@ mod tests {
     }
     #[test]
     fn classify_basic_subsumption() {
+        let _test_env = crate::test_env::read();
         let cls = vec![Clause::new(vec![con(false, A, X)], vec![con(false, B, X)])];
         let (consistent, unsat, subs) = ht(cls).classify(&[A, B]).unwrap();
         assert!(consistent && unsat.is_empty());
@@ -26984,6 +27218,7 @@ mod tests {
     }
     #[test]
     fn watch_eq_scan_all_small_kbs() {
+        let _test_env = crate::test_env::read();
         // The incremental (watch) disjunction handling must give the same
         // consistency verdict as the full scan on every small KB above.
         let cases: Vec<(Vec<Clause>, Vec<CLit>, Option<bool>)> = vec![
@@ -27049,6 +27284,7 @@ mod tests {
     }
     #[test]
     fn classify_model_based_eq_naive_chain() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊑ D ; classification must yield {A⊑B, A⊑D, B⊑D} and nothing
         // reversed, identically under model-based pruning and naive n².
         let cls = || {
@@ -27070,6 +27306,7 @@ mod tests {
 
     #[test]
     fn qosat_edge_index_role_chain() {
+        let _test_env = crate::test_env::read();
         // Drives BOTH elc-style edge indexes in QoSat saturation:
         //  - the role_*_trig edge indexes: a fresh r-edge fires only the guardless
         //    r-clauses (transitivity) plus the target-guarded join clause keyed by
@@ -27113,6 +27350,7 @@ mod tests {
 
     #[test]
     fn qosat_global_inverse_complete() {
+        let _test_env = crate::test_env::read();
         // GLOBAL saturation as a SOUND ELI saturator (the 7581 path).
         // A ⊑ ∃r.B, B ⊑ D, and D ⊑ ∀r⁻.E encoded as  D(y) ⊓ r(x,y) → E(x).
         // Seeding all concepts builds the shared edge node(A) --r--> node(B);
@@ -27153,6 +27391,7 @@ mod tests {
 
     #[test]
     fn qosat_prop_broadcast_shared() {
+        let _test_env = crate::test_env::read();
         // Backward-link broadcast to MULTIPLE shared predecessors. A1 ⊑ ∃r.B,
         // A2 ⊑ ∃r.B, B ⊑ D, and R(x,y) ⊓ D(y) → E(x). The consequence E is
         // computed ONCE at node(B) (the filler) and broadcast to both A1 and A2;
@@ -27191,6 +27430,7 @@ mod tests {
 
     #[test]
     fn qosat_prop_batch_preserves_fixpoint() {
+        let _test_env = crate::test_env::read();
         // The same conclusion reaches A through two role/filler paths. The batch
         // path must union those presentations and still trigger the downstream
         // E -> F implication exactly as the eager schedule does.
@@ -27236,6 +27476,7 @@ mod tests {
 
     #[test]
     fn qosat_fprop_forward_broadcast() {
+        let _test_env = crate::test_env::read();
         // Forward-broadcast mirror of `qosat_prop_broadcast_shared`. The
         // head-on-TARGET Horn NF4 `R(sv,tv) ⊓ D(sv) → E(tv)` (the shape
         // `compose_inverse` emits) must land `E` on the role-SUCCESSOR, broadcast
@@ -27279,6 +27520,7 @@ mod tests {
 
     #[test]
     fn qopc_range_no_cross_role_pollution() {
+        let _test_env = crate::test_env::read();
         // The 7581 soundness bug, minimised. Two roles each with a range write to
         // the SAME filler concept B:
         //   A  ⊑ ∃R0.B,  A2 ⊑ ∃R1.B,  range(R0)=Cr,  range(R1)=Cs,
@@ -27328,6 +27570,7 @@ mod tests {
 
     #[test]
     fn qopc_subsumption_chain() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊑ D: per-concept gate yields {A⊑B, A⊑D, B⊑D}, nothing reversed.
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![con(false, B, X)]),
@@ -27342,6 +27585,7 @@ mod tests {
 
     #[test]
     fn qopc_role_guard_after_edge_complete() {
+        let _test_env = crate::test_env::read();
         // Completeness under guard-after-edge: A ⊑ ∃r.B, A ⊑ Guard,
         // Guard(x) ⊓ r(x,y) ⊑ E. The role clause must fire whichever of the
         // edge / the guard concept lands at A first ⇒ A ⊑ E and A ⊑ Guard.
@@ -27367,6 +27611,7 @@ mod tests {
 
     #[test]
     fn qopc_transitive_chain() {
+        let _test_env = crate::test_env::read();
         // Same closure as qosat_edge_index_role_chain, via the per-concept path:
         // A ⊑ ∃r.B, B ⊑ ∃r.G, r∘r ⊑ r, r(x,z) ⊓ G(z) ⊑ H ⇒ A ⊑ H.
         const G: C = 4;
@@ -27392,6 +27637,7 @@ mod tests {
 
     #[test]
     fn qopc_unsat_concept() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B and A ⊑ ¬B ⇒ A unsatisfiable; B stays satisfiable; KB consistent.
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![con(false, B, X)]),
@@ -27405,6 +27651,7 @@ mod tests {
 
     #[test]
     fn qopc_functional_eq_bails() {
+        let _test_env = crate::test_env::read();
         // Functional r with two distinct r-successors forces an Eq head, which
         // QoSat has no merge for ⇒ the per-concept gate bails to fallback (None),
         // soundly (it declines rather than answers wrong).
@@ -27428,6 +27675,7 @@ mod tests {
 
     #[test]
     fn kpset_inert_inverse_certifies() {
+        let _test_env = crate::test_env::read();
         // The 7581 shape with a NON-load-bearing inverse:
         //   A ⊑ ∃r1.B,  r1(x,y) → r2(y,x)  (back-edge node(B) --r2--> A),
         //   A ⊑ D,  ∃r2.D ⊑ E              (would WRITE E onto the shared node(B)),
@@ -27467,6 +27715,7 @@ mod tests {
 
     #[test]
     fn kpset_loadbearing_inverse_defers_not_oversderive() {
+        let _test_env = crate::test_env::read();
         // Same shape WITHOUT the forward B ⊑ E: the inverse-anchored write of E
         // onto the shared node(B) is NOT forward-present, so the containment
         // check MISSES ⇒ kp_insufficient ⇒ the gate DECLINES (None) rather than
@@ -27494,6 +27743,7 @@ mod tests {
 
     #[test]
     fn kpwrite_backward_forall_certifies_self_node() {
+        let _test_env = crate::test_env::read();
         // Lever C (KM_HT_QO_KPWRITE): the sound backward-∀ write Konclude's
         // applyALLRule performs, which the pure-CHECK kpset over-defers.
         //   A ⊑ ∃R0.B,  R0(x,y) → R1(y,x)  (R1 = R0⁻; back-edge node(B)--R1-->node(A)),
@@ -27544,6 +27794,7 @@ mod tests {
 
     #[test]
     fn qo_shared_filler_conflict_ground_truth() {
+        let _test_env = crate::test_env::read();
         // Port #2 SOUNDNESS GUARD (copy-on-conflict). Two predecessors share the
         // (D,R0) filler in sat_mode, imposing CONTRADICTORY ∀R0 constraints on it:
         //   A ⊑ ∃R0.D ⊓ ∀R0.CC      (A's R0-successor must be CC)
@@ -27591,6 +27842,7 @@ mod tests {
 
     #[test]
     fn split_certifies_shared_filler_conflict() {
+        let _test_env = crate::test_env::read();
         // Port #2 (KM_HT_QO_SPLIT copy-on-conflict): the SAME KB as
         // qo_shared_filler_conflict_ground_truth, but with `split_mode` on the
         // forward pass must CERTIFY (no `qo_insufficient`, neither A nor B unsat)
@@ -27631,6 +27883,7 @@ mod tests {
 
     #[test]
     fn split_forall_operand_still_propagates() {
+        let _test_env = crate::test_env::read();
         // Port #2 COMPLETENESS: the redirected ∀-operand must still fire downstream.
         //   A ⊑ ∃R0.D,  A ⊑ ∀R0.CC,  ∃R0.CC ⊑ F   (R0(x,y) ⊓ CC(y) → F(x)).
         // A's R0-successor carries CC (on the split filler {D,CC}), so the backward
@@ -27664,6 +27917,7 @@ mod tests {
 
     #[test]
     fn card_self_equality_not_insufficient() {
+        let _test_env = crate::test_env::read();
         // SOUND self-equality short-circuit (KM_HT_QO_CARD). A ⊑ ∃R0.D with a
         // functional R0 (R0(x,y1) ⊓ R0(x,y2) → y1=y2). In the shared-node model A's
         // single R0-successor is ONE node, so the at-most binds y1=y2=that node — a
@@ -27693,6 +27947,7 @@ mod tests {
 
     #[test]
     fn card_distinct_merge_still_defers() {
+        let _test_env = crate::test_env::read();
         // Complementary guard: two DISTINCT R0-successors (B and C2) forced equal IS
         // a real cardinality merge the shared pass cannot represent ⇒ it must still
         // defer (kp_insufficient), never be silently dropped by the short-circuit.
@@ -27718,6 +27973,7 @@ mod tests {
 
     #[test]
     fn cardmerge_compatible_certifies() {
+        let _test_env = crate::test_env::read();
         // KM_HT_QO_CARDMERGE: A ⊑ ∃R0.B, A ⊑ ∃R0.D, R0 functional, B,D compatible.
         // The two distinct fillers merge into one {B,D} successor (no clash) ⇒ A is
         // CERTIFIED consistent, not deferred (the lever the blanket card_defer lacks).
@@ -27744,6 +28000,7 @@ mod tests {
 
     #[test]
     fn cardmerge_clash_defers() {
+        let _test_env = crate::test_env::read();
         // B ⊓ C2 ⊑ ⊥ makes the forced merge inconsistent ⇒ the anchor is DEFERRED
         // (kp_insufficient) to the complete verify, never silently certified.
         const C2: C = 2;
@@ -27770,6 +28027,7 @@ mod tests {
 
     #[test]
     fn cardmerge_does_not_pollute_unconstrained_predecessor() {
+        let _test_env = crate::test_env::read();
         // SOUNDNESS (per-source privatize). P1=A ⊑ ∃R0.B ⊓ ∃R0.D with functional R0
         // (its two successors merge into {B,D}); P2 ⊑ ∃R0.B shares the (B,R0) filler
         // but has only ONE R0-successor (no merge). With ∃R0.D ⊑ G: A ⊑ G (its
@@ -27811,6 +28069,7 @@ mod tests {
 
     #[test]
     fn certified_mode6_uses_direct_full_pairwise_blocking() {
+        let _test_env = crate::test_env::read();
         let cls = vec![
             Clause::new(Vec::new(), vec![con(false, A, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
@@ -27831,6 +28090,7 @@ mod tests {
 
     #[test]
     fn mode4_terminates_on_inverse_cycle() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃R0.A is an infinite R0-chain; the inverse bridge R0(x,y)→R1(y,x)
         // makes every successor also an R1-predecessor. Double blocking must fold
         // the chain so consistent terminates with SAT (no infinite expansion/panic).
@@ -27847,6 +28107,7 @@ mod tests {
 
     #[test]
     fn mode4_backward_inverse_propagation_clash() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃R0.B, B ⊑ ∃R0.B (infinite B-chain), inverse bridge R0(x,y)→R1(y,x),
         // B ⊑ ∀R1.CC (a B-node's R1-successor = its R0-PREDECESSOR gets CC), and
         // A ⊑ ¬CC. The successor n1:B has an R1-edge back to the root n0:A, so the
@@ -27872,6 +28133,7 @@ mod tests {
 
     #[test]
     fn mode4_inverse_model_is_satisfiable() {
+        let _test_env = crate::test_env::read();
         // Same backward-∀ shape but WITHOUT the A⊑¬CC clash: the model is satisfiable
         // and the infinite chain must be folded by double blocking. Guards against
         // OVER-blocking (spurious termination as UNSAT) and non-termination.
@@ -27894,6 +28156,7 @@ mod tests {
 
     #[test]
     fn mode4_agrees_with_default_on_noinverse_clash() {
+        let _test_env = crate::test_env::read();
         // Regression: mode 4 must give the same verdict as the default blocking on a
         // pure no-inverse case. A ⊑ ∃R0.B, A ⊓ R0 ⊑ ¬B (∀R0.¬B) ⇒ UNSAT.
         let cls = vec![
@@ -27910,6 +28173,7 @@ mod tests {
 
     #[test]
     fn mode4_merge_cycle_inverse_terminates_sat() {
+        let _test_env = crate::test_env::write();
         // Cardinality merge × inverse × double blocking together. A ⊑ ∃R0.B,
         // A ⊑ ∃R0.D with R0 functional ⇒ the two R0-successors merge into one
         // {B,D} node. B ⊑ ∃R0.A makes the merged node spawn an A-successor, so the
@@ -27941,6 +28205,7 @@ mod tests {
 
     #[test]
     fn mode4_merge_clash_inverse_unsat() {
+        let _test_env = crate::test_env::write();
         // Same merge × inverse shape, but B ⊓ D ⊑ ⊥. The functional merge folds A's
         // two R0-successors into one node carrying both B and D, which clash ⇒ {A}
         // UNSAT. The clash is forced by the merge before any blocking can fold the
@@ -27973,6 +28238,7 @@ mod tests {
     // needing the indirect-blocking workaround mode 4 relies on. ---
     #[test]
     fn mode5_terminates_on_inverse_cycle() {
+        let _test_env = crate::test_env::read();
         const R1: R = 1;
         let y: Var = 1;
         let cls = vec![
@@ -27986,6 +28252,7 @@ mod tests {
 
     #[test]
     fn mode5_inverse_model_is_satisfiable() {
+        let _test_env = crate::test_env::read();
         // The frontier-lag case (∀ over inverse). Konclude subset B1 ({B}⊆{B,CC}) +
         // B2a (CC at the predecessor, written by the backward ∀) blocks the frontier
         // node directly ⇒ terminates SAT without infinite expansion.
@@ -28008,6 +28275,7 @@ mod tests {
 
     #[test]
     fn mode5_backward_inverse_propagation_clash() {
+        let _test_env = crate::test_env::read();
         // Backward ∀ writes CC onto the root which is ¬CC ⇒ UNSAT. Blocking must not
         // mask the clash (it is raised before any block fires).
         const CC: C = 4;
@@ -28030,6 +28298,7 @@ mod tests {
 
     #[test]
     fn mode5_agrees_with_default_on_noinverse_clash() {
+        let _test_env = crate::test_env::read();
         // No-inverse regression: A ⊑ ∃R0.B, A ⊓ R0 ⊑ ¬B ⇒ UNSAT (B1 subset alone,
         // B2a vacuous since no w→v edge).
         let cls = vec![
@@ -28046,6 +28315,7 @@ mod tests {
 
     #[test]
     fn index_forall_picks_up_universal_clauses() {
+        let _test_env = crate::test_env::read();
         // The B2a index: `C0 ⊑ ∀r.D` clausified as C0(x) ∧ r(x,y) → D(y) is indexed
         // by (C0, r) → [D]; an ∃ head and a 2-role chain body are NOT indexed.
         const CC: C = 4;
@@ -28070,6 +28340,7 @@ mod tests {
 
     #[test]
     fn has_inverse_bridge_detects_swapped_role_head() {
+        let _test_env = crate::test_env::read();
         const R1: R = 1;
         let y: Var = 1;
         // bridge R0(x,y) → R1(y,x): swapped vars, distinct roles ⇒ inverse present.
@@ -28088,6 +28359,7 @@ mod tests {
 
     #[test]
     fn pmmerge_model_root_refutes_nonsubsumer() {
+        let _test_env = crate::test_env::read();
         // Konclude pseudo-model refutation (concept part). A ⊑ B; CC unrelated.
         // consistent(&[A])'s root model FORCES B (A⊑B) but not CC, so the model
         // refutes the candidate A⊑CC (CC absent ⇒ A ⋢ CC) and cannot refute A⊑B
@@ -28105,6 +28377,7 @@ mod tests {
 
     #[test]
     fn native_abox_class_assertion_changes_global_consistency() {
+        let _test_env = crate::test_env::read();
         const NOM: C = 20;
         const ASSERTED: C = 21;
         let clauses = vec![Clause::new(vec![con(false, ASSERTED, X)], Vec::new())];
@@ -28120,6 +28393,7 @@ mod tests {
 
     #[test]
     fn lean_certificate_search_starts_from_exact_native_abox_seed() {
+        let _test_env = crate::test_env::read();
         const LEFT: C = 20;
         const RIGHT: C = 21;
         const ASSERTED: C = 22;
@@ -28145,6 +28419,7 @@ mod tests {
 
     #[test]
     fn lean_certificate_search_rejects_invalid_native_abox_indices() {
+        let _test_env = crate::test_env::read();
         let invalid = NativeAboxState {
             individuals: vec![(vec![A], Vec::new())],
             different: vec![(0, 1)],
@@ -28155,6 +28430,7 @@ mod tests {
 
     #[test]
     fn equality_certificate_fails_closed_until_native_apart_is_in_its_wire() {
+        let _test_env = crate::test_env::read();
         let mut reasoner =
             Ht::new_certified(vec![Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: 1 }])]);
         reasoner.set_native_abox(
@@ -28170,6 +28446,7 @@ mod tests {
 
     #[test]
     fn native_abox_unsat_refutation_uses_joint_lean_boundary() {
+        let _test_env = crate::test_env::read();
         const RIGHT: C = 2;
         let mut reasoner = Ht::new_certified(vec![Clause::new(vec![con(false, B, X)], Vec::new())]);
         reasoner.set_nominals(vec![A]);
@@ -28206,6 +28483,7 @@ mod tests {
 
     #[test]
     fn native_abox_global_decision_uses_joint_sat_wire() {
+        let _test_env = crate::test_env::read();
         let mut reasoner = Ht::new_certified(Vec::new());
         reasoner.set_nominals(vec![A]);
         reasoner.set_native_abox(vec![(vec![A], vec![B])], Vec::new(), Vec::new());
@@ -28255,6 +28533,7 @@ mod tests {
 
     #[test]
     fn rooted_ordinary_run_rejects_a_terminal_from_another_abox() {
+        let _test_env = crate::test_env::read();
         if std::env::var_os("KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER").is_none() {
             return;
         }
@@ -28278,6 +28557,7 @@ mod tests {
 
     #[test]
     fn native_abox_taxonomy_cells_use_one_joint_checked_state() {
+        let _test_env = crate::test_env::read();
         const NOMINAL: C = 20;
         const ASSERTED: C = 21;
         let mut reasoner = Ht::new_certified(vec![Clause::new(
@@ -28349,6 +28629,7 @@ mod tests {
 
     #[test]
     fn native_abox_taxonomy_matrix_is_complete_and_tamper_evident() {
+        let _test_env = crate::test_env::read();
         const NOMINAL: C = 20;
         let mut reasoner = Ht::new_certified(vec![Clause::new(
             vec![con(false, A, X)],
@@ -28394,6 +28675,7 @@ mod tests {
 
     #[test]
     fn native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident() {
+        let _test_env = crate::test_env::read();
         const NOMINAL: C = 20;
         const MARKER: C = 21;
         const FILLER: C = 22;
@@ -28475,6 +28757,7 @@ mod tests {
 
     #[test]
     fn native_abox_different_blocks_required_atmost_merge() {
+        let _test_env = crate::test_env::read();
         const SUBJECT: C = 20;
         const LEFT: C = 21;
         const RIGHT: C = 22;
@@ -28504,6 +28787,7 @@ mod tests {
 
     #[test]
     fn native_abox_cardinality_refutation_uses_joint_lean_boundary() {
+        let _test_env = crate::test_env::read();
         const SUBJECT: C = 20;
         const LEFT: C = 21;
         const RIGHT: C = 22;
@@ -28555,6 +28839,7 @@ mod tests {
 
     #[test]
     fn native_abox_cardinality_global_decision_uses_joint_wire() {
+        let _test_env = crate::test_env::read();
         const SUBJECT: C = 20;
         const MARKER: C = 21;
         const FILLER: C = 22;
@@ -28625,6 +28910,7 @@ mod tests {
 
     #[test]
     fn native_abox_positive_and_negative_role_assertion_clash() {
+        let _test_env = crate::test_env::read();
         const NA: C = 20;
         const NB: C = 21;
         let mut t = ht(vec![negative_edge_clash(R0, NA, NB)]);
@@ -28639,6 +28925,7 @@ mod tests {
 
     #[test]
     fn negative_role_assertion_sees_subrole_inverse_and_chain_edges() {
+        let _test_env = crate::test_env::read();
         const NA: C = 20;
         const NB: C = 21;
         const NC: C = 22;
@@ -28695,6 +28982,7 @@ mod tests {
 
     #[test]
     fn release_model_state_drops_the_model_and_keeps_certified_addresses() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             Clause::new(Vec::new(), vec![con(false, A, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
@@ -28718,6 +29006,7 @@ mod tests {
 
     #[test]
     fn parallel_classify_after_model_release_matches_sequential() {
+        let _test_env = crate::test_env::read();
         const E: C = 4;
         let clauses = vec![
             Clause::new(
@@ -28748,6 +29037,7 @@ mod tests {
 
     #[test]
     fn parallel_workers_retain_native_abox() {
+        let _test_env = crate::test_env::read();
         const NOM: C = 20;
         const ASSERTED: C = 21;
         let clauses = vec![Clause::new(vec![con(false, ASSERTED, X)], Vec::new())];
@@ -28766,6 +29056,7 @@ mod tests {
 
     #[test]
     fn parallel_workers_attach_to_the_parent_clause_index() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             Clause::new(
                 vec![con(false, A, X)],
@@ -28805,6 +29096,7 @@ mod tests {
 
     #[test]
     fn parallel_classify_releases_the_shared_index_after_both_phases() {
+        let _test_env = crate::test_env::read();
         const E: C = 4;
         // ⊤ ⊑ A ⊔ E, A ⊑ B (told), B ⊑ ∃R0.D, D ⊓ E ⊑ ⊥: the global disjunction
         // forces D ⊑ A ⊑ B, which phase 1 must put into D's model label and
@@ -28844,6 +29136,7 @@ mod tests {
 
     #[test]
     fn shared_index_records_number_roles_and_inverse_bridges() {
+        let _test_env = crate::test_env::read();
         const S: R = 1;
         let clauses = vec![
             // R0(x, y) → S(y, x): an inverse bridge.
@@ -28876,6 +29169,7 @@ mod tests {
 
     #[test]
     fn rebuilding_triggers_copies_an_index_that_a_worker_still_holds() {
+        let _test_env = crate::test_env::read();
         let mut parent = Ht::new(vec![
             Clause::new(Vec::new(), vec![con(false, A, X), con(false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![con(false, D, X)]),
@@ -28911,6 +29205,7 @@ mod tests {
 
     #[test]
     fn lean_sat_wire_serializes_the_exact_terminal_model() {
+        let _test_env = crate::test_env::read();
         let mut t = ht(vec![
             Clause::new(Vec::new(), vec![con(false, A, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
@@ -28940,6 +29235,7 @@ mod tests {
 
     #[test]
     fn lean_sat_wire_serializes_the_exact_equality_quotient() {
+        let _test_env = crate::test_env::read();
         let mut t = ht(vec![Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: 1 }])]);
         let first = t.ext.new_root();
         let second = t.ext.new_node(Some(first));
@@ -28961,6 +29257,7 @@ mod tests {
 
     #[test]
     fn lean_equality_sat_wire_passes_native_checker_when_configured() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
             return;
         };
@@ -29002,6 +29299,7 @@ mod tests {
 
     #[test]
     fn lean_distinct_cardinality_pigeonhole_wire_is_complete() {
+        let _test_env = crate::test_env::read();
         const MARKER: C = 30;
         let reasoner = cardinality_pigeonhole_certificate();
         let wire: serde_json::Value = serde_json::from_str(
@@ -29020,6 +29318,7 @@ mod tests {
 
     #[test]
     fn lean_distinct_cardinality_wire_passes_native_checker_when_configured() {
+        let _test_env = crate::test_env::read();
         const MARKER: C = 30;
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_CHECKER") else {
             return;
@@ -29049,6 +29348,7 @@ mod tests {
 
     #[test]
     fn lean_cardinality_sat_wire_passes_native_checker_when_configured() {
+        let _test_env = crate::test_env::read();
         const MARKER: C = 30;
         const FILLER: C = 31;
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_CHECKER") else {
@@ -29086,6 +29386,7 @@ mod tests {
 
     #[test]
     fn lean_equality_query_wires_serialize_quotient_countermodels() {
+        let _test_env = crate::test_env::read();
         let t = equality_query_model();
         let non_subsumption: serde_json::Value =
             serde_json::from_str(&t.lean_non_subsumption_certificate_json(A, B).unwrap()).unwrap();
@@ -29105,6 +29406,7 @@ mod tests {
 
     #[test]
     fn lean_equality_query_wires_pass_native_checker_when_configured() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
             return;
         };
@@ -29133,6 +29435,7 @@ mod tests {
 
     #[test]
     fn lean_equality_refutation_query_wires_serialize() {
+        let _test_env = crate::test_env::read();
         let equality = Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: 1 }]);
         let subsumption = ht(vec![
             equality.clone(),
@@ -29180,6 +29483,7 @@ mod tests {
 
     #[test]
     fn lean_concept_unsat_wire_exhausts_every_disjunct() {
+        let _test_env = crate::test_env::read();
         let t = ht(vec![
             Clause::new(Vec::new(), vec![con(false, A, X), con(false, B, X)]),
             Clause::new(vec![con(false, A, X)], Vec::new()),
@@ -29200,6 +29504,7 @@ mod tests {
 
     #[test]
     fn lean_concept_unsat_wire_refuses_an_open_branch() {
+        let _test_env = crate::test_env::read();
         let t = ht(vec![Clause::new(
             Vec::new(),
             vec![con(false, A, X), con(false, B, X)],
@@ -29209,6 +29514,7 @@ mod tests {
 
     #[test]
     fn lean_subsumption_wire_refutes_the_exact_query_root() {
+        let _test_env = crate::test_env::read();
         let t = ht(vec![Clause::new(
             vec![con(false, A, X), con(true, B, X)],
             Vec::new(),
@@ -29228,6 +29534,7 @@ mod tests {
 
     #[test]
     fn lean_unsatisfiable_concept_wire_refutes_the_exact_query_root() {
+        let _test_env = crate::test_env::read();
         let t = ht(vec![Clause::new(vec![con(false, A, X)], Vec::new())]);
         let wire: serde_json::Value = serde_json::from_str(
             &t.lean_unsatisfiable_concept_certificate_json(A)
@@ -29243,6 +29550,7 @@ mod tests {
 
     #[test]
     fn lean_non_subsumption_wire_serializes_the_exact_countermodel_query() {
+        let _test_env = crate::test_env::read();
         let mut t = ht(Vec::new());
         assert_eq!(
             t.consistent(&[CLit::pos(A), CLit { c: B, neg: true }]),
@@ -29262,6 +29570,7 @@ mod tests {
 
     #[test]
     fn lean_satisfiable_concept_wire_serializes_the_exact_model_query() {
+        let _test_env = crate::test_env::read();
         let mut t = ht(Vec::new());
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
         let wire: serde_json::Value = serde_json::from_str(
@@ -29277,6 +29586,7 @@ mod tests {
 
     #[test]
     fn lean_taxonomy_wire_covers_every_concept_and_ordered_pair() {
+        let _test_env = crate::test_env::read();
         let mut t = ht(Vec::new());
         let wire: serde_json::Value = serde_json::from_str(
             &t.lean_taxonomy_certificate_json(&[A, B])
@@ -29304,6 +29614,7 @@ mod tests {
 
     #[test]
     fn lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head() {
+        let _test_env = crate::test_env::read();
         let mut t = ht(vec![Clause::new(
             vec![con(false, D, X)],
             vec![con(false, A, X), Atom::Eq { s: X, t: X }],
@@ -29321,6 +29632,7 @@ mod tests {
 
     #[test]
     fn lean_unsat_wire_closes_role_and_existential_branches() {
+        let _test_env = crate::test_env::read();
         let role_t = ht(vec![
             Clause::new(Vec::new(), vec![role(R0, X, X)]),
             Clause::new(vec![role(R0, X, X)], Vec::new()),
@@ -29349,6 +29661,7 @@ mod tests {
 
     #[test]
     fn lean_unsat_wire_serializes_equality_merges() {
+        let _test_env = crate::test_env::read();
         let t = ht(vec![
             Clause::new(Vec::new(), vec![exists(R0, false, A, X)]),
             Clause::new(vec![role(R0, X, 1)], vec![con(true, A, X)]),
@@ -29371,6 +29684,7 @@ mod tests {
 
     #[test]
     fn lean_body_equality_normalization_wire_certifies_the_source_clause() {
+        let _test_env = crate::test_env::read();
         let t = ht(vec![Clause::new(vec![Atom::Eq { s: X, t: 1 }], Vec::new())]);
         let document = t
             .lean_unsat_certificate_json()
@@ -29420,6 +29734,7 @@ mod tests {
 
     #[test]
     fn lean_preprocessing_wire_certifies_trigger_and_contrapositives() {
+        let _test_env = crate::test_env::read();
         let source = vec![Clause::new(
             Vec::new(),
             vec![con(true, A, X), con(true, B, X)],
@@ -29526,6 +29841,7 @@ mod tests {
 
     #[test]
     fn lean_equality_unsat_wire_passes_native_checker_when_configured() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
             return;
         };
@@ -29553,6 +29869,7 @@ mod tests {
 
     #[test]
     fn lean_unsat_wire_materializes_a_fresh_existential_witness() {
+        let _test_env = crate::test_env::read();
         let t = ht(vec![
             Clause::new(Vec::new(), vec![exists(R0, false, A, X)]),
             Clause::new(vec![role(R0, X, 1), con(false, A, 1)], Vec::new()),
@@ -29571,6 +29888,7 @@ mod tests {
 
     #[test]
     fn lean_unsat_assignment_enumeration_is_lazy_and_exhaustive() {
+        let _test_env = crate::test_env::read();
         assert_eq!(
             Ht::lean_refutation_assignments(2, 2).collect::<Vec<_>>(),
             vec![vec![0, 0], vec![0, 1], vec![1, 0], vec![1, 1]]
@@ -29582,6 +29900,7 @@ mod tests {
 
     #[test]
     fn lean_refutation_reports_closed_open_and_frontier_separately() {
+        let _test_env = crate::test_env::read();
         let closed = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
         let mut closed_state = LeanHtRefutationState::root(&[]);
         assert!(matches!(
@@ -29609,6 +29928,7 @@ mod tests {
 
     #[test]
     fn equality_aware_refutation_reports_closed_open_and_frontier_separately() {
+        let _test_env = crate::test_env::read();
         let closed = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
         let mut closed_state = LeanHtRefutationState::root(&[]);
         assert!(matches!(
@@ -29637,6 +29957,7 @@ mod tests {
 
     #[test]
     fn equality_certificate_search_reads_all_facts_modulo_the_quotient() {
+        let _test_env = crate::test_env::read();
         let mut state = LeanHtRefutationState::root(&[(0, CLit::pos(A))]);
         state.active_nodes = 2;
         state.witness_parent.push(Some(0));
@@ -29658,6 +29979,7 @@ mod tests {
 
     #[test]
     fn equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle() {
+        let _test_env = crate::test_env::read();
         let mut cyclic = Ht::new_certified(vec![
             Clause::new(Vec::new(), vec![con(false, A, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
@@ -29849,6 +30171,7 @@ mod tests {
 
     #[test]
     fn equality_production_blocking_checks_rejection_provenance() {
+        let _test_env = crate::test_env::read();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER")
         else {
@@ -29949,6 +30272,7 @@ mod tests {
 
     #[test]
     fn native_abox_production_blocking_checks_joint_rejection_provenance() {
+        let _test_env = crate::test_env::read();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER")
         else {
@@ -30012,6 +30336,7 @@ mod tests {
 
     #[test]
     fn anchored_equality_producer_derives_a_unique_nominal_representative() {
+        let _test_env = crate::test_env::read();
         const NOMINAL: C = 20;
         let mut reasoner = Ht::new_certified(vec![
             Clause::new(Vec::new(), vec![con(false, NOMINAL, X)]),
@@ -30061,6 +30386,7 @@ mod tests {
 
     #[test]
     fn cardinality_refutation_reports_closed_open_and_frontier_separately() {
+        let _test_env = crate::test_env::read();
         let closed = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
         let mut closed_state = LeanHtRefutationState::root(&[]);
         assert!(matches!(
@@ -30086,6 +30412,7 @@ mod tests {
 
     #[test]
     fn cardinality_frontier_distinguishes_minimum_siblings_and_lean_checks_it() {
+        let _test_env = crate::test_env::read();
         let mut reasoner = Ht::new_certified(Vec::new());
         reasoner.set_card_defs(HashMap::from_iter([(
             B,
@@ -30149,6 +30476,7 @@ mod tests {
 
     #[test]
     fn cardinality_decision_blocks_and_checks_a_cyclic_minimum() {
+        let _test_env = crate::test_env::read();
         let mut reasoner = Ht::new_certified(vec![Clause::new(Vec::new(), vec![con(false, B, X)])]);
         reasoner.block_mode = 6;
         reasoner.set_card_defs(HashMap::from_iter([(
@@ -30170,6 +30498,7 @@ mod tests {
 
     #[test]
     fn equality_free_frontier_uses_the_exact_capped_signature_cardinality() {
+        let _test_env = crate::test_env::read();
         for (concepts, roles, exact) in [(0, 0, 2), (1, 0, 20), (1, 1, 1040), (2, 1, 262_400)] {
             assert!(Ht::role_blocking_signature_card_reaches(
                 concepts, roles, exact
@@ -30184,6 +30513,7 @@ mod tests {
 
     #[test]
     fn certification_frontiers_reject_a_mismatched_search_budget() {
+        let _test_env = crate::test_env::read();
         let reasoner = ht(Vec::new());
         let ordinary = LeanHtAddressFrontier {
             node_count: 1,
@@ -30210,6 +30540,7 @@ mod tests {
 
     #[test]
     fn doubling_history_accepts_the_first_frontier_and_rejects_a_stale_rerun() {
+        let _test_env = crate::test_env::read();
         if std::env::var_os("KM_HT_TEST_LEAN_DOUBLING_TRACE_CHECKER").is_none() {
             return;
         }
@@ -30240,6 +30571,7 @@ mod tests {
 
     #[test]
     fn cardinality_doubling_histories_reject_stale_single_and_multi_root_rounds() {
+        let _test_env = crate::test_env::read();
         if std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER").is_none()
             || std::env::var_os("KM_HT_TEST_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER")
                 .is_none()
@@ -30334,6 +30666,7 @@ mod tests {
 
     #[test]
     fn native_abox_cardinality_frontier_preserves_distinct_root_addresses() {
+        let _test_env = crate::test_env::read();
         let native = NativeAboxState {
             individuals: vec![(vec![A], Vec::new()), (vec![B], Vec::new())],
             ..NativeAboxState::default()
@@ -30392,6 +30725,7 @@ mod tests {
 
     #[test]
     fn equality_free_refutation_pairwise_blocks_a_satisfiable_cycle() {
+        let _test_env = crate::test_env::read();
         let cyclic = Ht::new_certified(vec![Clause::new(
             vec![con(false, A, X)],
             vec![exists(R0, false, A, X)],
@@ -30822,6 +31156,7 @@ mod tests {
 
     #[test]
     fn identity_normalized_regular_source_lists_the_lean_target_ontology() {
+        let _test_env = crate::test_env::read();
         // A residual clause precedes the role clauses in source order. Lean
         // decodes the regular target ontology as role clauses first, then the
         // residual, so the identity normalization must follow that order.
@@ -30953,6 +31288,7 @@ mod tests {
 
     #[test]
     fn regular_certificate_partitions_role_rules_and_lean_checks_cover() {
+        let _test_env = crate::test_env::read();
         let reasoner = Ht::new_certified(vec![
             Clause::new(
                 vec![Atom::Role { r: R0, s: 0, t: 1 }],
@@ -31057,6 +31393,7 @@ mod tests {
 
     #[test]
     fn regular_certificate_serializes_general_guarded_residual_bodies() {
+        let _test_env = crate::test_env::read();
         let empty_leaf = LeanHtBlockedOpenLeaf {
             node_count: 1,
             labels: Vec::new(),
@@ -31330,6 +31667,7 @@ mod tests {
 
     #[test]
     fn regular_decision_envelope_carries_finite_unsat_and_lean_checks_it() {
+        let _test_env = crate::test_env::read();
         let reasoner = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
         let (satisfiable, document) = reasoner
             .lean_regular_equality_free_decision_certificate_json()
@@ -31362,6 +31700,7 @@ mod tests {
 
     #[test]
     fn regular_decision_prefers_a_checked_finite_sat_model() {
+        let _test_env = crate::test_env::read();
         let reasoner = Ht::new_certified(Vec::new());
         let (satisfiable, document) = reasoner
             .lean_regular_equality_free_decision_certificate_json()
@@ -31415,6 +31754,7 @@ mod tests {
 
     #[test]
     fn global_decision_wraps_regular_evidence_for_the_main_lean_checker() {
+        let _test_env = crate::test_env::read();
         let source = Clause::new(Vec::new(), Vec::new());
         let mut normalized = source.clone();
         let normalization = vec![eliminate_body_equalities(&mut normalized)];
@@ -31454,6 +31794,7 @@ mod tests {
 
     #[test]
     fn equality_free_refutation_blocking_signature_is_full_and_bidirectional() {
+        let _test_env = crate::test_env::read();
         const R1: R = 1;
         let a = lit(false, A);
         let mut state = LeanHtRefutationState::root(&[(0, a)]);
@@ -31491,6 +31832,7 @@ mod tests {
 
     #[test]
     fn equality_free_decision_emits_sat_or_unsat_checker_ready_evidence() {
+        let _test_env = crate::test_env::read();
         let cyclic = Ht::new_certified(vec![Clause::new(
             vec![con(false, A, X)],
             vec![exists(R0, false, A, X)],
@@ -31533,6 +31875,7 @@ mod tests {
 
     #[test]
     fn rejected_decision_candidate_deepens_or_fails_at_explicit_cap() {
+        let _test_env = crate::test_env::read();
         assert_eq!(
             Ht::deepen_after_rejected_candidate(8, true, "test").unwrap(),
             16
@@ -31548,6 +31891,7 @@ mod tests {
 
     #[test]
     fn ordinary_unsat_production_run_rejects_a_sat_terminal() {
+        let _test_env = crate::test_env::read();
         if std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER").is_none() {
             return;
         }
@@ -31572,6 +31916,7 @@ mod tests {
 
     #[test]
     fn equality_decision_emits_sat_or_unsat_checker_ready_evidence() {
+        let _test_env = crate::test_env::read();
         let satisfiable =
             Ht::new_certified(vec![Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }])]);
         let (sat, sat_certificate) = satisfiable
@@ -31616,6 +31961,7 @@ mod tests {
 
     #[test]
     fn equality_and_cardinality_folds_copy_incoming_blocker_edges() {
+        let _test_env = crate::test_env::read();
         fn contains_edge(value: &serde_json::Value, role: R, source: Node, target: Node) -> bool {
             if let Some(edges) = value.get("edges").and_then(serde_json::Value::as_array) {
                 if edges.iter().any(|edge| {
@@ -31763,6 +32109,7 @@ mod tests {
 
     #[test]
     fn cardinality_decision_emits_sat_or_unsat_checker_ready_evidence() {
+        let _test_env = crate::test_env::read();
         let definition = CardDef {
             kind: CardKind::Min,
             n: 1,
@@ -31814,6 +32161,7 @@ mod tests {
 
     #[test]
     fn certified_unsat_refutation_deepens_past_the_historical_node_cap() {
+        let _test_env = crate::test_env::read();
         const FIRST: C = 100;
         const DEPTH: usize = 10;
         let mut clauses = Vec::new();
@@ -31838,6 +32186,7 @@ mod tests {
 
     #[test]
     fn lean_unsat_wire_passes_native_checker_when_configured() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
             return;
         };
@@ -31869,6 +32218,7 @@ mod tests {
 
     #[test]
     fn lean_query_wires_pass_native_checker_when_configured() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
             return;
         };
@@ -31918,6 +32268,7 @@ mod tests {
 
     #[test]
     fn lean_taxonomy_wire_passes_native_checker_when_configured() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_TAXONOMY_CHECKER") else {
             return;
         };
@@ -32026,6 +32377,7 @@ mod tests {
 
     #[test]
     fn cardinality_taxonomy_run_matrix_binds_every_query_coordinate() {
+        let _test_env = crate::test_env::read();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER")
         else {
@@ -32076,6 +32428,7 @@ mod tests {
 
     #[test]
     fn cardinality_taxonomy_retains_shared_exact_recognition_indices() {
+        let _test_env = crate::test_env::read();
         if std::env::var_os("KM_HT_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER")
             .or_else(|| {
                 std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER")
@@ -32133,6 +32486,7 @@ mod tests {
 
     #[test]
     fn cb_bridge_returns_only_the_open_anchored_cardinality_payload() {
+        let _test_env = crate::test_env::read();
         let mut tableau = ht(Vec::new());
         tableau.set_card_defs_raw(&[(D, true, 0, R0, A, false)]);
         let anchored = tableau
@@ -32175,6 +32529,7 @@ mod tests {
 
     #[test]
     fn ordinary_taxonomy_run_matrix_binds_every_query_coordinate() {
+        let _test_env = crate::test_env::read();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER")
         else {
@@ -32247,6 +32602,7 @@ mod tests {
 
     #[test]
     fn source_bound_ordinary_taxonomy_rejects_an_unrelated_valid_target() {
+        let _test_env = crate::test_env::read();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER")
         else {
@@ -32349,6 +32705,7 @@ mod tests {
 
     #[test]
     fn lean_taxonomy_checker_accepts_a_materialized_equality_body() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_TAXONOMY_CHECKER") else {
             return;
         };
@@ -32390,6 +32747,7 @@ mod tests {
 
     #[test]
     fn body_equality_substitutes_every_occurrence_before_saturation() {
+        let _test_env = crate::test_env::read();
         let y = 1;
         let mut t = ht(vec![Clause::new(
             vec![Atom::Eq { s: X, t: y }, con(false, D, y)],
@@ -32404,6 +32762,7 @@ mod tests {
 
     #[test]
     fn transitive_body_equalities_share_one_representative() {
+        let _test_env = crate::test_env::read();
         let y = 1;
         let z = 2;
         let t = ht(vec![Clause::new(
@@ -32423,8 +32782,47 @@ mod tests {
 
     #[test]
     fn equality_premise_contradiction_becomes_a_global_clash() {
+        let _test_env = crate::test_env::read();
         let y = 1;
         let mut t = ht(vec![Clause::new(vec![Atom::Eq { s: X, t: y }], Vec::new())]);
         assert_eq!(t.consistent(&[]), Some(false));
+    }
+
+    #[test]
+    fn phase2_root_model_and_transitive_closure_pruning_matches_naive_classify() {
+        let _test_env = crate::test_env::write();
+        let _wit = crate::test_env::EnvVar::set("KM_HT_WITREUSE", "1");
+        let _mp = crate::test_env::EnvVar::set("KM_HT_MODELPRUNE", "1");
+        // A ⊑ B, B ⊑ C ⊔ D, C ⊑ E, D ⊑ E, plus F ⊑ A.
+        // Transitive subsumptions: F ⊑ A ⊑ B ⊑ E and C ⊑ E, D ⊑ E, while
+        // neither A, B, nor F is subsumed by C or D. A single model of F
+        // carrying {F, A, B, C, E} (missing D) refutes D for all of {F, A, B, C, E}
+        // simultaneously, while a model carrying {F, A, B, D, E} refutes C.
+        let c_con: C = 2;
+        let e: C = 4;
+        let f: C = 5;
+        let clauses = vec![
+            Clause::new(vec![con(false, f, X)], vec![con(false, A, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, B, X)]),
+            Clause::new(
+                vec![con(false, B, X)],
+                vec![con(false, c_con, X), con(false, D, X)],
+            ),
+            Clause::new(vec![con(false, c_con, X)], vec![con(false, e, X)]),
+            Clause::new(vec![con(false, D, X)], vec![con(false, e, X)]),
+        ];
+        let queries = vec![A, B, c_con, D, e, f];
+        let mut fast = ht(clauses.clone());
+        let mut naive = ht(clauses);
+        naive.naive = true;
+        let (c_fast, u_fast, mut s_fast) = fast.classify(&queries).expect("fast classify");
+        let (c_naive, u_naive, mut s_naive) = naive.classify(&queries).expect("naive classify");
+        s_fast.sort_unstable();
+        s_fast.dedup();
+        s_naive.sort_unstable();
+        s_naive.dedup();
+        assert_eq!(c_fast, c_naive);
+        assert_eq!(u_fast, u_naive);
+        assert_eq!(s_fast, s_naive);
     }
 }

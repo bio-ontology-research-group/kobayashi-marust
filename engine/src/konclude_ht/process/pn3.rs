@@ -1000,6 +1000,7 @@ mod tests {
 
     #[test]
     fn connection_successor_iterator_without_hash_is_empty() {
+        let _test_env = crate::test_env::read();
         let node = IndividualProcessNode::default();
 
         let mut it = node.get_connection_successor_iterator();
@@ -1010,6 +1011,7 @@ mod tests {
 
     #[test]
     fn connection_successor_iterator_with_hash_uses_context_threaded_fallback() {
+        let _test_env = crate::test_env::read();
         let mut node = IndividualProcessNode::default();
         node.use_conn_succ_set = ConnSuccSetId::new(7);
 
@@ -1021,6 +1023,7 @@ mod tests {
 
     #[test]
     fn pn3_connection_successor_iterator_in_context_empty_is_empty() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::default());
 
@@ -1033,6 +1036,7 @@ mod tests {
 
     #[test]
     fn pn3_connection_successor_iterator_in_context_returns_single_ancestor_id() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::default());
         let conn_set =
@@ -1050,6 +1054,7 @@ mod tests {
 
     #[test]
     fn pn3_connection_successor_iterator_in_context_returns_set_ids() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::default());
         let conn_set =
@@ -1071,6 +1076,7 @@ mod tests {
 
     #[test]
     fn pn3_successor_role_hash_in_context_allocates_once() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::default());
 
@@ -1090,6 +1096,7 @@ mod tests {
 
     #[test]
     fn pn3_disjoint_successor_role_hash_in_context_allocates_once() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::default());
 
@@ -1115,6 +1122,7 @@ mod tests {
 
     #[test]
     fn pn3_individual_ancestor_in_context_checks_edge_source_individual_id() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source = ctx.alloc_node(IndividualProcessNode::default());
         let same_source_id = ctx.alloc_node(IndividualProcessNode::default());
@@ -1146,6 +1154,7 @@ mod tests {
 
     #[test]
     fn pn3_context_threaded_lazy_getters_allocate_once() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::default());
 
@@ -1259,6 +1268,7 @@ mod tests {
 
     #[test]
     fn pn3_reapply_iterators_create_storage_on_clear() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::default());
         let role = RoleId::new(43);
@@ -1288,6 +1298,7 @@ mod tests {
 
     #[test]
     fn pn3_successor_role_iterator_and_has_in_context_read_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let role = RoleId::new(23);
         let source = ctx.alloc_node(IndividualProcessNode::default());
@@ -1326,6 +1337,7 @@ mod tests {
 
     #[test]
     fn pn3_install_and_remove_individual_link_in_context_follow_topology() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let role = RoleId::new(29);
         let source = ctx.alloc_node(IndividualProcessNode::default());
@@ -1367,6 +1379,7 @@ mod tests {
 
     #[test]
     fn pn3_disjoint_link_wrappers_install_read_iterate_and_remove() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let role = RoleId::new(31);
         let source = ctx.alloc_node(IndividualProcessNode::default());

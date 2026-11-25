@@ -476,6 +476,7 @@ mod tests {
 
     #[test]
     fn expand_uses_declared_prefixes_and_keeps_full_iris() {
+        let _test_env = crate::test_env::write();
         let p = prefixes();
         assert_eq!(expand(":A", &p), "http://ex.org/o#A");
         assert_eq!(expand("owl:Thing", &p), OWL_THING);
@@ -485,6 +486,7 @@ mod tests {
 
     #[test]
     fn agreement_in_the_digest_normal_form() {
+        let _test_env = crate::test_env::write();
         let r = reference(REF);
         let unsat = vec![":U".to_string()];
         // km lists the unsatisfiable class's own rows, a pair to owl:Thing and
@@ -501,6 +503,7 @@ mod tests {
 
     #[test]
     fn a_missing_or_extra_subsumption_disagrees() {
+        let _test_env = crate::test_env::write();
         let r = reference(REF);
         let unsat = vec![":U".to_string()];
         let missing = |_: &mut dyn FnMut(&str, &str)| {};
@@ -525,6 +528,7 @@ mod tests {
 
     #[test]
     fn unsatisfiable_sets_and_verdicts_are_compared() {
+        let _test_env = crate::test_env::write();
         let r = reference(REF);
         let pairs = |f: &mut dyn FnMut(&str, &str)| f(":A", ":B");
         let none: Vec<String> = Vec::new();
@@ -542,6 +546,7 @@ mod tests {
 
     #[test]
     fn inconsistent_answers_agree_on_the_verdict_alone() {
+        let _test_env = crate::test_env::write();
         let r = reference(
             r#"{"format":"owl-sparse-v1","procedure":"alc","inconsistent":true,"unsat":[],"rows":[]}"#,
         );
@@ -556,6 +561,7 @@ mod tests {
 
     #[test]
     fn answers_of_the_shi_route_are_compared_like_the_others() {
+        let _test_env = crate::test_env::write();
         let r = reference(
             r#"{"format":"owl-sparse-v1","procedure":"sri","inconsistent":false,
             "unsat":["http://ex.org/o#U"],
@@ -580,6 +586,7 @@ mod tests {
 
     #[test]
     fn malformed_checker_output_is_not_an_answer() {
+        let _test_env = crate::test_env::write();
         assert!(parse_reference(b"{}").unwrap_err().contains("invalid checker output JSON"));
         let err = parse_reference(
             br#"{"format":"sparse-v1","procedure":"el","inconsistent":false,"unsat":[],"rows":[]}"#,
@@ -590,6 +597,7 @@ mod tests {
 
     #[test]
     fn first_difference_reports_the_side() {
+        let _test_env = crate::test_env::write();
         assert_eq!(first_difference(&[1, 2, 3], &[1, 2, 3]), None);
         assert_eq!(first_difference(&[1, 3], &[1, 2, 3]), Some((2, false)));
         assert_eq!(first_difference(&[1, 2, 4], &[1, 2]), Some((4, true)));
@@ -597,6 +605,7 @@ mod tests {
 
     #[test]
     fn off_by_default() {
+        let _test_env = crate::test_env::write();
         if std::env::var_os(ENABLE_ENV).is_none() {
             assert!(!enabled());
         }

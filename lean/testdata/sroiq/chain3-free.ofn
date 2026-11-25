@@ -1,0 +1,7 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/chain3-free>
+SubObjectPropertyOf(ObjectPropertyChain(:s :t ObjectInverseOf(:t)) :r)
+SubClassOf(:A ObjectSomeValuesFrom(:s owl:Thing))
+SubClassOf(:A ObjectAllValuesFrom(:r :C))
+ClassAssertion(:A :a)
+)

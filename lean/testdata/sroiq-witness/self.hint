@@ -1,0 +1,11 @@
+# self.ofn on the witness route (ObjectHasSelf route): a (core 0) with its s-loop name,
+# its r-successor B (core 1), the fresh nominal (core 2), an A without the loop (core 3)
+# and an anonymous L with the loop name (core 4)
+blocks 5
+ty 0 0 2 3 4 5 7 9 11
+ty 1 1 5 46
+ty 2 5 51
+ty 3 0 5 7
+ty 4 2 3 5 9 11
+lab 0 1 +0
+lab 3 1 +0

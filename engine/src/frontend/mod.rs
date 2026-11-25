@@ -18,6 +18,7 @@ pub mod data_rules;
 pub mod ground_rules;
 mod rule_paths;
 pub mod ground_rule_source;
+pub mod named_role_bound;
 pub mod data_abox_projection;
 mod finite_data_rules;
 mod rule_assertions;
@@ -25,6 +26,7 @@ mod pass_cache;
 pub(crate) use pass_cache::with_scope as with_pass_cache;
 mod isolated_rules;
 pub mod iri;
+pub mod lenient;
 pub mod literal_profiles;
 pub mod value_projection;
 pub mod normalise;
@@ -42,6 +44,7 @@ pub mod syntax;
 pub mod top_role;
 pub mod universal_role;
 pub(crate) mod has_key;
+pub(crate) mod rule_data_atoms;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
@@ -54,6 +57,33 @@ const MAX_COUNTED_COVER: usize = 4096;
 /// Coverage diagnostic for data-property assertions the clause set does not
 /// carry (`"<n> data-property assertion axiom(s) are unsupported"`).
 pub const DATA_ASSERTIONS_UNSUPPORTED_SUFFIX: &str = " data-property assertion axiom(s) are unsupported";
+
+/// Provenance of an ABox elided by `omit_separable_abox`, retained only when
+/// `KM_EXPORT_MODEL_ACTIVE` is set so `--export-model` can reconstruct the
+/// ABox individuals on top of the TBox model without re-running the solver.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SeparableAboxExport {
+    #[serde(default)]
+    pub positive_separable: bool,
+    #[serde(default)]
+    pub top_identity_separable: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ind_components: Vec<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_roles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub atomic_individual_classes: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub existential_assertions: Vec<(String, String, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inert_probes: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inert_role_assertions: Vec<(String, String, String)>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inert_extra_individuals: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub projected_data_assertions: Vec<(String, String, String)>,
+}
 
 /// Result of `ofn_to_clauses`: the JSON clause set plus the output-mapping
 /// side data.
@@ -127,6 +157,7 @@ pub struct FrontendResult {
     /// rule-consistency checker does not publish an inconsistency found on
     /// such a stream.
     pub one_sorted_data_successors: bool,
+    pub separable_abox_export: Option<SeparableAboxExport>,
 }
 
 /// Preserve every parsed object ABox assertion together with the exact nominal
@@ -572,11 +603,24 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
 /// atomic ABox projection under automatic routing while keeping the public
 /// standalone `ofn` contract byte-identical.
 pub(crate) fn ofn_to_clauses_for_classifier(text: &str) -> Result<FrontendResult, parse::OutOfFragment> {
+    ofn_to_clauses_for_classifier_pass(text, false)
+}
+
+pub(crate) fn ofn_to_clauses_for_classifier_pass(
+    text: &str,
+    abort_on_uncarried_data_assertions: bool,
+) -> Result<FrontendResult, parse::OutOfFragment> {
     let requested = std::env::var("KM_ROUTE")
         .unwrap_or_else(|_| "manual".to_string())
         .parse::<crate::routing::Route>()
         .map_err(|error| parse::OutOfFragment(format!("configuration: {error}")))?;
-    ofn_to_clauses_representation(text, requested, false, true)
+    ofn_to_clauses_representation_with(
+        text,
+        requested,
+        false,
+        true,
+        abort_on_uncarried_data_assertions,
+    )
 }
 
 /// Symbolic bounds require a native consumer; this wrapper deliberately does
@@ -616,6 +660,7 @@ pub fn ofn_to_symbolic_frontend(text: &str) -> Result<SymbolicFrontendResult, pa
 mod symbolic_frontend_tests {
     #[test]
     fn full_symbolic_frontend_retains_data_and_large_bound_evidence() {
+        let _test_env = crate::test_env::write();
         let mut result = super::ofn_to_symbolic_frontend(r#"Prefix(:=<http://x#>)
             Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
             Ontology(
@@ -1096,6 +1141,16 @@ fn ofn_to_clauses_representation(
     symbolic: bool,
     enable_extended_atomic: bool,
 ) -> Result<FrontendResult, parse::OutOfFragment> {
+    ofn_to_clauses_representation_with(text, requested, symbolic, enable_extended_atomic, false)
+}
+
+fn ofn_to_clauses_representation_with(
+    text: &str,
+    requested: crate::routing::Route,
+    symbolic: bool,
+    enable_extended_atomic: bool,
+    abort_on_uncarried_data_assertions: bool,
+) -> Result<FrontendResult, parse::OutOfFragment> {
     if !TRUSTED_REWRITE.with(|flag| flag.get()) {
         conformance::check_source(text).map_err(parse::OutOfFragment)?;
     }
@@ -1197,6 +1252,17 @@ fn ofn_to_clauses_representation(
     // Source features are now complete and their borrowed distinct-entity sets
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let export_all_individuals = if export_active {
+        profile_builder.all_individual_names()
+    } else {
+        Vec::new()
+    };
+    let export_object_properties = if export_active {
+        profile_builder.object_property_names()
+    } else {
+        Vec::new()
+    };
     let rule_individual_names = profile_builder.rule_individual_names();
     let data_property_raw = profile_builder.data_property_names();
     let class_raw = profile_builder.class_names();
@@ -1477,7 +1543,73 @@ fn ofn_to_clauses_representation(
             || profile.atomic_class_abox_candidate
             || profile.inert_role_abox_probe_candidate
             || profile.existential_witness_abox_candidate
-            || disjoint_union_consistent);
+            || (!export_active && disjoint_union_consistent));
+    let mut raw_atomic_ind_classes: Vec<(&str, &str)> = Vec::new();
+    let mut raw_sames: Vec<(&str, &str)> = Vec::new();
+    let mut raw_top_identity_separable = false;
+    let mut raw_existential_assertions: Vec<(String, String, String)> = Vec::new();
+    let mut raw_inert_probes: Vec<(String, String)> = Vec::new();
+    let mut raw_inert_role_assertions: Vec<(String, String, String)> = Vec::new();
+    let mut raw_inert_extra_individuals: Vec<String> = Vec::new();
+    if omit_separable_abox && export_active {
+        if profile.atomic_class_abox_candidate {
+            for &(class_raw_tok, ind_raw_tok) in &data_abox.cassert {
+                raw_atomic_ind_classes.push((ind_raw_tok, class_raw_tok));
+            }
+        } else if profile.positive_abox_tbox_separable {
+            raw_sames = data_abox.sames.clone();
+            raw_top_identity_separable = profile.source.role_assertions == 0
+                && data_abox.cassert.len() as u64 == profile.source.class_assertions
+                && data_abox.cassert.iter().all(|&(c, _)| {
+                    matches!(c, "owl:Thing" | "<http://www.w3.org/2002/07/owl#Thing>")
+                });
+        } else if profile.existential_witness_abox_candidate {
+            for axiom in ontology.abox() {
+                if let syntax::Axiom::ConceptAssertion(
+                    syntax::Concept::Exists(syntax::Role::Name(role), filler),
+                    ind,
+                ) = axiom
+                {
+                    if let syntax::Concept::Name(filler_name) = filler.as_ref() {
+                        raw_existential_assertions.push((
+                            ind.clone(),
+                            role.clone(),
+                            filler_name.clone(),
+                        ));
+                    }
+                }
+            }
+        } else if profile.inert_role_abox_probe_candidate {
+            let mut memberships: BTreeSet<String> = BTreeSet::new();
+            let mut all_inert_inds: BTreeSet<String> = BTreeSet::new();
+            for axiom in ontology.abox() {
+                match axiom {
+                    syntax::Axiom::ConceptAssertion(syntax::Concept::Name(_), ind) => {
+                        memberships.insert(ind.clone());
+                        all_inert_inds.insert(ind.clone());
+                    }
+                    syntax::Axiom::RoleAssertion(role, s, t) => {
+                        raw_inert_role_assertions.push((role.clone(), s.clone(), t.clone()));
+                        all_inert_inds.insert(s.clone());
+                        all_inert_inds.insert(t.clone());
+                    }
+                    syntax::Axiom::DifferentIndividuals(left, right) => {
+                        all_inert_inds.insert(left.clone());
+                        all_inert_inds.insert(right.clone());
+                    }
+                    _ => {}
+                }
+            }
+            for (index, ind) in memberships.iter().enumerate() {
+                raw_inert_probes.push((ind.clone(), format!("__km_abox_probe_{index}")));
+            }
+            for ind in all_inert_inds {
+                if !memberships.contains(&ind) {
+                    raw_inert_extra_individuals.push(ind);
+                }
+            }
+        }
+    }
     if omit_separable_abox {
         ontology.retain_axioms(|axiom| !axiom.is_abox());
         data_abox = data_abox::DataAbox::default();
@@ -1489,6 +1621,73 @@ fn ofn_to_clauses_representation(
         // taxonomy consistency check. Source counts and signature remain
         // authoritative.
         profile.positive_el_abox_materializable = false;
+    }
+    if abort_on_uncarried_data_assertions
+        && !symbolic
+        && !omit_separable_abox
+    {
+        let uncarried = if ontology.data_assertions_as_class() == 0
+            && !data_abox.positive_assertions_redundant()
+            && data_abox.functional_string_projection().is_none()
+        {
+            let source_count =
+                |kind: &str| profile.source.axiom_types.get(kind).copied().unwrap_or(0);
+            source_count("DataPropertyAssertion") + source_count("NegativeDataPropertyAssertion")
+        } else {
+            0
+        };
+        let bounded_bridge_short_circuit = automatic
+            && !profile.atomic_class_abox_candidate
+            && profile.normalized_finite_data_rules == 0
+            && profile.finite_rule_class_projection.is_none()
+            && std::env::var("KM_REFERENCE_FORCE").as_deref() != Ok("1")
+            && std::env::var_os("KM_ABOX_QUOTIENT_ACTIVE").is_none()
+            && std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE").is_none()
+            && std::env::var_os("KM_PUBLIC_SUBJECT_IRIS_FILE").is_none()
+            && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
+            && crate::routing::bounded_bridge_first_candidate(route, &profile);
+        if uncarried > 0 || bounded_bridge_short_circuit {
+            if !rule_independent_abox_inconsistent && std::env::var_os("KM_NO_HT_RULES").is_none() {
+                let _ = collect_rules(
+                    &ontology,
+                    if profile.normalized_finite_data_rules > 0 {
+                        ontology.rules().count() as u64
+                    } else {
+                        profile.source.rule_axioms
+                    },
+                    if profile.normalized_finite_data_rules > 0 {
+                        0
+                    } else if profile.normalized_unary_rules > 0 {
+                        profile.normalized_unary_rules
+                    } else {
+                        certified_unsupported_rules
+                    },
+                )?;
+            }
+            return Ok(FrontendResult {
+                clauses: Vec::new(),
+                rbox: Vec::new(),
+                iri_map: BTreeMap::new(),
+                named: Vec::new(),
+                declared: Vec::new(),
+                el_rbox_safe: false,
+                abox_inconsistent: false,
+                asserted_classes: Vec::new(),
+                nominal_abox: crate::json_io::NominalAboxMeta::default(),
+                cardinalities: Vec::new(),
+                definers: Vec::new(),
+                source_axioms: Vec::new(),
+                rules: Vec::new(),
+                profile,
+                route: route.as_str().to_string(),
+                uncarried_data_assertions: uncarried,
+                dropped_source_axioms: BTreeMap::new(),
+                route_approximations: BTreeMap::new(),
+                data_roles: Vec::new(),
+                one_sorted_data_successors: false,
+                separable_abox_export: None,
+            });
+        }
     }
     // ELC computes bottom propagation as part of its own complete fixpoint.
     // Building the general SROIQ bottom certificate is therefore redundant on
@@ -1611,6 +1810,7 @@ fn ofn_to_clauses_representation(
             &ontology.axioms_iter().collect::<Vec<_>>(),
         );
     let data_count_bound = literal_profiles::data_count_bound(&ontology.axioms_iter().collect::<Vec<_>>());
+    let projected_data_assertions = ontology.take_projected_data_assertions();
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
@@ -2215,14 +2415,104 @@ fn ofn_to_clauses_representation(
     // blank-node CONCEPT stays in the clause set — only its query/output
     // registration is dropped). Gated by KM_KEEP_BLANK_NAMES for A/B.
     let drop_blank = std::env::var_os("KM_KEEP_BLANK_NAMES").is_none();
+    let keep_blank_in_iri_map = !drop_blank || export_active;
+    let separable_abox_export = if omit_separable_abox && export_active {
+        let mut exp = SeparableAboxExport::default();
+        if profile.atomic_class_abox_candidate {
+            for (ind_raw_tok, class_raw_tok) in raw_atomic_ind_classes {
+                let ind_short = reg.short(ind_raw_tok);
+                let class_short = reg.short(class_raw_tok);
+                exp.atomic_individual_classes.push((ind_short, class_short));
+            }
+            exp.atomic_individual_classes.sort();
+            exp.atomic_individual_classes.dedup();
+        } else if profile.positive_abox_tbox_separable {
+            exp.positive_separable = !raw_top_identity_separable;
+            exp.top_identity_separable = raw_top_identity_separable;
+            let mut ind_shorts: Vec<String> = export_all_individuals
+                .iter()
+                .map(|raw| reg.short(raw))
+                .collect();
+            ind_shorts.sort();
+            ind_shorts.dedup();
+            let ind_idx: BTreeMap<String, usize> = ind_shorts
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (s.clone(), i))
+                .collect();
+            let mut parent: Vec<usize> = (0..ind_shorts.len()).collect();
+            let find = |parent: &mut [usize], mut x: usize| -> usize {
+                while parent[x] != x {
+                    parent[x] = parent[parent[x]];
+                    x = parent[x];
+                }
+                x
+            };
+            for (a_raw, b_raw) in raw_sames {
+                let a_s = reg.short(a_raw);
+                let b_s = reg.short(b_raw);
+                if let (Some(&ia), Some(&ib)) = (ind_idx.get(&a_s), ind_idx.get(&b_s)) {
+                    let ra = find(&mut parent, ia);
+                    let rb = find(&mut parent, ib);
+                    if ra != rb {
+                        parent[ra.max(rb)] = ra.min(rb);
+                    }
+                }
+            }
+            if exp.top_identity_separable || profile.source.axiom_types.contains_key("DifferentIndividuals") {
+                let mut by_root: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+                for (i, s) in ind_shorts.into_iter().enumerate() {
+                    let r = find(&mut parent, i);
+                    by_root.entry(r).or_default().push(s);
+                }
+                exp.ind_components = by_root.into_values().collect();
+            } else if !ind_shorts.is_empty() {
+                exp.ind_components = vec![ind_shorts];
+            }
+            if exp.positive_separable {
+                for role_raw in export_object_properties {
+                    let r_short = reg.short(role_raw);
+                    if !matches!(
+                        r_short.as_str(),
+                        "owl:topObjectProperty"
+                            | "http://www.w3.org/2002/07/owl#topObjectProperty"
+                            | "owl:bottomObjectProperty"
+                            | "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+                    ) {
+                        exp.object_roles.push(r_short);
+                    }
+                }
+                exp.object_roles.sort();
+                exp.object_roles.dedup();
+            }
+        } else if profile.existential_witness_abox_candidate {
+            exp.existential_assertions = raw_existential_assertions;
+        } else if profile.inert_role_abox_probe_candidate {
+            exp.inert_probes = raw_inert_probes;
+            exp.inert_role_assertions = raw_inert_role_assertions;
+            exp.inert_extra_individuals = raw_inert_extra_individuals;
+        }
+        exp.projected_data_assertions = projected_data_assertions;
+        Some(exp)
+    } else if export_active && !projected_data_assertions.is_empty() {
+        Some(SeparableAboxExport {
+            projected_data_assertions,
+            ..SeparableAboxExport::default()
+        })
+    } else {
+        None
+    };
     let mut iri_entries: Vec<(String, String)> = reg
         .owned_entries()
-        .filter(|(_, iri)| !drop_blank || !iri.starts_with("_:"))
+        .filter(|(_, iri)| {
+            (keep_blank_in_iri_map || !iri.starts_with("_:")) && !lenient::is_skolem_anon_iri(iri)
+        })
         .map(|(internal, iri)| (internal.to_string(), iri.to_string()))
         .collect();
     iri_entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
     let named = iri_entries
         .iter()
+        .filter(|(_, iri)| !drop_blank || !iri.starts_with("_:"))
         .map(|(internal, _)| internal.clone())
         .collect::<Vec<_>>();
     // The disjoint-union theorem preserves the requested public taxonomy
@@ -2280,6 +2570,7 @@ fn ofn_to_clauses_representation(
         route_approximations,
         data_roles: used_data_roles,
         one_sorted_data_successors,
+        separable_abox_export,
     })
 }
 
@@ -2298,16 +2589,14 @@ mod separable_abox_elision_tests {
     };
     use crate::routing::Route;
 
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-    pub(super) fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    pub(super) fn lock_environment() -> crate::test_env::EnvGuard {
+        crate::test_env::write()
     }
 
     #[test]
     fn optimistic_parse_screen_admits_only_likely_positive_abox_sources() {
+        let _test_env = crate::test_env::write();
         assert!(likely_separable_positive_abox(
             "Ontology(SubClassOf(<urn:A> <urn:B>) ClassAssertion(<urn:A> <urn:a>))"
         ));
@@ -2325,6 +2614,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn atomic_parse_screen_rejects_every_other_abox_constructor() {
+        let _test_env = crate::test_env::write();
         assert!(likely_atomic_class_only_abox(
             "Ontology(DisjointClasses(<urn:A> <urn:B>) ClassAssertion(<urn:A> <urn:a>))"
         ));
@@ -2342,6 +2632,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn inert_role_abox_is_replaced_by_internal_type_probes() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2367,6 +2658,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn role_readers_and_equality_generators_reject_inert_projection() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for source in [
             "Ontology(ObjectPropertyDomain(<urn:q> <urn:A>) ClassAssertion(<urn:A> <urn:a>) ObjectPropertyAssertion(<urn:q> <urn:a> <urn:b>))",
@@ -2386,6 +2678,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn extended_atomic_abox_admits_non_el_object_tboxes() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for axiom in [
             "SubClassOf(<urn:A> ObjectUnionOf(<urn:B> <urn:C>))",
@@ -2407,6 +2700,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn extended_atomic_abox_rejects_non_el_source_constraints() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for extra in [
             "SubClassOf(<urn:B> ObjectOneOf(<urn:a>))",
@@ -2429,6 +2723,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn extended_atomic_abox_observer_preserves_joint_membership_and_alias_rejection() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for (second, accepted) in [("<http://example.org/a>", false), (":a", false), ("<http://example.org/b>", true), ("_:bnode1", true)] {
             let source = format!("Prefix(:=<http://example.org/>) Ontology(SubClassOf(<http://example.org/C> ObjectUnionOf(<http://example.org/D> <http://example.org/E>)) DisjointClasses(<http://example.org/A> <http://example.org/B>) ClassAssertion(<http://example.org/A> <http://example.org/a>) ClassAssertion(<http://example.org/B> {second}))");
@@ -2442,6 +2737,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn extended_atomic_abox_source_whitelist_fails_closed_and_retains_el_arm() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::profile::{atomic_class_abox_source_admissible, OntologyProfile};
         let mut profile = OntologyProfile::default();
         profile.disjoint_union_abox_candidate = true;
@@ -2466,6 +2762,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn certified_positive_abox_is_removed_before_clausification() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(SubClassOf(<urn:A> <urn:B>) \
@@ -2490,6 +2787,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn atomic_class_abox_is_projected_but_retains_consistency_queries() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2528,6 +2826,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn atomic_abox_projection_preserves_joint_membership() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for (second_individual, expect_projection, expect_clash) in [
             ("<http://example.org/a>", false, true),
@@ -2556,6 +2855,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn bottom_constrained_atomic_abox_is_projected_for_taxonomy_check() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(SubClassOf(<urn:A> owl:Nothing) ClassAssertion(<urn:A> <urn:a>))",
@@ -2572,6 +2872,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn direct_bottom_assertion_stays_on_full_abox_path() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(ClassAssertion(owl:Nothing <urn:a>))",
@@ -2586,6 +2887,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn complex_class_assertion_stays_on_full_abox_path() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2603,6 +2905,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn exact_disjoint_union_consistency_verdict_authorizes_elision() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_DISJOINT_UNION_ABOX_CONSISTENT", "1");
@@ -2624,6 +2927,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn isolated_existential_witness_abox_is_projected_to_production() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2667,6 +2971,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn existential_witness_projection_preserves_tbox_bottom_prepass() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let projected = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2708,6 +3013,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn existential_witness_projection_rejects_every_role_coupling() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for rejected in [
             "Ontology(SubClassOf(<urn:X> owl:Nothing) \
@@ -2735,6 +3041,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn disjoint_union_public_signature_excludes_native_abox_private_concepts() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(DisjointClasses(<urn:A> <urn:B>) ClassAssertion(<urn:C> <urn:a>))",
@@ -2763,6 +3070,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn atomic_abox_supersedes_disjoint_union_precheck() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         use crate::json_io::{JAtom, JTerm};
 
@@ -2816,6 +3124,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn subthreshold_atomic_abox_uses_exact_el_projection() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ABOX_DISJOINT_UNION_CHECK", "1");
@@ -2835,6 +3144,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn automatic_route_omits_a_separable_abox_before_worker_selection() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(SubClassOf(<urn:A> <urn:B>) ClassAssertion(<urn:A> <urn:a>))",
@@ -2851,6 +3161,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn omitted_abox_only_class_keeps_a_context_for_global_tbox_axioms() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(SubClassOf(owl:Thing <urn:D>) ClassAssertion(<urn:C> <urn:a>))",
@@ -2887,6 +3198,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn vacuous_top_role_object_abox_selects_the_certified_typed_bridge() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             VACUOUS_TOP_ROLE_OBJECT_ABOX,
@@ -2922,6 +3234,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn a_read_universal_role_keeps_the_exact_nominal_fence() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         // The builtin now also occurs in a class expression, so nothing is
         // elided and the conservative occurrence flag stays authoritative.
@@ -2950,7 +3263,7 @@ mod separable_abox_elision_tests {
 
 /// Serialize tests that select routes through process-wide environment flags.
 #[cfg(test)]
-pub(crate) fn lock_test_environment() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) fn lock_test_environment() -> crate::test_env::EnvGuard {
     separable_abox_elision_tests::lock_environment()
 }
 
@@ -3032,6 +3345,7 @@ mod bottom_prepass_route_tests {
 
     #[test]
     fn el_completion_does_not_build_the_general_bottom_certificate() {
+        let _test_env = crate::test_env::write();
         assert!(!route_needs_bottom_prepass(Route::Elc));
         assert!(!route_needs_bottom_prepass(Route::ElcCert));
         assert!(route_needs_bottom_prepass(Route::ProductionAll));
@@ -3040,6 +3354,7 @@ mod bottom_prepass_route_tests {
 
     #[test]
     fn absent_declarations_are_seeded_once_in_source_order() {
+        let _test_env = crate::test_env::write();
         let mut clauses = Vec::new();
         let declared = vec!["Z".to_string(), "A".to_string(), "Z".to_string()];
         seed_missing_declarations(&mut clauses, &declared);
@@ -3058,6 +3373,7 @@ mod bottom_prepass_route_tests {
 
     #[test]
     fn retained_side_observers_match_v025_second_pass_bytes() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(\
             Declaration(Class(<http://decl.example#A>)) \
             Declaration(Class(<http://other.example#A>)) \
@@ -3191,8 +3507,26 @@ fn collect_rules(
     };
     let parsed_rule_count = ontology.rules().count() as u64;
     if parsed_rule_count + certified_unsupported_rules != source_rule_count {
+        let mut builtins = BTreeSet::new();
+        for rule in ontology.datatype_rules() {
+            if let Axiom::DataRule(body, head) = rule {
+                for atom in body.iter().chain(head) {
+                    if let RuleAtom::Builtin(iri, _) = atom {
+                        builtins.insert(iri.as_str());
+                    }
+                }
+            }
+        }
+        let detail = if builtins.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " (built-in atom(s): {})",
+                builtins.into_iter().collect::<Vec<_>>().join(", ")
+            )
+        };
         return Err(parse::OutOfFragment(format!(
-            "DL-safe rules: parsed {parsed_rule_count} and certified {certified_unsupported_rules} of {source_rule_count}; an atom or head shape is unsupported"
+            "DL-safe rules: parsed {parsed_rule_count} and certified {certified_unsupported_rules} of {source_rule_count}; an atom or head shape is unsupported{detail}"
         )));
     }
     let mut out = Vec::new();
@@ -3222,6 +3556,7 @@ mod rule_contract_tests {
 
     #[test]
     fn named_dl_safe_rule_is_fully_representable() {
+        let _test_env = crate::test_env::write();
         let parsed = ontology(
             "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))))",
         );
@@ -3233,6 +3568,7 @@ mod rule_contract_tests {
 
     #[test]
     fn rule_contract_rejects_dropped_and_complex_atoms() {
+        let _test_env = crate::test_env::write();
         let dropped = ontology(
             "Ontology(DLSafeRule(Body(BuiltInAtom(<p> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))))",
         );
@@ -3246,6 +3582,7 @@ mod rule_contract_tests {
 
     #[test]
     fn same_individual_rule_is_representable() {
+        let _test_env = crate::test_env::write();
         // SameIndividual is in the FIRED tier: the contract accepts it (it fires
         // downstream via variable identification / a derived equality).
         let parsed = ontology(
@@ -3257,6 +3594,7 @@ mod rule_contract_tests {
 
     #[test]
     fn different_individuals_rule_does_not_decline_the_route() {
+        let _test_env = crate::test_env::write();
         // DEFERRED tier: a Diff-bearing rule is carried through the contract (it
         // must NOT decline the route — that would forfeit the fired rules that
         // detect the 2669/15516 clash). It is dropped at firing time instead.
@@ -3284,6 +3622,7 @@ DLSafeRule(Body(ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>)) DifferentInd
 
     #[test]
     fn builtin_bearing_corpus_declines_even_with_representable_rules() {
+        let _test_env = crate::test_env::write();
         // Negative contract: one built-in rule beside representable rules still
         // declines the whole route. The retained datatype obligation is outside
         // the object-only partition, so uncovered source (2) still refuses.
@@ -3307,6 +3646,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn functional_data_projection_keeps_entailed_different_individuals() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(
             "Ontology(Declaration(Class(<http://e#A>))
              ClassAssertion(<http://e#A> <http://e#a>)
@@ -3330,6 +3670,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn nary_different_individuals_is_certified_as_exact_pairs() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(Class(:A))\
@@ -3365,6 +3706,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn object_abox_and_assertion_only_individuals_are_certified() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(ObjectProperty(:r))\
@@ -3401,6 +3743,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn identity_is_retained_while_data_fails_and_negative_object_roles_are_retained() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(Class(:OnlyA)) Declaration(Class(:OnlyB))\
@@ -3425,6 +3768,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn typed_abox_preserves_class_roles_negatives_and_different() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B))\
@@ -3454,6 +3798,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn assertion_only_proxy_uses_normalizer_mapping_without_default_clause_injection() {
+        let _test_env = crate::test_env::write();
         let mut registry = IriRegistry::new();
         let ontology = parse::parse_axioms(
             &mut registry,
@@ -3486,6 +3831,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn identity_and_redundant_positive_data_are_complete_while_unsupported_abox_fails_closed() {
+        let _test_env = crate::test_env::write();
         let identity = ofn_to_clauses(&format!(
             "{PREFIX} Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) SameIndividual(:a :b))"
         ))

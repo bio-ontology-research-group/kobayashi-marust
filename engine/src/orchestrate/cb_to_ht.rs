@@ -388,6 +388,7 @@ mod masked_disjoint_union_shape_tests {
 
     #[test]
     fn accepts_connected_role_chain_clause() {
+        let _test_env = crate::test_env::write();
         let mut input = TInput::default();
         input.clauses.push(HtClause {
             body: vec![
@@ -401,6 +402,7 @@ mod masked_disjoint_union_shape_tests {
 
     #[test]
     fn rejects_a_disconnected_head_variable() {
+        let _test_env = crate::test_env::write();
         let mut input = TInput::default();
         input.clauses.push(HtClause {
             body: vec![HAtom::Concept {
@@ -419,6 +421,7 @@ mod masked_disjoint_union_shape_tests {
 
     #[test]
     fn body_equality_connects_components() {
+        let _test_env = crate::test_env::write();
         let mut input = TInput::default();
         input.clauses.push(HtClause {
             body: vec![HAtom::Eq { s: 0, t: 1 }],
@@ -433,6 +436,7 @@ mod masked_disjoint_union_shape_tests {
 
     #[test]
     fn rejects_a_private_proxy_in_the_tbox() {
+        let _test_env = crate::test_env::write();
         let mut input = TInput::default();
         input.native_abox.individuals.push(NativeIndividualJson {
             proxies: vec![7],
@@ -451,6 +455,7 @@ mod masked_disjoint_union_shape_tests {
 
     #[test]
     fn rejects_a_variable_free_clause() {
+        let _test_env = crate::test_env::write();
         let mut input = TInput::default();
         input.clauses.push(HtClause {
             body: vec![],
@@ -2941,6 +2946,7 @@ mod direct_projection_tests {
 
     #[test]
     fn direct_projection_preserves_complete_function_free_source_order() {
+        let _test_env = crate::test_env::write();
         let clause = JClause {
             body: vec![
                 JAtom::Role {
@@ -2966,6 +2972,7 @@ mod direct_projection_tests {
 
     #[test]
     fn direct_projection_defers_on_unproved_transformations() {
+        let _test_env = crate::test_env::write();
         let function_clause = JClause {
             body: Vec::new(),
             head: vec![JAtom::Concept {
@@ -2990,6 +2997,7 @@ mod direct_projection_tests {
 
     #[test]
     fn converter_carries_the_complete_direct_source_list() {
+        let _test_env = crate::test_env::write();
         let clauses = vec![JClause {
             body: vec![JAtom::Concept {
                 concept: "A".into(),
@@ -3009,6 +3017,7 @@ mod direct_projection_tests {
 
     #[test]
     fn skolem_projection_requires_the_exact_proved_common_body() {
+        let _test_env = crate::test_env::write();
         let valid = convert_test_clauses(&skolem_pair("A", "A", "x"));
         assert_eq!(valid.dropped, 0);
         assert!(valid.mixed_projection_source.is_some());
@@ -3032,6 +3041,7 @@ mod direct_projection_tests {
 
     #[test]
     fn skolem_projection_requires_the_source_variable_as_function_argument() {
+        let _test_env = crate::test_env::write();
         let converted = convert_test_clauses(&skolem_pair("A", "A", "y"));
         assert_eq!(converted.dropped, 2);
         assert!(converted.mixed_projection_source.is_none());
@@ -3045,6 +3055,7 @@ mod direct_projection_tests {
 
     #[test]
     fn skolem_projection_never_turns_a_disjunctive_head_into_conjunctive_fillers() {
+        let _test_env = crate::test_env::write();
         let converted = convert_test_clauses(&disjunctive_skolem_filler());
         assert_eq!(converted.dropped, 1);
         assert!(converted.mixed_projection_source.is_none());
@@ -3058,6 +3069,7 @@ mod direct_projection_tests {
 
     #[test]
     fn converter_carries_exact_multi_filler_bundle_evidence() {
+        let _test_env = crate::test_env::write();
         let converted = convert_test_clauses(&skolem_bundle());
         assert_eq!(converted.dropped, 0);
         assert!(converted.mixed_projection_source.is_none());
@@ -3296,6 +3308,12 @@ pub fn convert_rule_model(
         source_axioms, false, rules, true, true)
 }
 
+fn clause_has_forall_marker(c: &JClause) -> bool {
+    c.body.iter().chain(c.head.iter()).any(|a| {
+        matches!(a, crate::json_io::JAtom::Concept { concept, .. } if concept.starts_with("__forall__"))
+    })
+}
+
 fn convert_with_rule_abox(
     clauses: &[JClause],
     rbox: Option<&[Vec<String>]>,
@@ -3308,6 +3326,17 @@ fn convert_with_rule_abox(
     ht_rules: bool,
     retain_rule_abox: bool,
 ) -> TInput {
+    // The frontend's `__forall__` markers encode universals over transitive
+    // roles for the CB engine (`preprocess::forall_transitivity_clauses`).
+    // The HT side reads transitivity from the RBox itself, and the markers are
+    // a conservative extension, so they are left out of its input.
+    let without_forall_markers: Vec<JClause>;
+    let clauses: &[JClause] = if clauses.iter().any(clause_has_forall_marker) {
+        without_forall_markers = clauses.iter().filter(|c| !clause_has_forall_marker(c)).cloned().collect();
+        &without_forall_markers
+    } else {
+        clauses
+    };
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
     let mut ht: Vec<HtClause> = Vec::new();
@@ -3481,7 +3510,7 @@ fn convert_with_rule_abox(
             }
         }
     }
-    if card_active {
+    if card_active && projection_evidence {
         // The cardinality projection checker accounts for exactly the source
         // expansion clauses replaced by first-class definitions. Preserve the
         // complete residual source for the ordinary direct checker. If even one
@@ -3729,7 +3758,27 @@ fn convert_with_rule_abox(
         {
             eq_clauses.push(c.clone());
         } else {
-            passthrough.push(c.clone());
+            if !source_axioms.is_empty()
+                && !crate::routing::ground_rule_zero_rules_mode()
+                && matches!(
+                    c.body.as_slice(),
+                    [JAtom::Concept { concept, term: JTerm::Var { name: vx } }]
+                        if concept == crate::frontend::sorts::DATA_SORT
+                            && !c.head.is_empty()
+                            && c.head.iter().all(|atom| matches!(
+                                atom,
+                                JAtom::Concept { concept: hc, term: JTerm::Var { name: hv } }
+                                    if hc.starts_with("__dt__") && hv == vx
+                            ))
+                )
+            {
+                passthrough.push(JClause {
+                    body: Vec::new(),
+                    head: c.head.clone(),
+                });
+            } else {
+                passthrough.push(c.clone());
+            }
         }
     }
 
@@ -3763,6 +3812,44 @@ fn convert_with_rule_abox(
                     let chain = (ids.rid(&ax[1]), ids.rid(&ax[2]), ids.rid(&ax[3]));
                     if !detected_chains.contains(&chain) {
                         detected_chains.push(chain);
+                    }
+                }
+                Some("chain-n") if !crate::routing::ground_rule_zero_rules_mode() => {
+                    // `normalise.rs` decomposes n-ary chains into binary chain
+                    // clauses `r_1 o r_2 -> __chain__k` that `extract_chains`
+                    // already collected into `detected_chains` (when `keep_chains`
+                    // is true). Verify the decomposed steps cover `ax[2..] -> ax[1]`
+                    // before accepting the metadata record unfenced.
+                    let covered = keep_chains && ax.len() >= 4 && {
+                        let sup = ids.rid(&ax[1]);
+                        let steps: Vec<usize> = ax[2..].iter().map(|r| ids.rid(r)).collect();
+                        let mut current = *steps.last().unwrap();
+                        let mut ok = true;
+                        for (idx, &left) in steps[..steps.len() - 1].iter().enumerate().rev() {
+                            let target_sup = if idx == 0 {
+                                Some(sup)
+                            } else {
+                                detected_chains.iter().find_map(|&(r1, r2, s)| {
+                                    (r1 == left && r2 == current).then_some(s)
+                                })
+                            };
+                            match target_sup {
+                                Some(s) if detected_chains.contains(&(left, current, s)) => {
+                                    current = s;
+                                }
+                                _ => {
+                                    ok = false;
+                                    break;
+                                }
+                            }
+                        }
+                        ok
+                    };
+                    if !covered {
+                        fenced.push(Fenced {
+                            reason: "unknown-rbox".into(),
+                            detail: format!("{:?}", ax),
+                        });
                     }
                 }
                 Some("fenced") if ax.get(1).map(String::as_str) == Some("symmetric-role") => {
@@ -4338,6 +4425,9 @@ fn convert_with_rule_abox(
         }
         // Mark every named node with the O-guard: __nom__a(x) → __O__(x).
         for a in &individuals {
+            if crate::frontend::lenient::is_skolem_anon_short(a) {
+                continue;
+            }
             let na = ids.cid(&nom_of(a));
             ht.push(HtClause {
                 body: vec![HAtom::Concept {
@@ -4605,14 +4695,6 @@ fn convert_with_rule_abox(
         }
     }
 
-    for (i, n) in ids.con_names.iter().enumerate() {
-        if (named.contains(n) || !is_internal(n)) && !is_bottom(n) {
-            queries.push(i);
-        }
-    }
-    queries.sort();
-    queries.dedup();
-
     // ---- KM_HT_CARD: resolve the first-class number restrictions to ids ----
     let mut card_defs: Vec<CardDefJson> = Vec::new();
     if card_active {
@@ -4627,6 +4709,17 @@ fn convert_with_rule_abox(
             });
         }
     }
+    // Query every named concept, including one that first gets an id as a
+    // cardinality filler above: `A ⊑ ∃s2.≥3 s0.D` with `D` in no clause left
+    // `D` out of the taxonomy on every HT card arm (tbox sweep card20044_0044).
+    for (i, n) in ids.con_names.iter().enumerate() {
+        if (named.contains(n) || !is_internal(n)) && !is_bottom(n) {
+            queries.push(i);
+        }
+    }
+    queries.sort();
+    queries.dedup();
+
     let cardinality_exact_pairs = exact_cardinality_marker_pairs
         .iter()
         .map(|(maximum, minimum)| {
@@ -4902,10 +4995,11 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
     // clauses with positive concept atoms (forward chaining with one counter
     // per clause).
     let mut universal: HashSet<usize> = HashSet::new();
+    let mut horn_bodies: Vec<Vec<usize>> = Vec::new();
+    let mut head_of: Vec<usize> = Vec::new();
+    let mut watch: HashMap<usize, Vec<usize>> = HashMap::new();
     {
         let mut need: Vec<usize> = Vec::new();
-        let mut head_of: Vec<usize> = Vec::new();
-        let mut watch: HashMap<usize, Vec<usize>> = HashMap::new();
         let mut queue: Vec<usize> = Vec::new();
         for clause in ht.iter() {
             let [head] = clause.head.as_slice() else { continue };
@@ -4932,10 +5026,11 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
             if body.is_empty() {
                 queue.push(c);
             } else {
-                for b in body {
+                for &b in &body {
                     watch.entry(b).or_default().push(index);
                 }
             }
+            horn_bodies.push(body);
         }
         while let Some(c) = queue.pop() {
             if !universal.insert(c) {
@@ -4954,8 +5049,6 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
     // (role, end, concept): the concept holds at the source (end `false`) or
     // target (end `true`) of every role atom. Only relevant roles are tracked.
     let mut implied: BTreeSet<(usize, bool, usize)> = BTreeSet::new();
-    // The (role, end) pairs with at least one implied concept.
-    let mut ends: BTreeSet<(usize, bool)> = BTreeSet::new();
     let holds = |implied: &BTreeSet<(usize, bool, usize)>, role: usize, end: bool, c: usize| {
         universal.contains(&c) || implied.contains(&(role, end, c))
     };
@@ -4968,21 +5061,32 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
         concepts: Vec<(usize, usize)>,
     }
     let mut one_role: Vec<OneRole> = Vec::new();
-    let mut no_role: Vec<(usize, usize, Vec<(usize, usize)>)> = Vec::new();
     for clause in ht.iter() {
         let [head] = clause.head.as_slice() else { continue };
         let Some((c, t)) = positive_concept(head) else { continue };
+        if clause.body.len() == 1
+            && matches!(clause.body[0], HAtom::Role { r, s, t: u } if s != u && (t == s || t == u) && relevant.contains(&r))
+        {
+            if let HAtom::Role { r, s, t: u } = clause.body[0] {
+                one_role.push(OneRole {
+                    r,
+                    s,
+                    u,
+                    c,
+                    t,
+                    concepts: Vec::new(),
+                });
+            }
+            continue;
+        }
         let Some(concepts) = body_concepts(clause) else { continue };
-        match body_roles(clause).as_slice() {
-            // R(s,u) ∧ concepts on s or u → C(s) or C(u).
-            [(r, s, u)] if s != u && (t == *s || t == *u) && relevant.contains(r) => {
+        if let [(r, s, u)] = body_roles(clause).as_slice() {
+            if s != u && (t == *s || t == *u) && relevant.contains(r) {
                 one_role.push(OneRole { r: *r, s: *s, u: *u, c, t, concepts });
             }
-            // Concepts on the head variable → C, at every role end.
-            [] => no_role.push((c, t, concepts)),
-            _ => {}
         }
     }
+    let mut pending_horn: Vec<(usize, bool, usize)> = Vec::new();
     loop {
         let mut changed = false;
         for rule in &one_role {
@@ -4990,19 +5094,24 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
                 (bt == rule.s && holds(&implied, rule.r, false, b))
                     || (bt == rule.u && holds(&implied, rule.r, true, b))
             });
-            if ok && implied.insert((rule.r, rule.t == rule.u, rule.c)) {
-                ends.insert((rule.r, rule.t == rule.u));
+            if ok && !universal.contains(&rule.c) && implied.insert((rule.r, rule.t == rule.u, rule.c)) {
+                pending_horn.push((rule.r, rule.t == rule.u, rule.c));
                 changed = true;
             }
         }
-        let snapshot: Vec<(usize, bool)> = ends.iter().copied().collect();
-        for (c, t, concepts) in &no_role {
-            for &(r, e) in &snapshot {
-                if concepts.iter().all(|&(b, bt)| bt == *t && holds(&implied, r, e, b))
-                    && implied.insert((r, e, *c))
-                {
-                    ends.insert((r, e));
-                    changed = true;
+        while let Some((r, e, b)) = pending_horn.pop() {
+            if let Some(indices) = watch.get(&b) {
+                for &idx in indices {
+                    let c = head_of[idx];
+                    if !holds(&implied, r, e, c)
+                        && horn_bodies[idx]
+                            .iter()
+                            .all(|&bc| holds(&implied, r, e, bc))
+                        && implied.insert((r, e, c))
+                    {
+                        pending_horn.push((r, e, c));
+                        changed = true;
+                    }
                 }
             }
         }
@@ -5017,9 +5126,25 @@ fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
                 .map(|&(_, e, c)| (e, c))
                 .collect();
             for (e, c) in from_q {
-                if implied.insert((r, e ^ swapped, c)) {
-                    ends.insert((r, e ^ swapped));
+                if !universal.contains(&c) && implied.insert((r, e ^ swapped, c)) {
+                    pending_horn.push((r, e ^ swapped, c));
                     changed = true;
+                }
+            }
+        }
+        while let Some((r, e, b)) = pending_horn.pop() {
+            if let Some(indices) = watch.get(&b) {
+                for &idx in indices {
+                    let c = head_of[idx];
+                    if !holds(&implied, r, e, c)
+                        && horn_bodies[idx]
+                            .iter()
+                            .all(|&bc| holds(&implied, r, e, bc))
+                        && implied.insert((r, e, c))
+                    {
+                        pending_horn.push((r, e, c));
+                        changed = true;
+                    }
                 }
             }
         }
@@ -5267,6 +5392,7 @@ mod entailed_functional_tests {
     /// `Q1(1) ∧ Q1(2) ∧ Q0(0) ∧ s(0,1) ∧ s(0,2) → 1≈2`.
     #[test]
     fn top_guarded_at_most_one_adds_functionality() {
+        let _test_env = crate::test_env::write();
         let ht = vec![
             cl(vec![], vec![c(1, 0)]),
             cl(vec![], vec![c(0, 0)]),
@@ -5279,6 +5405,7 @@ mod entailed_functional_tests {
     /// every `s`-atom (`Q1(1) ∧ s(0,1) → Q0(0)`, `Q0 → Q2`).
     #[test]
     fn domain_guard_is_implied_by_the_role_atom() {
+        let _test_env = crate::test_env::write();
         let ht = vec![
             cl(vec![], vec![c(1, 0)]),
             cl(vec![c(1, 1), r(0, 0, 1)], vec![c(0, 0)]),
@@ -5292,6 +5419,7 @@ mod entailed_functional_tests {
     /// `s(0,1) → r(1,0)` entail the functionality of `s` (role 1).
     #[test]
     fn shared_target_adds_functionality_of_the_inverse_name() {
+        let _test_env = crate::test_env::write();
         let ht = vec![
             cl(vec![r(0, 1, 0), r(0, 2, 0)], vec![eq(1, 2)]),
             cl(vec![r(1, 0, 1)], vec![r(0, 1, 0)]),
@@ -5306,6 +5434,7 @@ mod entailed_functional_tests {
     /// plain functionality clauses.
     #[test]
     fn matches_the_reference_on_random_views() {
+        let _test_env = crate::test_env::write();
         use super::add_entailed_functional_clauses_reference;
         let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
         let mut next = move |n: usize| -> usize {
@@ -5358,6 +5487,7 @@ mod entailed_functional_tests {
     /// and a shared target without an inverse name add nothing.
     #[test]
     fn nontrivial_guards_and_fillers_add_nothing() {
+        let _test_env = crate::test_env::write();
         let guarded = vec![
             cl(vec![], vec![c(1, 0)]),
             cl(vec![c(1, 1), c(1, 2), c(5, 0), r(0, 0, 1), r(0, 0, 2)], vec![eq(1, 2)]),
@@ -5445,6 +5575,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn symbolic_inverse_source_names_keep_existing_ids_and_public_queries() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::{normalise::normalise_symbolic_cardinality,
             syntax::{Axiom, Ontology, Role}};
         let mut ontology = Ontology::new();
@@ -5468,6 +5599,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn symbolic_source_handoff_preserves_large_bounds_and_rejects_tampering() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::{normalise::normalise_symbolic_cardinality,
             syntax::{Axiom, Ontology, Role}};
         let mut ontology = Ontology::new();
@@ -5499,6 +5631,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn datatype_relations_keep_singleton_equality_and_value_clashes() {
+        let _test_env = crate::test_env::write();
         let names = ["__dt__string", "__dt__float",
             "__dt__val__\"label\"^^xsd:string", "__dt__val__\"1.0\"^^xsd:float",
             "__dt__val__\"2.0\"^^xsd:float"].into_iter().map(str::to_owned).collect();
@@ -5526,6 +5659,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn symbolic_handoff_rejects_lost_or_changed_bounds_and_abox() {
+        let _test_env = crate::test_env::write();
         let bounds = vec![crate::json_io::CardMeta {
             marker: "A".into(), min: true, n: 1_000_000, role: "r".into(), filler: "F".into(),
         }];
@@ -5552,6 +5686,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn checked_symbolic_converter_preserves_bounds_and_rejects_datatype_decline() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::{normalise::normalise_symbolic_cardinality, syntax::{Axiom, Ontology, Role}};
         let mut ontology = Ontology::new();
         ontology.add(Axiom::SubClassOf(Concept::Name("A".into()), Concept::AtLeast(
@@ -5572,6 +5707,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn absent_typed_abox_is_an_identity_without_a_coverage_flag() {
+        let _test_env = crate::test_env::write();
         let mut tin = TInput {
             concepts: vec!["A".into()],
             clauses: vec![HtClause {
@@ -5605,6 +5741,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn complete_typed_abox_installs_numeric_roots_edges_and_negative_guard() {
+        let _test_env = crate::test_env::write();
         let mut tin = TInput {
             concepts: vec!["A".into(), "B".into()],
             roles: Vec::new(),
@@ -5665,6 +5802,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn same_individual_component_uses_one_root_and_remaps_edges() {
+        let _test_env = crate::test_env::write();
         let mut tin = TInput {
             concepts: vec!["A".into(), "B".into()],
             ..TInput::default()
@@ -5696,6 +5834,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn same_individual_premerge_installs_the_quotient_and_renames_nominals() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
         let mut tin = TInput {
             concepts: vec!["A".into(), "B".into(), "Q".into()],
@@ -5756,6 +5895,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn same_individual_premerge_turns_a_merged_difference_into_a_self_pair() {
+        let _test_env = crate::test_env::write();
         let mut tin = TInput { concepts: vec!["A".into()], ..TInput::default() };
         let meta = NominalAboxMeta {
             complete: true,
@@ -5774,6 +5914,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn same_individual_premerge_failure_restores_the_source_payload() {
+        let _test_env = crate::test_env::write();
         let mut tin = TInput { concepts: vec!["A".into()], ..TInput::default() };
         let meta = NominalAboxMeta {
             complete: true,
@@ -5791,6 +5932,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn empty_internal_individual_name_is_valid_when_proxy_is_resolved() {
+        let _test_env = crate::test_env::write();
         let mut tin = TInput::default();
         let meta = NominalAboxMeta {
             complete: true,
@@ -5807,6 +5949,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn same_individual_is_rejected_by_default_without_partial_install() {
+        let _test_env = crate::test_env::write();
         let mut tin = TInput {
             concepts: vec!["A".into()],
             ..TInput::default()
@@ -5835,6 +5978,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn failed_install_rolls_back_every_semantic_vector_and_adds_only_a_fence() {
+        let _test_env = crate::test_env::write();
         let sentinel = HtClause {
             body: Vec::new(),
             head: vec![HAtom::Concept {
@@ -5881,6 +6025,7 @@ mod native_abox_install_tests {
 
     #[test]
     fn duplicate_proxy_ownership_fails_closed_without_partial_install() {
+        let _test_env = crate::test_env::write();
         let mut tin = TInput::default();
         let meta = NominalAboxMeta {
             complete: true,
@@ -6028,6 +6173,15 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     let mut used: HashSet<usize> = HashSet::new();
     for p in pairs {
         let (a, b) = p; // canonical a<=b == Python sorted(p) -> (a,b)
+        if !crate::routing::ground_rule_zero_rules_mode()
+            && (con_names.get(a).is_some_and(|n| {
+                n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
+            }) || con_names.get(b).is_some_and(|n| {
+                n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
+            }))
+        {
+            continue;
+        }
                         // Completeness: keep the excluded-middle ⊤⊑A∨B unfolded if a side both
                         // drives a consequence and is NOT independently (Horn) derivable — then
                         // dropping the disjunction would silence that consequence. A consequence
@@ -6131,6 +6285,7 @@ mod trigger_absorb_tests {
     /// worker would miss `No ⊑ AtMostOne`); it becomes the head literal `Two`.
     #[test]
     fn complementary_definer_fold_moves_body_occurrences_to_the_head() {
+        let _test_env = crate::test_env::write();
         let names: Vec<String> = ["Has", "Two", "No", "AtMostOne", "Q_3", "Q_4", "T2"]
             .iter().map(|s| s.to_string()).collect();
         let (has, two, no, amo, q3, q4, t2) = (0, 1, 2, 3, 4, 5, 6);
@@ -6165,6 +6320,7 @@ mod trigger_absorb_tests {
     /// against it, so eliminating it would drop every subsumption into `B`.
     #[test]
     fn complementary_definer_fold_never_eliminates_a_named_class() {
+        let _test_env = crate::test_env::write();
         let names: Vec<String> = ["A", "B"].iter().map(|s| s.to_string()).collect();
         let c = |c: usize| HAtom::Concept { neg: false, c, t: 0 };
         let ht = vec![
@@ -6178,6 +6334,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn is_internal_excludes_markers_and_builtins_but_keeps_colon_localname_classes() {
+        let _test_env = crate::test_env::write();
         // Frontend synthetic markers stay internal.
         for marker in ["Q_5", "__trans__R__C", "aux_1", "def_2"] {
             assert!(is_internal(marker), "{marker} should be internal");
@@ -6221,6 +6378,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn convert_preserves_rbox_domain_range_provenance() {
+        let _test_env = crate::test_env::write();
         let rbox = vec![
             vec!["domain".into(), "r".into(), "D".into()],
             vec!["range".into(), "r".into(), "E".into()],
@@ -6237,6 +6395,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn signed_literals_move_to_trigger_orientation() {
+        let _test_env = crate::test_env::write();
         let input = vec![HtClause {
             body: vec![
                 HAtom::Concept {
@@ -6281,6 +6440,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn rule_abox_seeds_survive_the_inverse_fence() {
+        let _test_env = crate::test_env::write();
         // Regression: threading the rbox into the rules-consistency conversion
         // armed the SHOI classification fence, which cleared the ABox nominal
         // seeds and left the consistency tableau rootless (2669/15516 lost
@@ -6314,6 +6474,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn consistent_rule_ontology_reports_consistent() {
+        let _test_env = crate::test_env::write();
         // The fall-through case: a satisfiable DL-safe rule ontology must get
         // a "consistent" verdict so classify proceeds to normal taxonomy work.
         let (clauses, rules, named) = rule_kb(false);
@@ -6335,6 +6496,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn classification_nominals_stay_fenced_with_inverse() {
+        let _test_env = crate::test_env::write();
         // Without active rules the SHOI fence must keep clearing nominals:
         // the fast-Ht classification path has no sound nominal+inverse
         // completion, and that contract is unchanged by the rules fix.
@@ -6371,6 +6533,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn separated_inverse_cardinality_keeps_exact_rbox_and_card_defs() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::{CardMeta, JAtom, JClause, JTerm};
         let variable = || JTerm::Var { name: "x".into() };
         let clauses = vec![JClause {
@@ -6445,6 +6608,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn normalized_inverse_cardinality_certificate_fails_closed() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::CardMeta;
         let cards = vec![CardMeta {
             marker: "Q_card".into(),
@@ -6517,6 +6681,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn clause_retained_fences_and_write_only_universal_super_are_certified() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::{CardMeta, JAtom, JClause, JTerm};
         let cards = vec![CardMeta {
             marker: "Q_card".into(),
@@ -6686,6 +6851,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn signed_normalization_drops_tautology() {
+        let _test_env = crate::test_env::write();
         let input = vec![HtClause {
             body: vec![HAtom::Concept {
                 neg: false,
@@ -6762,6 +6928,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn concept_position_inverse_disables_card_transform() {
+        let _test_env = crate::test_env::write();
         // A `≤1` restriction over an inverse role (__inv__R) must NOT be lifted to
         // first-class card_defs: the resulting ont would look inverse-free and
         // reach the inverse-blind card arm. Fail closed → keep the pigeonhole.
@@ -6792,6 +6959,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn plain_role_cardinality_still_uses_card_transform() {
+        let _test_env = crate::test_env::write();
         // Control: an inverse-FREE cardinality ont keeps the validated first-class
         // card route (no regression to 9540/7499-style SHQ/SHOQ number onts).
         let card = vec![CardMeta {
@@ -6835,6 +7003,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn exact_cardinality_provenance_comes_only_from_removed_splits() {
+        let _test_env = crate::test_env::write();
         let split = JClause {
             body: Vec::new(),
             head: vec![
@@ -6937,6 +7106,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn cardinality_projection_requires_the_complete_exact_frontend_family() {
+        let _test_env = crate::test_env::write();
         let maximum = CardMeta {
             marker: "Q_max".into(),
             min: false,
@@ -7024,6 +7194,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn cardinality_drop_rejects_a_similar_but_wrong_clause() {
+        let _test_env = crate::test_env::write();
         let definition = CardMeta {
             marker: "Q_min".into(),
             min: true,
@@ -7041,6 +7212,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn concept_position_inverse_with_number_arms_the_shiq_fence() {
+        let _test_env = crate::test_env::write();
         // __inv__R bridge + a ≤1 Eq-head over it: number is set and the
         // inverse+number(SHIQ) fence must arm even though inverse_pairs is empty.
         let named = std::collections::HashSet::new();
@@ -7070,6 +7242,7 @@ mod trigger_absorb_tests {
 
     #[test]
     fn plain_number_restriction_is_not_shiq_fenced() {
+        let _test_env = crate::test_env::write();
         // Control: inverse-free ALCQ number restrictions must stay unfenced so the
         // sound fast-Ht/card route is not needlessly declined.
         let named = std::collections::HashSet::new();
@@ -7130,6 +7303,7 @@ mod rule_clause_tests {
 
     #[test]
     fn transitivity_recognition_rejects_ground_or_repeated_variable_instances() {
+        let _test_env = crate::test_env::write();
         let edge = |left: &str, right: &str| JAtom::Role {
             role: "r".to_owned(), source: JTerm::Var { name: left.to_owned() },
             target: JTerm::Var { name: right.to_owned() },
@@ -7152,6 +7326,7 @@ mod rule_clause_tests {
 
     #[test]
     fn transitive_rule_reduction_requires_every_head_and_exact_join() {
+        let _test_env = crate::test_env::write();
         let mut rule = JRule {
             body: vec![role("r", var("x"), var("y")), role("r", var("y"), var("z")),
                 JRuleAtom::Diff { left: var("x"), right: var("z") }],
@@ -7171,6 +7346,7 @@ mod rule_clause_tests {
 
     #[test]
     fn body_same_guard_unifies_its_two_terms() {
+        let _test_env = crate::test_env::write();
         // Body: r(x,y) ∧ SameAs(x,y); Head: D(x). The guard forces x = y, so the
         // role edge must land on ONE variable (s == t).
         let rule = JRule {
@@ -7203,6 +7379,7 @@ mod rule_clause_tests {
 
     #[test]
     fn head_same_derives_an_equality() {
+        let _test_env = crate::test_env::write();
         // Body: C(x) ∧ C(y); Head: SameAs(x,y). x and y stay distinct variables
         // (no body guard); the head concludes the equality as an Eq atom.
         let rule = JRule {
@@ -7229,6 +7406,7 @@ mod rule_clause_tests {
 
     #[test]
     fn different_individuals_atom_defers_the_rule() {
+        let _test_env = crate::test_env::write();
         // A Diff guard has no sound fast-Ht encoding, so the whole rule is
         // deferred (dropped, counted). Body and head positions both defer.
         let body_diff = JRule {
@@ -7261,6 +7439,7 @@ mod rule_clause_tests {
 
     #[test]
     fn same_as_individual_pins_the_shared_variable_to_the_nominal() {
+        let _test_env = crate::test_env::write();
         // Body: SameAs(x, a) ∧ C(x); Head: D(x). x is pinned to individual a, so
         // `a` is registered and the shared variable carries the `__nom__a` guard.
         let rule = JRule {
@@ -7293,6 +7472,7 @@ mod rule_clause_tests {
 
     #[test]
     fn pure_class_role_rule_is_unchanged_by_the_union_find() {
+        let _test_env = crate::test_env::write();
         // Regression: a rule with no Same/Diff must encode exactly as before —
         // one variable per distinct term, one role edge, an O-guard per variable.
         let rule = JRule {
@@ -7317,6 +7497,7 @@ mod rule_clause_tests {
 
     #[test]
     fn sparse_role_joins_precede_class_and_nominal_guards() {
+        let _test_env = crate::test_env::write();
         let rule = JRule {
             body: vec![
                 class("C", var("x")),
@@ -7342,6 +7523,7 @@ mod empty_grounding_model_tests {
     use super::*;
     #[test]
     fn source_model_preserves_named_graph_without_changing_ordinary_rule_free_conversion() {
+        let _test_env = crate::test_env::write();
         let atom = JAtom::Concept { concept: "A".into(), term: JTerm::Ind { name: "a".into() } };
         let positive = JClause { body: vec![], head: vec![atom.clone()] };
         // Normalized TBox contradiction A ⊑ bottom, together with A(a).
@@ -7360,5 +7542,36 @@ mod empty_grounding_model_tests {
             let verdict = crate::tableau::rules_consistency_verdict(&worker, crate::tableau::clauses_of_tinput(&worker)).unwrap();
             assert_eq!(verdict, consistent);
         }
+    }
+
+    #[test]
+    fn entailed_functional_clauses_closes_role_domain_and_range_through_horn_watchlist() {
+        // r(x, y) -> A(x), A(x) -> B(x), and B(x) & r(x, y) & r(x, z) -> y = z
+        // entails unconditional functionality of r: r(x, y) & r(x, z) -> y = z.
+        let mut ht = vec![
+            HtClause {
+                body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+                head: vec![HAtom::Concept { neg: false, c: 0, t: 0 }],
+            },
+            HtClause {
+                body: vec![HAtom::Concept { neg: false, c: 0, t: 0 }],
+                head: vec![HAtom::Concept { neg: false, c: 1, t: 0 }],
+            },
+            HtClause {
+                body: vec![
+                    HAtom::Concept { neg: false, c: 1, t: 0 },
+                    HAtom::Role { r: 0, s: 0, t: 1 },
+                    HAtom::Role { r: 0, s: 0, t: 2 },
+                ],
+                head: vec![HAtom::Eq { s: 1, t: 2 }],
+            },
+        ];
+        let added = add_entailed_functional_clauses(&mut ht);
+        assert_eq!(added, 1);
+        assert!(ht.iter().any(|cl| {
+            cl.body.len() == 2
+                && cl.body.iter().all(|a| matches!(a, HAtom::Role { r: 0, .. }))
+                && matches!(cl.head.as_slice(), [HAtom::Eq { s: 1, t: 2 }])
+        }));
     }
 }

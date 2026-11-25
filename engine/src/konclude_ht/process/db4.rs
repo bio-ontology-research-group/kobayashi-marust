@@ -482,6 +482,7 @@ mod tests {
 
     #[test]
     fn db4_signature_blocking_candidate_hash_wrapper_allocates_and_copies_previous() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut prev = SignatureBlockingCandidateHash::new(INVALID);
         prev.insert_signature_blocking_candidates(17, vec![5, 6]);
@@ -512,6 +513,7 @@ mod tests {
 
     #[test]
     fn db4_signature_nominal_delaying_candidate_hash_wrapper_allocates() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
 
@@ -531,6 +533,7 @@ mod tests {
 
     #[test]
     fn db4_blocking_candidate_hash_wrappers_allocate_and_reuse() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
 

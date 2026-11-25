@@ -132,7 +132,12 @@ fn prepare_with_format(
                         OrchestrateError::OutOfFragment(format!("OWL/XML parse: {error}"))
                     })?;
             let mapped: ComponentMappedOntology<RcStr, RcAnnotatedComponent> = ontology.into();
-            write_functional(&mapped, Some(&prefixes))?
+            // Write full IRIs. The reader's mapping has the ontology IRI as its
+            // default prefix, and the writer would abbreviate every IRI under
+            // it to a relative form such as `/A`, which is not functional
+            // syntax (issue #6).
+            let _ = prefixes;
+            write_functional(&mapped, None)?
         }
         InputFormat::RdfXml | InputFormat::Turtle => {
             let rdf_format = match format {
@@ -176,6 +181,53 @@ fn prepare_with_format(
     })
 }
 
+/// The part of a Functional-Syntax input before its `Ontology` keyword (its
+/// `Prefix` declarations), or an empty string for any other syntax, whose
+/// conversion writes full IRIs. Used for `--iris full` output
+/// (`output_names`). Reads the file only up to that keyword.
+pub fn functional_prefix_head(path: &Path) -> Result<String, OrchestrateError> {
+    if sniff(path)? != InputFormat::Functional {
+        return Ok(String::new());
+    }
+    let mut reader = BufReader::new(File::open(path)?);
+    let mut head: Vec<u8> = Vec::new();
+    loop {
+        let chunk = reader.fill_buf()?;
+        if chunk.is_empty() {
+            break;
+        }
+        let taken = chunk.len();
+        head.extend_from_slice(chunk);
+        reader.consume(taken);
+        let text = String::from_utf8_lossy(&head);
+        if let Some(at) = ontology_keyword(&text) {
+            return Ok(text[..at].to_string());
+        }
+    }
+    Ok(String::from_utf8_lossy(&head).into_owned())
+}
+
+/// Byte offset of the first `Ontology(` that starts a token outside an IRI.
+fn ontology_keyword(text: &str) -> Option<usize> {
+    let mut in_iri = false;
+    let bytes = text.as_bytes();
+    for (at, &byte) in bytes.iter().enumerate() {
+        match byte {
+            b'<' => in_iri = true,
+            b'>' => in_iri = false,
+            b'O' if !in_iri
+                && text[at..].starts_with("Ontology")
+                && text[at + 8..].trim_start().starts_with('(')
+                && (at == 0 || bytes[at - 1].is_ascii_whitespace() || bytes[at - 1] == b')') =>
+            {
+                return Some(at);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 pub fn prepare(path: &Path) -> Result<PreparedInput<'_>, OrchestrateError> {
     prepare_with_format(path, sniff(path)?)
 }
@@ -206,6 +258,7 @@ mod tests {
 
     #[test]
     fn registered_functional_input_keeps_format_when_validation_bypass_is_disabled() {
+        let _test_env = crate::test_env::write();
         const CHILD: &str = "KM_TEST_REGISTERED_FUNCTIONAL_INPUT_CHILD";
         if std::env::var_os(CHILD).is_some() {
             let source = "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) SubClassOf(<urn:A> <urn:B>))";
@@ -258,6 +311,7 @@ mod tests {
 
     #[test]
     fn format_aliases_are_explicit() {
+        let _test_env = crate::test_env::write();
         assert_eq!(InputFormat::parse("ofn").unwrap(), InputFormat::Functional);
         assert_eq!(InputFormat::parse("OWL-XML").unwrap(), InputFormat::OwlXml);
         assert_eq!(InputFormat::parse("rdfxml").unwrap(), InputFormat::RdfXml);
@@ -265,8 +319,39 @@ mod tests {
         assert!(InputFormat::parse("manchester").is_err());
     }
 
+    /// Issue #6: entity IRIs and a version IRI under the ontology IRI stay
+    /// absolute, with and without `versionIRI`.
+    #[test]
+    fn owlxml_iris_under_the_ontology_iri_stay_absolute() {
+        let _test_env = crate::test_env::write();
+        for version in [" versionIRI=\"http://example.org/onto/2.0.0\"", ""] {
+            let owlxml = format!(
+                r#"<?xml version="1.0"?>
+<Ontology xmlns="http://www.w3.org/2002/07/owl#"
+ ontologyIRI="http://example.org/onto"{version}>
+ <Declaration><Class IRI="http://example.org/onto/A"/></Declaration>
+ <Declaration><Class IRI="http://example.org/onto/B"/></Declaration>
+ <SubClassOf>
+  <Class IRI="http://example.org/onto/A"/>
+  <Class IRI="http://example.org/onto/B"/>
+ </SubClassOf>
+</Ontology>"#
+            );
+            let result = convert(&owlxml, ".owx", "owlxml");
+            for full in ["http://example.org/onto/A", "http://example.org/onto/B"] {
+                assert!(
+                    result.iri_map.iter().any(|(_, iri)| iri == full),
+                    "{full} missing from {:?}",
+                    result.iri_map
+                );
+            }
+            assert!(result.iri_map.iter().all(|(_, iri)| !iri.starts_with('/')));
+        }
+    }
+
     #[test]
     fn owlxml_rdfxml_and_turtle_share_the_functional_frontend() {
+        let _test_env = crate::test_env::write();
         let owlxml = r#"<?xml version="1.0"?>
 <Ontology xmlns="http://www.w3.org/2002/07/owl#"
  ontologyIRI="http://example.org/test">

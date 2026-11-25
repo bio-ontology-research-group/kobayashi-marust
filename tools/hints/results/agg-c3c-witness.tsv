@@ -1,0 +1,181 @@
+input	fragment	size	classes	individuals	status	rows	certified	km_s	dump_s	find_s	check_s	check_mb	form	mode	readout_rows	mirror_only_rows	reason
+ore_ont_580	SHIQ+ABox	a<100K	21	18	full	803	803	0.06	6.4	0.0	3.4	72	certificate	witness		0	
+ore_ont_7839	SHIQ	a<100K	20	0	none	402	0	0.01	199.1			0		witness		0	dump: 
+ore_ont_10309	EL	a<100K	9	0	full	86	86	0.01	5.9	0.0	0.1	71	certificate	witness		0	
+ore_ont_5107	SHOIQ	a<100K	49	24	full	3448	3448	0.07	26.4	0.2	110.6	74	,flat	witness		0	no-model: clash in a core type
+ore_ont_9854	EL	a<100K	60	0	full	3482	3482	0.01	14.3	0.1	17.2	72	certificate	witness		0	
+ore_ont_13392	EL	a<100K	124	0	partial	15380	4925	0.02	12.7	0.1	52.9	74	certificate	witness		0	dump: ting due to uncaught exception of type lean::exception: failed to create thread
+
+ore_ont_12957	SHIQ	a<100K	99	0	full	9813	9813	0.01	12.1	0.1	151.5	76	certificate	witness		0	
+ore_ont_2038	SHIQ+ABox	a<100K	51	0	partial	2480	1908	0.01	13.1	0.1	131.7	73	flat	witness		0	dump: ting due to uncaught exception of type lean::exception: failed to create thread
+
+ore_ont_10321	SHOIQ	a<100K	12	5	none	218	0	0.04	121.0			0		witness		0	dump: timeout
+ore_ont_8128	ALC	a<100K	43	0	full	1879	1879	0.02	14.5	0.1	66.3	71	flat	witness		0	
+ore_ont_16076	EL	a<100K	189	0	partial	35120	191	0.02	13.2	0.1	30.4	68	certificate,flat	readout	34929	0	readout mode: rows beyond the witness cap need R4
+ore_ont_7270	EL	a<100K	83	0	full	6646	6646	0.01	13.8	0.1	75.8	74	flat	witness		0	
+ore_ont_13018	EL	a<100K	176	0	partial	30665	178	0.01	13.0	0.1	21.6	67	certificate	readout	30487	0	readout mode: rows beyond the witness cap need R4
+ore_ont_6735	EL	a<100K	214	0	partial	44978	216	0.01	12.4	0.1	52.3	71	certificate	readout	44762	0	readout mode: rows beyond the witness cap need R4
+ore_ont_15229	SHIQ	a<100K	93	0	none	8542	0	0.03	241.6			0		witness		0	dump: timeout
+ore_ont_12101	SHIQ+ABox	a<100K	32	1	none	1024	0	0.05	56.1			0		witness		0	dump: INTERNAL PANIC: out of memory
+
+ore_ont_2652	SHI	a<100K	92	0	partial	7498	817	0.29	23.1	0.6	241.7	75	certificate,flat	witness		6681	checker: timeout
+ore_ont_8335	SHIQ+ABox	a<100K	116	0	none	13244	0	0.06	12.3	0.2	240.0	76	flat	witness		5652	checker: timeout
+ore_ont_10413	SHIQ+ABox	a<100K	69	2	full	4970	4970	0.02	14.2	0.1	32.3	74	certificate	witness		0	
+ore_ont_4223	SHI	a<100K	75	0	full	5601	5601	0.02	12.0	0.1	128.1	74	flat	witness		0	
+ore_ont_420	SHIQ+ABox	a<100K	170	5	none	29718	0	0.03	242.6			0		witness		0	dump: timeout
+ore_ont_8226	EL	a<100K	105	0	partial	10914	1029	0.01	19.3	0.3	250.7	72	flat	witness		9885	checker: timeout
+ore_ont_6812	EL	a<100K	88	0	full	7347	7347	0.01	13.5	0.1	77.1	75	certificate	witness		0	
+ore_ont_11497	EL	a<100K	105	0	partial	10924	1031	0.01	17.8	0.4	270.2	76	flat	witness		7627	checker: timeout
+ore_ont_385	SHOIQ	a<100K	45	8	none	2365	0	0.06	241.6			0		witness		0	dump: timeout
+ore_ont_5258	SHOIQ	a<100K	149	19	partial	24841	1474	0.09	19.4	0.3	256.1	82	certificate	witness		23367	checker: timeout
+ore_ont_3260	SHIQ+ABox	a<100K	38	1	none	1455	0	0.05	120.6			0		witness		0	dump: timeout
+ore_ont_6617	SHIQ+ABox	a<100K	30	47	none	2272	0	0.04	120.6			0		witness		0	dump: timeout
+ore_ont_14848	SHIQ+ABox	a<100K	30	47	none	2272	0	0.04	120.8			0		witness		0	dump: timeout
+ore_ont_4936	SHIQ+ABox	a<100K	30	47	none	2272	0	0.04	120.8			0		witness		0	dump: timeout
+ore_ont_3987	SHIQ+ABox	a<100K			signature-failed	0	0	0.04				0					
+ore_ont_16274	SHIQ+ABox	a<100K			signature-failed	0	0	0.25				0					
+ore_ont_3205	SHIQ+ABox	a<100K			signature-failed	0	0	0.08				0					
+ore_ont_16814	SHIQ+ABox	a<100K			signature-failed	0	0	0.48				0					
+ore_ont_541	SHIQ	a<100K			signature-failed	0	0	0.09				0					
+ore_ont_12150	SHIQ+ABox	a<100K			signature-failed	0	0	0.06				0					
+ore_ont_7525	SHI	a<100K			km-failed	0	0	0.01				0					km: rc 1
+ore_ont_11010	EL	a<100K			signature-failed	0	0	0.01				0					
+ore_ont_13066	SHIQ+ABox	a<100K	116	12	partial	14966	1161	0.04	26.7	0.1	310.3	77	certificate	witness		13805	checker: timeout
+ore_ont_778	SHOIQ	a<100K	122	10	none	15522	0	0.65	25.7	111.3		0		witness		0	no-model: closure budget
+ore_ont_5679	EL	a<100K	129	0	partial	16470	5070	0.01	13.2	0.2	176.6	78	certificate	witness		11400	checker: timeout
+ore_ont_14325	EL	a<100K	136	0	partial	18303	1337	0.01	20.9	0.3	291.2	74	flat	witness		10671	checker: timeout
+ore_ont_10833	SHIQ+ABox	a<100K	112	18	partial	14674	1121	0.05	26.7	0.1	320.8	77	certificate	witness		13553	checker: timeout
+ore_ont_2662	EL	a<100K	142	0	partial	19990	5601	0.01	14.8	0.2	189.0	81	certificate	witness		14389	checker: timeout
+ore_ont_7890	EL	a<100K	267	0	partial	69873	41	0.02	11.9	0.1	131.0	72	certificate	readout	10409	228	checker: timeout
+ore_ont_13301	EL	a<100K	437	0	partial	179591	139	0.06	25.9	0.3	204.0	73	certificate	readout	56674	300	checker: timeout
+ore_ont_8119	SHIQ+ABox	a<100K	85	1	none	7288	0	0.09	241.7			0		witness		0	dump: timeout
+ore_ont_12323	SHIQ+ABox	a<100K	82	56	none	11118	0	0.09	240.6			0		witness		0	dump: timeout
+ore_ont_5263	SHIQ+ABox	a<100K	130	10	partial	18332	1301	0.04	29.3	0.2	282.9	77	certificate	witness		17031	checker: timeout
+ore_ont_3418	EL	a<100K	453	0	partial	204126	116	0.03	18.9	0.3	226.3	72	certificate,flat	readout	51596	300	checker: timeout
+ore_ont_1430	SHIQ+ABox	a<100K	46	93	none	6278	0	0.44	240.7			0		witness		0	dump: timeout
+ore_ont_3292	SHIQ+ABox	a<100K	142	6	partial	21160	1421	0.04	30.3	0.2	278.2	80	certificate	witness		19739	checker: timeout
+ore_ont_14341	SHIQ+ABox	a<100K	177	42	none	37561	0	0.09	17.5	0.1	240.0	71	flat	readout		50	checker: timeout
+ore_ont_85	SHIQ+ABox	a<100K	31	56	none	2629	0	0.16	120.3			0		witness		0	dump: timeout
+ore_ont_13234	EL	a<100K	539	0	partial	288101	116	0.02	18.3	0.3	252.4	71	certificate	readout	61230	300	checker: timeout
+ore_ont_6981	SHI	a<100K	227	0	none	51282	0	0.04	358.0			0		readout		0	dump: INTERNAL PANIC: out of memory
+
+ore_ont_13584	SROIQ	a<100K	117	117	none	25858	0	1.56	240.8			0		witness		0	dump: timeout
+ore_ont_3832	EL	b<1M	564	0	partial	315805	116	0.81	16.7	0.3	288.1	72	certificate	readout	64254	300	checker: timeout
+ore_ont_14185	SHIQ+ABox	b<1M	340	482	none	278378	0	1.16	10.7	1.7	240.0	72	certificate	readout		50	checker: timeout
+ore_ont_7668	SHOIQ	b<1M	73	161	none	16294	0	0.81	224.3			0		witness		0	dump: timeout
+ore_ont_11978	SHIQ+ABox	b<1M	67	118	none	12463	0	0.09	13.8	1.2	240.0	76	certificate,flat	witness		11256	checker: timeout
+ore_ont_16054	SHIQ+ABox	b<1M	274	0	none	74114	0	0.02	11.9	5.3	240.0	73	certificate,flat	readout		50	checker: timeout
+ore_ont_12721	SHIQ+ABox	b<1M	61	172	none	14275	0	0.15	15.9	0.9	240.0	77	flat	witness		13542	checker: timeout
+ore_ont_2456	SHIQ+ABox	b<1M	464	0	none	215758	0	0.07	12.6	0.5	240.0	69	flat	readout		50	checker: timeout
+ore_ont_7339	SHOIQ	b<1M	78	57	none	10462	0	0.27	240.6			0		witness		0	dump: timeout
+ore_ont_630	SHIQ+ABox	b<1M	454	0	none	206197	0	0.02	10.9	0.7	240.0	73	flat	readout		50	checker: timeout
+ore_ont_9024	SHI	b<1M	279	0	none	77214	0	0.19	66.7	91.3	120.0	70	,flat	readout		40	no-model: no type for a successor
+ore_ont_12141	SHI	b<1M	279	0	none	77214	0	0.17	66.8	87.7	120.0	70	,flat	readout		40	no-model: no type for a successor
+ore_ont_5057	EL	b<1M	554	0	partial	306857	11	0.02	17.3	0.1	328.0	72	flat	readout	5517	136	checker: timeout
+ore_ont_2556	SHIQ+ABox	b<1M	181	92	none	49596	0	0.07	24.0	0.3	240.0	72	certificate	readout		50	checker: timeout
+ore_ont_9054	SHIQ	b<1M	280	0	none	78006	0	0.79	240.7			0		readout		0	dump: timeout
+ore_ont_3685	SHIQ	b<1M	284	0	none	80243	0	0.51	240.6			0		readout		0	dump: timeout
+ore_ont_10320	SHOIQ	b<1M	322	103	none	134556	0	0.26	240.9			0		readout		0	dump: timeout
+ore_ont_155	SHOIQ	b<1M	377	82	none	171291	0	0.11	13.6	0.1	240.0	72	flat	readout		50	checker: timeout
+ore_ont_6024	EL	b<1M	82	0	none	6325	0	0.03	242.1			0		witness		0	dump: timeout
+ore_ont_3349	EL	b<1M	746	0	partial	550874	11	0.03	11.9	0.0	238.0	69	flat	readout	7375	40	checker: timeout
+ore_ont_3352	EL	b<1M	1292	0	none	1667643	0	0.04	11.0	0.0	240.0	73	certificate	readout		50	checker: timeout
+ore_ont_15413	SHOIQ	b<1M	462	103	none	257730	0	0.33	240.7			0		readout		0	dump: timeout
+ore_ont_15575	SHOIQ	b<1M	479	103	none	275678	0	0.33	240.7			0		readout		0	dump: timeout
+ore_ont_10807	SHIQ+ABox	b<1M	819	66	none	719824	0	0.44	314.5			0		readout		0	dump: INTERNAL PANIC: out of memory
+
+ore_ont_3156	SHOIQ	b<1M	137	206	none	45442	0	1.51	338.8			0		readout		0	dump: INTERNAL PANIC: out of memory
+
+ore_ont_14334	SHOIQ	b<1M	138	206	none	46109	0	1.16	339.3			0		readout		0	dump: timeout
+ore_ont_1406	EL	b<1M	1192	0	none	1417988	0	0.03	11.5	0.0	240.0	73	flat	readout		50	checker: timeout
+ore_ont_12084	SHOIQ	b<1M	483	103	none	279789	0	0.47	240.7			0		readout		0	dump: timeout
+ore_ont_4261	EL	b<1M	1070	0	none	1140848	0	0.04	15.8	0.0	180.0	72	certificate	readout		50	checker: timeout
+ore_ont_10419	EL	b<1M	1396	0	none	1943836	0	0.08	16.9	0.0	180.0	71	certificate	readout		50	checker: timeout
+ore_ont_10517	SROIQ	b<1M	904	153	none	942734	0	162.74				0		readout		0	wall budget
+ore_ont_8135	EL	b<1M	709	0	none	501943	0	0.03	15.8	0.0	180.0	72	certificate,flat	readout		50	checker: timeout
+ore_ont_3835	SHOIQ	b<1M	816	44	none	698450	0	0.18	14.5	0.0	180.0	69	certificate	readout		50	checker: timeout
+ore_ont_12925	SHOIQ	b<1M	659	103	none	497707	0	0.64	180.7			0		readout		0	dump: timeout
+ore_ont_6939	EL	b<1M	1831	0	none	3345771	0	0.09	13.9	0.1	180.0	72	certificate	readout		50	checker: timeout
+ore_ont_10134	EL	b<1M	1538	0	none	2360190	0	0.04	14.6	0.1	180.0	73	flat	readout		50	checker: timeout
+ore_ont_1346	SHIQ+ABox	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_12892	SHIQ+ABox	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_13298	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_15030	SHOIQ	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_725	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_3003	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_7610	SHIQ+ABox	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_2496	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_13219	SHIQ+ABox	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_380	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_8290	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_524	SHIQ+ABox	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_3545	SHIQ+ABox	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_218	SROIQ	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_9435	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_6727	SHOIQ	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_9673	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_15301	SHIQ+ABox	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_2703	SHOIQ	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_3550	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_14396	EL	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_10781	SHIQ+ABox	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_15108	ALC	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_7680	SHIQ+ABox	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_6822	SHOIQ	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_1672	SHOIQ	b<1M			no-result (driver killed or still running)	0	0					0					
+ore_ont_11623	SHIQ	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_9790	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_14860	SHOIQ	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_7372	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_1065	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_4737	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_2548	SROIQ	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_3177	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_5792	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_14191	SHOIQ	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_7726	ALC	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_3712	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_4609	SHOIQ	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_33	ALC	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_15363	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_3529	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_2578	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_13000	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_802	SHOIQ	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_205	SROIQ	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_10992	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_15288	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_4733	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_10949	SHOIQ	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_12410	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_15260	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_7234	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_964	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_6800	SHIQ	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_8792	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_1508	SHI	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_11081	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_8441	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_12330	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_5815	EL	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_12992	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_7401	SHIQ+ABox	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_1310	SHI	c<10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_1059	SHIQ	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_269	EL	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_15372	SHIQ+ABox	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_15929	EL	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_15226	SHOIQ	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_6952	SHIQ	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_4744	SHIQ+ABox	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_3733	SHIQ+ABox	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_12208	SROIQ	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_12012	ALC	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_7728	SHI	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_1938	SHOIQ	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_2082	SHI	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_12387	EL	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_5596	SHIQ+ABox	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_5475	SHIQ+ABox	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_7246	SROIQ	d>=10M			no-result (driver killed or still running)	0	0					0					
+ore_ont_6212	ALC	d>=10M			no-result (driver killed or still running)	0	0					0					

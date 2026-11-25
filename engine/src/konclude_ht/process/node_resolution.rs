@@ -601,6 +601,7 @@ mod node_vector_cow_tests {
 
     #[test]
     fn node_vector_cow_matches_flat_sparse_boundaries_and_none_growth() {
+        let _test_env = crate::test_env::read();
         let mut vector = IndividualProcessNodeVector::default();
         let mut flat = FlatVector::default();
         same(&vector, &flat);
@@ -630,6 +631,7 @@ mod node_vector_cow_tests {
 
     #[test]
     fn node_vector_cow_retained_siblings_and_nested_restore_match_flat() {
+        let _test_env = crate::test_env::read();
         let mut parent = IndividualProcessNodeVector::new();
         let mut flat_parent = FlatVector::default();
         for id in [0, 255, 256, 1025, -1, -256, -1025] {
@@ -666,6 +668,7 @@ mod node_vector_cow_tests {
 
     #[test]
     fn node_vector_cow_shared_write_detaches_only_touched_chunk() {
+        let _test_env = crate::test_env::read();
         let mut parent = IndividualProcessNodeVector::new();
         parent.set_data(3 * NODE_VECTOR_CHUNK_SIZE as Cint64 - 1, NodeId::new(5));
         parent.set_data(-257, NodeId::new(6));
@@ -684,6 +687,7 @@ mod node_vector_cow_tests {
 
     #[test]
     fn node_vector_cow_databox_epochs_restore_signed_mapping_and_lengths() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut flat = FlatVector::default();
         // Real arena nodes precede both epochs, so each saved mapping remains valid.

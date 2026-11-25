@@ -27,6 +27,7 @@ import ContextCalculus.CBStandaloneContextProofWire
 import ContextCalculus.CBSourceProductionTaxonomyWire
 import ContextCalculus.CBGlobalProductionClosure
 import ContextCalculus.CBGlobalModelWire
+import ContextCalculus.CBRSuccDemand
 
 /-!
 # Public CB certification surface
@@ -78,6 +79,33 @@ theorem certifiedCBGlobalProductionClosure
           decoded⟩
 
 #print axioms certifiedCBGlobalProductionClosure
+
+/-- The r-Succ closures owe only the offers that are not deferred
+(`CBRSuccClosure.DemandView.deferred`).  A deferred label `B(o)` is unread at
+its target: no central Hyper step over the target's retained clauses reads it,
+no equation of those clauses rewrites it, and no successor of the target needs
+it. -/
+theorem certifiedCBDeferredLabelUnread (view : CBRSuccClosure.DemandView)
+    (labels : CBRSuccClosure.IndividualLabels) (target concept individual : Nat)
+    (hdeferred : view.deferred labels target (.concept concept (.const individual)) = true)
+    (htarget : target ∈ view.nodes) :
+    ((∀ source ∈ view.ontology, ∀ σ : List (Int × CheckerTerm.FTerm),
+        CheckerTerm.substT σ (.var 0) = .var 0 →
+        CheckerTerm.FLit.P (.concept concept (.const individual)) ∈
+          (CheckerTerm.substCl σ source).body →
+        ¬ ∀ literal ∈ (CheckerTerm.substCl σ source).body,
+          ∃ provider ∈ view.retained target, literal ∈ provider.head) ∧
+      (∀ order : CBFiniteTermOrderWire.DecodedFiniteTermOrderDocument,
+        ∀ equality ∈ view.retained target, ∀ left right,
+          CheckerTerm.FLit.eq left right ∈ equality.head →
+          CBLocalEqEnumeration.directRewrite order left right
+            (.P (.concept concept (.const individual))) = none)) ∧
+    (∀ edge ∈ view.edges, edge.1 = target →
+      edge.2 ∉ view.needClosure concept individual) :=
+  ⟨CBRSuccDemand.deferred_label_unread view labels target concept individual hdeferred htarget,
+    CBRSuccDemand.deferred_successors_outside view labels target concept individual hdeferred⟩
+
+#print axioms certifiedCBDeferredLabelUnread
 
 /-- The model-existence half of CB completeness over the finite blocked
 grounding. One accepted document proves every production rule family closed

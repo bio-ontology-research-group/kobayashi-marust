@@ -16,12 +16,24 @@ procedure checks regularity and declines otherwise.
 
 namespace ContextCalculus.OWL
 
+/-- A property IRI or the inverse of one (not `owl:topObjectProperty` or
+`owl:bottomObjectProperty`). -/
+def ObjProp.isBasic : ObjProp → Bool
+  | .named _ | .inv _ => true
+  | .top | .bot => false
+
+theorem ObjProp.isBasic_of_isNamed {r : ObjProp} (h : r.isNamed = true) : r.isBasic = true := by
+  cases r <;> simp_all [isNamed, isBasic]
+
 /-- ALC class expressions over named or inverse properties. -/
 def ClassExpr.isALCI : ClassExpr → Bool
   | .cls _ | .thing | .nothing => true
   | .and cs | .or cs => cs.attach.all fun ⟨c, _⟩ => c.isALCI
   | .not c => c.isALCI
-  | .some _ c | .all _ c => c.isALCI
+  | .some r c | .all r c => r.isBasic && c.isALCI
+  | .oneOf _ | .hasValue .. | .hasSelf _ | .min .. | .max .. | .exact ..
+  | .dataSome .. | .dataAll .. | .dataHasValue .. | .dataMin .. | .dataMax ..
+  | .dataExact .. => false
 termination_by c => sizeOf c
 decreasing_by
   all_goals simp_wf
@@ -32,11 +44,21 @@ decreasing_by
 def Axiom.isSRI : Axiom → Bool
   | .subClassOf c d => c.isALCI && d.isALCI
   | .equivalentClasses cs | .disjointClasses cs => cs.all ClassExpr.isALCI
-  | .domain _ c | .range _ c => c.isALCI
-  | .subObjectPropertyOf rs _ => !rs.isEmpty
-  | .equivalentObjectProperties _ | .inverseObjectProperties _ _
-  | .transitive _ | .symmetric _ => true
+  | .domain r c | .range r c => r.isBasic && c.isALCI
+  | .subObjectPropertyOf rs r => !rs.isEmpty && rs.all ObjProp.isBasic && r.isBasic
+  | .equivalentObjectProperties rs => rs.all ObjProp.isBasic
+  | .inverseObjectProperties r s => r.isBasic && s.isBasic
+  | .transitive r | .symmetric r => r.isBasic
   | .declareClass _ | .declareObjectProperty _ => true
+  | .declareDataProperty _ | .declareNamedIndividual _ | .declareDatatype _
+  | .declareAnnotationProperty _ => true
+  | .disjointUnion .. | .disjointObjectProperties _ | .functional _
+  | .inverseFunctional _ | .reflexive _ | .irreflexive _ | .asymmetric _
+  | .subDataPropertyOf .. | .equivalentDataProperties _ | .disjointDataProperties _
+  | .dataDomain .. | .dataRange .. | .functionalData _ | .datatypeDefinition ..
+  | .hasKey .. | .sameIndividual _ | .differentIndividuals _ | .classAssertion ..
+  | .objectPropertyAssertion .. | .negativeObjectPropertyAssertion ..
+  | .dataPropertyAssertion .. | .negativeDataPropertyAssertion .. => false
 
 def Ontology.isSRI (O : Ontology) : Bool := O.axioms.all Axiom.isSRI
 
@@ -55,7 +77,8 @@ part: OWL EL allows any chain, for example
 -/
 
 def Axiom.isSHI : Axiom → Bool
-  | .subObjectPropertyOf rs r => rs.length == 1 || rs == [r, r]
+  | .subObjectPropertyOf rs r =>
+      (rs.length == 1 || rs == [r, r]) && rs.all ObjProp.isBasic && r.isBasic
   | ax => ax.isSRI
 
 def Ontology.isSHI (O : Ontology) : Bool := O.axioms.all Axiom.isSHI
@@ -63,9 +86,10 @@ def Ontology.isSHI (O : Ontology) : Bool := O.axioms.all Axiom.isSHI
 theorem Axiom.isSRI_of_isSHI {ax : Axiom} (h : ax.isSHI = true) : ax.isSRI = true := by
   cases ax with
   | subObjectPropertyOf rs r =>
-      simp only [isSHI, Bool.or_eq_true, beq_iff_eq] at h
-      simp only [isSRI, Bool.not_eq_true', List.isEmpty_eq_false_iff]
-      rcases h with h | rfl
+      simp only [isSHI, Bool.or_eq_true, beq_iff_eq, Bool.and_eq_true] at h
+      simp only [isSRI, Bool.not_eq_true', List.isEmpty_eq_false_iff, Bool.and_eq_true]
+      refine ⟨⟨?_, h.1.2⟩, h.2⟩
+      rcases h.1.1 with h | rfl
       · exact List.ne_nil_of_length_pos (by omega)
       · simp
   | _ => exact h
@@ -90,11 +114,15 @@ theorem ClassExpr.isALCI_of_isALC : ∀ (c : ClassExpr), c.isALC = true → c.is
       rw [isALC] at h; rw [isALCI]
       exact isALCI_of_isALC c h
   | .some _ c, h => by
-      rw [isALC, Bool.and_eq_true] at h; rw [isALCI]
-      exact isALCI_of_isALC c h.2
+      rw [isALC, Bool.and_eq_true] at h; rw [isALCI, Bool.and_eq_true]
+      exact ⟨ObjProp.isBasic_of_isNamed h.1, isALCI_of_isALC c h.2⟩
   | .all _ c, h => by
-      rw [isALC, Bool.and_eq_true] at h; rw [isALCI]
-      exact isALCI_of_isALC c h.2
+      rw [isALC, Bool.and_eq_true] at h; rw [isALCI, Bool.and_eq_true]
+      exact ⟨ObjProp.isBasic_of_isNamed h.1, isALCI_of_isALC c h.2⟩
+  | .oneOf _, h | .hasValue .., h | .hasSelf _, h | .min .., h | .max .., h
+  | .exact .., h | .dataSome .., h | .dataAll .., h | .dataHasValue .., h
+  | .dataMin .., h | .dataMax .., h | .dataExact .., h => by
+      rw [isALC] at h; exact absurd h (by simp)
 termination_by c => sizeOf c
 decreasing_by
   all_goals simp_wf
@@ -104,7 +132,8 @@ decreasing_by
 
 theorem Axiom.isSHI_of_isALC {ax : Axiom} (h : ax.isALC = true) : ax.isSHI = true := by
   cases ax <;>
-    simp_all [isALC, isSHI, isSRI, List.all_eq_true, ClassExpr.isALCI_of_isALC]
+    simp_all [isALC, isSHI, isSRI, List.all_eq_true, ClassExpr.isALCI_of_isALC,
+      ObjProp.isBasic_of_isNamed]
 
 /-- OWL ALC is part of SHI. -/
 theorem Ontology.isSHI_of_isALC {O : Ontology} (h : O.isALC = true) : O.isSHI = true := by

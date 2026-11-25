@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex/rational-point>
+SubClassOf(:A DataSomeValuesFrom(:p DataIntersectionOf(DatatypeRestriction(owl:rational xsd:minInclusive "0"^^xsd:integer) DatatypeRestriction(owl:rational xsd:maxInclusive "0"^^xsd:integer) DataComplementOf(xsd:decimal))))
+)

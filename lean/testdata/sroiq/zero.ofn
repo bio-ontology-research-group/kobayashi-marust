@@ -1,0 +1,7 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/zero>
+SymmetricObjectProperty(:r)
+SubClassOf(:C ObjectSomeValuesFrom(:r :D))
+SubClassOf(:A ObjectMaxCardinality(0 :r :B))
+ClassAssertion(:C :c)
+)

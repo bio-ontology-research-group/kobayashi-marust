@@ -1,0 +1,5 @@
+# does not check (the type of a misses the definition name 5): the route searches
+blocks 2
+ty 0 0 2 3
+ty 1 1 3
+lab 0 1 +0

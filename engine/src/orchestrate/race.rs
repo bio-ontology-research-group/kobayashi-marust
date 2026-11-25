@@ -143,6 +143,8 @@ fn tableau_to_out(t: TOutput) -> EngineOut {
         dropped: 0,
         unresolved: Vec::new(),
         pair_form: true,
+        worker_model_path: None,
+        worker_model_payload: None,
     }
 }
 
@@ -243,20 +245,18 @@ fn spawn_tableau(
         return None;
     }
     let out_path = super::tmpfile::TempPath::new(".tabrace.json");
-    let mut cmd = if cfg.tab_race_nice {
-        let mut c = Command::new("nice");
-        c.arg("-n").arg("19").arg(&tab_prog).args(&tab_pre);
-        c
-    } else {
-        let mut c = Command::new(&tab_prog);
-        c.args(&tab_pre);
-        c
-    };
+    let mut cmd = engine_run::worker_command(&tab_prog, &tab_pre, cfg.tab_race_nice.then_some("19"), true);
     cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path()).ok()?)
         .stderr(Stdio::null())
         .env("KM_TAB_CACHE", "1")
         .env("KM_TAB_ORD", &cfg.tab_ord);
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let mut model_out = out_path.path().as_os_str().to_os_string();
+        model_out.push(".model");
+        cmd.env("KM_WORKER_MODEL_OUT", model_out);
+    }
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().ok()?;
     // feed the TInput on a background thread (ignore broken pipe if the tableau
     // exits before draining — the small TInput never deadlocks)
@@ -331,10 +331,13 @@ where
                 if let Ok(Some(st)) = child.try_wait() {
                     let mut won = None;
                     if st.success() {
-                        if let Ok(f) = File::open(outp.path()) {
-                            if let Ok(t) = serde_json::from_reader::<_, TOutput>(BufReader::new(f))
+                        if let Ok(bytes) = std::fs::read(outp.path()) {
+                            if let Ok(t) = serde_json::from_slice::<TOutput>(&bytes)
                             {
-                                won = Some(tableau_to_out(t));
+                                let mut w = tableau_to_out(t);
+                                w.worker_model_path =
+                                    super::model_export::worker_model_sidecar_if_exists(outp.path());
+                                won = Some(w);
                             }
                         }
                     }
@@ -388,21 +391,24 @@ pub fn race_absorbed_plain(
     absorbed_path: &Path,
     engine_threads: &ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
-    if let Some(plain) = frontend_run::run_ofn_plain(cfg, ont, false) {
-        let threads = engine_threads.get().map(|t| t.to_string());
-        let (engine_prog, engine_pre) = cfg.engine_cmd();
-        let res = engine_run::run_engine(
-            &engine_prog,
-            &engine_pre,
-            plain.path(),
-            threads.as_deref(),
-            Some(cfg.par_mem_gb),
-            Some(cfg.absorb_probe_s),
-            &[],
-            false,
-        )?;
-        if res.code == 0 {
-            return parse_out(&res);
+    let skip_plain_probe = std::fs::metadata(absorbed_path).is_ok_and(|m| m.len() > 50_000_000);
+    if !skip_plain_probe {
+        if let Some(plain) = frontend_run::run_ofn_plain(cfg, ont, false) {
+            let threads = engine_threads.get().map(|t| t.to_string());
+            let (engine_prog, engine_pre) = cfg.engine_cmd();
+            let res = engine_run::run_engine(
+                &engine_prog,
+                &engine_pre,
+                plain.path(),
+                threads.as_deref(),
+                Some(cfg.par_mem_gb),
+                Some(cfg.absorb_probe_s),
+                &[],
+                false,
+            )?;
+            if res.code == 0 {
+                return parse_out(&res);
+            }
         }
     }
     // plain absent or did not finish fast: run the absorbed set with full budget
@@ -449,17 +455,26 @@ fn ordinary_ht_workers(clause_count: usize, available: usize) -> usize {
 /// hundreds-of-MB) output goes straight to a temp file, never an undrained pipe.
 /// Not registered in the LIVE engine set — it is killed directly, mirroring
 /// `owl_classify` where `elc_race` is never added to `_LIVE_ENGINES`.
-fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
+fn spawn_elc_cert(
+    cfg: &Config,
+    clauses_path: &Path,
+    nice: bool,
+) -> Option<(Child, super::tmpfile::TempPath)> {
     let out_path = super::tmpfile::TempPath::new(".elcrace.json");
     let cert = std::env::var("KM_ELC_CERT").unwrap_or_else(|_| "2".to_string());
     let (elc_prog, elc_pre) = cfg.elc_cmd();
-    let mut cmd = Command::new(&elc_prog);
+    let mut cmd = engine_run::worker_command(&elc_prog, &elc_pre, (nice && cfg.tab_race_nice).then_some("19"), false);
     cmd.env("KM_ELC_OUTPUT_BINARY", "1");
-    cmd.args(&elc_pre)
-        .stdin(File::open(clauses_path).ok()?)
+    cmd.stdin(File::open(clauses_path).ok()?)
         .stdout(File::create(out_path.path()).ok()?)
         .stderr(Stdio::null())
         .env("KM_ELC_CERT", &cert);
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let mut model_out = out_path.path().as_os_str().to_os_string();
+        model_out.push(".model");
+        cmd.env("KM_WORKER_MODEL_OUT", model_out);
+    }
+    crate::mem::release_code_pages();
     let child = cmd.spawn().ok()?;
     Some((child, out_path))
 }
@@ -514,7 +529,7 @@ fn sequential_elc_then_residue(
     clauses_path: &Path,
     engine_threads: &ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
-    let Some((mut elc, elc_out)) = spawn_elc_cert(cfg, clauses_path) else {
+    let Some((mut elc, elc_out)) = spawn_elc_cert(cfg, clauses_path, false) else {
         return run_elc_portfolio_cb(cfg, ont, clauses_path, engine_threads);
     };
     let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
@@ -578,6 +593,12 @@ fn sequential_elc_then_residue(
                         partial.subsumptions.insert(subject, supers);
                     }
                     partial.inconsistent = partial.inconsistent || exact.inconsistent;
+                    partial.worker_model_path = None;
+                    partial.worker_model_payload = Some(Arc::new(
+                        super::model_export::WorkerModelPayload::Declined(
+                            "answered via hybrid partial-EL + query-restricted CB residue".into(),
+                        ),
+                    ));
                     return Ok(partial);
                 }
             }
@@ -602,7 +623,8 @@ pub fn race_adaptive_vs_elc(
     if std::env::var_os("KM_ELC_SEQUENTIAL").is_some() {
         return sequential_elc_then_residue(cfg, ont, clauses_path, &engine_threads);
     }
-    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path) {
+    let nice_elc = std::fs::metadata(ont).is_ok_and(|m| m.len() < 1_000_000);
+    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path, nice_elc) {
         Some(x) => x,
         // elc could not start: the engine answers alone.
         None => return run_elc_portfolio_cb(cfg, ont, clauses_path, &engine_threads),
@@ -705,6 +727,13 @@ pub fn race_adaptive_vs_elc(
                                 p.subsumptions.insert(k, v); // dict.update: eng overwrites
                             }
                             p.inconsistent = p.inconsistent || eng.inconsistent;
+                            p.worker_model_path = None;
+                            p.worker_model_payload = Some(Arc::new(
+                                super::model_export::WorkerModelPayload::Declined(
+                                    "answered via hybrid partial-EL + query-restricted CB residue"
+                                        .into(),
+                                ),
+                            ));
                             winner = Some(p);
                             break;
                         }
@@ -1004,11 +1033,51 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
                 (clause.body.as_slice(), clause.head.as_slice()),
                 ([cb_to_ht::HAtom::Role { r, s, t }, cb_to_ht::HAtom::Role { r: r2, s: s2, t: t2 }], [])
                     if r == r2 && s != t && s == t2 && t == s2
-            ))) || (fence.reason == "reflexivity" && tin.roles.iter().position(|r| r == &fence.detail).is_some_and(|role| {
-            tin.clauses.iter().any(|clause| matches!(
+            ))) || (!crate::routing::ground_rule_zero_rules_mode()
+            && fence.reason == "role-constraint"
+            && fence.detail == "DisjointObjectProperties"
+            && tin.clauses.iter().any(|clause| matches!(
                 (clause.body.as_slice(), clause.head.as_slice()),
-                ([], [cb_to_ht::HAtom::Role { r, s, t }]) if *r == role && s == t
-            ))
+                ([cb_to_ht::HAtom::Role { r, s, t }, cb_to_ht::HAtom::Role { r: r2, s: s2, t: t2 }], [])
+                    if r != r2 && s != t && s == s2 && t == t2
+            ))) || (fence.reason == "reflexivity" && tin.roles.iter().position(|r| r == &fence.detail).is_some_and(|role| {
+            tin.clauses.iter().any(|clause| match (clause.body.as_slice(), clause.head.as_slice()) {
+                ([], [cb_to_ht::HAtom::Role { r, s, t }]) => *r == role && s == t,
+                (
+                    [],
+                    [
+                        cb_to_ht::HAtom::Concept {
+                            neg: false,
+                            c,
+                            t: s2,
+                        },
+                        cb_to_ht::HAtom::Role { r, s, t },
+                    ],
+                )
+                | (
+                    [],
+                    [
+                        cb_to_ht::HAtom::Role { r, s, t },
+                        cb_to_ht::HAtom::Concept {
+                            neg: false,
+                            c,
+                            t: s2,
+                        },
+                    ],
+                ) => {
+                    !crate::routing::ground_rule_zero_rules_mode()
+                        && (tin.fenced.iter().filter(|f| f.reason == "reflexivity").count() <= 4
+                            || !tin.transitive.contains(&role))
+                        && *r == role
+                        && s == t
+                        && s == s2
+                        && tin
+                            .concepts
+                            .get(*c)
+                            .is_some_and(|name| name == crate::frontend::sorts::DATA_SORT)
+                }
+                _ => false,
+            })
         })) || (source_tbox && matches!(fence.reason.as_str(), "complex-domain" | "complex-range"))
             || (source_tbox
                 && tin.nominal_abox.complete
@@ -1569,7 +1638,7 @@ fn native_nominal_clause_represented(clause: &JClause, index: &NativeNominalInde
 /// making `cb_to_ht` count the unsupported construct and forcing a bridge
 /// defer. The original clause file is untouched and remains the input of the
 /// nominal-aware CB arm.
-fn native_nominal_bridge_clauses<'a>(
+pub(crate) fn native_nominal_bridge_clauses<'a>(
     clauses: &'a [JClause],
     nominal_abox: &crate::json_io::NominalAboxMeta,
     definers: &[crate::json_io::DefinerMeta],
@@ -1605,7 +1674,9 @@ fn native_nominal_bridge_clauses<'a>(
         )
         .collect();
     let index = NativeNominalIndex::new(nominal_abox, definers);
-    let mut projected: Vec<JClause> = clauses
+    let free_dt = std::env::var("KM_UNKNOWN_DATATYPES").ok().as_deref() == Some("free");
+    if !free_dt {
+        let mut projected: Vec<JClause> = clauses
             .iter()
             .filter(|clause| {
                 let redundant_universal_ground = matches!(
@@ -1618,22 +1689,132 @@ fn native_nominal_bridge_clauses<'a>(
                         }]
                     ) if universal_facts.contains(concept.as_str())
                 );
-                !redundant_universal_ground
-                    && !native_nominal_clause_represented(clause, &index)
+                !redundant_universal_ground && !native_nominal_clause_represented(clause, &index)
             })
             .cloned()
             .collect();
+        let concepts = |input: &[JClause]| -> std::collections::BTreeSet<String> {
+            input
+                .iter()
+                .flat_map(|clause| clause.body.iter().chain(&clause.head))
+                .filter_map(|atom| match atom {
+                    crate::json_io::JAtom::Concept { concept, .. } => Some(concept.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        let source_concepts = concepts(clauses);
+        let retained_concepts = concepts(&projected);
+        for concept in source_concepts.difference(&retained_concepts) {
+            let atom = crate::json_io::JAtom::Concept {
+                concept: concept.clone(),
+                term: crate::json_io::JTerm::Var { name: "x".into() },
+            };
+            projected.push(JClause {
+                body: vec![atom.clone()],
+                head: vec![atom],
+            });
+        }
+        return Cow::Owned(projected);
+    }
+    let is_data_sort = |atom: &crate::json_io::JAtom| {
+        matches!(
+            atom,
+            crate::json_io::JAtom::Concept { concept, .. }
+                if concept == crate::frontend::sorts::DATA_SORT
+        )
+    };
+    let is_object_sort = |atom: &crate::json_io::JAtom| {
+        matches!(
+            atom,
+            crate::json_io::JAtom::Concept { concept, .. }
+                if concept == crate::frontend::sorts::OBJECT_SORT
+        )
+    };
+    let mut projected: Vec<JClause> = clauses
+        .iter()
+        .filter_map(|clause| {
+            if matches!(
+                clause.body.as_slice(),
+                [crate::json_io::JAtom::Concept {
+                    concept,
+                    term: crate::json_io::JTerm::Var { name: vx },
+                }] if concept == crate::frontend::sorts::DATA_SORT
+                    && !clause.head.is_empty()
+                    && clause.head.iter().all(|atom| matches!(
+                        atom,
+                        crate::json_io::JAtom::Concept {
+                            concept: hc,
+                            term: crate::json_io::JTerm::Var { name: hv },
+                        } if hc.starts_with("__dt__") && hv == vx
+                    ))
+            ) {
+                return Some(clause.clone());
+            }
+            if clause.body.iter().chain(&clause.head).any(is_object_sort) {
+                return None;
+            }
+            if clause.head.is_empty() && clause.body.iter().any(is_data_sort) {
+                return None;
+            }
+            if !clause.head.is_empty() && clause.head.iter().all(is_data_sort) {
+                return None;
+            }
+            let mut c = if clause.body.iter().chain(&clause.head).any(is_data_sort) {
+                JClause {
+                    body: clause
+                        .body
+                        .iter()
+                        .filter(|a| !is_data_sort(a))
+                        .cloned()
+                        .collect(),
+                    head: clause
+                        .head
+                        .iter()
+                        .filter(|a| !is_data_sort(a))
+                        .cloned()
+                        .collect(),
+                }
+            } else {
+                clause.clone()
+            };
+            let redundant_universal_ground = matches!(
+                (c.body.as_slice(), c.head.as_slice()),
+                (
+                    [],
+                    [crate::json_io::JAtom::Concept {
+                        concept,
+                        term: crate::json_io::JTerm::Ind { .. },
+                    }]
+                ) if universal_facts.contains(concept.as_str())
+            );
+            if redundant_universal_ground || native_nominal_clause_represented(&c, &index) {
+                return None;
+            }
+            let _ = &mut c;
+            Some(c)
+        })
+        .collect();
     // Moving assertions to the typed ABox must preserve the source concept
     // signature used by cb_to_ht to enumerate taxonomy queries. A class that
     // occurs only in C(a) still inherits every universal superclass. Register
     // vanished symbols through C(x) -> C(x): a tautology changes no models,
     // and internal names remain subject to the converter's query filter.
     let concepts = |input: &[JClause]| -> std::collections::BTreeSet<String> {
-        input.iter().flat_map(|clause| clause.body.iter().chain(&clause.head))
+        input
+            .iter()
+            .flat_map(|clause| clause.body.iter().chain(&clause.head))
             .filter_map(|atom| match atom {
-                crate::json_io::JAtom::Concept { concept, .. } => Some(concept.clone()),
+                crate::json_io::JAtom::Concept { concept, .. }
+                    if concept != crate::frontend::sorts::DATA_SORT
+                        && concept != crate::frontend::sorts::OBJECT_SORT
+                        && !concept.starts_with("__nom__") =>
+                {
+                    Some(concept.clone())
+                }
                 _ => None,
-            }).collect()
+            })
+            .collect()
     };
     let source_concepts = concepts(clauses);
     let retained_concepts = concepts(&projected);
@@ -2144,6 +2325,24 @@ fn spawn_ht(
     prepare_ht(cfg, clauses_path, named)?.launch()
 }
 
+fn spawn_ht_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    cached_input: Option<JInput>,
+) -> Option<(
+    Child,
+    super::tmpfile::TempPath,
+    bool,
+    Option<usize>,
+    bool,
+    bool,
+    Option<ProxyAboxCertificate>,
+    Option<super::tmpfile::TempPath>,
+)> {
+    prepare_ht_with_input(cfg, clauses_path, named, cached_input)?.launch()
+}
+
 /// Owns the validated input and command before any HT worker exists.
 /// Output/marker paths retain their original RAII cleanup while preparation
 /// is dropped or launch fails. Serialization remains part of launch.
@@ -2166,6 +2365,15 @@ fn prepare_ht(
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
 ) -> Option<PreparedHt> {
+    prepare_ht_with_input(cfg, clauses_path, named, None)
+}
+
+fn prepare_ht_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    cached_input: Option<JInput>,
+) -> Option<PreparedHt> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, rbox, cards, definers, source_axioms, nominal_abox, rules, data_roles): (
         Vec<JClause>,
@@ -2177,10 +2385,14 @@ fn prepare_ht(
         Vec<crate::json_io::JRule>,
         Vec<String>,
     ) = {
-        // from_slice on a read buffer, not from_reader — the clause file is
-        // multi-MB on large onts and the reader path is markedly slower.
-        let buf = std::fs::read(clauses_path).ok()?;
-        let mut v: JInput = serde_json::from_slice(&buf).ok()?;
+        let mut v: JInput = if let Some(v) = cached_input {
+            v
+        } else {
+            // from_slice on a read buffer, not from_reader — the clause file is
+            // multi-MB on large onts and the reader path is markedly slower.
+            let buf = std::fs::read(clauses_path).ok()?;
+            serde_json::from_slice(&buf).ok()?
+        };
         if std::env::var_os("KM_DISJOINT_UNION_ABOX_CONSISTENT").is_some() {
             v.nominal_abox = crate::json_io::NominalAboxMeta::default();
         }
@@ -2463,15 +2675,8 @@ fn prepare_ht(
     }
     let out_path = super::tmpfile::TempPath::new(".htrace.json");
     // a light nice keeps HT from preempting CB on the onts CB finishes quickly.
-    let mut cmd = if cfg.ht_nice != "0" && !cfg.ht_nice.is_empty() {
-        let mut c = Command::new("nice");
-        c.arg("-n").arg(&cfg.ht_nice).arg(&tab_prog).args(&tab_pre);
-        c
-    } else {
-        let mut c = Command::new(&tab_prog);
-        c.args(&tab_pre);
-        c
-    };
+    let ht_nice = (cfg.ht_nice != "0" && !cfg.ht_nice.is_empty()).then_some(cfg.ht_nice.as_str());
+    let mut cmd = engine_run::worker_command(&tab_prog, &tab_pre, ht_nice, true);
     cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path()).ok()?);
     // stderr: inherit when stats/trace requested (diagnostic). Under
@@ -2503,22 +2708,25 @@ fn prepare_ht(
         // card arm rides along (certified production portfolio), the worker must
         // instead hand a bridge defer off to the card path, so this stays unset.
         cmd.env("KM_HT_BRIDGE_ONLY", "1");
-        // A bridge-exclusive worker either publishes the bridge taxonomy or
-        // defers; it has no validated tableau fallback. When publication does
-        // not require the proxy-ABox post-filter, retain concept names once and
-        // carry relation endpoints through the strict versioned binary handoff.
-        // Proxy-filtered workers keep JSON so their established certificate
-        // check and output rewrite below remain unchanged.
-        if proxy_abox_certificate.is_none() && !crate::tableau::ht_lean_certification_requested() {
-            cmd.env("KM_HT_BRIDGE_OUTPUT_BINARY", "1");
-        }
+    }
+    if bridge_candidate
+        && proxy_abox_certificate.is_none()
+        && !crate::tableau::ht_lean_certification_requested()
+    {
+        // When publication does not require the proxy-ABox post-filter, retain
+        // concept names once and carry bridge relation endpoints through the
+        // strict versioned binary handoff. Mixed workers still fall back to JSON
+        // if the bridge arm defers to their secondary certified specialist arm.
+        cmd.env("KM_HT_BRIDGE_OUTPUT_BINARY", "1");
     }
     // A bridge worker that also carries another arm (the certified portfolio's
     // card fallback) records which arm produced its answer. Only an answer
     // the bridge itself published carries the complete-answer-or-defer
     // guarantee that justifies the instant harvest below; any other arm keeps
     // its fallback budget.
-    let bridge_answer_marker = (bridge_candidate && !bridge_exclusive).then(|| {
+    let bridge_answer_marker = (bridge_candidate
+        && (!bridge_exclusive || std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some()))
+    .then(|| {
         let marker = super::tmpfile::TempPath::new(".bridge-answer");
         cmd.env("KM_HT_BRIDGE_ANSWER_MARKER", marker.path());
         marker
@@ -2748,24 +2956,31 @@ impl PreparedHt {
             proxy_abox_certificate,
             bridge_answer_marker,
         } = self;
+        if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+            let mut model_out = out_path.path().as_os_str().to_os_string();
+            model_out.push(".model");
+            cmd.env("KM_WORKER_MODEL_OUT", model_out);
+        }
+        crate::mem::release_code_pages();
         let mut child = cmd.spawn().ok()?;
         if let Some(stderr) = child.stderr.take() {
             forward_ht_worker_errors(stderr);
         }
         let stdin = child.stdin.take()?;
-        let bytes = serde_json::to_vec(&tin).ok()?;
+        let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
+        let bridge_queries = bridge_candidate.then_some(tin.queries.len());
         thread::spawn(move || {
-            let mut w = stdin;
-            let _ = w.write_all(&bytes);
-            // The serialised TInput is the largest transient this process holds
-            // while the worker runs, and it is dead once the pipe has drained. The
+            let mut w = std::io::BufWriter::with_capacity(1 << 20, stdin);
+            let _ = serde_json::to_writer(&mut w, &tin);
+            let _ = w.flush();
+            // The TInput is the largest transient this process holds while the
+            // worker runs, and it is dead once the pipe has drained. The
             // callers' trim runs before this write finishes, so release it here
             // exactly as `spawn_tableau` does.
             drop(w);
-            drop(bytes);
+            drop(tin);
             release_transient_heap();
         });
-        let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
         // The third element gates the SHORT race budget: true for the fast certify-or-
         // defer arms (SHOQ fast-Ht AND the QO hybrid). Both emit an answer ONLY when
         // they soundly+completely certify (CERTIFY_ONLY), so harvesting that answer as
@@ -2783,7 +2998,7 @@ impl PreparedHt {
             child,
             out_path,
             short_race,
-            bridge_candidate.then_some(tin.queries.len()),
+            bridge_queries,
             // Whether KM_HT_BRIDGE_ONLY was set on this worker: only then does the
             // race scheduler's instant (0 s) trigger-absorb harvest apply — any
             // other worker can answer from a non-bridge arm without the bridge's
@@ -2830,8 +3045,11 @@ fn read_ht_answer(p: &Path, proxy_abox_certificate: Option<&ProxyAboxCertificate
         // HT compact output lists only subjects with a superclass.
         return super::parse_out_path(p).ok().map(ht_pair_form);
     }
-    let f = File::open(p).ok()?;
-    let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
+    // Whole-file read plus slice parse: the same value as the streaming
+    // reader, without its per-byte `IoRead` cost on large answers.
+    let bytes = std::fs::read(p).ok()?;
+    let mut output = serde_json::from_slice::<TOutput>(&bytes).ok()?;
+    drop(bytes);
     if proxy_abox_certificate
         .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &output))
     {
@@ -2840,7 +3058,9 @@ fn read_ht_answer(p: &Path, proxy_abox_certificate: Option<&ProxyAboxCertificate
     if let Some(certificate) = proxy_abox_certificate {
         proxy_abox_filter_output(certificate, &mut output);
     }
-    Some(tableau_to_out(output))
+    let mut out = tableau_to_out(output);
+    out.worker_model_path = super::model_export::worker_model_sidecar_if_exists(p);
+    Some(out)
 }
 
 /// The HT-first worker of `race_cb_vs_ht`, started early: while the in-process
@@ -2883,21 +3103,31 @@ impl HtFirstProbe {
         if mode == "race" || ht_first_deadline().is_none() {
             return None;
         }
-        let (child, out, fast_certify, _, bridge_exclusive, typed_nominal_exclusive, proxy, marker) =
-            spawn_ht(cfg, clauses_path, named)?;
+        let prepared = prepare_ht(cfg, clauses_path, named)?;
         let trigger_absorb = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
         let budget = ht_acceptance_budget(
             trigger_absorb,
-            bridge_exclusive,
-            fast_certify,
+            prepared.bridge_exclusive,
+            prepared.short_race,
             cfg.shoq_budget_s,
             cfg.ht_budget_s,
         );
+        let typed_nominal_exclusive =
+            typed_nominal_bridge_exclusive(&prepared.tin, prepared.bridge_exclusive);
+        if (typed_nominal_exclusive && prepared.cb_first_structural_source)
+            || !(budget == 0.0
+                || prepared.bridge_answer_marker.is_some()
+                || prepared.proxy_abox_certificate.is_some())
+        {
+            return None;
+        }
+        let (child, out, fast_certify, _, _bridge_exclusive, _typed_nominal_exclusive, proxy, marker) =
+            prepared.launch()?;
         let cap_gb = std::env::var("KM_HT_MEM_GB")
             .ok()
             .and_then(|v| v.parse::<f64>().ok())
             .unwrap_or(12.0);
-        let mut probe = HtFirstProbe {
+        Some(HtFirstProbe {
             child,
             out,
             proxy,
@@ -2909,13 +3139,13 @@ impl HtFirstProbe {
             ht_budget_s: cfg.ht_budget_s,
             cap_bytes: (cap_gb * (1u64 << 30) as f64) as u64,
             finished: false,
-        };
-        // The race's HT-first phase runs only these workers.
-        if typed_nominal_exclusive || !(budget == 0.0 || probe.marker.is_some()) {
-            probe.stop();
-            return None;
-        }
-        Some(probe)
+        })
+    }
+
+    pub fn bridge_answered(&self) -> bool {
+        self.marker
+            .as_ref()
+            .is_some_and(|marker| std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge"))
     }
 
     pub fn poll(&mut self) -> HtFirstProbeState {
@@ -2950,7 +3180,7 @@ impl HtFirstProbe {
                         self.ht_budget_s,
                     );
                 }
-                if budget == 0.0 {
+                if budget == 0.0 || self.proxy.is_some() {
                     HtFirstProbeState::Accepted(answer)
                 } else {
                     HtFirstProbeState::NoAnswer
@@ -3054,14 +3284,15 @@ pub fn run_ht_only(
         out.dropped += bypass_drops;
         return Ok(out);
     }
-    let output = File::open(out_path.path())?;
-    let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
+    let output = std::fs::read(out_path.path())?;
+    let mut parsed: TOutput = serde_json::from_slice(&output).map_err(|error| {
         OrchestrateError::Worker {
             bin: "tableau/ht".into(),
             code: 0,
             stderr: format!("successful worker emitted no valid taxonomy: {error}"),
         }
     })?;
+    drop(output);
     if proxy_abox_certificate
         .as_ref()
         .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &parsed))
@@ -3075,6 +3306,7 @@ pub fn run_ht_only(
     }
     let mut out = tableau_to_out(parsed);
     out.dropped += bypass_drops;
+    out.worker_model_path = super::model_export::worker_model_sidecar_if_exists(out_path.path());
     Ok(out)
 }
 
@@ -3152,6 +3384,7 @@ pub fn run_ht_shoq_in_process(
         nominal_abox,
         rules,
     ));
+    release_transient_heap();
 
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
@@ -3174,11 +3407,13 @@ pub fn run_ht_shoq_in_process(
     let result = crate::tableau::run_producer_input_typed(tin).map_err(|error| {
         OrchestrateError::OutOfFragment(format!("selected SHOQ mechanism deferred ({error})"))
     })?;
-    Ok(tableau_to_out(TOutput {
+    let mut out = tableau_to_out(TOutput {
         consistent: result.consistent,
         subsumptions: result.subsumptions,
         unsatisfiable: result.unsatisfiable,
-    }))
+    });
+    out.worker_model_payload = super::model_export::take_inproc_worker_payload().map(Arc::new);
+    Ok(out)
 }
 
 /// Run the selected clause-only general hypertableau in this process. The
@@ -3231,6 +3466,7 @@ pub fn run_ht_general_in_process(
         nominal_abox,
         rules,
     ));
+    release_transient_heap();
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
         ("KM_HT", "1"),
@@ -3262,6 +3498,7 @@ pub fn run_ht_general_in_process(
         unsatisfiable: result.unsatisfiable,
     });
     out.dropped += bypass_drops;
+    out.worker_model_payload = super::model_export::take_inproc_worker_payload().map(Arc::new);
     Ok(out)
 }
 
@@ -3289,7 +3526,15 @@ pub fn run_ht_bridge_in_process(
             "native HT bridge received rules".into(),
         ));
     }
-    let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, !nominal_abox.same.is_empty(), false);
+    let view = native_nominal_bridge_clauses(
+        &clauses,
+        &nominal_abox,
+        &definers,
+        (std::env::var_os("KM_NOMINALS").is_some()
+            && std::env::var_os("KM_TRIGGER_ABSORB").is_some())
+            || !nominal_abox.same.is_empty(),
+        false,
+    );
     let mut tin = cb_to_ht::convert(
         &view,
         Some(rbox.as_slice()),
@@ -3297,7 +3542,7 @@ pub fn run_ht_bridge_in_process(
         &cardinalities,
         &definers,
         &source_axioms,
-        false,
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
     );
@@ -3332,6 +3577,7 @@ pub fn run_ht_bridge_in_process(
         nominal_abox,
         rules,
     ));
+    release_transient_heap();
 
     let _guard = crate::routing::EnvironmentGuard::capture();
     for (key, value) in [
@@ -3353,11 +3599,13 @@ pub fn run_ht_bridge_in_process(
     let result = crate::tableau::run_bridge_producer_input_typed(tin).map_err(|error| {
         OrchestrateError::OutOfFragment(format!("selected native HT bridge deferred ({error})"))
     })?;
-    Ok(tableau_to_out(TOutput {
+    let mut out = tableau_to_out(TOutput {
         consistent: result.consistent,
         subsumptions: result.subsumptions,
         unsatisfiable: result.unsatisfiable,
-    }))
+    });
+    out.worker_model_payload = super::model_export::take_inproc_worker_payload().map(Arc::new);
+    Ok(out)
 }
 
 /// Bounded variant used by fail-open preprocessing probes. A timeout,
@@ -3381,13 +3629,24 @@ pub fn run_ht_only_until(
     named: &std::collections::HashSet<String>,
     deadline: Instant,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    run_ht_only_until_with_input(cfg, clauses_path, named, deadline, None)
+}
+
+pub fn run_ht_only_until_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    deadline: Instant,
+    cached_input: Option<JInput>,
+) -> Result<Option<EngineOut>, OrchestrateError> {
     let now = Instant::now();
-    run_ht_only_bounded_from(
+    run_ht_only_bounded_from_with_input(
         cfg,
         clauses_path,
         named,
         deadline.saturating_duration_since(now),
         Some(now),
+        cached_input,
     )
 }
 
@@ -3398,8 +3657,19 @@ fn run_ht_only_bounded_from(
     budget: Duration,
     charged_from: Option<Instant>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    run_ht_only_bounded_from_with_input(cfg, clauses_path, named, budget, charged_from, None)
+}
+
+fn run_ht_only_bounded_from_with_input(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    budget: Duration,
+    charged_from: Option<Instant>,
+    cached_input: Option<JInput>,
+) -> Result<Option<EngineOut>, OrchestrateError> {
     let Some((mut child, out_path, _, _, _, _, proxy_abox_certificate, _)) =
-        spawn_ht(cfg, clauses_path, named)
+        spawn_ht_with_input(cfg, clauses_path, named, cached_input)
     else {
         return Ok(None);
     };
@@ -3430,14 +3700,15 @@ fn run_ht_only_bounded_from(
         }
         return super::parse_out_path(out_path.path()).map(|out| Some(ht_pair_form(out)));
     }
-    let output = File::open(out_path.path())?;
-    let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
+    let output = std::fs::read(out_path.path())?;
+    let mut parsed: TOutput = serde_json::from_slice(&output).map_err(|error| {
         OrchestrateError::Worker {
             bin: "tableau/ht".into(),
             code: 0,
             stderr: format!("successful worker emitted no valid taxonomy: {error}"),
         }
     })?;
+    drop(output);
     if proxy_abox_certificate
         .as_ref()
         .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &parsed))
@@ -3447,7 +3718,9 @@ fn run_ht_only_bounded_from(
     if let Some(certificate) = &proxy_abox_certificate {
         proxy_abox_filter_output(certificate, &mut parsed);
     }
-    Ok(Some(tableau_to_out(parsed)))
+    let mut out = tableau_to_out(parsed);
+    out.worker_model_path = super::model_export::worker_model_sidecar_if_exists(out_path.path());
+    Ok(Some(out))
 }
 
 /// Run the historical label-caching tableau as an isolated mechanism. Its
@@ -3472,9 +3745,12 @@ pub fn run_tableau_only(
             stderr: String::new(),
         });
     }
-    let output = File::open(out_path.path())?;
-    let parsed: TOutput = serde_json::from_reader(BufReader::new(output))?;
-    Ok(tableau_to_out(parsed))
+    let output = std::fs::read(out_path.path())?;
+    let parsed: TOutput = serde_json::from_slice(&output)?;
+    drop(output);
+    let mut out = tableau_to_out(parsed);
+    out.worker_model_path = super::model_export::worker_model_sidecar_if_exists(out_path.path());
+    Ok(out)
 }
 
 /// Reserved engine thread count for the HT race: reduce `KM_THREADS` by one when
@@ -3753,6 +4029,9 @@ where
         // Whatever happens below, the CB thread must receive its count.
         let budget_guard = budget_cell.resolve_on_drop(cfg.threads);
         let prepared = prepare_ht(cfg, clauses_path, named);
+        let cb_first_source = prepared
+            .as_ref()
+            .is_some_and(|prepared| prepared.cb_first_structural_source);
         let cb_first = cb_first_duration(
             std::env::var("KM_CB_FIRST_TYPED_NOMINAL_S").ok().as_deref(),
         )
@@ -3894,15 +4173,29 @@ where
         // worker that marks bridge answers). Run it alone for at most the
         // deadline; then start the unchanged CB stack and race as before.
         let mut ht_first_won: Option<EngineOut> = None;
-        // Typed-nominal bridge workers (complete native ABox channel) are
-        // excluded: on the frozen corpus their nominal ABox completion is
-        // often far slower than the exact nominal-aware CB fallback (ORE 5544:
-        // CB 3 s vs bridge 169 s; ORE 11085: CB 35 s vs bridge > 180 s), so
-        // they keep the shared race.
-        if let Some(deadline) = ht_first.filter(|_| !typed_nominal_exclusive) {
-            if pending_cb.is_some() && (budget == 0.0 || bridge_answer_marker.is_some()) {
+        // Typed-nominal bridge workers whose source TBox is nominal-free
+        // (`cb_first_source`) are excluded: on the frozen corpus their nominal
+        // ABox completion is often far slower than the exact nominal-aware CB
+        // fallback (ORE 5544: CB 3 s vs bridge 169 s; ORE 11085: CB 35 s vs
+        // bridge > 180 s), so they keep the shared race. When the TBox itself
+        // contains nominals (`!cb_first_source`), the native bridge is the
+        // primary arm and runs HT-first before starting the CB stack.
+        if let Some(deadline) = ht_first.filter(|_| !(typed_nominal_exclusive && cb_first_source)) {
+            if pending_cb.is_some()
+                && (budget == 0.0
+                    || bridge_answer_marker.is_some()
+                    || proxy_abox_certificate.is_some())
+            {
                 let mut interval = Duration::from_millis(1);
-                while t0.elapsed() < deadline {
+                let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+                let export_ext = deadline * 2 + Duration::from_secs(3);
+                while t0.elapsed() < deadline
+                    || (export_active
+                        && t0.elapsed() < export_ext
+                        && bridge_answer_marker.as_ref().is_some_and(|marker| {
+                            std::fs::read(marker.path()).is_ok_and(|b| b == b"bridge")
+                        }))
+                {
                     let seen = event.epoch();
                     if engine_run::read_rss(ht.id()).is_some_and(|rss| rss > ht_cap_bytes) {
                         let _ = ht.kill();
@@ -3938,7 +4231,7 @@ where
                         ht_res.is_some()
                     );
                 }
-                if budget == 0.0 {
+                if budget == 0.0 || proxy_abox_certificate.is_some() {
                     ht_first_won = ht_res.take();
                 }
             }
@@ -4091,6 +4384,7 @@ mod tests {
 
     #[test]
     fn cb_first_source_requires_enabled_present_nonempty_metadata() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         let axioms = [cb_first_source_axiom(Concept::Top, Concept::Name("A".into()))];
         for trigger in [false, true] {
@@ -4106,6 +4400,7 @@ mod tests {
 
     #[test]
     fn cb_first_source_checks_every_concept_constructor_and_both_axiom_sides() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::{Concept, Role};
         fn wrappers(child: Concept) -> Vec<Concept> {
             let role = Role::Name("r".into());
@@ -4144,6 +4439,7 @@ mod tests {
 
     #[test]
     fn cb_first_source_uses_exact_raw_datatype_marker_in_body_and_head() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{JAtom, JClause, JTerm};
         let source = [cb_first_source_axiom(Concept::Top, Concept::Name("A".into()))];
@@ -4160,6 +4456,7 @@ mod tests {
 
     #[test]
     fn cb_first_duration_defaults_off_and_rejects_invalid_values() {
+        let _test_env = crate::test_env::write();
         assert_eq!(cb_first_duration(None), None);
         for value in ["", "0", "-1", "NaN", "inf", "-inf", "1e300", "1e-100"] {
             assert_eq!(cb_first_duration(Some(value)), None, "{value}");
@@ -4169,6 +4466,7 @@ mod tests {
 
     #[test]
     fn cb_first_eligibility_requires_fallback_explicit_serial_and_typed() {
+        let _test_env = crate::test_env::write();
         for mode in ["fallback", "race", "other"] {
             for threads in [None, Some(1), Some(2)] {
                 for typed in [false, true] {
@@ -4183,6 +4481,7 @@ mod tests {
 
     #[test]
     fn cb_first_success_never_consumes_worker_launch_closure() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/this/worker/must/not/launch");
         let output = prepared.out_path.path().to_owned();
         let slot: Mutex<Option<Result<u32, ()>>> = Mutex::new(Some(Ok(7)));
@@ -4198,6 +4497,7 @@ mod tests {
 
     #[test]
     fn cb_first_error_launches_once_without_consuming_cb_error() {
+        let _test_env = crate::test_env::write();
         let slot = Mutex::new(Some(Err::<u32, _>("CB error")));
         let event = engine_run::ArmEvent::new();
         let launches = std::cell::Cell::new(0);
@@ -4216,6 +4516,7 @@ mod tests {
 
     #[test]
     fn cb_first_deadline_launch_failure_returns_without_waiting_for_cb() {
+        let _test_env = crate::test_env::write();
         let slot: Mutex<Option<Result<u32, ()>>> = Mutex::new(None);
         let event = engine_run::ArmEvent::new();
         let launches = std::cell::Cell::new(0);
@@ -4230,6 +4531,7 @@ mod tests {
 
     #[test]
     fn cb_first_prepare_failure_resolves_budget_and_retains_cb_only_fallback() {
+        let _test_env = crate::test_env::write();
         let mut cfg = Config::from_env();
         cfg.threads = Some(1);
         let out = race_cb_vs_ht(
@@ -4247,6 +4549,7 @@ mod tests {
 
     #[test]
     fn cb_first_observes_notified_success_during_grace_without_launch() {
+        let _test_env = crate::test_env::write();
         let slot: Arc<Mutex<Option<Result<u32, ()>>>> = Arc::new(Mutex::new(None));
         let event = engine_run::ArmEvent::new();
         let producer_slot = slot.clone();
@@ -4289,6 +4592,7 @@ mod tests {
 
     #[test]
     fn prepared_ht_drop_cleans_output_and_marker_without_launch() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/this/path/must/not/be/executed");
         let output = prepared.out_path.path().to_owned();
         let marker = prepared.bridge_answer_marker.as_ref().unwrap().path().to_owned();
@@ -4301,6 +4605,7 @@ mod tests {
 
     #[test]
     fn prepared_ht_launch_failure_cleans_owned_paths() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/this/path/does/not/exist/km-worker");
         let output = prepared.out_path.path().to_owned();
         let marker = prepared.bridge_answer_marker.as_ref().unwrap().path().to_owned();
@@ -4312,6 +4617,7 @@ mod tests {
 
     #[test]
     fn prepared_ht_launch_preserves_serialized_input_and_metadata() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/bin/cat");
         let expected_bytes = serde_json::to_vec(&prepared.tin).unwrap();
         let expected_typed = typed_nominal_bridge_exclusive(&prepared.tin, true);
@@ -4335,6 +4641,7 @@ mod tests {
 
     #[test]
     fn prepared_ht_immediate_worker_error_keeps_existing_launch_contract() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/bin/false");
         let (mut child, out_path, _, _, _, _, _, marker) = prepared.launch().unwrap();
         // As before, a broken stdin write is ignored by the detached writer;
@@ -4345,6 +4652,7 @@ mod tests {
 
     #[test]
     fn ready_thread_budget_answers_without_blocking() {
+        let _test_env = crate::test_env::write();
         assert_eq!(ThreadBudget::ready(Some(8)).get(), Some(8));
         assert_eq!(ThreadBudget::ready(None).get(), None);
         assert!(ThreadBudget::ready(None).is_resolved());
@@ -4353,6 +4661,7 @@ mod tests {
 
     #[test]
     fn pending_thread_budget_blocks_a_racer_until_the_ht_input_resolves_it() {
+        let _test_env = crate::test_env::write();
         // A CB stack that reaches its first engine spawn before the HT input
         // is converted must wait for the reservation, not guess one.
         let budget = ThreadBudget::pending();
@@ -4367,6 +4676,7 @@ mod tests {
 
     #[test]
     fn first_thread_budget_resolution_wins() {
+        let _test_env = crate::test_env::write();
         let budget = ThreadBudget::pending();
         budget.resolve(Some(15));
         budget.resolve(Some(1));
@@ -4376,6 +4686,7 @@ mod tests {
 
     #[test]
     fn thread_budget_guard_resolves_the_fallback_only_when_still_pending() {
+        let _test_env = crate::test_env::write();
         // The main thread failing between starting the CB stack and
         // resolving the count must not leave the stack blocked forever.
         let budget = ThreadBudget::pending();
@@ -4406,6 +4717,7 @@ mod tests {
 
     #[test]
     fn very_large_ht_inputs_cap_replication_at_eight_workers() {
+        let _test_env = crate::test_env::write();
         assert_eq!(ordinary_ht_workers(199_999, 16), 16);
         assert_eq!(ordinary_ht_workers(200_000, 16), 8);
         assert_eq!(ordinary_ht_workers(283_229, 16), 8);
@@ -4423,6 +4735,7 @@ mod tests {
 
     #[test]
     fn native_nominal_projection_preserves_assertion_only_query_classes() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::{JAtom, JClause, NominalAboxMeta, NominalIndividualMeta};
         use crate::frontend::syntax::Concept;
         let clauses = vec![
@@ -4455,6 +4768,7 @@ mod tests {
 
     #[test]
     fn native_nominal_view_filters_only_exact_typed_shapes_and_preserves_cb_input() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::{
             JAtom, JClause, NominalAboxMeta, NominalIndividualMeta, NominalRoleAssertionMeta,
         };
@@ -4575,6 +4889,7 @@ mod tests {
 
     #[test]
     fn source_auto_route_serializes_and_consumes_the_complete_native_card_abox() {
+        let _test_env = crate::test_env::write();
         // Reduced 9540 shape: first-class has_point cardinality plus a direct
         // positive/negative has_point clash on named roots; a separate active
         // inverse role pair; and DifferentIndividuals. The test crosses every
@@ -4666,6 +4981,7 @@ mod tests {
 
     #[test]
     fn original_data_assertions_preserve_value_identity_and_functional_clashes() {
+        let _test_env = crate::test_env::write();
         for (other, consistent) in [("\"01\"^^xsd:int", true), ("\"2\"^^xsd:integer", false)] {
             let source = format!(r#"Prefix(:=<http://example.org/>)
                 Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>) Ontology(
@@ -4701,6 +5017,7 @@ mod tests {
 
     #[test]
     fn native_same_individual_source_projection_preserves_alias_clash() {
+        let _test_env = crate::test_env::write();
         for same in [false, true] {
             let equality = if same { "SameIndividual(:a :b)" } else { "" };
             let source = format!(r#"Prefix(:=<http://example.org/>) Ontology(
@@ -4738,6 +5055,7 @@ mod tests {
 
     #[test]
     fn native_nominal_bridge_view_preserves_the_exact_cb_clause_file() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{JAtom, JTerm, NominalAboxMeta, NominalIndividualMeta};
 
@@ -4880,6 +5198,7 @@ mod tests {
 
     #[test]
     fn production_top_assertions_require_typed_definer_provenance() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{
             DefinerKind, DefinerMeta, JAtom, JTerm, NominalAboxMeta, NominalIndividualMeta,
@@ -5023,6 +5342,7 @@ mod tests {
 
     #[test]
     fn certified_nominal_object_one_of_and_has_value_convert_losslessly() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::{Concept, Role};
         use crate::json_io::{
             JAtom, JTerm, NominalAboxMeta, NominalIndividualMeta, SourceAxiomKind, SourceAxiomMeta,
@@ -5204,6 +5524,7 @@ mod tests {
 
     #[test]
     fn konclude_bridge_accepts_only_legacy_fast_tableau_fences() {
+        let _test_env = crate::test_env::write();
         let mut tin = cb_to_ht::TInput::default();
         assert!(bridge_fences_supported(&tin, false));
         tin.fenced.push(cb_to_ht::Fenced {
@@ -5249,6 +5570,7 @@ mod tests {
 
     #[test]
     fn number_feature_does_not_bypass_bridge_lossless_input_gate() {
+        let _test_env = crate::test_env::write();
         let mut tin = cb_to_ht::TInput {
             number: true,
             dropped: 1,
@@ -5272,6 +5594,7 @@ mod tests {
 
     #[test]
     fn explicit_general_route_does_not_activate_specialist_state() {
+        let _test_env = crate::test_env::write();
         assert!(general_only_route(Some("general")));
         for route in [None, Some("certified"), Some("shoq"), Some("card")] {
             assert!(!general_only_route(route));
@@ -5284,6 +5607,7 @@ mod tests {
 
     #[test]
     fn named_ht_specialists_never_fall_through_to_general_ht() {
+        let _test_env = crate::test_env::write();
         assert!(specialist_route_allows(None, false, false, false, false));
         assert!(specialist_route_allows(
             Some("general"),
@@ -5413,6 +5737,7 @@ mod tests {
 
     #[test]
     fn inverse_functional_fence_requires_exact_equality_clause() {
+        let _test_env = crate::test_env::write();
         let mut tin = cb_to_ht::TInput {
             roles: vec!["r".into()],
             ..cb_to_ht::TInput::default()
@@ -5431,6 +5756,7 @@ mod tests {
 
     #[test]
     fn card_arm_is_a_candidate_and_certified_admits_it() {
+        let _test_env = crate::test_env::write();
         // A reduced cardinality probe: a datatype/inverse-free TInput with a
         // single `≥2 R.C` restriction is a card candidate, and the production
         // portfolio's `certified` mode admits it as the CB-guarded fallback arm
@@ -5487,6 +5813,7 @@ mod tests {
 
     #[test]
     fn proxy_abox_certificate_is_fail_closed_and_taxonomy_checked() {
+        let _test_env = crate::test_env::write();
         use cb_to_ht::HAtom;
 
         let safe = safe_proxy_abox_tin();
@@ -5589,6 +5916,7 @@ mod tests {
 
     #[test]
     fn atomic_component_abox_certificate_projects_only_exact_large_shape() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{NominalAboxMeta, NominalIndividualMeta};
 
@@ -5627,6 +5955,7 @@ mod tests {
 
     #[test]
     fn tableau_output_requires_exact_pairs_and_moves_them_into_rows() {
+        let _test_env = crate::test_env::write();
         assert!(serde_json::from_str::<TOutput>(
             r#"{"consistent":true,"subsumptions":[["A","B","C"]],"unsatisfiable":[]}"#,
         )
@@ -5643,6 +5972,7 @@ mod tests {
 
     #[test]
     fn card_arm_respects_its_fences() {
+        let _test_env = crate::test_env::write();
         let tin = card_def_tin();
         // KM_NO_HT_CARD (ht_card=false) disables the arm entirely.
         assert!(!card_candidate_from(&tin, false, true, false));
@@ -5682,6 +6012,7 @@ mod tests {
 
     #[test]
     fn clause_retained_fences_keep_the_card_arm() {
+        let _test_env = crate::test_env::write();
         // `rbox.rs` records a row for role constraints the first-class RBox
         // channel cannot express while the frontend still clausifies them
         // exactly. Those markers must not cost the arm (ore_ont_7499 carries an
@@ -5737,6 +6068,7 @@ mod tests {
 
     #[test]
     fn negative_native_roles_must_be_separate_from_chain_and_transitive_components() {
+        let _test_env = crate::test_env::write();
         let mut chained = card_def_tin();
         chained.roles = vec!["left".into(), "right".into(), "target".into()];
         chained.native_abox.complete = true;
@@ -5796,6 +6128,7 @@ mod tests {
 
     #[test]
     fn convert_emits_card_defs_for_a_faithful_ge_n_restriction() {
+        let _test_env = crate::test_env::write();
         // End-to-end reduced cardinality probe through cb_to_ht::convert: a
         // single `≥2 R.C` CardMeta on a datatype-free, inverse-free clause set
         // produces exactly one first-class card_def, which is what makes the
@@ -5822,6 +6155,7 @@ mod tests {
 
     #[test]
     fn bridge_only_worker_keeps_card_fallback_under_certified() {
+        let _test_env = crate::test_env::write();
         // Isolated bridge route: always bridge-only.
         assert!(bridge_only_worker(
             Some("bridge"),
@@ -5863,6 +6197,7 @@ mod tests {
 
     #[test]
     fn bridge_answers_are_harvested_immediately_under_trigger_absorption() {
+        let _test_env = crate::test_env::write();
         // The proven 3215 closure depends on taking the bridge's finished
         // exact answer without waiting out CB's 225 s fallback budget — but
         // ONLY when the worker is bridge-exclusive (KM_HT_BRIDGE_ONLY), i.e.
@@ -5892,6 +6227,7 @@ mod tests {
     /// of only ever replacing a CB timeout.
     #[test]
     fn non_bridge_exclusive_workers_keep_their_budgets_under_trigger_absorption() {
+        let _test_env = crate::test_env::write();
         // bridge+card certified worker: fast-certify short budget, not 0.
         assert_eq!(ht_acceptance_budget(true, false, true, 20.0, 225.0), 20.0);
         // manual trigger-absorb worker with a legacy arm: full fallback budget.
@@ -5900,6 +6236,7 @@ mod tests {
 
     #[test]
     fn large_synchronous_bridge_limits_speculative_cb_to_one_thread() {
+        let _test_env = crate::test_env::write();
         assert_eq!(
             limit_synchronous_bridge_competitor(Some(15), Some(54_974), false),
             Some(1)
@@ -5916,6 +6253,7 @@ mod tests {
 
     #[test]
     fn typed_nominal_bridge_limits_speculative_cb_below_large_threshold() {
+        let _test_env = crate::test_env::write();
         // ORE 10621 has 41,647 active classes, below the legacy 50k cutoff,
         // but its typed nominal bridge is serial and exact. One speculative CB
         // thread preserves the honest fallback while avoiding the measured
@@ -5940,6 +6278,7 @@ mod tests {
 
     #[test]
     fn typed_nominal_competitor_gate_requires_complete_exclusive_payload() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::NominalIndividualMeta;
 
         let mut tin = cb_to_ht::TInput::default();

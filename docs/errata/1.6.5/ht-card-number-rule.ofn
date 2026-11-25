@@ -1,0 +1,11 @@
+Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/u>
+Declaration(Class(:A))
+Declaration(Class(:E))
+Declaration(Class(:F))
+Declaration(ObjectProperty(:s0))
+SubClassOf(ObjectMaxCardinality(1 :s0 owl:Thing) :E)
+DisjointClasses(:E :F)
+ObjectPropertyRange(:s0 ObjectMinCardinality(3 :s0 :A))
+)

@@ -305,6 +305,12 @@ pub struct BottomPrepass {
     /// `disjoint` indexed by endpoint (filled by `certify` once every name
     /// has an id); see `selected_types_clash`.
     disjoint_partners: Vec<Vec<usize>>,
+    /// Sorted reflexive-transitive ancestor closure under `supers` per class.
+    ancestors: Vec<Vec<usize>>,
+    /// Sorted union of distinct disjoint partners across `ancestors[class]`.
+    ancestor_disjoint: Vec<Vec<usize>>,
+    /// Whether `ancestors[class]` intersects `ancestor_disjoint[class]`.
+    self_disjoint: Vec<bool>,
     role_supers: HashMap<String, Vec<String>>,
     inverse_roles: HashMap<String, Vec<String>>,
 }
@@ -473,6 +479,56 @@ impl BottomPrepass {
             disjoint_partners[right].push(left);
         }
         self.disjoint_partners = disjoint_partners;
+        let n_classes = self.names.len();
+        let mut ancestors = vec![Vec::new(); n_classes];
+        let mut seen = vec![0u32; n_classes];
+        let mut epoch = 0u32;
+        let mut stack = Vec::new();
+        for start in 0..n_classes {
+            epoch = epoch.wrapping_add(1);
+            if epoch == 0 {
+                seen.fill(0);
+                epoch = 1;
+            }
+            seen[start] = epoch;
+            stack.push(start);
+            let mut closure = Vec::new();
+            while let Some(class) = stack.pop() {
+                closure.push(class);
+                for &sup in &self.supers[class] {
+                    if seen[sup] != epoch {
+                        seen[sup] = epoch;
+                        stack.push(sup);
+                    }
+                }
+            }
+            closure.sort_unstable();
+            ancestors[start] = closure;
+        }
+        let mut ancestor_disjoint = vec![Vec::new(); n_classes];
+        let mut self_disjoint = vec![false; n_classes];
+        for class in 0..n_classes {
+            epoch = epoch.wrapping_add(1);
+            if epoch == 0 {
+                seen.fill(0);
+                epoch = 1;
+            }
+            let mut partners = Vec::new();
+            for &anc in &ancestors[class] {
+                for &partner in &self.disjoint_partners[anc] {
+                    if partner != anc && seen[partner] != epoch {
+                        seen[partner] = epoch;
+                        partners.push(partner);
+                    }
+                }
+            }
+            partners.sort_unstable();
+            self_disjoint[class] = sorted_slices_intersect(&ancestors[class], &partners);
+            ancestor_disjoint[class] = partners;
+        }
+        self.ancestors = ancestors;
+        self.ancestor_disjoint = ancestor_disjoint;
+        self.self_disjoint = self_disjoint;
 
         let children = class_children(&self.supers);
         let role_closure = role_super_closure(&self, role_constraints);
@@ -587,8 +643,12 @@ impl BottomPrepass {
             if bottom[owner] || self.existentials[owner].is_empty() {
                 continue;
             }
-            let owner_closure = type_closure(&[owner], &self);
+            let owner_closure = &self.ancestors[owner];
+            let mut seen_roles: HashSet<&str> = HashSet::default();
             for (role, _) in &self.existentials[owner] {
+                if !seen_roles.insert(role.as_str()) {
+                    continue;
+                }
                 let factors: &Vec<&ClassConstraint> = factors_by_role
                     .entry(role.as_str())
                     .or_insert_with(|| {
@@ -639,7 +699,7 @@ impl BottomPrepass {
                     continue;
                 };
                 for parent in common {
-                    if parent != owner && !owner_closure.contains(&parent) {
+                    if parent != owner && owner_closure.binary_search(&parent).is_err() {
                         forced_ids.insert((owner, parent));
                     }
                 }
@@ -783,33 +843,20 @@ fn inherited_universals(
 
 fn distinct_data_pairs(
     values: &[BTreeMap<String, BTreeSet<RequiredValue>>],
-) -> HashSet<(String, String)> {
-    let names: Vec<String> = values
-        .iter()
-        .flat_map(BTreeMap::values)
-        .flat_map(BTreeSet::iter)
-        .filter_map(|value| match value {
-            RequiredValue::Data(name) => Some(name.clone()),
-            RequiredValue::Object(_) => None,
-        })
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let mut pairs = HashSet::default();
-    for (index, left) in names.iter().enumerate() {
-        for right in names.iter().skip(index + 1) {
-            // The prepass may turn this verdict into a named-class bottom
-            // certificate, so use only the deliberately narrow exact oracle.
-            // It admits boolean, mathematical integer, and xsd:string values;
-            // whitespace-normalised strings and IEEE float/double values stay
-            // unknown rather than inheriting a lexical-inequality guess from
-            // the general relation-clause generator.
-            if super::datatypes::bridge_exact_value_equal(left, right) == Some(false) {
-                pairs.insert(ordered_string_pair(left.clone(), right.clone()));
-            }
+) -> HashMap<String, String> {
+    let mut keys = HashMap::default();
+    for value in values.iter().flat_map(BTreeMap::values).flat_map(BTreeSet::iter) {
+        let RequiredValue::Data(name) = value else {
+            continue;
+        };
+        if keys.contains_key(name) {
+            continue;
+        }
+        if let Some(key) = super::datatypes::bridge_value_identity_key(name) {
+            keys.insert(name.clone(), key);
         }
     }
-    pairs
+    keys
 }
 
 /// Compactly expose distinct required values to the Horn layer.  A fresh
@@ -821,10 +868,12 @@ fn distinct_data_pairs(
 fn functional_value_markers(
     prepass: &BottomPrepass,
     role_closure: &HashMap<String, Vec<String>>,
-    distinct_data: &HashSet<(String, String)>,
+    distinct_data: &HashMap<String, String>,
 ) -> (Vec<(String, String)>, Vec<(String, String)>) {
+    const PAIRWISE_MARKER_LIMIT: usize = 64;
     let mut links = BTreeSet::new();
-    let mut by_role: BTreeMap<String, BTreeMap<RequiredValue, String>> = BTreeMap::new();
+    let mut by_role: BTreeMap<String, BTreeMap<RequiredValue, (String, BTreeSet<String>)>> =
+        BTreeMap::new();
     for (owner, requirements) in prepass.direct_values.iter().enumerate() {
         for (role, value) in requirements {
             for effective_role in role_closure
@@ -835,22 +884,100 @@ fn functional_value_markers(
                 if !prepass.functional.contains(effective_role) {
                     continue;
                 }
-                let marker = value_marker(effective_role, value);
-                links.insert((prepass.names[owner].clone(), marker.clone()));
-                by_role
+                let entry = by_role
                     .entry(effective_role.clone())
                     .or_default()
                     .entry(value.clone())
-                    .or_insert(marker);
+                    .or_insert_with(|| (value_marker(effective_role, value), BTreeSet::new()));
+                entry.1.insert(prepass.names[owner].clone());
             }
         }
     }
 
     let mut incompatible = BTreeSet::new();
-    for values in by_role.values() {
-        let entries: Vec<_> = values.iter().collect();
-        for (index, (left_value, left_marker)) in entries.iter().enumerate() {
-            for (right_value, right_marker) in entries.iter().skip(index + 1) {
+    for (effective_role, values) in &by_role {
+        if values.len() <= PAIRWISE_MARKER_LIMIT {
+            for (marker, owners) in values.values() {
+                for owner in owners {
+                    links.insert((owner.clone(), marker.clone()));
+                }
+            }
+            let entries: Vec<_> = values.iter().collect();
+            for (index, (left_value, (left_marker, _))) in entries.iter().enumerate() {
+                for (right_value, (right_marker, _)) in entries.iter().skip(index + 1) {
+                    if required_values_distinct(
+                        left_value,
+                        right_value,
+                        distinct_data,
+                        &prepass.different,
+                    ) {
+                        incompatible.insert(ordered_string_pair(
+                            left_marker.clone(),
+                            right_marker.clone(),
+                        ));
+                    }
+                }
+            }
+            continue;
+        }
+        let mut class_of_key: HashMap<&str, usize> = HashMap::default();
+        let mut data_classes: Vec<(String, BTreeSet<String>)> = Vec::new();
+        let mut objects: Vec<(&RequiredValue, &String)> = Vec::new();
+        for (value, (marker, owners)) in values {
+            match value {
+                RequiredValue::Data(name) => {
+                    if let Some(key) = distinct_data.get(name) {
+                        match class_of_key.get(key.as_str()) {
+                            Some(&idx) => {
+                                data_classes[idx].1.extend(owners.iter().cloned());
+                            }
+                            None => {
+                                class_of_key.insert(key.as_str(), data_classes.len());
+                                data_classes.push((marker.clone(), owners.clone()));
+                            }
+                        }
+                    }
+                }
+                RequiredValue::Object(_) => {
+                    for owner in owners {
+                        links.insert((owner.clone(), marker.clone()));
+                    }
+                    objects.push((value, marker));
+                }
+            }
+        }
+        if data_classes.len() > 1 {
+            let positions = (usize::BITS - (data_classes.len() - 1).leading_zeros()) as usize;
+            for pos in 0..positions {
+                incompatible.insert(ordered_string_pair(
+                    value_bit_marker(effective_role, pos, 0),
+                    value_bit_marker(effective_role, pos, 1),
+                ));
+            }
+            for (class_idx, (rep_marker, class_owners)) in data_classes.iter().enumerate() {
+                if class_owners.len() == 1 {
+                    let owner = class_owners.iter().next().unwrap();
+                    for pos in 0..positions {
+                        links.insert((
+                            owner.clone(),
+                            value_bit_marker(effective_role, pos, (class_idx >> pos) & 1),
+                        ));
+                    }
+                } else {
+                    for owner in class_owners {
+                        links.insert((owner.clone(), rep_marker.clone()));
+                    }
+                    for pos in 0..positions {
+                        links.insert((
+                            rep_marker.clone(),
+                            value_bit_marker(effective_role, pos, (class_idx >> pos) & 1),
+                        ));
+                    }
+                }
+            }
+        }
+        for (index, (left_value, left_marker)) in objects.iter().enumerate() {
+            for (right_value, right_marker) in objects.iter().skip(index + 1) {
                 if required_values_distinct(
                     left_value,
                     right_value,
@@ -871,6 +998,10 @@ fn functional_value_markers(
     )
 }
 
+fn value_bit_marker(role: &str, position: usize, bit: usize) -> String {
+    format!("__km_bpval__bit__r{}:{}__p{position}__b{bit}", role.len(), role)
+}
+
 fn value_marker(role: &str, value: &RequiredValue) -> String {
     let (kind, name) = match value {
         RequiredValue::Data(name) => ('d', name.as_str()),
@@ -889,12 +1020,15 @@ fn value_marker(role: &str, value: &RequiredValue) -> String {
 fn required_values_distinct(
     left: &RequiredValue,
     right: &RequiredValue,
-    distinct_data: &HashSet<(String, String)>,
+    distinct_data: &HashMap<String, String>,
     different: &HashSet<(String, String)>,
 ) -> bool {
     match (left, right) {
         (RequiredValue::Data(left), RequiredValue::Data(right)) => {
-            distinct_data.contains(&ordered_string_pair(left.clone(), right.clone()))
+            match (distinct_data.get(left), distinct_data.get(right)) {
+                (Some(k1), Some(k2)) => k1 != k2,
+                _ => false,
+            }
         }
         (RequiredValue::Object(left), RequiredValue::Object(right)) => {
             different.contains(&ordered_string_pair(left.clone(), right.clone()))
@@ -906,9 +1040,12 @@ fn required_values_distinct(
 fn value_maps_clash<'a>(
     maps: impl IntoIterator<Item = &'a BTreeMap<String, BTreeSet<RequiredValue>>>,
     functional: &HashSet<String>,
-    distinct_data: &HashSet<(String, String)>,
+    distinct_data: &HashMap<String, String>,
     different: &HashSet<(String, String)>,
 ) -> bool {
+    if functional.is_empty() {
+        return false;
+    }
     let mut combined: BTreeMap<&str, BTreeSet<&RequiredValue>> = BTreeMap::new();
     for map in maps {
         for (role, values) in map {
@@ -917,12 +1054,30 @@ fn value_maps_clash<'a>(
             }
         }
     }
+    if combined.is_empty() {
+        return false;
+    }
     combined.values().any(|required| {
-        required.iter().enumerate().any(|(index, left)| {
-            required
-                .iter()
-                .skip(index + 1)
-                .any(|right| required_values_distinct(left, right, distinct_data, different))
+        let mut first_data_key: Option<&str> = None;
+        let mut objects: Vec<&str> = Vec::new();
+        for val in required {
+            match val {
+                RequiredValue::Data(name) => {
+                    if let Some(key) = distinct_data.get(name).map(String::as_str) {
+                        match first_data_key {
+                            None => first_data_key = Some(key),
+                            Some(first) if first != key => return true,
+                            Some(_) => {}
+                        }
+                    }
+                }
+                RequiredValue::Object(name) => objects.push(name.as_str()),
+            }
+        }
+        objects.iter().enumerate().any(|(index, &left)| {
+            objects.iter().skip(index + 1).any(|&right| {
+                different.contains(&ordered_string_pair(left.to_string(), right.to_string()))
+            })
         })
     })
 }
@@ -960,7 +1115,7 @@ fn context_impossible(
     universals: &[Vec<(String, ClassConstraint)>],
     values: &[BTreeMap<String, BTreeSet<RequiredValue>>],
     bottom: &[bool],
-    distinct_data: &HashSet<(String, String)>,
+    distinct_data: &HashMap<String, String>,
 ) -> bool {
     let supers: Vec<String> = role_closure
         .get(role)
@@ -1035,7 +1190,7 @@ fn viable_context_common_types(
     prepass: &BottomPrepass,
     values: &[BTreeMap<String, BTreeSet<RequiredValue>>],
     bottom: &[bool],
-    distinct_data: &HashSet<(String, String)>,
+    distinct_data: &HashMap<String, String>,
 ) -> Option<Option<BTreeSet<usize>>> {
     #[allow(clippy::too_many_arguments)]
     fn dfs(
@@ -1047,7 +1202,7 @@ fn viable_context_common_types(
         prepass: &BottomPrepass,
         values: &[BTreeMap<String, BTreeSet<RequiredValue>>],
         bottom: &[bool],
-        distinct_data: &HashSet<(String, String)>,
+        distinct_data: &HashMap<String, String>,
     ) -> bool {
         *visited += 1;
         if *visited > MAX_CONTEXT_BRANCHES {
@@ -1110,6 +1265,13 @@ fn viable_context_common_types(
 }
 
 fn type_closure(initial: &[usize], prepass: &BottomPrepass) -> BTreeSet<usize> {
+    if prepass.ancestors.len() == prepass.names.len() {
+        let mut closure = BTreeSet::new();
+        for &class in initial {
+            closure.extend(prepass.ancestors[class].iter().copied());
+        }
+        return closure;
+    }
     let mut closure = BTreeSet::new();
     let mut queue: VecDeque<usize> = initial.iter().copied().collect();
     while let Some(class) = queue.pop_front() {
@@ -1120,13 +1282,24 @@ fn type_closure(initial: &[usize], prepass: &BottomPrepass) -> BTreeSet<usize> {
     closure
 }
 
+fn sorted_slices_intersect(mut left: &[usize], mut right: &[usize]) -> bool {
+    while let (Some(&l), Some(&r)) = (left.first(), right.first()) {
+        match l.cmp(&r) {
+            std::cmp::Ordering::Equal => return true,
+            std::cmp::Ordering::Less => left = &left[1..],
+            std::cmp::Ordering::Greater => right = &right[1..],
+        }
+    }
+    false
+}
+
 fn all_context_branches_impossible(
     initial: &[usize],
     factors: &[&ClassConstraint],
     prepass: &BottomPrepass,
     values: &[BTreeMap<String, BTreeSet<RequiredValue>>],
     bottom: &[bool],
-    distinct_data: &HashSet<(String, String)>,
+    distinct_data: &HashMap<String, String>,
 ) -> Option<bool> {
     fn dfs(
         index: usize,
@@ -1136,7 +1309,7 @@ fn all_context_branches_impossible(
         prepass: &BottomPrepass,
         values: &[BTreeMap<String, BTreeSet<RequiredValue>>],
         bottom: &[bool],
-        distinct_data: &HashSet<(String, String)>,
+        distinct_data: &HashMap<String, String>,
     ) -> Option<bool> {
         *visited += 1;
         if *visited > MAX_CONTEXT_BRANCHES {
@@ -1206,8 +1379,44 @@ fn selected_types_clash(
     prepass: &BottomPrepass,
     values: &[BTreeMap<String, BTreeSet<RequiredValue>>],
     bottom: &[bool],
-    distinct_data: &HashSet<(String, String)>,
+    distinct_data: &HashMap<String, String>,
 ) -> bool {
+    if prepass.ancestors.len() == prepass.names.len()
+        && prepass.ancestor_disjoint.len() == prepass.names.len()
+        && prepass.self_disjoint.len() == prepass.names.len()
+    {
+        for &class in selected {
+            if bottom[class]
+                || prepass.self_disjoint[class]
+                || prepass.ancestors[class].iter().any(|&anc| bottom[anc])
+            {
+                return true;
+            }
+        }
+        for (index, &left) in selected.iter().enumerate() {
+            let left_disjoint = &prepass.ancestor_disjoint[left];
+            if left_disjoint.is_empty() {
+                continue;
+            }
+            for &right in &selected[index + 1..] {
+                if left != right && sorted_slices_intersect(left_disjoint, &prepass.ancestors[right])
+                {
+                    return true;
+                }
+            }
+        }
+        // `inherited_values` already propagated every ancestor's required
+        // values down to `selected`, so the union over `selected` equals the
+        // union over `type_closure(selected)`.
+        return !prepass.functional.is_empty()
+            && selected.iter().any(|&class| !values[class].is_empty())
+            && value_maps_clash(
+                selected.iter().map(|&class| &values[class]),
+                &prepass.functional,
+                distinct_data,
+                &prepass.different,
+            );
+    }
     let mut closure = BTreeSet::new();
     let mut queue: VecDeque<usize> = selected.iter().copied().collect();
     while let Some(class) = queue.pop_front() {
@@ -1330,6 +1539,7 @@ mod tests {
 
     #[test]
     fn functional_boolean_clash_propagates_through_subclass_and_exists() {
+        let _test_env = crate::test_env::read();
         let result = run(r#"
             FunctionalDataProperty(<http://x/p>)
             SubClassOf(<http://x/True> DataHasValue(<http://x/p> "true"^^xsd:boolean))
@@ -1354,6 +1564,7 @@ mod tests {
 
     #[test]
     fn equal_boolean_lexical_forms_and_nonfunctional_values_do_not_clash() {
+        let _test_env = crate::test_env::read();
         let equal = run(r#"
             FunctionalDataProperty(<http://x/p>)
             SubClassOf(<http://x/A> DataHasValue(<http://x/p> "true"^^xsd:boolean))
@@ -1370,6 +1581,7 @@ mod tests {
 
     #[test]
     fn lossy_datatype_lexicals_do_not_create_bottom_certificates() {
+        let _test_env = crate::test_env::read();
         let token = run(r#"
             FunctionalDataProperty(<http://x/p>)
             SubClassOf(<http://x/A> DataHasValue(<http://x/p> "a  b"^^xsd:token))
@@ -1393,6 +1605,7 @@ mod tests {
 
     #[test]
     fn exact_integer_and_string_values_still_seed_bottom() {
+        let _test_env = crate::test_env::read();
         let result = run(r#"
             FunctionalDataProperty(<http://x/integerProperty>)
             FunctionalDataProperty(<http://x/stringProperty>)
@@ -1409,6 +1622,7 @@ mod tests {
 
     #[test]
     fn inverse_domain_can_make_a_required_successor_impossible() {
+        let _test_env = crate::test_env::read();
         let (prepass, mut registry) = parse_prepass(
             r#"
             FunctionalObjectProperty(<http://x/dimension>)
@@ -1432,6 +1646,7 @@ mod tests {
 
     #[test]
     fn union_range_requires_every_alternative_to_clash() {
+        let _test_env = crate::test_env::read();
         let ontology = |include_point: bool| {
             let (prepass, mut registry) = parse_prepass(
                 r#"
@@ -1456,6 +1671,7 @@ mod tests {
 
     #[test]
     fn inherited_universal_participates_in_successor_clash() {
+        let _test_env = crate::test_env::read();
         let (prepass, mut registry) = parse_prepass(
             r#"
             FunctionalDataProperty(<http://x/mass>)
@@ -1478,6 +1694,7 @@ mod tests {
 
     #[test]
     fn inverse_range_alternatives_force_the_only_viable_owner_type() {
+        let _test_env = crate::test_env::read();
         let (prepass, mut registry) = parse_prepass(
             r#"
             FunctionalDataProperty(<http://x/has_mass>)
@@ -1508,6 +1725,7 @@ mod tests {
 
     #[test]
     fn functional_values_are_materialized_as_disjoint_horn_markers() {
+        let _test_env = crate::test_env::read();
         let result = run(r#"
             FunctionalDataProperty(<http://x/mass>)
             SubClassOf(<http://x/TrueCarrier> DataHasValue(<http://x/mass> "true"^^xsd:boolean))
@@ -1526,6 +1744,59 @@ mod tests {
                 )],
             );
             assert!(materialized.contains(&expected));
+        }
+    }
+
+    #[test]
+    fn binary_digit_value_markers_above_pairwise_limit_match_pairwise_disjointness() {
+        let _test_env = crate::test_env::read();
+        let count = 70usize;
+        let mut src = String::from("FunctionalDataProperty(<http://x/code>)\n");
+        for i in 0..count {
+            src.push_str(&format!(
+                "SubClassOf(<http://x/C{i}> DataHasValue(<http://x/code> \"{i}\"^^xsd:integer))\n"
+            ));
+        }
+        let result = run(&src);
+        let incompatible: HashSet<(String, String)> =
+            result.incompatible_pairs.iter().cloned().collect();
+        // 70 distinct values require ceil(log2(70)) = 7 bit positions, so
+        // exactly 7 complementary bit-marker pairs are emitted instead of
+        // 70 * 69 / 2 = 2,415 pairwise disjointness axioms.
+        assert_eq!(result.incompatible_pairs.len(), 7);
+        assert_eq!(result.value_markers.len(), count * 7);
+
+        let mut markers_by_owner: HashMap<String, Vec<String>> = HashMap::default();
+        for (owner, marker) in &result.value_markers {
+            markers_by_owner
+                .entry(owner.clone())
+                .or_default()
+                .push(marker.clone());
+        }
+        for i in 0..count {
+            let ci = format!("C{i}");
+            let mi = &markers_by_owner[&ci];
+            assert_eq!(mi.len(), 7);
+            // No class's own bit markers may conflict with each other.
+            for (idx, a) in mi.iter().enumerate() {
+                for b in &mi[idx + 1..] {
+                    assert!(!incompatible.contains(&ordered_string_pair(a.clone(), b.clone())));
+                }
+            }
+            // Every distinct pair C_i != C_j must share at least one conflicting
+            // bit-marker pair (bit 0 vs bit 1 at some bit position).
+            for j in (i + 1)..count {
+                let cj = format!("C{j}");
+                let mj = &markers_by_owner[&cj];
+                let clashes = mi.iter().any(|a| {
+                    mj.iter()
+                        .any(|b| incompatible.contains(&ordered_string_pair(a.clone(), b.clone())))
+                });
+                assert!(
+                    clashes,
+                    "distinct value owners {ci} and {cj} must clash on at least one bit position"
+                );
+            }
         }
     }
 }

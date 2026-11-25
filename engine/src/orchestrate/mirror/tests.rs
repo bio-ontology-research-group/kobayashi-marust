@@ -127,6 +127,7 @@ fn fixture() -> String {
 
 #[test]
 fn detects_the_private_mirror_family() {
+    let _test_env = crate::test_env::write();
     let fragment = detect(&fixture())
         .expect("no premise failure")
         .expect("fragment present");
@@ -144,6 +145,7 @@ fn detects_the_private_mirror_family() {
 
 #[test]
 fn tracks_transitivity_per_mirror_role() {
+    let _test_env = crate::test_env::write();
     let axioms = [
         "Declaration(ObjectProperty(<http://example.org/mirror#transitive>))",
         "Declaration(ObjectProperty(<http://example.org/mirror#plain>))",
@@ -169,6 +171,7 @@ fn tracks_transitivity_per_mirror_role() {
 
 #[test]
 fn an_ontology_without_complements_is_not_the_fragment() {
+    let _test_env = crate::test_env::write();
     assert!(detect(&document(&base_axioms()))
         .expect("no premise failure")
         .is_none());
@@ -179,6 +182,7 @@ fn an_ontology_without_complements_is_not_the_fragment() {
 /// `<ex:A>` and `ex:A` are the same class. Nothing here needs a prefix map.
 #[test]
 fn entity_identity_matches_the_frontend() {
+    let _test_env = crate::test_env::write();
     assert_eq!(class_key("owl:Thing"), ClassRef::Top);
     assert_eq!(class_key(&format!("<{OWL_THING}>")), ClassRef::Top);
     assert_eq!(class_key("owl:Nothing"), ClassRef::Bottom);
@@ -191,6 +195,7 @@ fn entity_identity_matches_the_frontend() {
 /// whitespace variant OWL functional syntax allows.
 #[test]
 fn detects_the_family_through_prefixed_names() {
+    let _test_env = crate::test_env::write();
     for header in [
         "Prefix(owl:=<http://www.w3.org/2002/07/owl#>)\nPrefix(ex:=<http://example.org/mirror#>)\n",
         "Prefix( owl: = <http://www.w3.org/2002/07/owl#> )\nPrefix( ex: = <http://example.org/mirror#> )\n",
@@ -234,6 +239,7 @@ fn refusal_of(axioms: Vec<String>) -> Premise {
 
 #[test]
 fn refuses_a_negative_used_outside_its_definition() {
+    let _test_env = crate::test_env::write();
     let negative = negative_iri(&iri("Wheel"));
     let premise = refusal(&[format!("SubClassOf(<{negative}> <{NS}Thing1>)")]);
     assert_eq!(premise, Premise::NegativeNotPrivate(negative));
@@ -241,6 +247,7 @@ fn refuses_a_negative_used_outside_its_definition() {
 
 #[test]
 fn refuses_a_complement_outside_a_mirror_definition() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!(
         "SubClassOf(<{NS}Bike> ObjectComplementOf(<{NS}Process>))"
     )]);
@@ -252,6 +259,7 @@ fn refuses_a_complement_outside_a_mirror_definition() {
 
 #[test]
 fn refuses_a_disjunction_in_the_residual() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!(
         "SubClassOf(<{NS}Bike> ObjectUnionOf(<{NS}Process> <{NS}Quality>))"
     )]);
@@ -263,6 +271,7 @@ fn refuses_a_disjunction_in_the_residual() {
 
 #[test]
 fn refuses_a_universal_restriction_in_the_residual() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!(
         "SubClassOf(<{NS}Bike> ObjectAllValuesFrom(<{NS}hasPart> <{NS}Wheel>))"
     )]);
@@ -274,6 +283,7 @@ fn refuses_a_universal_restriction_in_the_residual() {
 
 #[test]
 fn refuses_a_cardinality_restriction_in_the_residual() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!(
         "SubClassOf(<{NS}Bike> ObjectMinCardinality(2 <{NS}hasPart> <{NS}Wheel>))"
     )]);
@@ -285,6 +295,7 @@ fn refuses_a_cardinality_restriction_in_the_residual() {
 
 #[test]
 fn refuses_a_nominal_in_the_residual() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("SubClassOf(<{NS}Bike> ObjectOneOf(<{NS}b1>))")]);
     assert!(
         matches!(premise, Premise::NotPositiveResidual(_)),
@@ -294,18 +305,21 @@ fn refuses_a_nominal_in_the_residual() {
 
 #[test]
 fn refuses_a_top_gci() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("SubClassOf(owl:Thing <{NS}Thing1>)")]);
     assert_eq!(premise, Premise::TopGci);
 }
 
 #[test]
 fn refuses_a_top_equivalence() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("EquivalentClasses(owl:Thing <{NS}Thing1>)")]);
     assert_eq!(premise, Premise::TopGci);
 }
 
 #[test]
 fn refuses_a_bottom_constructor() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("SubClassOf(<{NS}Bike> owl:Nothing)")]);
     assert!(
         matches!(premise, Premise::NotPositiveResidual(_)),
@@ -315,12 +329,14 @@ fn refuses_a_bottom_constructor() {
 
 #[test]
 fn refuses_a_reflexive_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("ReflexiveObjectProperty(<{NS}hasPart>)")]);
     assert_eq!(premise, Premise::ReflexiveRole(iri("hasPart")));
 }
 
 #[test]
 fn refuses_the_universal_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!(
         "SubObjectPropertyOf(<{NS}hasPart> owl:topObjectProperty)"
     )]);
@@ -329,12 +345,14 @@ fn refuses_the_universal_role() {
 
 #[test]
 fn refuses_an_abox() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("ClassAssertion(<{NS}Bike> <{NS}b1>)")]);
     assert_eq!(premise, Premise::NotPureTbox("ClassAssertion".into()));
 }
 
 #[test]
 fn refuses_a_declared_individual() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("Declaration(NamedIndividual(<{NS}b1>))")]);
     assert_eq!(
         premise,
@@ -344,18 +362,21 @@ fn refuses_a_declared_individual() {
 
 #[test]
 fn refuses_a_data_property() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("DataPropertyDomain(<{NS}weight> <{NS}Bike>)")]);
     assert_eq!(premise, Premise::NotPureTbox("DataPropertyDomain".into()));
 }
 
 #[test]
 fn refuses_a_rule() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&["DLSafeRule(Body() Head())".to_string()]);
     assert_eq!(premise, Premise::NotPureTbox("DLSafeRule".into()));
 }
 
 #[test]
 fn refuses_an_import() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&["Import(<http://example.org/other>)".to_string()]);
     assert_eq!(premise, Premise::Imports);
 }
@@ -365,6 +386,7 @@ fn refuses_an_import() {
 /// reconstruction rule out.
 #[test]
 fn refuses_a_left_existential_over_the_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!(
         "SubClassOf(ObjectSomeValuesFrom(<{NS}hasPart> <{NS}Wheel>) <{NS}Vehicle>)"
     )]);
@@ -376,6 +398,7 @@ fn refuses_a_left_existential_over_the_mirror_role() {
 
 #[test]
 fn refuses_a_domain_axiom_on_the_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("ObjectPropertyDomain(<{NS}hasPart> <{NS}Thing1>)")]);
     assert_eq!(
         premise,
@@ -388,6 +411,7 @@ fn refuses_a_domain_axiom_on_the_mirror_role() {
 /// proxy all the same.
 #[test]
 fn refuses_a_left_existential_over_a_mirror_super_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[
         format!("Declaration(ObjectProperty(<{NS}related>))"),
         format!("SubObjectPropertyOf(<{NS}hasPart> <{NS}related>)"),
@@ -401,6 +425,7 @@ fn refuses_a_left_existential_over_a_mirror_super_role() {
 
 #[test]
 fn refuses_a_functional_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("FunctionalObjectProperty(<{NS}hasPart>)")]);
     assert_eq!(premise, Premise::MirrorRoleCardinality(iri("hasPart")));
 }
@@ -408,6 +433,7 @@ fn refuses_a_functional_mirror_role() {
 /// Functionality on the *inverse* merges predecessors just as badly.
 #[test]
 fn refuses_a_functional_inverse_of_the_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("FunctionalObjectProperty(<{NS}partOf>)")]);
     assert_eq!(premise, Premise::MirrorRoleCardinality(iri("partOf")));
 }
@@ -416,6 +442,7 @@ fn refuses_a_functional_inverse_of_the_mirror_role() {
 /// taxonomy no longer decides the proxy hierarchy.
 #[test]
 fn refuses_a_range_on_the_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("ObjectPropertyRange(<{NS}hasPart> <{NS}Thing1>)")]);
     assert_eq!(
         premise,
@@ -429,6 +456,7 @@ fn refuses_a_range_on_the_mirror_role() {
 /// A domain on the inverse is the same axiom as a range on the mirror role.
 #[test]
 fn refuses_a_domain_on_the_inverse_of_the_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("ObjectPropertyDomain(<{NS}partOf> <{NS}Thing1>)")]);
     assert_eq!(
         premise,
@@ -442,6 +470,7 @@ fn refuses_a_domain_on_the_inverse_of_the_mirror_role() {
 /// A range on the inverse is a domain on the mirror role.
 #[test]
 fn refuses_a_range_on_the_inverse_of_the_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("ObjectPropertyRange(<{NS}partOf> <{NS}Thing1>)")]);
     assert_eq!(
         premise,
@@ -455,6 +484,7 @@ fn refuses_a_range_on_the_inverse_of_the_mirror_role() {
 /// A range on a super-role types the mirror successor just as effectively.
 #[test]
 fn refuses_a_range_on_a_mirror_super_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[
         format!("Declaration(ObjectProperty(<{NS}related>))"),
         format!("SubObjectPropertyOf(<{NS}hasPart> <{NS}related>)"),
@@ -472,6 +502,7 @@ fn refuses_a_range_on_a_mirror_super_role() {
 /// Symmetry adds the back edge, so the mirror successor is also a predecessor.
 #[test]
 fn refuses_a_symmetric_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("SymmetricObjectProperty(<{NS}hasPart>)")]);
     assert_eq!(
         premise,
@@ -484,6 +515,7 @@ fn refuses_a_symmetric_mirror_role() {
 
 #[test]
 fn refuses_an_asymmetric_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("AsymmetricObjectProperty(<{NS}hasPart>)")]);
     assert_eq!(
         premise,
@@ -496,6 +528,7 @@ fn refuses_an_asymmetric_mirror_role() {
 
 #[test]
 fn refuses_an_irreflexive_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("IrreflexiveObjectProperty(<{NS}partOf>)")]);
     assert_eq!(
         premise,
@@ -508,6 +541,7 @@ fn refuses_an_irreflexive_mirror_role() {
 
 #[test]
 fn refuses_a_disjoint_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[
         format!("Declaration(ObjectProperty(<{NS}other>))"),
         format!("DisjointObjectProperties(<{NS}hasPart> <{NS}other>)"),
@@ -525,6 +559,7 @@ fn refuses_a_disjoint_mirror_role() {
 /// fixture states one, and the family is still detected.
 #[test]
 fn an_unrelated_role_may_carry_a_domain_and_range() {
+    let _test_env = crate::test_env::write();
     let fragment = detect(&fixture())
         .expect("no premise failure")
         .expect("fragment present");
@@ -533,6 +568,7 @@ fn an_unrelated_role_may_carry_a_domain_and_range() {
 
 #[test]
 fn refuses_a_chain_composed_mirror_role() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[
         format!("Declaration(ObjectProperty(<{NS}other>))"),
         format!("SubObjectPropertyOf(ObjectPropertyChain(<{NS}other> <{NS}other>) <{NS}hasPart>)"),
@@ -542,6 +578,7 @@ fn refuses_a_chain_composed_mirror_role() {
 
 #[test]
 fn refuses_comparable_mirror_roles() {
+    let _test_env = crate::test_env::write();
     let mut axioms = base_axioms();
     axioms.extend(mirror_axioms());
     axioms.push(format!("Declaration(ObjectProperty(<{NS}hasComponent>))"));
@@ -562,6 +599,7 @@ fn refuses_comparable_mirror_roles() {
 
 #[test]
 fn refuses_an_undeclared_negative() {
+    let _test_env = crate::test_env::write();
     let mut axioms = base_axioms();
     let declaration = format!("Declaration(Class(<{NS}not_hasPart_Wheel>))");
     axioms.extend(mirror_axioms().into_iter().filter(|a| *a != declaration));
@@ -574,6 +612,7 @@ fn refuses_an_undeclared_negative() {
 
 #[test]
 fn refuses_the_reserved_proxy_namespace() {
+    let _test_env = crate::test_env::write();
     let premise = refusal(&[format!("Declaration(Class(<{PROXY_IRI_PREFIX}0>))")]);
     assert_eq!(
         premise,
@@ -601,6 +640,7 @@ fn taxonomy_of(pairs: &[(&str, &str)], unsat: &[&str]) -> Taxonomy {
 
 #[test]
 fn identical_base_taxonomies_agree() {
+    let _test_env = crate::test_env::write();
     let pairs = [("A", "B"), ("B", "C")];
     let left = taxonomy_of(&pairs, &["D"]);
     let right = taxonomy_of(&pairs, &["D"]);
@@ -611,6 +651,7 @@ fn identical_base_taxonomies_agree() {
 /// same number of pairs, but a different relation.
 #[test]
 fn equal_pair_counts_with_different_pairs_are_a_disagreement() {
+    let _test_env = crate::test_env::write();
     let left = taxonomy_of(&[("A", "B"), ("B", "C")], &[]);
     let right = taxonomy_of(&[("A", "B"), ("B", "D")], &[]);
     assert_eq!(left.base_pairs, right.base_pairs);
@@ -622,6 +663,7 @@ fn equal_pair_counts_with_different_pairs_are_a_disagreement() {
 
 #[test]
 fn a_lost_base_subject_is_a_disagreement() {
+    let _test_env = crate::test_env::write();
     let left = taxonomy_of(&[("A", "B"), ("B", "C")], &[]);
     let right = taxonomy_of(&[("A", "B")], &[]);
     assert_eq!(
@@ -632,6 +674,7 @@ fn a_lost_base_subject_is_a_disagreement() {
 
 #[test]
 fn an_invented_base_subject_is_a_disagreement() {
+    let _test_env = crate::test_env::write();
     let left = taxonomy_of(&[("A", "B")], &[]);
     let right = taxonomy_of(&[("A", "B"), ("C", "B")], &[]);
     assert_eq!(
@@ -642,6 +685,7 @@ fn an_invented_base_subject_is_a_disagreement() {
 
 #[test]
 fn differing_unsatisfiable_sets_are_a_disagreement() {
+    let _test_env = crate::test_env::write();
     let left = taxonomy_of(&[("A", "B")], &["X"]);
     let right = taxonomy_of(&[("A", "B")], &["Y"]);
     assert_eq!(
@@ -658,6 +702,7 @@ fn differing_unsatisfiable_sets_are_a_disagreement() {
 /// projection, so it must not count as a disagreement.
 #[test]
 fn an_unsatisfiable_proxy_is_not_a_base_disagreement() {
+    let _test_env = crate::test_env::write();
     let proxy = format!("{PROXY_IRI_PREFIX}7");
     let left = taxonomy_of(&[("A", "B")], &[]);
     let right = taxonomy_of(&[("A", "B")], &[proxy.as_str()]);
@@ -667,6 +712,7 @@ fn an_unsatisfiable_proxy_is_not_a_base_disagreement() {
 /// The whole reconstruction must refuse, not just the helper.
 #[test]
 fn reconstruction_refuses_a_base_disagreement() {
+    let _test_env = crate::test_env::write();
     let text = fixture();
     let fragment = detect(&text).unwrap().unwrap();
     let good = taxonomy_of(&[], &[]);
@@ -686,6 +732,7 @@ fn reconstruction_refuses_a_base_disagreement() {
 
 #[test]
 fn the_projection_declaration_universe_is_base_plus_proxies() {
+    let _test_env = crate::test_env::write();
     let text = fixture();
     let fragment = detect(&text).unwrap().unwrap();
     let base_path = TempPath::new(".mirror-base-test.ofn");
@@ -713,6 +760,7 @@ fn the_projection_declaration_universe_is_base_plus_proxies() {
 
 #[test]
 fn incremental_projection_reuses_the_certified_slice_shape() {
+    let _test_env = crate::test_env::write();
     let text = fixture();
     let projection = prepare_incremental(&text)
         .unwrap()
@@ -729,6 +777,7 @@ fn incremental_projection_reuses_the_certified_slice_shape() {
 
 #[test]
 fn large_source_prefilter_requires_a_mirror_scale_complement_family() {
+    let _test_env = crate::test_env::write();
     assert!(mirror_parse_worthwhile(1024, 0));
     assert!(!mirror_parse_worthwhile(
         MIRROR_PREFILTER_LARGE_BYTES,

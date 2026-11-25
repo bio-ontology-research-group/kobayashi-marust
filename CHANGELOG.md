@@ -2,77 +2,390 @@
 
 ## [Unreleased]
 
-## [1.6.5] - 2026-11-16
+## [1.7.0] - 2026-11-25
 
-Wrong-answer fixes backported from the v1.7.0 line, plus the changes of
-the untagged v1.6.4 candidate (issue #5: FLOPO annotation classes with
-negated qualities, which did not classify in 300 s, now classify in about
-17 s). No proof changes. Notes: `docs/RELEASE-1.6.5.md`.
+OWL 2 DL coverage, HermiT parity in Protégé, faster and smaller runs, and
+fixes for wrong answers. Notes: `docs/RELEASE-1.7.0.md`. Errata for earlier releases:
+`docs/ERRATA-1.6.5.md`. Plan and results: `docs/V1.7.0-PLAN.md`,
+`docs/V1.7.0-PARITY-FINAL.md`, `docs/V1.7.0-SPEED.md`,
+`docs/V1.7.0-NOMINAL-COVER.md`.
+
+Open items (date, final-commit numbers, assets) are listed at the end of
+"Evidence" below.
+
+### Summary
+
+- Query rows: `--realize` (TYPE, SAME), `--values` (VALUE), `--different`
+  (DIFFERENT), `--properties`, `--data-properties`, `--top`. The Protégé
+  plugin answers the `OWLReasoner` methods HermiT answers by reducing them
+  to km runs.
+- `--lenient` reads inputs that OWL API and HermiT load in Protégé but that
+  strict OWL 2 DL checking rejects. `--unknown-datatypes=free` reads
+  datatypes outside the OWL 2 datatype map as fresh datatypes.
+- `--export-model FILE` writes a finite model (`km-model-v1`, see
+  `docs/MODEL-EXPORT.md`).
+- Finite-cover route: ontologies with a cover `⊤ ⊑ {o1, …, ok}` of up to
+  four individuals no longer take minutes on small inputs
+  (`docs/V1.7.0-NOMINAL-COVER.md`).
+- Certificates: a checker proved in Lean accepts a model for the negative
+  answers of an input, and a refutation certificate for inconsistent
+  inputs. Coverage is partial; see the release notes.
+- Speed and memory: see the release notes.
+- Wrong answers fixed (see "Fixed" below). Releases up to v1.6.5 can miss
+  an inconsistency, unsatisfiable classes or subsumptions on some inputs.
+  See `docs/ERRATA-1.6.5.md`.
+
+### Fixed (wrong answers)
+
+Details, reproducers and which releases have each item:
+`docs/ERRATA-1.6.5.md`, `docs/errata/1.6.5/`. Items 1 to 14 are in v1.6.5.
+
+1. Saturation cache confirmed a label that it had not covered
+   (`19b80195`, `af790502`, `554a72e7`): missed inconsistencies.
+2. Functional merge kept one polarity per concept (`8a34a1e3`).
+3. Value merges in saturation (`6b5e1613`): `A ⊑ ≥2 d` over a one-value
+   range was satisfiable.
+4. Universals over transitive roles were applied along one edge only on the
+   CB routes (`a111e343`, `eb04beb3`, `d21a49e0`).
+5. N-ary axioms with repeated operands are sets, as in the OWL API
+   (`f2710130`, `bfb7be93`): `DisjointClasses(B D D)` no longer makes `D`
+   unsatisfiable.
+6. Classes that occur only as cardinality fillers get HT rows (`04a49e49`).
+7. Bridge root label keeps the concepts of the substitute chain
+   (`ee79d91a`).
+8. HT cardinality number rule is a decision (`4acc762d`, `c6ff52f6`).
+9. Certified EL arm: a node with an edge to a dead node is dead in that
+   pass (`1f71bc91`).
+10. A nominal in a domain or range blocks the separability certificate
+    (`482a3458`).
+11. Nominal CB routes: r-Succ offers the labels of individuals over every
+    edge, as in the rule of arXiv:1805.01396, with a ground-unit cut; the
+    Lean closure is extended (`30c850c4`, `a84969a4`, `9bd68cb6`,
+    `24d50930`).
+12. Rule worker: a self atom matches loop edges only (`b15cf0d8`).
+13. Plugin: property values through anonymous individuals go to exact
+    probes (`b6cb3438`, `34f9e651`).
+14. OWL/XML input: full IRIs on conversion (issue #6, `df2529cf`); `km
+    features` scans constructs after the conversion (issue #7, `42da1e86`).
+    Reported by Michel Dumontier.
+15. Not in v1.6.5: `--different` rows no longer depend on hash order and
+    come from the model plan, with nine further causes fixed
+    (`cc4529fc`, `cae7cc6e`, `71272d09`); optimized blocking reads the
+    blocker's unapplied restrictions (`c11e5db6`); after an interrupted query
+    the plugin answers correctly and starts fresh runs (`43beadd0`).
+
+### Fixed since rc2 (third candidate)
+
+- Wrong answer in rc1 and rc2 only: two values of a functional data property
+  on one individual were reported consistent when another individual also
+  had a value (`c616d963`, `1845fd9f`; regression from `bfb7be93`).
+- Plugin: `getDataPropertyValues` next to integer facet restrictions
+  (`1845fd9f`); no orphaned km processes, batch runs survive a per-call time
+  out, temporary files cleaned up (`39f1d6b4`). Open: a one-shot km started
+  by a JVM killed with SIGKILL runs to the end of its time limit.
+- Engine: demand-driven r-Succ offers with Lean module `CBRSuccDemand`
+  (`7616d8b7`): 407 of 503 newly silent sweep cases answer again;
+  `ore_ont_13584` data-value batch 2.0 s (51 s on rc2). KM builds on macOS
+  and Windows again.
+- Plugin: interrupt and dispose return after stopped runs have cleaned up;
+  a stopped batch always ends its call with the stop (`ad1411b3`).
+- New: `km classify --iris full` (or `KM_IRIS=full`) prints full IRIs in
+  every output for every input syntax; default unchanged
+  (`docs/INPUT-FORMATS.md`, "Entity names in output"; issue #8, reported by
+  Michel Dumontier).
+- Release candidates: rc1 `caf9c171`, rc2 `9e6761f3`, rc3 `c63f3a44` (see
+  `docs/RELEASE-1.7.0.md`).
+
+### Changed
+
+- Rule ontologies under certificate modes: the rules route runs first only
+  when a rules certificate is requested by name, with a 30 s budget
+  (`2baf64c2`). Under `KM_LEAN_CHECKERS` they take the default path and
+  record a `cannot_check` event; wiring `rules-cert-check` into
+  `KM_LEAN_CHECKERS` is open.
+- r-Succ root-edge offers carry central labels only, as the Lean closure
+  states (`73223020`).
+
+### Removed
+
+- The forced routes `tableau` and `tab_race` (`62ad6911`). They published
+  wrong subsumptions with `DROPPED 0` on 15 sweep cases, and no automatic
+  path reached them. The `km tableau` worker stays.
+
+### Known limits
+
+- The complete r-Succ rule costs time on some synthetic nominal inputs. With
+  demand-driven offers, 407 of 503 newly silent sweep cases answer again.
+  The cost stays on inputs where many individuals may equal the same nominal
+  (the `f9001` family: one probe 1.2 s before the rule, over 120 s now) and
+  on two `--realize --values --different` examples (about 30 s to about
+  170 s). No pool input is affected (`docs/NOMINALS-CB.md`, 13.2 and 14).
+- `ore_ont_12451` takes about 44 s (6 s in v1.6.5). `ore_ont_10926`, `1673`
+  and `12128` use 13 to 16 percent more memory.
+
+### Evidence
+
+Measured on the third release candidate (`c63f3a44`) or its parent
+`07fba7aa`, as stated.
+
+- Release chain on `07fba7aa`: five Lean gates pass (elc 9, routing 311, ht
+  254, cb 44, rules 40 tests; 0 `sorryAx`); axiom audit only `propext`,
+  `Classical.choice`, `Quot.sound`; Rust step 3,810 passed, 0 failed, 12
+  ignored; Java 219 tests, 0 failures.
+- Pool: 1,696 of 1,708 solved, answers identical at every gate.
+- Held-out (585 inputs, rc1 PGO binary, same run as Konclude v0.7.0-1138):
+  KM 579 solved, mean 1.36 s, median 0.129 s, median memory 30.9 MiB;
+  Konclude 578, 2.07 s, 0.186 s, 48.1 MiB; v1.6.5 (plain build) 578, 3.57 s,
+  0.169 s, 72.5 MiB.
+- Checkers-on pool run (`07fba7aa`): 1,696 solved, 1,621 fully certified, 75
+  not certified, 0 rejected.
+- Two TBox sweeps of 20,200 cases on 12 routes: 0 unsound, 0 incomplete. The
+  automatic route gives no answer on 176 and 197 cases per round (129 and
+  151 before the complete r-Succ rule). 64,000-case campaign: 0 wrong
+  answers.
+- Protégé parity (rc3, 349 ontologies): 554,406 comparable calls equal, KM
+  right in 2,153 differing calls, HermiT right in 0, 46 declined, KM
+  timeouts 2,211.
+
+Items measured on the final commit:
+
+- Release date: 2026-11-25
+- Final-commit release chain: on `e6257322`, five Lean gates pass (elc 9, routing 311, ht 254, cb 44, rules 40; 0 `sorryAx`), axiom audit clean over 66,891 constants, Rust step 3,818 passed and 0 failed, Java 219 of 219
+- Final held-out timing table against Konclude: final PGO binary, 585 inputs, same run: KM 579 solved, mean 1.70 s, median 0.141 s, median memory 31.2 MiB; Konclude 578, 2.06 s, 0.169 s, 48.5 MiB (times over the 577 inputs both solve)
+- Final checkers-on counts: on `e6257322`, 1,696 solved, 1,618 fully certified, 78 not certified, 0 rejected
+- Assets: listed on the GitHub release page, with a `SHA256SUMS` file; the Linux x86_64 PGO binary has sha256 `80819d30889401e680a11b1c6352fbf735f5d25700b6a405f5af04da5dfdfec3`
+
+### Entries from the development log
+
+The entries below were written during development. Several (E7, E8, E12,
+E17, E18, E19, E20) also shipped in v1.6.5; see `docs/RELEASE-1.6.5.md` at
+the tag `v1.6.5`.
 
 ### Engine
 
-- Fixed (E7, wrong answer): `ObjectPropertyDomain(r owl:Nothing)` and
-  `ObjectPropertyRange(r owl:Nothing)` were dropped without being counted,
-  so classes that need an `r` edge were not reported unsatisfiable. They
-  are now clausified as `∃r.⊤ ⊑ ⊥` and `⊤ ⊑ ∀r.⊥`.
-- Fixed (E8, wrong answers): `owl:topObjectProperty` outside class
-  restrictions and domain and range axioms (as a sub-property, in a chain,
-  in equivalent or inverse property axioms, characteristics, assertions
-  and rule atoms) was read as an ordinary property, and its other
-  occurrences were then not rewritten either, which lost consequences.
-  Every such position is now encoded exactly through the nominal hub of
-  the universal-role rewrite (`U` becomes the chain `S ∘ S⁻`) or removed
-  as a tautology. Keys are rewritten to rules first, so a key on
-  `owl:topObjectProperty` is encoded too.
+- Cheaper chain-consumer markers (E12 cost): a letter of a marker automaton
+  whose every edge the clause stream already carries as an edge of another
+  letter with the same moves (a reversed sub-role of an inverse, such as
+  `starts⁻` beside `has_part` when `starts ⊑ part_of ≡ has_part⁻`, or a
+  told sub-role beside its super-role) is dropped before the automaton is
+  compared with the existing encodings and before its clauses are emitted.
+  Consumers whose language then equals the same-orientation one keep their
+  old clauses, and the remaining families no longer copy every edge of such
+  letters into a group role. Paths over the stream's edges are the same, so
+  answers are unchanged. Measured on one core against v1.6.4:
+  `ore_ont_13242` 3.79 GB, 28.4 s → 2.38 GB, 25.5 s (v1.6.4 2.39 GB,
+  23.5 s); `ore_ont_11695` 1.99 GB, 53.8 s → 1.61 GB, 48.6 s (1.63 GB,
+  46.0 s); `ore_ont_10838` 2.76 GB, 118 s → 2.61 GB, 113 s (2.49 GB,
+  110 s). The `ore_ont_9540` growth (0.75 → 10.7 GB) does not come from the
+  chain encoding (it is unchanged with the encoding switched off); it starts
+  with the bridge commit `6f2c0a8e` (no lazy definition for an absorption
+  trigger name).
+- `km classify --values` reports every entailed object property assertion
+  between named individuals (`VALUE r a b`) and `--different` every
+  entailed pair of different named individuals (`DIFFERENT a b`, `a < b`),
+  from the one classification that realization already runs: fresh classes
+  `∃r.{b}` and `¬{b}` next to the individual probes `{a}` (W5b,
+  `orchestrate::abox_rows`). JSON keys `values`, `different`.
+- Fixed: a speculative bridge attempt that declined left the frontend
+  counters of its own run behind, and the answer of the route that
+  published carried them (`{¬h(c,1), SameIndividual(d,c)}` was published
+  with `DROPPED 1`, the `SameIndividual` the object-guard attempt does not
+  represent). The counters are saved before each attempt and restored when
+  it declines.
+- `km classify --data-properties` reports the data property hierarchy
+  (`SUBDATAPROP`), empty data properties (`BOTDATAPROP`), data property
+  domains (`DATADOMAIN`) and disjoint data properties (`DISJOINTDATAPROP`)
+  (W6), by fresh classes `∃p.{v}` over an opaque fresh literal `v`; see
+  `docs/PROPERTIES.md`.
+- Inverse property operands (E9): `SubObjectPropertyOf` with
+  `ObjectInverseOf` on either side or both, `EquivalentObjectProperties`
+  and `DisjointObjectProperties` with inverse members, and the
+  characteristics of an inverse (`Functional(r⁻)` is `InverseFunctional(r)`
+  and the converse; the others are those of `r`) are read in
+  `km classify` and `km incremental-source`. `r⁻ ⊑ s⁻` is `r ⊑ s`; a mixed
+  pair uses the converse proxy `__inv__r` of the chain encoding. Before,
+  km refused them ("named role expected"), and `DisjointObjectProperties`
+  with an inverse member became a disjointness with the empty role name.
+  `InverseObjectProperties` takes object property expressions (the vendored
+  functional-syntax grammar accepted only names). `ObjectPropertyAtom` of an inverse in
+  a rule swaps its arguments. Tests: `tests/inverse_property_axioms.rs`
+  (HermiT rows).
+- `--unknown-datatypes=free` (W7): datatypes outside the OWL 2 datatype map
+  are read as fresh datatypes and their literals as opaque values instead
+  of being rejected; default `strict`. Semantics and the HermiT comparison:
+  `docs/DATATYPES.md`, "Unknown datatypes".
+- DL-safe rules (W8): a data variable that occurs in a rule body only in
+  one `DataPropertyAtom(p t ?v)` and in `DataRangeAtom`s becomes the class
+  atom `DataSomeValuesFrom(p D)(t)` (`frontend::rule_data_atoms`), so such
+  rules are no longer refused. Joins on a data variable, data variables in
+  heads and built-ins stay unsupported.
+- The `symbolic_source_classification` decline test uses a data
+  restriction in a nominal assertion: the universal role as a sub-role is
+  now encoded (E8) and the symbolic bridge accepts it.
+- Temporary files (E11): every temporary file of a run lives in one
+  per-run directory `$TMPDIR/km-run-<pid>-<nonce>/` that the supervisor
+  creates and exports to its workers (`KM_RUN_TMPDIR`) and removes on
+  normal exit, error exit (`atexit`) and SIGTERM, SIGINT and SIGHUP (a
+  handler using raw system calls that then re-raises the signal). At start a
+  supervisor removes run directories and legacy `km-<pid>-*` files of dead
+  processes. On 22 runs with a fresh `TMPDIR` (16 normal, 4 killed by
+  `timeout 5`, one SIGTERM and one SIGINT to the supervisor alone, one error
+  exit) nothing is left; v1.7.0 development left 6 files.
+- Memory (E4, E5): km turns transparent huge pages off for its process tree
+  at start (`PR_SET_THP_DISABLE`; `KM_KEEP_THP=1` keeps the system
+  setting), and the supervisor returns freed heap pages before it waits on a
+  worker.
+- Library tests no longer race on the process environment (E13). One
+  crate-wide read/write lock (`src/test_env.rs`) replaces the four
+  per-module locks that did not exclude each other; every library test
+  takes it, exclusively when it changes the environment or drives code
+  that does (824 tests), shared otherwise (2,356 tests). Three consecutive
+  full `cargo test --release --lib` runs now fail the same 21 tests, all of
+  which need the Lean checker binaries. The suite takes about 25 s
+  instead of 5 s.
+- Fixed (E19, wrong answer): the native bridge reported `{a} ⊓ {b}`
+  satisfiable when a functional data property separates `a` from `b` and
+  a data value is asserted for both individuals (`g(a,0)`, `g(b,255)`,
+  `h(b,0)`, `g` functional; ore_ont_15667's `ColorBlue`, `ColorCyan`).
+  Root cause: the bridge realises a value singleton `v(y₁) ∧ v(y₂) → y₁ ≈ y₂`
+  by merging the two carriers and moving the incoming links of one to the
+  other, so `a`'s `g`-successor with value 0 became one node with `b`'s
+  `h`-successor, a child of `b`. The nominal merge of `b` into `a` then
+  pruned that child (and its link from `a`), but `a`'s `∃g.{0}` had already
+  been processed and was never queued again; `a` ended with one live
+  `g`-successor (255) and no clash. The hypertableau rules apply whenever
+  their premise holds and to unpruned nodes only, so the bridge now (1)
+  skips pruned nodes when it looks for singleton carriers, and (2) after a
+  merge prunes nodes on an input with value singletons, queues the
+  generating concepts (`∃`, `≥`, `¬∀`, `¬≤`) of every live neighbour of a
+  pruned node again (the some and at-least rules create a successor only
+  when no live witness exists). The stopgap that kept such sources off the
+  bridge (`shared_data_value_hazard`) is removed: ore_ont_15063 (timed out
+  at 300 s) is back to 13 s, ore_ont_934 (timed out) to 1.0 s, 15680 and
+  4609 from 77 s to 23 s, 7610 from 42 s to 4 s, all with the answers of
+  the release before the stopgap (15063 agrees with HermiT). The bridge's
+  saturation-coupling gate on inputs with a consumed value singleton is
+  removed too (it cost ore_ont_15623 its 0.8 s, and 15074 and 15687;
+  `KM_BRIDGE_SINGLETON_SATEXP_GATE=1` restores it for diagnosis).
+- Fixed (wrong answer, found by the E19 differential): `{Functional(k),
+  {c} ⊑ ¬C, C ≡ =1 k.xsd:integer, k(c,2)}` was reported consistent (the
+  ground-rule data source and the native bridge). The bridge encoded
+  `{c} ⊑ ¬C` as an inclusion absorbed onto the trigger `C` and then made
+  `C` a lazily unfolded definition (`C → D`, `¬C → ¬D`) because `D` is not
+  fully triggerable; a node in `D` never receives `C`, so the inclusion
+  never fired. A name in a trigger position of an absorbed inclusion is no
+  longer a lazy definition unless its definition is fully triggerable; its
+  equivalence becomes the two inclusions.
+- The chain-consumer encoding emits fewer clauses: consumers with an empty
+  seed are skipped when the last (first) letters already carry an equal
+  plain consumer, letters of roles that nothing creates edges for are
+  dropped, symmetric roles are their own converse, and letters with equal
+  transitions share one internal super-role.
+- Fixed a regression of the repeated-ABox-axiom count: repeats produced
+  by the data-assertion conversion were counted as source repeats, so the
+  native ABox coverage check declined on data ABoxes.
+- The CB translation drops and counts a body equality between an
+  individual and a non-central variable.
+- Fixed (wrong answer, since v1.4.4): `{r(a,b), ¬r(a,c)}` was reported
+  inconsistent. The CB worker read the ground negative assertion as
+  `r(x,c) → x ≉ a`, and Hyper binds the non-central individual `c` like a
+  variable, so any `r(a,·)` edge refuted it. The nominal clause stream now
+  carries the guarded form `{a}(x) ∧ r(x,y) ∧ {c}(y) → ⊥` over exact
+  nominal proxies (the form the native bridge already used), and the CB
+  translation drops and counts any remaining ground form.
+- Fixed (wrong answer, since v1.4.4): over ground role assertions a `∀`
+  consumer of a transitive role depended on the order of the assertions
+  (`Transitive(p)`, `p(a,b)`, `p(b,c)`, `a : ¬∃p.{c}` was consistent in
+  one order). In the nominal clause stream with an ABox, transitive roles
+  now get the forward role-automaton markers of the chain encoding.
+- A repeated ABox axiom (for example `SameIndividual(a b)` twice) made
+  the native bridge's ABox coverage check decline, and the answer of the
+  fallback route was published with the declined attempt's `DROPPED`
+  count. Repeats are counted as covered.
+- `km classify --realize` and `--properties` ran their workers with
+  `KM_THREADS=16` (the route bundle's value) when the caller set a
+  smaller `KM_THREADS`. Route bundles now never exceed the caller's value.
 - Fixed (E12, wrong answers): the CB clause stream lost consequences of
   role chains for every consumer of a chain-derived role other than a
   plain existential over same-orientation roles: `∀r.C` and ranges of a
   chain super-role, consumers of its inverse, negated existentials,
   existentials without a filler, and longer chains through such roles.
   Example: `s ∘ t ∘ t⁻ ⊑ r`, `⊤ ⊑ ∃t.{g}`, `A ⊑ ∃s.⊤`, `A ⊑ ∀r.C`
-  entails `A ⊑ C`, which km missed. The frontend adds a complete
-  role-automaton encoding for these consumers
-  (`preprocess::chain_consumer_automaton_clauses`); the CB rules are
-  unchanged. Consumers outside the encodable shape are counted as dropped
-  (`RoleChainConsumer`). Tests: `tests/role_chain_consumers.rs`.
-- Fixed (E17, wrong answer, since v1.4.4): `{r(a,b), ¬r(a,c)}` was
-  reported inconsistent. The CB worker read the ground negative assertion
-  as `r(x,c) → x ≉ a`, and Hyper binds the non-central individual `c`
-  like a variable. The nominal clause stream now carries the guarded form
-  `{a}(x) ∧ r(x,y) ∧ {c}(y) → ⊥`, and the CB translation drops and counts
-  any remaining ground form.
-- Fixed (E18, wrong answer, since v1.4.4): over ground role assertions a
-  `∀` consumer of a transitive role depended on the order of the
-  assertions (`Transitive(p)`, `p(a,b)`, `p(b,c)`, `a : ¬∃p.{c}` was
-  consistent in one order). Transitive roles in the nominal clause stream
-  with an ABox now get the forward role-automaton markers of the chain
-  encoding.
-- Fixed (E19, wrong answer): the native bridge reported `{a} ⊓ {b}`
-  satisfiable when a functional data property separates `a` from `b` and
-  a data value is shared (`g(a,0)`, `g(b,255)`, `h(b,0)`, `g` functional).
-  A value-singleton merge made a child of `b` the witness of `a`'s
-  `∃g.{0}`; the nominal merge of `b` into `a` pruned that child, and `a`'s
-  `∃` was never queued again. The bridge now skips pruned nodes when it
-  looks for singleton carriers and, after a merge prunes nodes on an input
-  with value singletons, queues the generating concepts of every live
-  neighbour of a pruned node again. (An earlier stopgap that switched the
-  saturation coupling off on every input with a value singleton is not
-  kept: it cost ore_ont_15623, 15074 and 15687 their v1.6.4 times.)
-- Fixed (wrong answer): `{Functional(k), {c} ⊑ ¬C, C ≡ =1 k.xsd:integer,
-  k(c,2)}` was reported consistent. The bridge absorbed `{c} ⊑ ¬C` onto
-  the trigger `C` and made `C` a lazily unfolded definition, which a node
-  in its definition never receives. A name in a trigger position of an
-  absorbed inclusion is no longer a lazy definition unless its definition
-  is fully triggerable.
-- The CB translation drops and counts a body equality between an
-  individual and a non-central variable.
-- A repeated ABox axiom (for example `SameIndividual(a b)` twice) made
-  the native bridge's ABox coverage check decline, and the fallback
-  answer was published with the declined attempt's `DROPPED` count.
-  Repeats are counted as covered.
-- `km classify --realize` ran its workers with `KM_THREADS=16` (the route
-  bundle's value) when the caller set a smaller `KM_THREADS` (E20). Route
-  bundles now never exceed the caller's value.
+  entails `A ⊑ C`, which km missed; so did `s ∘ t ∘ u ⊑ r`,
+  `A ⊑ ∃s.∃t.∃u.D`, `A ⊑ ∀r.C` for `A ⊑ ∃r.(C ⊓ D)`. Answers were wrong
+  whenever CB answered: every chain of three or more roles (the native
+  bridge fences them), every nominal input and every bridge deferral. The
+  frontend now adds a complete role-automaton encoding for these
+  consumers (`preprocess::chain_consumer_automaton_clauses`): forward
+  markers for consumers with a head on the role's target, backward
+  markers otherwise, over an automaton that unfolds sub-roles in both
+  orientations, chains and transitivity, determinized and minimized,
+  with one marker family per role and seed condition. Consumers that the
+  existing same-orientation encodings already cover (their language equals
+  the full one) keep their old clauses. The CB rules are unchanged.
+  Consumers outside the encodable shape are counted as dropped
+  (`RoleChainConsumer`); none occurs in the corpus. Of 1,708 pool inputs,
+  326 have a role chain; the clause stream changes on 87 of them, and no
+  completed answer changes. Ranges of chain super-roles cost memory on
+  some large OBO inputs (ore_ont_12208 about 1.4 to 2.5 times, 1028 about
+  1.8 times). Tests: `tests/role_chain_consumers.rs` (26 HermiT-checked
+  cases on the automatic, nominal-CB and plain-CB routes).
+- `km classify --properties` reports the inferred object property
+  hierarchy (`SUBPROP r f`, with `f` a named property or
+  `ObjectInverseOf(s)`), the properties equivalent to
+  `owl:topObjectProperty` (`TOPPROP`) and `owl:bottomObjectProperty`
+  (`BOTPROP`), and the entailed named domains and ranges (`DOMAIN`,
+  `RANGE`), after the class rows. JSON output carries them under
+  `subproperties`, `topproperties`, `bottomproperties`, `domains` and
+  `ranges`. It combines with `--lines` and `--realize` (one
+  classification answers both). The rows come from the classification of
+  the source extended with fresh classes `P_e ≡ ∃e.B` per property
+  expression, for a fresh class `B`, the same reduction as `--realize`
+  (see the cheaper revision below). Without the flag the output is
+  unchanged. See `docs/PROPERTIES.md`.
+- Fixed (E7): `ObjectPropertyDomain(r owl:Nothing)` and
+  `ObjectPropertyRange(r owl:Nothing)` were dropped without being counted,
+  so classes that need an `r` edge were not reported unsatisfiable. They
+  are now clausified as `∃r.⊤ ⊑ ⊥` and `⊤ ⊑ ∀r.⊥`.
+- Fixed (E8): `owl:topObjectProperty` outside class restrictions and
+  domain and range axioms (as a sub-property, in a chain, in equivalent or
+  inverse property axioms, characteristics, assertions and rule atoms) was
+  read as an ordinary property, and its other occurrences were then not
+  rewritten either, which lost consequences. Every such position is now
+  encoded exactly through the nominal hub of the universal-role rewrite
+  (`U` becomes the chain `S ∘ S⁻`) or removed as a tautology. Keys are
+  rewritten to rules first, so a key on `owl:topObjectProperty` is encoded
+  too.
+- `km classify --properties` is much cheaper (plan section 12, W2b). The
+  domains are the named superclasses of `P_r ≡ ∃r.B` (`Dom_r` and `Ran_r`
+  are gone); `P_⊤` is added only when the source uses
+  `owl:topObjectProperty` or an object nominal; on an inverse-free source
+  (no inverses, symmetric, inverse functional or reflexive properties, self
+  restrictions, nominals, universal role, rules or keys) no inverse probes
+  are added and the ranges come from a second classification with fresh
+  asserted pairs `r(a_r, b_r)`. On 32 ORE inputs every inverse-free input now
+  takes at most three times its plain time plus one second (ore_ont_10009:
+  77 s to 0.9 s; ore_ont_9800: over 300 s to 5.9 s), and the rows agree with
+  HermiT 1.4.3 on 60 ORE inputs and the hand cases except the known HermiT
+  miss. When the positive-EL ABox certificate declines a probe extension,
+  KM now classifies it on the general route instead of failing.
+- `km classify --top` (E1) reports the named classes equivalent to
+  `owl:Thing` as `TOP<TAB>C` rows after the class rows (JSON key `top`),
+  so a consumer can build the Top node. km reads them off one fresh class
+  `T ≡ owl:Thing` added to the classified ontology (`T ⊑ C` iff `C` is
+  equivalent to `owl:Thing`), the same conservative reduction as
+  `--realize`. It combines with `--realize` and `--properties` in one run;
+  without the flag the output is unchanged. The incremental sessions do not
+  report these rows (their protocol has no place for them yet).
+
+## [1.6.4] - 2026-11-14
+
+Fixes issue #5: FLOPO annotation classes with negated qualities, which
+did not classify in 300 s, now classify in about 17 s. No proof changes.
+Notes: `docs/RELEASE-1.6.4.md`.
+
+### Engine
+
 - `km classify` sets the release flags (`KM_HT_DDB`, `KM_HT_NATIVE_FULL`,
   `KM_CACHE_CONFORMANCE`, `KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE`,
   `KM_FAST_IRI_GRAMMAR`) when the caller leaves them unset
@@ -100,7 +413,7 @@ negated qualities, which did not classify in 300 s, now classify in about
 
 ### Protégé plugin
 
-- Version 1.6.5; the plugin list descriptors point at the v1.6.5 jars.
+- Version 1.6.4; the plugin list descriptors point at the v1.6.4 jars.
 
 ## [1.6.3] - 2026-11-13
 

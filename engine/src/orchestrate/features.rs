@@ -556,6 +556,17 @@ fn b(x: u64) -> u8 {
     u8::from(x > 0)
 }
 
+/// Construct counts of `ont` in any supported syntax. The scan matches
+/// functional-syntax keywords, so an OWL/XML, RDF/XML or Turtle input is
+/// scanned through its functional-syntax conversion (issue #7: the raw
+/// OWL/XML text gave zero for every construct).
+fn scan_source_constructs(ont: &Path) -> Constructs {
+    match super::input::prepare(ont) {
+        Ok(prepared) => scan_constructs(prepared.path()),
+        Err(_) => scan_constructs(ont),
+    }
+}
+
 /// Compute the feature vector for `ont`. Runs the frontend (plain, and absorbed
 /// iff the plain set has disjunctions) and scans the source for the DL profile.
 pub fn extract(cfg: &Config, ont: &Path) -> Features {
@@ -563,7 +574,7 @@ pub fn extract(cfg: &Config, ont: &Path) -> Features {
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let con = scan_constructs(ont);
+    let con = scan_source_constructs(ont);
 
     let blank = |status: &str| Features {
         ont: name.clone(),
@@ -717,4 +728,39 @@ pub fn extract(cfg: &Config, ont: &Path) -> Features {
         f.n_clauses_absorbed = acc.n_clauses;
     }
     f
+}
+
+#[cfg(test)]
+mod source_scan_tests {
+    use super::*;
+
+    /// Issue #7: the construct scan sees the same axioms in OWL/XML as in
+    /// functional syntax.
+    #[test]
+    fn owlxml_and_functional_inputs_give_the_same_construct_counts() {
+        let _test_env = crate::test_env::write();
+        let ofn = TempPath::new(".ofn");
+        std::fs::write(
+            ofn.path(),
+            "Ontology(\nDeclaration(Class(<http://example.org/A>))\nDeclaration(Class(<http://example.org/B>))\nSubClassOf(<http://example.org/A> <http://example.org/B>)\n)\n",
+        )
+        .unwrap();
+        let owx = TempPath::new(".owx");
+        std::fs::write(
+            owx.path(),
+            r#"<?xml version="1.0"?>
+<Ontology xmlns="http://www.w3.org/2002/07/owl#">
+  <Declaration><Class IRI="http://example.org/A"/></Declaration>
+  <Declaration><Class IRI="http://example.org/B"/></Declaration>
+  <SubClassOf><Class IRI="http://example.org/A"/><Class IRI="http://example.org/B"/></SubClassOf>
+</Ontology>"#,
+        )
+        .unwrap();
+        let functional = scan_source_constructs(ofn.path());
+        let xml = scan_source_constructs(owx.path());
+        assert_eq!(functional.subclass, 1);
+        assert_eq!(xml.subclass, functional.subclass);
+        assert_eq!(xml.equiv, functional.equiv);
+        assert_eq!(xml.abox, functional.abox);
+    }
 }

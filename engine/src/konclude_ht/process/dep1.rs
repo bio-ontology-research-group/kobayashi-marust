@@ -1137,6 +1137,7 @@ mod tests {
 
     #[test]
     fn dep1_branch_continue_track_point_materializes_deterministic_node() {
+        let _test_env = crate::test_env::read();
         let mut tp_arena = Arena::new();
         let mut node = DependencyNode::Deterministic {
             base: empty_base(DepKind::And),
@@ -1153,6 +1154,7 @@ mod tests {
 
     #[test]
     fn dep1_branch_continue_track_point_returns_non_det_clash_track_point() {
+        let _test_env = crate::test_env::read();
         let mut tp_arena = Arena::new();
         let clash_tp = tp_arena.push(DependencyTrackPoint::new(DependencyId::NONE));
         let node = DependencyNode::NonDeterministic {
@@ -1173,6 +1175,7 @@ mod tests {
 
     #[test]
     fn dep1_branch_all_init_uses_previous_concept_branching_tag() {
+        let _test_env = crate::test_env::read();
         let mut tp_arena = Arena::new();
         let concept_tp = track_point_with_tag(&mut tp_arena, 3);
         let link_tp = track_point_with_tag(&mut tp_arena, 7);
@@ -1199,6 +1202,7 @@ mod tests {
 
     #[test]
     fn dep1_branch_resolve_representative_counts_additional_dependency() {
+        let _test_env = crate::test_env::read();
         let mut tp_arena = Arena::new();
         let previous_tp = track_point_with_tag(&mut tp_arena, 2);
         let additional_tp = track_point_with_tag(&mut tp_arena, 9);
@@ -1226,6 +1230,7 @@ mod tests {
 
     #[test]
     fn dep1_merge_det_link_inits_preserve_konclude_track_point_wiring() {
+        let _test_env = crate::test_env::read();
         let mut tp_arena = Arena::new();
         let merge_tp = track_point_with_tag(&mut tp_arena, 3);
         let other_tp = track_point_with_tag(&mut tp_arena, 7);
@@ -1278,6 +1283,7 @@ mod tests {
 
     #[test]
     fn dep1_branch_missing_additional_dependency_sets_negative_tag() {
+        let _test_env = crate::test_env::read();
         let tp_arena = Arena::new();
         let mut dep_arena = Arena::new();
         let missing_dep = dep_arena.push(DependencyLink::new());
@@ -1292,6 +1298,7 @@ mod tests {
 
     #[test]
     fn dep1_branch_or_init_updates_clash_and_opened_track_points() {
+        let _test_env = crate::test_env::read();
         let mut tp_arena = Arena::new();
         let main_tp = track_point_with_tag(&mut tp_arena, 4);
         let clash_tp = tp_arena.push(DependencyTrackPoint::new(DependencyId::NONE));
@@ -1328,6 +1335,7 @@ mod tests {
 
     #[test]
     fn dep1_branch_reuse_backend_init_updates_branch_tag() {
+        let _test_env = crate::test_env::read();
         let mut tp_arena = Arena::new();
         let main_tp = track_point_with_tag(&mut tp_arena, 6);
         let clash_tp = tp_arena.push(DependencyTrackPoint::new(DependencyId::NONE));
@@ -1369,6 +1377,7 @@ mod tests {
 
     #[test]
     fn dep1_reuse_backend_side_field_accessors_follow_konclude() {
+        let _test_env = crate::test_env::read();
         let clash_tp = TrackPointId::new(11);
         let fixed_tp = TrackPointId::new(13);
         let priorized_tp = TrackPointId::new(17);

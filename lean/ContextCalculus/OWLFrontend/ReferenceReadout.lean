@@ -1,4 +1,5 @@
-import ContextCalculus.OWLFrontend.ReferenceSHI
+import ContextCalculus.OWLFrontend.ReferenceSHIQ
+import ContextCalculus.OWLFrontend.SRIQKBReference
 import ContextCalculus.OWL.Names
 
 /-!
@@ -7,7 +8,7 @@ import ContextCalculus.OWL.Names
 `docs/V1.6.2-FRONTEND-PLAN.md`, section 7. The executable `km-owl-reference`
 requests the class IRIs of the ontology (`OWL.Ontology.classNames`) followed
 by two probe IRIs, `probeA` and `probeB`, runs `owlReference` or
-`owlReferenceSHI` (or one of their routes) and prints three things read from the answer's bits:
+`owlReferenceSHI` or `owlReferenceSHIQ` (or one of their routes) and prints three things read from the answer's bits:
 
 - the inconsistency verdict: the bit `probeA ⊑ probeB`
   (`OWL.inconsistent_iff_entailsSub_fresh`);
@@ -64,6 +65,12 @@ inductive OWLProcedure where
   | sri
   /-- EL first, then SHI (`owlReferenceSHI`). -/
   | elThenSri
+  /-- The SHIQ route alone (`owlSHIQReference`). -/
+  | sriq
+  /-- EL, then SHI, then SHIQ (`owlReferenceSHIQ`). -/
+  | elThenSriq
+  /-- The SHIQ knowledge-base route (`owlSHIQKBReference`), with any hint. -/
+  | sriqKB
   deriving DecidableEq, Repr
 
 /-- The equation a published answer of a procedure comes with. -/
@@ -73,6 +80,9 @@ def RouteAnswer : OWLProcedure → OWL.Ontology → List OWL.IRI → OWLAnswer �
   | .elThenAlc, O, requested, a => owlReference O requested = some a
   | .sri, O, requested, a => owlSRIReference O requested = some a
   | .elThenSri, O, requested, a => owlReferenceSHI O requested = some a
+  | .sriq, O, requested, a => owlSHIQReference O requested = some a
+  | .elThenSriq, O, requested, a => owlReferenceSHIQ O requested = some a
+  | .sriqKB, O, requested, a => ∃ hint, owlSHIQKBReference O requested hint = some a
 
 theorem routeAnswer_exact {p : OWLProcedure} {O : OWL.Ontology}
     {requested : List OWL.IRI} {a : OWLAnswer} (h : RouteAnswer p O requested a) :
@@ -83,6 +93,11 @@ theorem routeAnswer_exact {p : OWLProcedure} {O : OWL.Ontology}
   | elThenAlc => exact owlReference_sound h
   | sri => exact owlSRIReference_sound h
   | elThenSri => exact owlReferenceSHI_sound h
+  | sriq => exact owlSHIQReference_sound h
+  | elThenSriq => exact owlReferenceSHIQ_sound h
+  | sriqKB =>
+    obtain ⟨_, h⟩ := h
+    exact owlSHIQKBReference_sound h
 
 /-! ### The readout -/
 
@@ -243,7 +258,7 @@ theorem owlReadout_exact {O : OWL.Ontology} {a : OWLAnswer}
   have hrow : ∀ i (hi : i < O.classNames.length), ∃ row : SparseRow, a.rows.toArray[i]? = some row := by
     intro i hi
     have hrefl : bitAt a.rows.toArray i i = true :=
-      (hsub i i hi hi).2 (fun _ _ _ _ _ hx => hx)
+      (hsub i i hi hi).2 (fun _ _ _ _ _ _ hx => hx)
     unfold bitAt at hrefl
     split at hrefl
     · next row hrow => exact ⟨row, hrow⟩

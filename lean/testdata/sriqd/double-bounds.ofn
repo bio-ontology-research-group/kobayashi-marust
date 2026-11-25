@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/double-bounds>
+SubClassOf(:A DataSomeValuesFrom(:p DataIntersectionOf(DatatypeRestriction(xsd:double xsd:minInclusive "1.0"^^xsd:double) DatatypeRestriction(xsd:double xsd:maxExclusive "1.0"^^xsd:double))))
+)

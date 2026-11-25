@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/datatype-def>
+DatatypeDefinition(:small DatatypeRestriction(xsd:integer xsd:maxInclusive "5"^^xsd:integer))
+SubClassOf(DataSomeValuesFrom(:p :small) :C)
+)

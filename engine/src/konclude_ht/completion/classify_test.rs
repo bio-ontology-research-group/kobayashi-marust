@@ -254,6 +254,7 @@ fn is_unsatisfiable(env: &mut Env, seed: &[(ConceptId, bool)], gcis: &[ConceptId
 /// `{A ⊑ B}` ⇒ `A ⊑ B` HOLDS (A ⊓ ¬B unsat) and `B ⊑ A` does NOT.
 #[test]
 fn subsumption_direct() {
+    let _test_env = crate::test_env::read();
     let mut env = new_env();
     let a = env.atom(101);
     let b = env.atom(102);
@@ -274,6 +275,7 @@ fn subsumption_direct() {
 /// while `C ⊑ A` does NOT.
 #[test]
 fn subsumption_transitive() {
+    let _test_env = crate::test_env::read();
     let mut env = new_env();
     let a = env.atom(101);
     let b = env.atom(102);
@@ -296,6 +298,7 @@ fn subsumption_transitive() {
 /// splits it to B and C, and C clashes with ¬C).
 #[test]
 fn subsumption_via_conjunction() {
+    let _test_env = crate::test_env::read();
     let mut env = new_env();
     let a = env.atom(101);
     let b = env.atom(102);
@@ -318,6 +321,7 @@ fn subsumption_via_conjunction() {
 /// derived B / ¬B contradict).
 #[test]
 fn unsatisfiable_concept() {
+    let _test_env = crate::test_env::read();
     let mut env = new_env();
     let a = env.atom(101);
     let b = env.atom(102);
@@ -343,6 +347,7 @@ fn unsatisfiable_concept() {
 /// so BOTH alternatives close ⇒ `A ⊓ ¬D` unsatisfiable ⇒ `A ⊑ D`.
 #[test]
 fn subsumption_via_disjunction_both_branches_close() {
+    let _test_env = crate::test_env::read();
     let mut env = new_env();
     let a = env.atom(101);
     let b = env.atom(102);
@@ -378,6 +383,7 @@ fn subsumption_via_disjunction_both_branches_close() {
 /// the ORE disjunction family.
 #[test]
 fn subsumption_via_disjunction_one_branch_open() {
+    let _test_env = crate::test_env::read();
     let mut env = new_env();
     let a = env.atom(101);
     let b = env.atom(102);
@@ -399,6 +405,7 @@ fn subsumption_via_disjunction_one_branch_open() {
 /// unsatisfiable (every alternative clashes independent of the probe's `¬D`).
 #[test]
 fn disjunction_all_branches_unsat_makes_carrier_unsat() {
+    let _test_env = crate::test_env::read();
     let mut env = new_env();
     let a = env.atom(101);
     let b = env.atom(102);

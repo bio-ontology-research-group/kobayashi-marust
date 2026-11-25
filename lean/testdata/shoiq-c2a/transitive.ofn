@@ -1,0 +1,7 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/transitive>
+TransitiveObjectProperty(:r)
+ObjectPropertyAssertion(:r :a :b)
+ObjectPropertyAssertion(:r :b :c)
+ClassAssertion(ObjectAllValuesFrom(:r ObjectComplementOf(ObjectOneOf(:c))) :a)
+)

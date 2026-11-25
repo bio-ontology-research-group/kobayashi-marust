@@ -1,0 +1,13 @@
+Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/e>
+Declaration(Class(:C))
+Declaration(Class(:D))
+Declaration(ObjectProperty(:r))
+Declaration(NamedIndividual(:a))
+Declaration(NamedIndividual(:b))
+IrreflexiveObjectProperty(:r)
+ObjectPropertyAssertion(:r :a :b)
+ClassAssertion(:C :a)
+DLSafeRule(Body(ClassAtom(:C Variable(<urn:x>))) Head(ClassAtom(:D Variable(<urn:x>))))
+)

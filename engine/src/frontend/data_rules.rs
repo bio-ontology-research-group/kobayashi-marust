@@ -142,6 +142,19 @@ pub(super) fn exact_rule_literal(literal: &str) -> bool {
         ) == Some(true)
 }
 
+fn free_opaque_top_literal(literal: &str) -> bool {
+    if !super::conformance::unknown_datatypes_free() {
+        return false;
+    }
+    let Some(close) = literal.rfind('"') else { return false };
+    let rest = literal[close + 1..].trim_start();
+    let Some(dt) = rest.strip_prefix("^^") else { return false };
+    matches!(
+        dt.trim(),
+        "rdfs:Literal" | "<http://www.w3.org/2000/01/rdf-schema#Literal>"
+    )
+}
+
 #[derive(Default)]
 pub(super) struct IntegerRuleScan<'a> {
     ranges: Vec<(&'a str, &'a str)>,
@@ -232,7 +245,7 @@ impl<'a> IntegerRuleScan<'a> {
             replacements.push(Axiom::Rule(body, head));
         }
         for (property, individual, literal) in &self.assertions {
-            if !exact_rule_literal(literal) { return 0; }
+            if !exact_rule_literal(literal) && !free_opaque_top_literal(literal) { return 0; }
             definitions.push(Axiom::ConceptAssertion(
                 Concept::Exists(super::syntax::Role::Name(registry.short(property)),
                     Box::new(Concept::Name(format!("__dt__val__{literal}")))),
@@ -290,7 +303,7 @@ impl<'a> IntegerRuleScan<'a> {
         }
         for (property, individual, literal) in &self.assertions {
             let property = registry.short(property);
-            if !exact_rule_literal(literal) {
+            if !exact_rule_literal(literal) && !free_opaque_top_literal(literal) {
                 return 0;
             }
             // A positive data assertion is an existential with a singleton
@@ -461,7 +474,7 @@ pub fn constant_data_rule_plan(axiom: &Axiom) -> Option<Axiom> {
     let translate = |atom: &RuleAtom| -> Option<RuleAtom> {
         match atom {
             RuleAtom::Data(property, subject, RuleDataTerm::Literal(literal))
-                if exact_rule_literal(literal) => Some(RuleAtom::Class(
+                if exact_rule_literal(literal) || free_opaque_top_literal(literal) => Some(RuleAtom::Class(
                     Concept::Exists(super::syntax::Role::Name(property.clone()),
                         Box::new(Concept::Name(format!("__dt__val__{literal}")))),
                     subject.clone(),
@@ -595,7 +608,7 @@ impl UnaryDataRule {
         let mut conditions = vec![guard];
         conditions.extend(self.class_conditions.iter().cloned());
         for (property, literal) in &self.constant_values {
-            if !exact_rule_literal(literal) {
+            if !exact_rule_literal(literal) && !free_opaque_top_literal(literal) {
                 return None;
             }
             conditions.push(Concept::Exists(Role::Name(property.clone()),
@@ -618,6 +631,7 @@ mod tests {
 
     #[test]
     fn actual_10906_rules_have_complete_constant_data_translation_plans() {
+        let _test_env = crate::test_env::read();
         let source = include_str!("../../tests/fixtures/multi_object_constant_data_rules.ofn");
         let mut registry = super::super::iri::IriRegistry::new();
         let ontology = super::super::parse::parse_axioms(&mut registry, source).unwrap();
@@ -637,6 +651,7 @@ mod tests {
 
     #[test]
     fn constant_data_plan_preserves_multiple_object_bindings_and_literal_identity() {
+        let _test_env = crate::test_env::read();
         let x = RuleTerm::Var("x".into());
         let y = RuleTerm::Var("y".into());
         let edge = RuleAtom::Role("partOf".into(), x.clone(), y.clone());
@@ -663,6 +678,7 @@ mod tests {
 
     #[test]
     fn source_integer_lowering_is_atomic_when_any_rule_is_unrepresented() {
+        let _test_env = crate::test_env::read();
         let rule = "DLSafeRule(Body(ClassAtom(<Person> Variable(<p>)) DataPropertyAtom(<age> Variable(<p>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> Variable(<v>) \"17\"^^xsd:integer)) Head(ClassAtom(<Adult> Variable(<p>))))";
         for extra in ["", "DLSafeRule(Body(ClassAtom(<Person> Variable(<p>))) Head(DataPropertyAtom(<age> Variable(<p>) Variable(<unbound>))))"] {
             let text = format!("Ontology(DataPropertyRange(<age> xsd:int) ClassAssertion(<Person> <i>) {rule} {extra})");
@@ -686,6 +702,7 @@ mod tests {
 
     #[test]
     fn integer_witness_lowering_has_the_expected_datatype_membership() {
+        let _test_env = crate::test_env::read();
         use super::super::clauses::{Atom, Term};
         let p = plan("DataPropertyAtom(<age> Variable(<p>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> Variable(<v>) \"17\"^^xsd:long)").unwrap();
         let Concept::Name(filler) = p.witnesses[0].integer_filler("xsd:integer").unwrap() else { panic!("interval filler") };
@@ -704,6 +721,7 @@ mod tests {
 
     #[test]
     fn empty_named_domain_and_query_observers_cover_disjoint_source_rules() {
+        let _test_env = crate::test_env::read();
         let result = super::super::ofn_to_clauses(
             "Ontology(Declaration(Class(<urn:test:A>)) DLSafeRule(Body(ClassAtom(<urn:test:A> Variable(<urn:test:x>))) Head(DataPropertyAtom(<urn:test:p> Variable(<urn:test:x>) \"a\"))) DLSafeRule(Body(ClassAtom(<urn:test:A> Variable(<urn:test:x>))) Head(BuiltInAtom(<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#select> Variable(<urn:test:x>)))))",
         ).unwrap();
@@ -715,6 +733,7 @@ mod tests {
 
     #[test]
     fn empty_named_domain_elides_object_guarded_concrete_rules() {
+        let _test_env = crate::test_env::read();
         let result = super::super::ofn_to_clauses(
             "Ontology(Declaration(Class(<urn:test:A>)) DLSafeRule(Body(ClassAtom(<urn:test:A> Variable(<urn:test:x>))) Head(DataPropertyAtom(<urn:test:p> Variable(<urn:test:x>) \"a\"))))",
         ).unwrap();
@@ -726,6 +745,7 @@ mod tests {
 
     #[test]
     fn empty_domain_certificate_defers_constants_and_data_only_bodies() {
+        let _test_env = crate::test_env::read();
         for rule in [
             "DLSafeRule(Body(ClassAtom(<urn:test:A> <urn:test:i>)) Head(DataPropertyAtom(<urn:test:p> <urn:test:i> \"a\")))",
             "DLSafeRule(Body(BuiltInAtom(<http://www.w3.org/2003/11/swrlb#equal> Variable(<urn:test:v>) \"1\"^^xsd:integer)) Head(ClassAtom(<urn:test:A> Variable(<urn:test:x>))))",
@@ -739,6 +759,7 @@ mod tests {
 
     #[test]
     fn named_assertions_or_imports_prevent_vacuous_rule_admission() {
+        let _test_env = crate::test_env::read();
         let source = "Ontology(ClassAssertion(<urn:test:A> <urn:test:i>) DLSafeRule(Body(ClassAtom(<urn:test:A> Variable(<urn:test:x>))) Head(DataPropertyAtom(<urn:test:p> Variable(<urn:test:x>) \"a\"))))";
         let mut registry = super::super::iri::IriRegistry::new();
         let ontology = super::super::parse::parse_axioms(&mut registry, source).unwrap();
@@ -759,6 +780,7 @@ mod tests {
     }
     #[test]
     fn shared_witness_keeps_every_comparison_and_operand_direction() {
+        let _test_env = crate::test_env::read();
         let p = plan("ClassAtom(<Person> Variable(<p>)) DataPropertyAtom(<age> Variable(<p>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> Variable(<v>) \"17\"^^xsd:long) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> \"21\"^^xsd:integer Variable(<v>))").unwrap();
         assert_eq!(p.class_conditions.len(), 1);
         assert_eq!(p.witnesses.len(), 1);
@@ -773,12 +795,14 @@ mod tests {
     }
     #[test]
     fn cross_property_join_is_not_split_into_independent_witnesses() {
+        let _test_env = crate::test_env::read();
         assert!(plan("DataPropertyAtom(<age> Variable(<p>) Variable(<v>)) DataPropertyAtom(<other> Variable(<p>) Variable(<v>))").is_none());
         assert!(plan("DataPropertyAtom(<age> Variable(<p>) Variable(<v>)) BuiltInAtom(<http://example.org/greaterThan> Variable(<v>) \"17\"^^xsd:integer)").is_none());
         assert!(plan("DataPropertyAtom(<age> Variable(<p>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#add> Variable(<output>) Variable(<v>) \"1\"^^xsd:integer)").is_none());
     }
     #[test]
     fn integer_domain_keeps_unasserted_values_and_finite_exclusions() {
+        let _test_env = crate::test_env::read();
         let p = plan("DataPropertyAtom(<age> Variable(<p>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> Variable(<v>) \"17\"^^xsd:long)").unwrap();
         let domain = p.witnesses[0].integer_domain("xsd:integer").unwrap();
         assert_eq!((domain.min, domain.max), (Some(18), None));
@@ -793,6 +817,7 @@ mod tests {
     }
     #[test]
     fn cardinality_constraints_do_not_enumerate_large_integer_ranges() {
+        let _test_env = crate::test_env::read();
         let full = IntegerDomain { min: Some(i128::MIN), max: Some(i128::MAX), excluded: BTreeSet::new() };
         assert!(full.has_at_least_distinct_values(u64::MAX));
         let million = IntegerDomain { min: Some(1), max: Some(1_000_000), excluded: [0, 1, 1_000_001].into() };
@@ -807,6 +832,7 @@ mod tests {
     }
     #[test]
     fn small_domain_capacities_agree_with_explicit_value_sets() {
+        let _test_env = crate::test_env::read();
         for min in -3..=3 {
             for max in min..=3 {
                 for mask in 0u8..128 {
@@ -823,6 +849,7 @@ mod tests {
     }
     #[test]
     fn fractional_thresholds_are_exact_over_integer_witnesses() {
+        let _test_env = crate::test_env::read();
         let p = plan("DataPropertyAtom(<age> Variable(<p>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> Variable(<v>) \"-1.5\"^^xsd:decimal) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#lessThan> Variable(<v>) \"2.5\"^^xsd:decimal)").unwrap();
         let domain = p.witnesses[0].integer_domain("xsd:integer").unwrap();
         assert_eq!((domain.min, domain.max), (Some(-1), Some(2)));
@@ -843,6 +870,7 @@ mod builtin_join_tests {
     }
     #[test]
     fn graph_arithmetic_resolves_dependencies_in_either_body_order() {
+        let _test_env = crate::test_env::read();
         let subtract = builtin("subtract", vec![variable("difference"), variable("later"), variable("earlier")]);
         let positive = builtin("greaterThan", vec![variable("difference"), literal("\"0\"^^xsd:int")]);
         let values = BTreeMap::from([
@@ -862,6 +890,7 @@ mod builtin_join_tests {
     }
     #[test]
     fn finite_tuple_plan_preserves_object_joins_and_defers_atomically() {
+        let _test_env = crate::test_env::read();
         let source = "Ontology(DLSafeRule(Body(ObjectPropertyAtom(<linked> Variable(<x>) Variable(<y>)) DataPropertyAtom(<value> Variable(<x>) Variable(<a>)) DataPropertyAtom(<value> Variable(<y>) Variable(<b>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#greaterThan> Variable(<d>) \"0\"^^xsd:int) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#subtract> Variable(<d>) Variable(<b>) Variable(<a>))) Head(ObjectPropertyAtom(<increases> Variable(<x>) Variable(<y>)))))";
         let mut registry = super::super::iri::IriRegistry::new();
         let ontology = super::super::parse::parse_axioms(&mut registry, source).unwrap();
@@ -880,6 +909,7 @@ mod builtin_join_tests {
 
     #[test]
     fn bound_output_is_checked_and_unknown_obligations_remain() {
+        let _test_env = crate::test_env::read();
         let subtract = builtin("subtract", vec![variable("d"), literal("\"3\"^^xsd:integer"), literal("\"1\"^^xsd:integer")]);
         assert_eq!(evaluate_builtin_conjunction(&[subtract.clone()], &BTreeMap::from([("d".into(), "\"7\"^^xsd:integer".into())])), BuiltinEvaluation::Refuted);
         assert_eq!(evaluate_builtin_conjunction(&[subtract, builtin("unknown", vec![])], &BTreeMap::new()), BuiltinEvaluation::Deferred);

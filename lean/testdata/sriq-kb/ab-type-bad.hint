@@ -1,0 +1,8 @@
+# A wrong countermodel for ClassAssertion(:B :b) on ab-type.ofn: b is put in
+# nc although a is in the definer of ObjectAllValuesFrom(:r :B). The check
+# fails and the search confirms that B(b) is entailed.
+blocks 2
+blk 0 1
+ty 0 1 2 4
+ty 1 2 5
+lab 0 1 +0

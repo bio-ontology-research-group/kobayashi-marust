@@ -1,14 +1,61 @@
 //! Schedule exact source reductions before the nominal CB fallback.
-use std::path::Path;
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use super::OrchestrateError;
+use crate::frontend::ground_rule_source::GroundedRuleSource;
 
-pub(super) fn automatic_candidate(path: &Path) -> Result<Option<&'static str>, OrchestrateError> {
-    if std::fs::metadata(path)?.len() > 4 * 1024 * 1024 { return Ok(None); }
-    let text = std::fs::read_to_string(path)?;
-    Ok(plan(&text))
+thread_local! {
+    static CACHED_GROUNDED: RefCell<Option<(PathBuf, bool, GroundedRuleSource)>> =
+        const { RefCell::new(None) };
 }
 
+pub(super) fn take_cached_grounded(path: &Path, project_data_abox: bool) -> Option<GroundedRuleSource> {
+    CACHED_GROUNDED.with(|slot| {
+        let mut guard = slot.borrow_mut();
+        if guard.as_ref().is_some_and(|(cached_path, cached_project, _)| {
+            cached_path == path && *cached_project == project_data_abox
+        }) {
+            guard.take().map(|(_, _, grounded)| grounded)
+        } else {
+            None
+        }
+    })
+}
+
+/// Whether the grounded source cached for `path` (by [`automatic_candidate`])
+/// came from an ontology with DL-safe rules.
+pub(super) fn cached_grounded_has_rules(path: &Path) -> bool {
+    CACHED_GROUNDED.with(|slot| {
+        slot.borrow().as_ref().is_some_and(|(cached_path, project, grounded)| {
+            cached_path == path && !*project && grounded.source_rules > 0
+        })
+    })
+}
+
+fn cache_grounded(path: Option<&Path>, project_data_abox: bool, grounded: GroundedRuleSource) {
+    if let Some(path) = path {
+        CACHED_GROUNDED.with(|slot| {
+            *slot.borrow_mut() = Some((path.to_path_buf(), project_data_abox, grounded));
+        });
+    }
+}
+
+pub(super) fn automatic_candidate(path: &Path) -> Result<Option<&'static str>, OrchestrateError> {
+    let len = std::fs::metadata(path)?.len();
+    if len > 16 * 1024 * 1024 { return Ok(None); }
+    let text = std::fs::read_to_string(path)?;
+    if len > 4 * 1024 * 1024 && !text.contains("DLSafeRule") && !text.contains("HasKey") {
+        return Ok(None);
+    }
+    Ok(plan_with_path(Some(path), &text))
+}
+
+#[cfg(test)]
 fn plan(text: &str) -> Option<&'static str> {
+    plan_with_path(None, text)
+}
+
+fn plan_with_path(path: Option<&Path>, text: &str) -> Option<&'static str> {
     // This is a cost bound, not semantic admission. The reducers below and
     // native bridge independently check complete source coverage.
     // User-input validation already profiled exactly this text in its shared
@@ -48,18 +95,28 @@ fn plan(text: &str) -> Option<&'static str> {
         // Raw profile support is conservative (for example, an empty-head
         // constraint). The compiler's source/parsed coverage check is the
         // authoritative admission test for this reduction.
-        return (source.imports == 0
-            && crate::frontend::ground_rule_source::compile(text, 100_000).is_ok())
-            .then_some("KM_GROUND_RULE_SOURCE");
+        if source.imports == 0 {
+            if let Ok(grounded) = crate::frontend::ground_rule_source::compile(text, 100_000) {
+                if grounded.text.len() <= 8 * 1024 * 1024 {
+                    cache_grounded(path, false, grounded);
+                    return Some("KM_GROUND_RULE_SOURCE");
+                }
+            }
+        }
+        return None;
     }
+    if text.len() > 4 * 1024 * 1024 { return None; }
     // Functional numeric profiles need the exact source path even without
     // inverse-functional object roles. A successful bounded compiler is only
     // a scheduling hint; native admission still validates its complete output.
     if bounded && (count("DataPropertyAssertion") > 0
         || count("NegativeDataPropertyAssertion") > 0)
         && crate::frontend::numeric_source::normalize(text, 256).ok().flatten().is_some()
-        && crate::frontend::ground_rule_source::compile(text, 100_000).is_ok() {
-        return Some("KM_GROUND_RULE_SOURCE");
+    {
+        if let Ok(grounded) = crate::frontend::ground_rule_source::compile(text, 100_000) {
+            cache_grounded(path, false, grounded);
+            return Some("KM_GROUND_RULE_SOURCE");
+        }
     }
     // Give ground-source compilation a separate class-count cost bound;
     // keep the existing native/numeric scheduling bounds above unchanged.
@@ -89,10 +146,23 @@ fn plan(text: &str) -> Option<&'static str> {
     // assertions. Requiring an inverse-functional object role here stranded
     // accepted string-valued ABoxes on the nominal CB fallback. Keep bounded
     // scheduling and independently checked compiler/bridge admission.
-    if count("FunctionalDataProperty") > 0 && source.inverse_functional_role_axioms > 0
-        && crate::frontend::data_abox_projection::project(text).is_ok() {
-        Some("KM_DATA_ABOX_PROJECT")
-    } else if crate::frontend::ground_rule_source::compile(text, 100_000).is_ok() {
+    if count("FunctionalDataProperty") > 0 && source.inverse_functional_role_axioms > 0 {
+        if let Ok(projected) = crate::frontend::data_abox_projection::project(text) {
+            cache_grounded(
+                path,
+                true,
+                GroundedRuleSource {
+                    text: projected,
+                    source_rules: 0,
+                    instances: 0,
+                    private_classes: Default::default(),
+                },
+            );
+            return Some("KM_DATA_ABOX_PROJECT");
+        }
+    }
+    if let Ok(grounded) = crate::frontend::ground_rule_source::compile(text, 100_000) {
+        cache_grounded(path, false, grounded);
         Some("KM_GROUND_RULE_SOURCE")
     } else { None }
 }
@@ -105,6 +175,7 @@ mod tests {
         DataPropertyAssertion(<urn:p> <urn:a> "red"^^xsd:string))"#;
     #[test]
     fn dense_functional_data_abox_requires_bounded_complete_compilation() {
+        let _test_env = crate::test_env::write();
         let assertions = (0..513).map(|i|
             format!("DataPropertyAssertion(:p :a{i} \"red{i}\"^^xsd:string) "))
             .collect::<String>();
@@ -129,6 +200,7 @@ mod tests {
     }
     #[test]
     fn scheduling_requires_complete_reduction_and_preserves_rule_fences() {
+        let _test_env = crate::test_env::write();
         assert_eq!(plan(SOURCE), Some("KM_DATA_ABOX_PROJECT"));
         let coupled = SOURCE.replacen("Ontology(",
             "Ontology(SubClassOf(<urn:C> DataSomeValuesFrom(<urn:p> xsd:string)) ", 1);
@@ -142,6 +214,7 @@ mod tests {
     }
     #[test]
     fn nonfunctional_string_abox_schedules_only_after_complete_compilation() {
+        let _test_env = crate::test_env::write();
         let source = r#"Prefix(:=<urn:test:>) Ontology(
             Declaration(Class(:Author)) Declaration(DataProperty(:name))
             DataPropertyDomain(:name :Author) DataPropertyRange(:name xsd:string)
@@ -164,6 +237,7 @@ mod tests {
 
     #[test]
     fn automatic_rules_require_exact_complete_source_compilation() {
+        let _test_env = crate::test_env::write();
         let source = r#"Ontology(Declaration(NamedIndividual(<urn:a>))
             DLSafeRule(Body(ClassAtom(<urn:A> Variable(<urn:x>)))
                 Head(ClassAtom(<urn:B> Variable(<urn:x>)))))"#;
@@ -175,6 +249,7 @@ mod tests {
 
     #[test]
     fn numeric_profiles_schedule_without_inverse_functional_object_roles() {
+        let _test_env = crate::test_env::write();
         let source = r#"Prefix(:=<urn:test:>) Ontology(
             FunctionalDataProperty(:p)
             EquivalentClasses(:A DataSomeValuesFrom(:p
@@ -195,6 +270,7 @@ mod facts_tests {
     /// in the shared conformance traversal equal the scheduling scan's own.
     #[test]
     fn cached_source_statistics_equal_the_scheduling_scan() {
+        let _test_env = crate::test_env::write();
         let mut docs = vec![super::tests_source()];
         if let Some(dir) = std::env::var_os("KM_CORPUS_DIR") {
             for entry in std::fs::read_dir(dir).unwrap() {

@@ -845,6 +845,7 @@ mod tests {
 
     #[test]
     fn branching_merging_candidate_linker_initializes_and_copies_payload() {
+        let _test_env = crate::test_env::read();
         let node = NodeId::new(7);
         let edge = EdgeId::new(11);
         let mut linker = BranchingMergingIndividualNodeCandidateLinker::new();
@@ -867,6 +868,7 @@ mod tests {
 
     #[test]
     fn branching_merging_candidate_linker_appends_chain_to_existing_head() {
+        let _test_env = crate::test_env::read();
         let mut linkers = Arena::new();
         let first = linkers.push(BranchingMergingIndividualNodeCandidateLinker::new());
         let second = linkers.push(BranchingMergingIndividualNodeCandidateLinker::new());
@@ -885,6 +887,7 @@ mod tests {
 
     #[test]
     fn branching_merging_candidate_linker_detects_blockable_creator() {
+        let _test_env = crate::test_env::read();
         let mut nodes = Arena::new();
         let mut edges = Arena::new();
         let mut node = IndividualProcessNode::default();

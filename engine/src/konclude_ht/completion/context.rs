@@ -1202,6 +1202,14 @@ impl CalculationAlgorithmContextBase {
             .ht_check_dangling_satellites("pop_branch_epoch");
     }
 
+    /// Coalesce all open branch epochs above `target_depth` into `target_depth`.
+    pub fn coalesce_branch_epochs_to(&mut self, target_depth: usize) {
+        self.base
+            .used_process_context
+            .coalesce_branch_epochs_to(target_depth);
+        self.databox_epoch_stack.truncate(target_depth);
+    }
+
     /// Lazily materialize the branching tree's INDEPENDENT base dependency
     /// node and return a (cached) deterministic track point on it.
     ///
@@ -1867,6 +1875,7 @@ mod context_init_tests {
 
     #[test]
     fn init_task_process_context_copies_task_and_databox_alias() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut task = SatisfiableCalculationTask::new();
         task.processing_data_box = 42;
@@ -1882,6 +1891,7 @@ mod context_init_tests {
 
     #[test]
     fn init_task_process_context_initializes_branch_tree_and_base_dependency() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let task_id = ctx
             .base
@@ -1917,6 +1927,7 @@ mod context_init_tests {
 
     #[test]
     fn init_task_process_context_keeps_external_task_id_unresolved() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let external_task = Id::<SatisfiableCalculationTask>::new(3);
 
@@ -1930,6 +1941,7 @@ mod context_init_tests {
 
     #[test]
     fn init_calculation_algorithm_context_copies_strategy_factory_cache_handles() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let concept_strategy = ConceptProcessingPriorityStrategy::new_concrete_operator();
         let individual_strategy =
@@ -2031,6 +2043,7 @@ mod context_init_tests {
 
     #[test]
     fn node_switch_forwarders_mirror_handle_task_switch_sequence() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx
             .process_context_mut()
@@ -2074,6 +2087,7 @@ mod context_init_tests {
 
     #[test]
     fn get_new_branch_tree_node_forces_creation_through_branching_tree() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let task_id = ctx
             .base
@@ -2109,6 +2123,7 @@ mod context_init_tests {
 
     #[test]
     fn node_switch_history_min_bounds_applies_konclude_flooring() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut history = NodeSwitchHistory::new(INVALID);
         history
@@ -2125,6 +2140,7 @@ mod context_init_tests {
 
     #[test]
     fn next_saturation_resolved_successor_extension_id_uses_resolved_ontology_counts() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         assert_eq!(
             ctx.processing_data_box()
@@ -2158,6 +2174,7 @@ mod context_init_tests {
 
     #[test]
     fn saturation_successor_extension_queue_forwarder_allocates_and_reports_work() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
         assert_eq!(
@@ -2190,6 +2207,7 @@ mod context_init_tests {
 
     #[test]
     fn saturation_critical_individual_queue_forwarder_allocates_and_reports_work() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
         assert_eq!(
@@ -2222,6 +2240,7 @@ mod context_init_tests {
 
     #[test]
     fn saturation_critical_individual_node_concept_test_set_forwarder_tracks_pairs() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
         assert_eq!(
@@ -2256,6 +2275,7 @@ mod context_init_tests {
 
     #[test]
     fn saturation_influenced_nominal_set_forwarder_allocates_and_tracks_membership() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
         assert_eq!(ctx.saturation_influenced_nominal_set(false), Id::NONE);
@@ -2280,6 +2300,7 @@ mod context_init_tests {
 
     #[test]
     fn saturation_nominal_dependent_node_hash_forwarder_allocates_and_prepends() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
         assert_eq!(ctx.saturation_nominal_dependent_node_hash(false), Id::NONE);

@@ -963,6 +963,51 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         last_sat_cach_possible_con_des: &mut ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        self.try_establish_saturation_caching_on(
+            indi,
+            succ_indi,
+            saturation_indi_node,
+            sat_caching_possible,
+            last_sat_cach_possible_con_des,
+            false,
+            calc_alg_context,
+        )
+    }
+
+    /// `try_establish_saturation_caching` for a successor that existed
+    /// before the generating rule reused it (`tryExtendFunctionalSuccessorIndividual`,
+    /// cpp 14346): its label predates the saturation replay.
+    pub fn try_establish_saturation_caching_on_existing(
+        &mut self,
+        indi: &mut NodeId,
+        succ_indi: NodeId,
+        saturation_indi_node: SatNodeId,
+        sat_caching_possible: &mut bool,
+        last_sat_cach_possible_con_des: &mut ConDescId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        self.try_establish_saturation_caching_on(
+            indi,
+            succ_indi,
+            saturation_indi_node,
+            sat_caching_possible,
+            last_sat_cach_possible_con_des,
+            true,
+            calc_alg_context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_establish_saturation_caching_on(
+        &mut self,
+        indi: &mut NodeId,
+        succ_indi: NodeId,
+        saturation_indi_node: SatNodeId,
+        sat_caching_possible: &mut bool,
+        last_sat_cach_possible_con_des: &mut ConDescId,
+        existing_successor: bool,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
         let _ = indi;
         type SatF = IndividualSaturationProcessNodeStatusFlags;
         let trace = super::sat_absorb_debug_enabled()
@@ -1043,19 +1088,84 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             } else {
                 0
             };
-            let mut sat_blocking_data = IndividualNodeSaturationBlockingData::new();
-            sat_blocking_data.init_saturation_blocking_data(
-                succ_indi_con_count,
-                *last_sat_cach_possible_con_des,
-                saturation_indi_node,
-            );
-            let sat_blocking_data_id = calc_alg_context
-                .process_context_mut()
-                .alloc_indi_sat_block_data(sat_blocking_data);
-            calc_alg_context
-                .process_context_mut()
-                .node_mut(succ_indi)
-                .set_individual_saturation_blocking_data(sat_blocking_data_id);
+            // The validation walk advances `last_sat_cach_possible_con_des` to the
+            // label head even when it finds a concept the saturation node lacks,
+            // and the retest (`is_node_satisfiable_cached`) reads "last
+            // confirmed == label head" as "the label is still covered".
+            // Konclude stores that head and the attempt's saturation node for
+            // every attempt. When the functional extension reuses an existing
+            // successor (tryExtendFunctionalSuccessorIndividual), the saturation
+            // node is the one of the new filler only, and the existing label is
+            // not covered by it; storing the head let the next link change
+            // re-confirm the node as cached against the wrong saturation node.
+            // The nominal of v101_13 (two values of a functional data
+            // property) was then never expanded, and a reused tree node lost
+            // the consequences of its old concepts (fuzz m32_240: UNSAT D).
+            // A declined attempt on a reused successor therefore leaves the
+            // node's existing blocking data alone (it still describes the
+            // label it was validated for, and the grown label no longer
+            // matches its head) and installs one that confirms nothing only
+            // when the node had none. Fresh successors keep Konclude's rule.
+            let label_uncovered = !caching_establishment_possible && !*sat_caching_possible;
+            if existing_successor && label_uncovered {
+                // The saturation node of the new filler does not cover the
+                // reused successor's label. When the saturation merged the
+                // functional successors of the parent's saturation node, its
+                // resolved functional-extension node carries the union of
+                // their labels; if that node covers the whole label (full
+                // validation from the first descriptor), establish against it.
+                for alternative in self.functional_extension_saturation_nodes(*indi, calc_alg_context) {
+                    if alternative == saturation_indi_node {
+                        continue;
+                    }
+                    if !Self::saturation_node_covers_label(succ_indi, alternative, calc_alg_context) {
+                        continue;
+                    }
+                    // The whole label is covered: the ordinary attempt against
+                    // this node installs blocking data for a validated label.
+                    let mut alt_possible = true;
+                    let mut alt_last = ConDescId::NONE;
+                    let established = self.try_establish_saturation_caching_on(
+                        indi,
+                        succ_indi,
+                        alternative,
+                        &mut alt_possible,
+                        &mut alt_last,
+                        false,
+                        calc_alg_context,
+                    );
+                    *sat_caching_possible = alt_possible;
+                    *last_sat_cach_possible_con_des = alt_last;
+                    return established;
+                }
+            }
+            let keep_existing = existing_successor
+                && label_uncovered
+                && calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .individual_saturation_blocking_data(false)
+                    .is_some();
+            if !keep_existing {
+                let confirmed_con_des = if !existing_successor || !label_uncovered {
+                    *last_sat_cach_possible_con_des
+                } else {
+                    ConDescId::NONE
+                };
+                let mut sat_blocking_data = IndividualNodeSaturationBlockingData::new();
+                sat_blocking_data.init_saturation_blocking_data(
+                    succ_indi_con_count,
+                    confirmed_con_des,
+                    saturation_indi_node,
+                );
+                let sat_blocking_data_id = calc_alg_context
+                    .process_context_mut()
+                    .alloc_indi_sat_block_data(sat_blocking_data);
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(succ_indi)
+                    .set_individual_saturation_blocking_data(sat_blocking_data_id);
+            }
 
             if caching_establishment_possible {
                 self.saturation_cache_establish_count += 1; // STATINC(SATURATIONCACHEESTABLISHCOUNT)
@@ -1124,6 +1234,114 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
         }
         false
+    }
+
+    /// Whether every concept of `node`'s label holds in `sat_node`: it occurs
+    /// in the saturation label with the same polarity, or it is a positive
+    /// conjunction (`CCAND`, `CCAQAND`) whose operands all hold. The
+    /// completion graph keeps conjunctions in labels that the saturation
+    /// decomposes without storing them.
+    fn saturation_node_covers_label(
+        node: NodeId,
+        sat_node: SatNodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        use super::super::model::op;
+        let pc = calc_alg_context.process_context();
+        let sat_ref = pc.sat_node(sat_node);
+        if !sat_ref.is_completed() {
+            return false;
+        }
+        let sat_label = sat_ref.reapply_con_sat_label_set;
+        let label = pc.node(node).use_reapply_con_label_set;
+        if sat_label.is_none() || label.is_none() {
+            return false;
+        }
+        let arenas = calc_alg_context.ontology_arenas();
+        let holds_in_sat = |concept: ConceptId, negated: bool| -> bool {
+            let tag = arenas.concept(concept).get_concept_tag();
+            let mut con_sat_des = Id::NONE;
+            let mut imp_reapply = Id::NONE;
+            pc.reapply_con_sat_label_set(sat_label)
+                .get_concept_saturation_descriptor_by_tag(tag, &mut con_sat_des, &mut imp_reapply)
+                && con_sat_des.is_some()
+                && pc.con_sat_desc(con_sat_des).get_negation() == negated
+        };
+        fn holds(
+            concept: ConceptId,
+            negated: bool,
+            depth: usize,
+            arenas: &super::super::model::ontology::OntologyArenas,
+            holds_in_sat: &dyn Fn(ConceptId, bool) -> bool,
+        ) -> bool {
+            if holds_in_sat(concept, negated) {
+                return true;
+            }
+            let c = arenas.concept(concept);
+            if negated || depth > 32 || !matches!(c.get_operator_code(), op::CCAND | op::CCAQAND) {
+                return false;
+            }
+            c.get_operand_list()
+                .iter()
+                .all(|operand| holds(operand.target, operand.negated, depth + 1, arenas, holds_in_sat))
+        }
+        let mut descriptor = pc.label_set(label).get_adding_sorted_concept_description_linker();
+        let mut walked = 0usize;
+        while descriptor.is_some() {
+            walked += 1;
+            if walked > pc.con_desc_count() {
+                return false;
+            }
+            let d = pc.con_desc(descriptor);
+            if !holds(d.get_concept(), d.is_negated(), 0, arenas, &holds_in_sat) {
+                return false;
+            }
+            descriptor = d.get_next_concept_descriptor();
+        }
+        true
+    }
+
+    /// The resolved functional-extension saturation nodes of the parent's
+    /// saturation node, one per functional role whose successors the
+    /// saturation merged (s06 `set_last_resolved_individual_node`).
+    fn functional_extension_saturation_nodes(
+        &mut self,
+        parent: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Vec<SatNodeId> {
+        let block_data = calc_alg_context
+            .process_context()
+            .node(parent)
+            .individual_saturation_blocking_data(false);
+        if block_data.is_none() {
+            return Vec::new();
+        }
+        let parent_sat = calc_alg_context
+            .process_context()
+            .indi_sat_block_data(block_data)
+            .get_saturation_individual_node();
+        if parent_sat.is_none() {
+            return Vec::new();
+        }
+        let ext = calc_alg_context
+            .process_context_mut()
+            .sat_node_functional_concepts_extension_data(parent_sat, false);
+        if ext.is_none() {
+            return Vec::new();
+        }
+        let pc = calc_alg_context.process_context();
+        let mut nodes: Vec<SatNodeId> = pc
+            .sat_indi_node_functional_concept_ext_data(ext)
+            .linked_succ_role_functional_concept_ext_hash
+            .linked_succ_role_functional_concept_ext_hash
+            .values()
+            .filter(|data| data.is_some())
+            .map(|&data| pc.sat_successor_functional_concept_ext_data(data).get_last_resolved_individual_node())
+            .filter(|node| node.is_some())
+            .collect();
+        nodes.sort_unstable_by_key(|node| node.raw);
+        nodes.dedup();
+        nodes
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::validateSaturationCachingPossible`.

@@ -2492,6 +2492,7 @@ mod tests {
 
     #[test]
     fn test_individual_node_unsatisfiable_cached_uses_live_handler_and_raises_clash() {
+        let _test_env = crate::test_env::read();
         let (mut calc, node, con_desc) = context_with_labelled_node();
         install_hash_hit_handler(&mut calc, con_desc);
 
@@ -2515,6 +2516,7 @@ mod tests {
 
     #[test]
     fn test_individual_node_unsatisfiable_cached_signature_gate_blocks_hit() {
+        let _test_env = crate::test_env::read();
         let (mut calc, node, con_desc) = context_with_labelled_node();
         install_hash_hit_handler(&mut calc, con_desc);
 

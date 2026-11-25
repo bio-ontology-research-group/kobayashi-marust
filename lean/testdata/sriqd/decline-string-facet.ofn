@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/decline-string-facet>
+SubClassOf(:A DataSomeValuesFrom(:p DatatypeRestriction(xsd:string xsd:maxLength "3"^^xsd:integer)))
+)

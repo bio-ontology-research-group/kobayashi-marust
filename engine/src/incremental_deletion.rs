@@ -213,6 +213,7 @@ mod tests {
     }
     #[test]
     fn retains_reproved_rows_but_rejects_additions_and_missing_answers() {
+        let _test_env = crate::test_env::write();
         let new = vec![ax(name("A"),name("C")),ax(name("C"),name("B"))];
         let mut old = new.clone(); old.push(ax(name("A"),name("B")));
         let queries = vec!["A".into(),"B".into(),"C".into()];
@@ -229,6 +230,7 @@ mod tests {
     }
     #[test]
     fn existential_lifting_does_not_identify_fillers_with_successors() {
+        let _test_env = crate::test_env::write();
         let some = |c| Concept::Exists(Role::Inverse("r".into()),Box::new(c));
         let new = vec![ax(name("A"),some(name("B"))),ax(name("B"),name("C")),
             ax(some(name("C")),name("D"))];
@@ -244,6 +246,7 @@ mod tests {
     }
     #[test]
     fn role_background_proves_domains_and_chains_without_reversing_them() {
+        let _test_env = crate::test_env::write();
         let some=|r:&str,c| Concept::Exists(Role::Name(r.into()),Box::new(c));
         let new=vec![ax(name("A"),some("r",name("B"))),
             ax(name("B"),some("s",name("C"))),ax(some("t",name("C")),name("D"))];
@@ -267,6 +270,7 @@ mod tests {
 
     #[test]
     fn retained_unsatisfiability_needs_a_new_bottom_proof() {
+        let _test_env = crate::test_env::write();
         let clash = SourceAxiomMeta { kind: SourceAxiomKind::Disjoint, left: name("B"), right: name("C") };
         let new = vec![ax(name("A"),name("B")),ax(name("A"),name("C")),clash];
         let mut old = new.clone(); old.push(ax(name("A"),Concept::Bottom));
@@ -279,6 +283,7 @@ mod tests {
     }
     #[test]
     fn supported_rows_preserve_exhaustive_finite_model_answers_after_deletion() {
+        let _test_env = crate::test_env::write();
         let c=|i| name(&format!("C{i}"));
         let some=Concept::Exists(Role::Name("r".into()),Box::new(c(1)));
         let palette=[ax(c(0),some.clone()),ax(some,c(2)),

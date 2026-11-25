@@ -59,6 +59,7 @@ public class SuppliedDeltaTest {
         OWLOntology o = ontology(); OWLOntologyManager m = o.getOWLOntologyManager();
         KMReasoner r = (KMReasoner)new KMReasonerFactory().createReasoner(o);
         try {
+            r.precomputeInferences(org.semanticweb.owlapi.reasoner.InferenceType.CLASS_HIERARCHY); // first revision, as Protege does
             m.addAxiom(o, sc("B", "C")); r.flush(); assertTrue(r.lastPreparationUsedDelta()); snapshot(r, o);
             assertTrue(r.isEntailed(sc("A", "C")));
             m.removeAxiom(o, sc("B", "C")); r.flush(); assertTrue(r.lastPreparationUsedDelta()); snapshot(r, o);
@@ -83,6 +84,7 @@ public class SuppliedDeltaTest {
         OWLOntology o = ontology(); OWLOntologyManager m = o.getOWLOntologyManager();
         KMReasoner r = (KMReasoner)new KMReasonerFactory().createNonBufferingReasoner(o);
         try {
+            r.precomputeInferences(org.semanticweb.owlapi.reasoner.InferenceType.CLASS_HIERARCHY); // first revision, as Protege does
             m.addAxiom(o, sc("B", "C")); assertTrue(r.lastPreparationUsedDelta()); assertTrue(r.isEntailed(sc("A", "C"))); snapshot(r, o);
             m.removeAxiom(o, sc("B", "C")); assertTrue(r.lastPreparationUsedDelta()); assertFalse(r.isEntailed(sc("A", "C"))); snapshot(r, o);
         } finally { r.dispose(); }

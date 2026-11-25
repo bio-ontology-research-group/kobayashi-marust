@@ -845,7 +845,24 @@ impl DatatypeRelationIndex {
 /// union of the values that imply it then satisfies every helper clause in
 /// every model of the datatype map, so the helpers add no consequence over
 /// the source vocabulary.
+#[cfg(test)]
 fn linear_value_encoding_exact(tin: &TInput) -> bool {
+    let mut parsed_atomic: crate::fxhash::FxHashMap<
+        usize,
+        crate::frontend::datatypes::ParsedBridgeAtomic,
+    > = Default::default();
+    for (idx, name) in tin.concepts.iter().enumerate() {
+        if let Some(p) = crate::frontend::datatypes::ParsedBridgeAtomic::of(name) {
+            parsed_atomic.insert(idx, p);
+        }
+    }
+    linear_value_encoding_exact_with_parsed(tin, &parsed_atomic)
+}
+
+fn linear_value_encoding_exact_with_parsed(
+    tin: &TInput,
+    parsed_atomic: &crate::fxhash::FxHashMap<usize, crate::frontend::datatypes::ParsedBridgeAtomic>,
+) -> bool {
     use crate::frontend::datatypes as dt;
     macro_rules! defer {
         ($reason:literal) => {{
@@ -863,6 +880,7 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
     let mut profile_excludes: Vec<(usize, usize)> = Vec::new();
     let mut digits_of: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>> = Default::default();
     let mut helper_guards: Vec<(usize, usize)> = Vec::new();
+    let mut helper_supers: Vec<(usize, usize)> = Vec::new();
     for clause in &tin.clauses {
         if !clause_mentions_value_aux(tin, clause) {
             continue;
@@ -877,17 +895,22 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
                 }
             }
             ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: range, t: ht }])
+                if t == ht && aux(*helper) && name(*range) == crate::frontend::sorts::DATA_SORT => {}
+            ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: range, t: ht }])
                 if t == ht && aux(*helper) && dt::value_aux_digit(name(*helper)).is_none()
-                    && !aux(*range) && dt::bridge_tbox_atomic_name(name(*range)) =>
+                    && !aux(*range) && parsed_atomic.contains_key(range) =>
                 profile_includes.push((*helper, *range)),
+            ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: sup, t: ht }])
+                if std::env::var_os("KM_GROUND_RULE_HAS_RULES").is_some() && t == ht && aux(*helper) && !aux(*sup) =>
+                helper_supers.push((*helper, *sup)),
             ([HAtom::Concept { neg: false, c: left, t: lt }, HAtom::Concept { neg: false, c: right, t: rt }], [])
                 if lt == rt =>
             {
                 match (dt::value_aux_digit(name(*left)), dt::value_aux_digit(name(*right))) {
                     (Some((p, a)), Some((q, b))) if p == q && a != b => {}
-                    (None, None) if aux(*left) && !aux(*right) && dt::bridge_tbox_atomic_name(name(*right)) =>
+                    (None, None) if aux(*left) && !aux(*right) && parsed_atomic.contains_key(right) =>
                         profile_excludes.push((*left, *right)),
-                    (None, None) if aux(*right) && !aux(*left) && dt::bridge_tbox_atomic_name(name(*left)) =>
+                    (None, None) if aux(*right) && !aux(*left) && parsed_atomic.contains_key(left) =>
                         profile_excludes.push((*right, *left)),
                     // A helper (index digit or membership profile) disjoint
                     // from a concept that is not a helper: the two-sorted
@@ -903,15 +926,30 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
         }
     }
     for (helper, range) in profile_includes {
+        let Some(range_p) = parsed_atomic.get(&range) else {
+            defer!("a membership profile includes a range one of its values is not in");
+        };
         for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
-            if dt::bridge_exact_atomic_subsumed(name(value), name(range)) != Some(true) {
+            let subsumed = if value == range {
+                Some(true)
+            } else {
+                parsed_atomic.get(&value).and_then(|val_p| val_p.subsumed(range_p))
+            };
+            if subsumed != Some(true) {
                 defer!("a membership profile includes a range one of its values is not in");
             }
         }
     }
     for (helper, range) in profile_excludes {
+        let Some(range_p) = parsed_atomic.get(&range) else {
+            defer!("a membership profile excludes a range one of its values is in");
+        };
         for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
-            if dt::bridge_exact_atomic_disjoint(name(value), name(range)) != Some(true) {
+            if parsed_atomic
+                .get(&value)
+                .and_then(|val_p| val_p.disjoint(range_p))
+                != Some(true)
+            {
                 defer!("a membership profile excludes a range one of its values is in");
             }
         }
@@ -934,6 +972,28 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
             for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
                 if !disjoint.contains(&(value.min(guard), value.max(guard))) {
                     defer!("a helper is disjoint from a concept one of its values is not disjoint from");
+                }
+            }
+        }
+    }
+    // `H ⊑ D` (e.g. the two-sorted nominal encoding's `H ⊑ __data__` when
+    // `__data__` is retained) holds for `H` read as the union of its values
+    // when every such value `v` has the clause `v ⊑ D` itself.
+    if !helper_supers.is_empty() {
+        let mut subsumed: crate::fxhash::FxHashSet<(usize, usize)> = Default::default();
+        for clause in &tin.clauses {
+            if let ([HAtom::Concept { neg: false, c: a, t: at }], [HAtom::Concept { neg: false, c: b, t: bt }])
+                = (clause.body.as_slice(), clause.head.as_slice())
+            {
+                if at == bt {
+                    subsumed.insert((*a, *b));
+                }
+            }
+        }
+        for (helper, sup) in helper_supers {
+            for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
+                if !subsumed.contains(&(value, sup)) {
+                    defer!("a helper is subsumed by a concept one of its values is not subsumed by");
                 }
             }
         }
@@ -1318,6 +1378,156 @@ fn blank_witness_axiom_value(
     })
 }
 
+fn find_isolated_universal_role_hub(tin: &TInput) -> Option<(String, String)> {
+    let hub_axiom = tin.source_axioms.iter().find_map(|axiom| match (
+        axiom.kind,
+        &axiom.left,
+        &axiom.right,
+    ) {
+        (
+            crate::json_io::SourceAxiomKind::SubClass,
+            SourceConcept::Top,
+            SourceConcept::Exists(SourceRole::Name(role), filler),
+        ) => match filler.as_ref() {
+            SourceConcept::Nominal(ind) => Some((role.as_str(), ind.as_str())),
+            _ => None,
+        },
+        _ => None,
+    })?;
+    let (hub_role, hub_ind) = hub_axiom;
+    let mentions_hub = |concept: &SourceConcept| -> bool {
+        fn walk(c: &SourceConcept, hr: &str, hi: &str) -> bool {
+            match c {
+                SourceConcept::Nominal(ind) => ind == hi,
+                SourceConcept::Not(inner) => walk(inner, hr, hi),
+                SourceConcept::And(items) | SourceConcept::Or(items) => {
+                    items.iter().any(|x| walk(x, hr, hi))
+                }
+                SourceConcept::Exists(role, filler)
+                | SourceConcept::Forall(role, filler)
+                | SourceConcept::AtLeast(_, role, filler)
+                | SourceConcept::AtMost(_, role, filler) => {
+                    matches!(role, SourceRole::Name(r) | SourceRole::Inverse(r) if r == hr)
+                        || walk(filler, hr, hi)
+                }
+                SourceConcept::HasSelf(SourceRole::Name(r) | SourceRole::Inverse(r)) => r == hr,
+                _ => false,
+            }
+        }
+        walk(concept, hub_role, hub_ind)
+    };
+    fn hub_probe_def<'a>(
+        axiom: &'a crate::json_io::SourceAxiomMeta,
+        hub_role: &str,
+        hub_ind: &str,
+    ) -> Option<(&'a str, &'a str)> {
+        if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+            return None;
+        }
+        let (probe, def) = match (&axiom.left, &axiom.right) {
+            (SourceConcept::Name(p), d) => (p.as_str(), d),
+            (d, SourceConcept::Name(p)) => (p.as_str(), d),
+            _ => return None,
+        };
+        let SourceConcept::Exists(SourceRole::Name(role), outer) = def else {
+            return None;
+        };
+        if role != hub_role {
+            return None;
+        }
+        let SourceConcept::And(conjuncts) = outer.as_ref() else {
+            return None;
+        };
+        if conjuncts.len() != 2 {
+            return None;
+        }
+        let mut saw_hub = false;
+        let mut filler_name = None;
+        for c in conjuncts {
+            match c {
+                SourceConcept::Nominal(ind) if ind == hub_ind => saw_hub = true,
+                SourceConcept::Exists(SourceRole::Inverse(r), inner) if r == hub_role => {
+                    if let SourceConcept::Name(f) = inner.as_ref() {
+                        filler_name = Some(f.as_str());
+                    }
+                }
+                _ => {}
+            }
+        }
+        (saw_hub && filler_name.is_some()).then(|| (probe, filler_name.unwrap()))
+    }
+    let is_this_hub = |axiom: &crate::json_io::SourceAxiomMeta| {
+        matches!(
+            (axiom.kind, &axiom.left, &axiom.right),
+            (
+                crate::json_io::SourceAxiomKind::SubClass,
+                SourceConcept::Top,
+                SourceConcept::Exists(SourceRole::Name(r), f)
+            ) if r == hub_role && matches!(f.as_ref(), SourceConcept::Nominal(i) if i == hub_ind)
+        )
+    };
+    let mut probes = std::collections::HashSet::new();
+    for axiom in &tin.source_axioms {
+        if is_this_hub(axiom) {
+            continue;
+        }
+        if mentions_hub(&axiom.left) || mentions_hub(&axiom.right) {
+            let (probe, _) = hub_probe_def(axiom, hub_role, hub_ind)?;
+            probes.insert(probe);
+        }
+    }
+    for axiom in &tin.source_axioms {
+        if is_this_hub(axiom) || hub_probe_def(axiom, hub_role, hub_ind).is_some() {
+            continue;
+        }
+        if probes.iter().any(|&p| {
+            source_concept_mentions_name(&axiom.left, p)
+                || source_concept_mentions_name(&axiom.right, p)
+        }) {
+            return None;
+        }
+    }
+    if tin.nominal_abox.individuals.iter().any(|ind| {
+        (ind.individual == hub_ind && !ind.assertions.is_empty())
+            || ind.assertions.iter().any(|a| {
+                mentions_hub(a)
+                    || probes.iter().any(|&p| source_concept_mentions_name(a, p))
+            })
+    }) {
+        return None;
+    }
+    let r_ok = !tin
+        .roles
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.as_str() == hub_role)
+        .any(|(rid, _)| {
+            tin.chains
+                .iter()
+                .any(|&(a, b, c)| a == rid || b == rid || c == rid)
+                || tin.transitive.contains(&rid)
+        });
+    r_ok.then(|| (hub_role.to_owned(), hub_ind.to_owned()))
+}
+
+fn is_isolated_hub_axiom(
+    axiom: &crate::json_io::SourceAxiomMeta,
+    isolated_hub: Option<&(String, String)>,
+) -> bool {
+    let Some((hub_role, hub_ind)) = isolated_hub else {
+        return false;
+    };
+    matches!(
+        (axiom.kind, &axiom.left, &axiom.right),
+        (
+            crate::json_io::SourceAxiomKind::SubClass,
+            SourceConcept::Top,
+            SourceConcept::Exists(SourceRole::Name(role), filler)
+        ) if role == hub_role
+            && matches!(filler.as_ref(), SourceConcept::Nominal(ind) if ind == hub_ind)
+    )
+}
+
 /// Search a named-class label `L` such that an isolated element labelled
 /// exactly `L` (no role edges, outside every nominal) satisfies every source
 /// axiom, datatype-bearing ones included (their role restrictions are
@@ -1330,7 +1540,14 @@ fn blank_witness_axiom_value(
 /// special case checked by the original guard. Fail-closed: `None` when no
 /// witness is found within the search budget or a construct is unsupported.
 fn blank_data_node_witness_label(tin: &TInput) -> Option<Vec<String>> {
-    let axioms: Vec<&crate::json_io::SourceAxiomMeta> = tin.source_axioms.iter().collect();
+    let isolated_hub = (!crate::routing::ground_rule_zero_rules_mode())
+        .then(|| find_isolated_universal_role_hub(tin))
+        .flatten();
+    let axioms: Vec<&crate::json_io::SourceAxiomMeta> = tin
+        .source_axioms
+        .iter()
+        .filter(|ax| !is_isolated_hub_axiom(ax, isolated_hub.as_ref()))
+        .collect();
     blank_witness_search(axioms)
 }
 
@@ -1503,12 +1720,19 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     if tin.data_roles.iter().any(|&role| role >= tin.roles.len()) {
         defer!("a source data-property role index is invalid");
     }
-    if !source_mode
-        || datatype_ids.iter().any(|&concept| {
-            !crate::frontend::datatypes::bridge_tbox_atomic_name(&tin.concepts[concept])
-        })
-    {
+    if !source_mode {
         defer!("source mode is disabled or a datatype symbol is not in the exact atomic map");
+    }
+    let mut parsed_atomic: crate::fxhash::FxHashMap<
+        usize,
+        crate::frontend::datatypes::ParsedBridgeAtomic,
+    > = crate::fxhash::FxHashMap::default();
+    for &concept in &datatype_ids {
+        let Some(p) = crate::frontend::datatypes::ParsedBridgeAtomic::of(&tin.concepts[concept])
+        else {
+            defer!("source mode is disabled or a datatype symbol is not in the exact atomic map");
+        };
+        parsed_atomic.insert(concept, p);
     }
 
     let role_index: HashMap<&str, usize> = tin
@@ -1517,7 +1741,14 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .enumerate()
         .map(|(index, name)| (name.as_str(), index))
         .collect();
-    let mut role_ranges: HashMap<usize, &str> = HashMap::default();
+    let concept_index: crate::fxhash::FxHashMap<&str, usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .map(|(index, name)| (name.as_str(), index))
+        .collect();
+    let mut lazy_relations: Option<DatatypeRelationIndex> = None;
+    let mut role_ranges: HashMap<usize, Vec<&str>> = HashMap::default();
     let mut role_existentials: Vec<(usize, &str)> = Vec::new();
     // Collect before walking local restrictions: source order is irrelevant.
     // A matching global range entails each local universal restriction. Keep
@@ -1605,6 +1836,23 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                     return true;
                 }
                 if !crate::frontend::datatypes::bridge_tbox_atomic_name(datatype) {
+                    return false;
+                }
+                out.push((role.as_str(), datatype.as_str(), false));
+                true
+            }
+            SourceConcept::AtLeast(3..=8, SourceRole::Name(role), filler)
+            | SourceConcept::AtMost(3..=8, SourceRole::Name(role), filler) => {
+                let SourceConcept::Name(datatype) = filler.as_ref() else {
+                    return atomic_datatype_occurrences(filler, global_atomic_ranges, out, local);
+                };
+                if !datatype.starts_with("__dt__") {
+                    return true;
+                }
+                if !crate::frontend::datatypes::bridge_tbox_atomic_name(datatype)
+                    || crate::frontend::datatypes::bridge_tbox_atomic_family(datatype)
+                        != Some("string")
+                {
                     return false;
                 }
                 out.push((role.as_str(), datatype.as_str(), false));
@@ -1705,11 +1953,26 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 defer!("a datatype source role is absent from TInput roles");
             };
             if is_range {
-                if role_ranges
-                    .insert(role, datatype)
-                    .is_some_and(|old| old != datatype)
-                {
-                    defer!("one data role has multiple atomic ranges");
+                let ranges_for_role = role_ranges.entry(role).or_default();
+                if !ranges_for_role.contains(&datatype) {
+                    for &old in ranges_for_role.iter() {
+                        let separated = !crate::routing::ground_rule_zero_rules_mode()
+                            && crate::frontend::datatypes::bridge_exact_atomic_disjoint(old, datatype)
+                                == Some(true)
+                            && concept_index
+                                .get(old)
+                                .copied()
+                                .zip(concept_index.get(datatype).copied())
+                                .is_some_and(|(a, b)| {
+                                    lazy_relations
+                                        .get_or_insert_with(|| DatatypeRelationIndex::for_input(tin))
+                                        .separated(a, b)
+                                });
+                        if !separated {
+                            defer!("one data role has multiple atomic ranges");
+                        }
+                    }
+                    ranges_for_role.push(datatype);
                 }
             } else {
                 role_existentials.push((role, datatype));
@@ -1766,21 +2029,72 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             }
         }
     }
+    role_existentials.sort_unstable();
+    role_existentials.dedup();
+    // The probe value `v` of `--data-properties` is one data value shared by
+    // every probe `W_p ≡ ∃p.{v}`, and `X_pq ≡ W_p ⊓ W_q` is unsatisfiable
+    // when the ranges of `p` and `q` admit no common value. The bridge
+    // checks the probe against no range and keeps the two successors apart,
+    // so it misses that clash (t2: `p ≡ q` with an `xsd:integer` range and
+    // `s` with an `xsd:string` range lost `DISJOINTDATAPROP p s`). Admit the
+    // probe only when all its roles share one atomic range.
+    {
+        let mut probe_ranges: Vec<&str> = role_existentials
+            .iter()
+            .filter(|&&(_, datatype)| crate::frontend::datatypes::is_data_property_probe_value(datatype))
+            .filter_map(|(role, _)| role_ranges.get(role))
+            .flat_map(|ranges| ranges.iter().copied())
+            .collect();
+        probe_ranges.sort_unstable();
+        probe_ranges.dedup();
+        if probe_ranges.len() > 1 {
+            defer!("data-property probes occur on roles with different ranges");
+        }
+    }
     for &(role, datatype) in &role_existentials {
-        let Some(&range) = role_ranges.get(&role) else {
+        if crate::frontend::datatypes::is_data_property_probe_value(datatype) {
+            if role_ranges.get(&role).is_some_and(|ranges_for_role| {
+                ranges_for_role.iter().any(|&range| {
+                    matches!(
+                        crate::frontend::datatypes::bridge_tbox_atomic_family(range),
+                        Some("finite" | "boolean")
+                    )
+                })
+            }) {
+                defer!("a data-property probe occurs on a role with a finite range");
+            }
+            continue;
+        }
+        let Some(ranges_for_role) = role_ranges.get(&role) else {
             continue;
         };
-        if crate::frontend::datatypes::bridge_exact_atomic_subsumed(datatype, range) != Some(true)
-            && crate::frontend::datatypes::bridge_exact_atomic_subsumed(range, datatype)
-                != Some(true)
-        {
-            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
-                eprintln!(
-                    "BRIDGE-DATATYPE-DEFER: role={} filler={} range={}",
-                    tin.roles[role], datatype, range
-                );
+        for &range in ranges_for_role {
+            if crate::frontend::datatypes::bridge_exact_atomic_subsumed(datatype, range) != Some(true)
+                && crate::frontend::datatypes::bridge_exact_atomic_subsumed(range, datatype)
+                    != Some(true)
+                && !(!crate::routing::ground_rule_zero_rules_mode()
+                    && (!datatype.starts_with("__dt__val__")
+                        || std::env::var_os("KM_GROUND_RULE_HAS_RULES").is_some())
+                    && crate::frontend::datatypes::bridge_exact_atomic_disjoint(datatype, range)
+                        == Some(true)
+                    && concept_index
+                        .get(datatype)
+                        .copied()
+                        .zip(concept_index.get(range).copied())
+                        .is_some_and(|(a, b)| {
+                            lazy_relations
+                                .get_or_insert_with(|| DatatypeRelationIndex::for_input(tin))
+                                .separated(a, b)
+                        }))
+            {
+                if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                    eprintln!(
+                        "BRIDGE-DATATYPE-DEFER: role={} filler={} range={}",
+                        tin.roles[role], datatype, range
+                    );
+                }
+                defer!("a datatype existential conflicts with its role range");
             }
-            defer!("a datatype existential conflicts with its role range");
         }
     }
 
@@ -1839,6 +2153,16 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                     && (matches!(filler.as_ref(), SourceConcept::Top)
                         || matches!(filler.as_ref(), SourceConcept::Name(name)
                             if crate::frontend::datatypes::bridge_tbox_atomic_name(name))) =>
+            {
+                true
+            }
+            SourceConcept::AtLeast(3..=8, SourceRole::Name(role), filler)
+            | SourceConcept::AtMost(3..=8, SourceRole::Name(role), filler)
+                if datatype_roles.contains(role.as_str())
+                    && matches!(filler.as_ref(), SourceConcept::Name(name)
+                        if crate::frontend::datatypes::bridge_tbox_atomic_name(name)
+                            && crate::frontend::datatypes::bridge_tbox_atomic_family(name)
+                                == Some("string")) =>
             {
                 true
             }
@@ -1913,6 +2237,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     // ordinary property-domain axiom `exists(role, Top) <= NamedClass`,
     // evaluated at the object predecessor.
     let mut blank_witness: Option<Option<Vec<String>>> = None;
+    let isolated_hub = find_isolated_universal_role_hub(tin);
     for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
         if source_concept_contains_internal_datatype(&axiom.left)
             || source_concept_contains_internal_datatype(&axiom.right)
@@ -1922,6 +2247,9 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             {
                 defer!("a datatype-bearing axiom uses a data role with an object filler or unsupported bound");
             }
+            continue;
+        }
+        if is_isolated_hub_axiom(axiom, isolated_hub.as_ref()) {
             continue;
         }
         let (Some(left), Some(right)) = (
@@ -2009,11 +2337,13 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         if !crate::frontend::datatypes::bridge_tbox_atomic_name(name) {
             defer!("a data-role range has no exact atomic family");
         }
-        if role_ranges.get(&role).is_none_or(|source_range| {
-            crate::frontend::datatypes::bridge_exact_atomic_subsumed(name, source_range)
-                != Some(true)
-                || crate::frontend::datatypes::bridge_exact_atomic_subsumed(source_range, name)
-                    != Some(true)
+        if role_ranges.get(&role).is_none_or(|ranges_for_role| {
+            !ranges_for_role.iter().any(|&source_range| {
+                crate::frontend::datatypes::bridge_exact_atomic_subsumed(name, source_range)
+                    == Some(true)
+                    && crate::frontend::datatypes::bridge_exact_atomic_subsumed(source_range, name)
+                        == Some(true)
+            })
         }) {
             defer!("source and side-channel data-role ranges disagree");
         }
@@ -2071,7 +2401,14 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         // `cell_literals_and_requirement`).
         let disjoint_data = disjoint_role_pair_clause(clause).is_some_and(|(left, right)|
             datatype_roles.contains(&left) && datatype_roles.contains(&right));
-        if !functional && !domain && !inclusion && !disjoint_data {
+        let empty_range = matches!(
+            (clause.body.as_slice(), clause.head.as_slice()),
+            ([HAtom::Role { r, s, t }], [])
+                if datatype_roles.contains(r)
+                    && s != t
+                    && role_ranges.get(r).is_some_and(|ranges| ranges.len() >= 2)
+        );
+        if !functional && !domain && !inclusion && !disjoint_data && !empty_range {
             note_bridge_defer(format!(
                 "datatype gate: a data role occurs in an unsupported non-datatype clause \
                  (clause {clause_index}: {})",
@@ -2152,18 +2489,16 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .iter()
         .filter(|&&concept| !tin.concepts[concept].starts_with("__dt__val__"))
     {
-        let Some(family) =
-            crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[concept])
-        else {
+        let Some(family) = parsed_atomic.get(&concept).map(|p| p.family) else {
             defer!("a datatype range has no exact atomic family");
         };
         ranges.entry(family).or_default().push(concept);
     }
 
-    if !linear_value_encoding_exact(tin) {
+    if !linear_value_encoding_exact_with_parsed(tin, &parsed_atomic) {
         return false;
     }
-    let relations = DatatypeRelationIndex::for_input(tin);
+    let relations = lazy_relations.unwrap_or_else(|| DatatypeRelationIndex::for_input(tin));
     // An admitted complement `¬A` needs its disjointness `¬A ∧ A → ⊥` and
     // its excluded middle `→ ¬A ∨ A`. A node that carries only complements
     // is realized by a fresh IRI, which lies in every admitted complement and
@@ -2178,12 +2513,14 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 let name = tin.concepts[concept].as_str();
                 source_concept_mentions_name(&axiom.left, name) || source_concept_mentions_name(&axiom.right, name)
             });
-        let complements: Vec<(usize, usize)> = datatype_ids.iter().filter(|&&concept| mentioned(concept)).filter_map(|&concept| {
+        let complements: Vec<(usize, usize)> = datatype_ids.iter().filter_map(|&concept| {
             let operand = dt::bridge_exact_complement_operand(&tin.concepts[concept])?;
-            Some((concept, tin.concepts.iter().position(|name| *name == operand).unwrap_or(usize::MAX)))
+            mentioned(concept).then(|| {
+                (concept, concept_index.get(operand.as_str()).copied().unwrap_or(usize::MAX))
+            })
         }).collect();
         if !complements.is_empty() {
-            if datatype_ids.iter().any(|&concept| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("anyURI")) {
+            if datatype_ids.iter().any(|&concept| parsed_atomic.get(&concept).map(|p| p.family) == Some("anyURI")) {
                 defer!("a data complement next to an anyURI range");
             }
             for &(complement, operand) in &complements {
@@ -2210,35 +2547,40 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let Some(member) = datatype_ids.iter().copied().find(|&c| tin.concepts[c] == local) else {
             defer!("a local datatype restriction symbol is absent from TInput concepts");
         };
+        let member_p = &parsed_atomic[&member];
         for &other in &datatype_ids {
-            if other == member || dt::bridge_tbox_atomic_family(&tin.concepts[other]) == Some("literal") {
+            let other_p = &parsed_atomic[&other];
+            if other == member
+                || other_p.family == "literal"
+                || dt::is_data_property_probe_value(&tin.concepts[other])
+            {
                 continue;
             }
             let (left, right) = (local, tin.concepts[other].as_str());
             let mut decided = false;
-            if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
+            if member_p.subsumed(other_p) == Some(true) {
                 decided = true;
                 if !relations.includes(member, other) {
                     defer!("a local datatype restriction lacks an inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_subsumed(right, left) == Some(true) {
+            if other_p.subsumed(member_p) == Some(true) {
                 decided = true;
                 if !relations.includes(other, member) {
                     defer!("a local datatype restriction lacks a reverse inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_disjoint(left, right) == Some(true) {
+            if member_p.disjoint(other_p) == Some(true) {
                 decided = true;
                 if !relations.separated(member, other) {
                     defer!("a local datatype restriction lacks a disjointness clause");
                 }
             }
-            let ieee = dt::bridge_ieee_range(left) && dt::bridge_ieee_range(right)
-                && dt::bridge_tbox_atomic_family(left) == dt::bridge_tbox_atomic_family(right)
+            let ieee = member_p.is_ieee_range && other_p.is_ieee_range
+                && member_p.family == other_p.family
                 && datatype_ids.iter().any(|&c| dt::bridge_ieee_facet_range(&tin.concepts[c])
-                    && dt::bridge_tbox_atomic_family(&tin.concepts[c]) == dt::bridge_tbox_atomic_family(left));
-            let decimal = dt::bridge_decimal_range(left) && dt::bridge_decimal_range(right);
+                    && parsed_atomic[&c].family == member_p.family);
+            let decimal = member_p.is_decimal_range && other_p.is_decimal_range;
             if !decided && !ieee && !decimal {
                 if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                     eprintln!("BRIDGE-DATATYPE-DEFER: local={left} other={right}");
@@ -2261,58 +2603,129 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         !distinct
             && !disjoint_data
             && values.iter().all(|&value| {
-                crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some()
+                crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[value])
+                    || crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value])
+                        .is_some()
             })
     };
+    let has_data_probe = values
+        .iter()
+        .any(|&v| crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[v]));
+    let finite_or_bool_reaches_probe = if !has_data_probe {
+        false
+    } else {
+        let finite_or_bool: Vec<&str> = ranges
+            .get("finite")
+            .into_iter()
+            .flatten()
+            .chain(ranges.get("boolean").into_iter().flatten())
+            .map(|&idx| tin.concepts[idx].as_str())
+            .collect();
+        if finite_or_bool.is_empty() {
+            false
+        } else if !source_mode {
+            true
+        } else {
+            // Functional data properties: any role appearing in a clause with an Eq head
+            // (other than a role-free singleton value clause), closed downward under
+            // sub-role inclusions `sub ⊑ sup` (an edge on `sub` also gets `sup`).
+            let mut merging_roles: crate::fxhash::FxHashSet<usize> = Default::default();
+            for clause in &tin.clauses {
+                if clause.head.iter().any(|a| matches!(a, HAtom::Eq { .. })) {
+                    for atom in &clause.body {
+                        if let HAtom::Role { r, .. } = atom {
+                            merging_roles.insert(*r);
+                        }
+                    }
+                }
+            }
+            loop {
+                let before = merging_roles.len();
+                for clause in &tin.clauses {
+                    if let Some((sub, sup)) = exact_datatype_subrole_clause(clause) {
+                        if merging_roles.contains(&sup) {
+                            merging_roles.insert(sub);
+                        }
+                    }
+                }
+                if merging_roles.len() == before {
+                    break;
+                }
+            }
+            finite_or_bool.iter().any(|&fb| {
+                role_ranges.values().flatten().any(|&d| d == fb)
+                    || local_foralls.iter().any(|&(_, d)| d == fb)
+                    || role_existentials
+                        .iter()
+                        .any(|&(role, d)| d == fb && merging_roles.contains(&role))
+            })
+        }
+    };
+    let finite_ranges: &[usize] = ranges.get("finite").map(Vec::as_slice).unwrap_or(&[]);
     for &value in &values {
+        if crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[value]) {
+            if !relations.singletons.contains(&value) {
+                defer!("a data-property probe lacks its singleton clause");
+            }
+            if finite_or_bool_reaches_probe {
+                defer!("a data-property probe occurs with a finite or boolean range");
+            }
+            continue;
+        }
         if !relations.singletons.contains(&value)
             && !(singletons_elidable
                 && crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some())
         {
             defer!("a datatype value lacks its singleton equality clause");
         }
-        let Some(family) =
-            crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[value])
-        else {
+        let Some(val_p) = parsed_atomic.get(&value) else {
             defer!("a datatype value has no exact atomic family");
         };
+        let family = val_p.family;
         // Preserve the existing atomic-family obligation. Finite enumerations
         // additionally need an exact decision for every present literal value,
         // including values from other families.
         if let Some(family_ranges) = ranges.get(family) {
             for &range in family_ranges {
+                let range_p = &parsed_atomic[&range];
                 // IEEE facet intervals need not contain every value of their
                 // width; their exact pairwise evidence is checked below.
-                if crate::frontend::datatypes::bridge_facet_range(&tin.concepts[range]) {
+                if range_p.is_facet_range {
                     continue;
                 }
                 // A value outside a named range of its family (e.g. `0` and
                 // `positiveInteger`) needs its exact disjointness clause.
-                if crate::frontend::datatypes::bridge_exact_atomic_disjoint(
-                    &tin.concepts[value], &tin.concepts[range]) == Some(true)
-                    && crate::frontend::datatypes::bridge_exact_atomic_subsumed(
-                        &tin.concepts[value], &tin.concepts[range]) == Some(false)
+                let is_subsumed = if value == range {
+                    Some(true)
+                } else {
+                    val_p.subsumed(range_p)
+                };
+                if val_p.disjoint(range_p) == Some(true)
+                    && is_subsumed == Some(false)
                 {
                     if !relations.separated(value, range) {
                         defer!("a datatype value lacks its exclusion from a present family range");
                     }
                     continue;
                 }
-                if crate::frontend::datatypes::bridge_tbox_finite_values(&tin.concepts[range]).is_none()
+                if !range_p.has_tbox_finite_values
                     && !relations.includes(value, range) {
                     defer!("a datatype value lacks membership in its present family range");
                 }
             }
         }
-        for &range in ranges.values().flatten().filter(|&&range|
-            crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[range]) == Some("finite")) {
-            if crate::frontend::datatypes::bridge_exact_atomic_subsumed(
-                &tin.concepts[value], &tin.concepts[range]) == Some(true) {
+        for &range in finite_ranges {
+            let range_p = &parsed_atomic[&range];
+            let is_subsumed = if value == range {
+                Some(true)
+            } else {
+                val_p.subsumed(range_p)
+            };
+            if is_subsumed == Some(true) {
                 if !relations.includes(value, range) {
                     defer!("a datatype value lacks its exact range membership");
                 }
-            } else if crate::frontend::datatypes::bridge_exact_atomic_disjoint(
-                &tin.concepts[value], &tin.concepts[range]) == Some(true) {
+            } else if val_p.disjoint(range_p) == Some(true) {
                 if !relations.separated(value, range) {
                     defer!("a datatype value lacks its exact range exclusion");
                 }
@@ -2345,10 +2758,17 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let complete = |value: usize| relations.class_digits.get(&relations.class(value))
             .filter(|digits| positions > 0 && digits.len() == positions
                 && digits.iter().all(|(position, _)| clashing_positions.contains(position)));
+        let concrete_values: Vec<usize> = values
+            .iter()
+            .copied()
+            .filter(|&value| {
+                !crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[value])
+            })
+            .collect();
         let mut index_of_class: crate::fxhash::FxHashMap<Vec<(u32, u32)>, usize> = Default::default();
         let mut indexed_classes: crate::fxhash::FxHashSet<usize> = Default::default();
         let mut rest: Vec<usize> = Vec::new();
-        for &value in &values {
+        for &value in &concrete_values {
             match complete(value) {
                 Some(bits) => {
                     let class = relations.class(value);
@@ -2367,7 +2787,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let rest_position: crate::fxhash::FxHashMap<usize, usize> =
             rest.iter().enumerate().map(|(position, &value)| (value, position)).collect();
         for (position, &left) in rest.iter().enumerate() {
-            for &right in values.iter() {
+            for &right in concrete_values.iter() {
                 if right == left || rest_position.get(&right).is_some_and(|&other| other <= position) {
                     continue;
                 }
@@ -2379,7 +2799,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     }
 
     for &range in ranges.values().flatten() {
-        if crate::frontend::datatypes::bridge_tbox_finite_values(&tin.concepts[range]).is_none() {
+        if !parsed_atomic[&range].has_tbox_finite_values {
             continue;
         }
         let covered = tin.clauses.iter().any(|clause| {
@@ -2397,7 +2817,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         if !covered { defer!("a finite datatype range lacks its exact value cover"); }
     }
 
-    if !tbox_extension_evidence_exact(tin, &datatype_ids, &relations) {
+    if !tbox_extension_evidence_exact(tin, &datatype_ids, &relations, &parsed_atomic) {
         return false;
     }
     if !decimal_cells_exact(tin, &datatype_ids, &relations) {
@@ -2493,10 +2913,12 @@ fn body_sensitive_datatype_names(tin: &TInput) -> std::collections::HashSet<&str
     // A node carrying an admitted complement `¬A` must be realized outside
     // `A`, and a node without `¬A` carries `A` (excluded middle): `A` is read
     // in both directions, exactly as a body-sensitive range.
+    let concept_set: crate::fxhash::FxHashSet<&str> =
+        tin.concepts.iter().map(String::as_str).collect();
     for name in &tin.concepts {
         if let Some(operand) = crate::frontend::datatypes::bridge_exact_complement_operand(name) {
-            if let Some(present) = tin.concepts.iter().find(|other| **other == operand) {
-                out.insert(present.as_str());
+            if let Some(&present) = concept_set.get(operand.as_str()) {
+                out.insert(present);
             }
         }
     }
@@ -2705,9 +3127,16 @@ fn cell_literals_and_requirement<'a>(
         let heads = heads?;
         crate::frontend::datatypes::exact_enumerated_cover(tin.concepts.get(*c)?, &heads).then_some(heads)
     }).flatten().filter(|name| !mentioned.contains(name) && !sensitive.contains(name)).collect();
+    let has_probe_value = datatype_ids
+        .iter()
+        .any(|&concept| crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[concept]));
     let literals: Vec<&str> = datatype_ids.iter()
         .map(|&concept| tin.concepts[concept].as_str())
-        .filter(|name| name.starts_with("__dt__val__") && (distinct || sensitive.contains(name)))
+        .filter(|name| {
+            name.starts_with("__dt__val__")
+                && !crate::frontend::datatypes::is_data_property_probe_value(name)
+                && (distinct || sensitive.contains(name))
+        })
         .filter(|name| !cover_only.contains(name))
         .collect();
     if disjoint_data {
@@ -2727,9 +3156,9 @@ fn cell_literals_and_requirement<'a>(
             .chain(tin.nominal_abox.individuals.iter()
                 .flat_map(|individual| individual.assertions.iter().map(successors)))
             .sum();
-        return (literals, bound.saturating_add(2));
+        return (literals, bound.saturating_add(2 + u128::from(has_probe_value)));
     }
-    (literals, if distinct { 2 } else { 1 })
+    (literals, (if distinct { 2 } else { 1 }) + u128::from(has_probe_value))
 }
 
 /// Exact realizability of the decimal-tower vocabulary (`decimal`, the
@@ -2971,6 +3400,7 @@ fn tbox_extension_evidence_exact(
     tin: &TInput,
     datatype_ids: &[usize],
     relations: &DatatypeRelationIndex,
+    parsed: &crate::fxhash::FxHashMap<usize, crate::frontend::datatypes::ParsedBridgeAtomic>,
 ) -> bool {
     use crate::frontend::datatypes as dt;
     macro_rules! defer {
@@ -2984,35 +3414,58 @@ fn tbox_extension_evidence_exact(
     }
     let is_extension = |concept: usize| {
         let name = &tin.concepts[concept];
-        !dt::bridge_exact_atomic_name(name) && dt::bridge_tbox_atomic_name(name)
+        !dt::bridge_exact_atomic_name(name)
+            && parsed.contains_key(&concept)
+            && !dt::is_data_property_probe_value(name)
     };
     if !datatype_ids.iter().any(|&concept| is_extension(concept)) {
         return true;
     }
-    let literal = |concept: usize| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("literal");
+    let literal = |concept: usize| parsed.get(&concept).map(|p| p.family) == Some("literal");
+    let probe_value = |concept: usize| dt::is_data_property_probe_value(&tin.concepts[concept]);
     let sensitive = body_sensitive_datatype_names(tin);
     if datatype_ids.iter().any(|&concept| literal(concept) && sensitive.contains(tin.concepts[concept].as_str())) {
         defer!("rdfs:Literal occurs in a body-sensitive position");
     }
     let included = |left: usize, right: usize| relations.includes(left, right);
     let separated = |left: usize, right: usize| relations.separated(left, right);
+    let keyed_values: HashSet<usize> = datatype_ids
+        .iter()
+        .copied()
+        .filter(|&concept| {
+            tin.concepts[concept].starts_with("__dt__val__")
+                && dt::bridge_value_identity_key(&tin.concepts[concept]).is_some()
+        })
+        .collect();
     for &member in datatype_ids.iter().filter(|&&concept| is_extension(concept) && !literal(concept)) {
-        for &other in datatype_ids.iter().filter(|&&other| other != member && !literal(other)) {
-            let (left, right) = (&tin.concepts[member], &tin.concepts[other]);
+        let Some(left_p) = parsed.get(&member) else {
+            defer!("an extension datatype pair has no exact decided relation");
+        };
+        let member_is_keyed_val = keyed_values.contains(&member);
+        for &other in datatype_ids.iter().filter(|&&other| other != member && !literal(other) && !probe_value(other)) {
+            if is_extension(other) && other < member {
+                continue;
+            }
+            if member_is_keyed_val && keyed_values.contains(&other) {
+                continue;
+            }
+            let Some(right_p) = parsed.get(&other) else {
+                defer!("an extension datatype pair has no exact decided relation");
+            };
             let mut decided = false;
-            if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
+            if left_p.subsumed(right_p) == Some(true) {
                 decided = true;
                 if !included(member, other) {
                     defer!("an extension datatype pair lacks its inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_subsumed(right, left) == Some(true) {
+            if right_p.subsumed(left_p) == Some(true) {
                 decided = true;
                 if !included(other, member) {
                     defer!("an extension datatype pair lacks its reverse inclusion clause");
                 }
             }
-            if dt::bridge_exact_atomic_disjoint(left, right) == Some(true) {
+            if left_p.disjoint(right_p) == Some(true) {
                 decided = true;
                 if !separated(member, other) {
                     defer!("an extension datatype pair lacks its disjointness clause");
@@ -3020,23 +3473,22 @@ fn tbox_extension_evidence_exact(
             }
             // Overlapping intervals of one numeric family are decided by the
             // IEEE/decimal cell certificates, against the present clauses.
-            let overlapping_intervals = ((dt::bridge_ieee_range(left) && dt::bridge_ieee_range(right))
-                || (dt::bridge_decimal_range(left) && dt::bridge_decimal_range(right)))
-                && dt::bridge_tbox_atomic_family(left) == dt::bridge_tbox_atomic_family(right);
+            let overlapping_intervals = ((left_p.is_ieee_range && right_p.is_ieee_range)
+                || (left_p.is_decimal_range && right_p.is_decimal_range))
+                && left_p.family == right_p.family;
             // A complement `¬A` overlaps another range `B` partially. The
             // label `{¬A, B}` is decided by `B`'s own exact cover when `B` is
             // finite or a union, by the cell certificate of `A`'s family when
             // `B` is in that family (`A` is body-sensitive there), and by a
             // fresh IRI when `B` is another complement.
-            let complement_overlap = |complement: &str, other: &str| {
-                let Some(operand) = dt::bridge_exact_complement_operand(complement) else { return false };
-                let family = dt::bridge_tbox_atomic_family(other);
-                matches!(family, Some("finite" | "union" | "complement"))
-                    || (family == dt::bridge_tbox_atomic_family(&operand)
-                        && matches!(family, Some("decimal" | "float" | "double")))
+            let complement_overlap = |comp: &dt::ParsedBridgeAtomic, oth: &dt::ParsedBridgeAtomic| {
+                let Some(op_fam) = comp.complement_operand_family else { return false };
+                matches!(oth.family, "finite" | "union" | "complement")
+                    || (oth.family == op_fam
+                        && matches!(oth.family, "decimal" | "float" | "double"))
             };
             if !decided && !overlapping_intervals
-                && !complement_overlap(left, right) && !complement_overlap(right, left) {
+                && !complement_overlap(left_p, right_p) && !complement_overlap(right_p, left_p) {
                 defer!("an extension datatype pair has no exact decided relation");
             }
         }
@@ -3257,7 +3709,7 @@ struct NativeAboxRoleValue {
 /// One value of Konclude's `FULL_CONCEPT_SET_LABEL`. Completion writeback must
 /// retain the cache-value determinism bit; replaying a branch-dependent value
 /// with the base dependency would turn one model choice into an entailment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct NativeAboxConceptValue {
     concept: ConceptId,
     negated: bool,
@@ -3277,11 +3729,11 @@ enum NativeAboxAssociationOrigin {
 struct NativeAboxRepresentativeEntry {
     individual_tag: Cint64,
     /// FULL_CONCEPT_SET_LABEL.
-    concepts: Vec<(ConceptId, bool)>,
+    concepts: std::sync::Arc<Vec<(ConceptId, bool)>>,
     /// Exact cache values, including the deterministic/non-deterministic
     /// identifier. `None` means that label family was not serialized and keeps
     /// the association fail-closed.
-    concept_values: Option<Vec<NativeAboxConceptValue>>,
+    concept_values: Option<std::sync::Arc<Vec<NativeAboxConceptValue>>>,
     /// COMBINED_INSTANTIATED_ROLE_SET_LABEL.
     instantiated_roles: Vec<RoleId>,
     instantiated_role_values: Option<Vec<NativeAboxRoleValue>>,
@@ -3554,10 +4006,13 @@ impl NativeAboxRepresentativeCache {
         // Incomplete saturation labels are not replayed as base facts. Until
         // completion replaces them, even a complete neighbour cannot justify
         // skipping the asserted edges that supply those omitted constraints.
+        let mut checked_arcs: crate::fxhash::FxHashSet<usize> = crate::fxhash::FxHashSet::default();
         self.entries.values().all(|entry| {
             entry.association_origin != Some(NativeAboxAssociationOrigin::IndividualSaturation)
-                || entry.concept_values.as_ref()
-                    .is_some_and(|values| values.iter().all(|value| value.deterministic))
+                || entry.concept_values.as_ref().is_some_and(|values| {
+                    let ptr = std::sync::Arc::as_ptr(values) as usize;
+                    !checked_arcs.insert(ptr) || values.iter().all(|value| value.deterministic)
+                })
         })
     }
 }
@@ -4143,26 +4598,76 @@ fn full_absorption_trigger(
         } else if (!negated && op_code == op::CCOR)
             || (negated && matches!(op_code, op::CCAND | op::CCEQ))
         {
-            let mut alternatives = Vec::new();
-            for operand in operands {
-                let trigger = full_absorption_trigger(
-                    b,
-                    (operand.target, operand.negated ^ negated),
-                    role_inverses,
-                    caches,
-                )?;
-                alternatives.push(trigger);
-            }
-            if alternatives.len() <= 1 {
-                alternatives.into_iter().next()
+            if operands.len() <= 1 {
+                if let Some(operand) = operands.into_iter().next() {
+                    full_absorption_trigger(
+                        b,
+                        (operand.target, operand.negated ^ negated),
+                        role_inverses,
+                        caches,
+                    )
+                } else {
+                    None
+                }
             } else {
+                enum OrAlt {
+                    Nominal(super::model::IndividualId),
+                    Trigger(AbsorptionTrigger),
+                }
+                let mut alternatives = Vec::with_capacity(operands.len());
+                for operand in operands {
+                    let op_neg = operand.negated ^ negated;
+                    if !op_neg
+                        && b.ctx
+                            .ontology_arenas()
+                            .concept(operand.target)
+                            .get_operator_code()
+                            == op::CCNOMINAL
+                    {
+                        let individual = b
+                            .ctx
+                            .ontology_arenas()
+                            .concept(operand.target)
+                            .get_nominal_individual();
+                        if individual.is_none() {
+                            return None;
+                        }
+                        alternatives.push(OrAlt::Nominal(individual));
+                    } else {
+                        let trigger = full_absorption_trigger(
+                            b,
+                            (operand.target, op_neg),
+                            role_inverses,
+                            caches,
+                        )?;
+                        alternatives.push(OrAlt::Trigger(trigger));
+                    }
+                }
                 let implied = b.implication_trigger();
-                let complexity_sum: Cint64 =
-                    alternatives.iter().map(|trigger| trigger.complexity).sum();
                 let trigger_count = alternatives.len() as Cint64;
-                for trigger in alternatives {
-                    if !b.add_unfolding(trigger.concept, implied, false) {
-                        return None;
+                let mut complexity_sum: Cint64 = 0;
+                for alt in alternatives {
+                    match alt {
+                        OrAlt::Nominal(individual) => {
+                            complexity_sum += 1;
+                            let assertion = ConceptAssertion {
+                                target: implied,
+                                negated: false,
+                            };
+                            let individual = b.ctx.ontology_arenas_mut().individual_mut(individual);
+                            if !individual
+                                .get_assertion_concept_linker()
+                                .contains(&assertion)
+                            {
+                                individual.add_assertion_concept_linker(assertion);
+                            }
+                        }
+                        OrAlt::Trigger(trigger) => {
+                            complexity_sum += trigger.complexity;
+                            if !b.add_unfolding(trigger.concept, implied, false) {
+                                return None;
+                            }
+                        }
                     }
                 }
                 // Exact C++ `(triggerComplexity + 1) / triggerCount`.
@@ -4246,15 +4751,20 @@ fn collect_full_absorption_triggers(
         )
     };
     if (!negated && matches!(op_code, op::CCAND | op::CCEQ)) || (negated && op_code == op::CCOR) {
-        return operands.into_iter().all(|operand| {
-            collect_full_absorption_triggers(
+        let saved_len = triggers.len();
+        for operand in operands {
+            if !collect_full_absorption_triggers(
                 b,
                 (operand.target, operand.negated ^ negated),
                 role_inverses,
                 caches,
                 triggers,
-            )
-        });
+            ) {
+                triggers.truncate(saved_len);
+                return false;
+            }
+        }
+        return true;
     }
     if let Some(trigger) = full_absorption_trigger(b, literal, role_inverses, caches) {
         triggers.push(trigger);
@@ -4305,7 +4815,9 @@ fn partial_absorption_trigger(
             c.get_operand_list().to_vec(),
         )
     };
-    let result = if (!negated && op_code == op::CCAND) || (negated && op_code == op::CCOR) {
+    let result = if (!negated && matches!(op_code, op::CCAND | op::CCEQ))
+        || (negated && op_code == op::CCOR)
+    {
         let triggers: Vec<_> = operands
             .into_iter()
             .filter_map(|operand| {
@@ -6530,11 +7042,52 @@ fn bridge_tinput_with_trigger_absorption(
         let mut seen_inclusions = crate::fxhash::FxHashSet::default();
         let mut forced_subclass_names = crate::fxhash::FxHashSet::default();
         let mut equivalence_name_counts: HashMap<&str, usize> = HashMap::default();
+        // A told `SubClassOf(A C)` normally keeps `A` from becoming a CCEQ
+        // host. When `A` has exactly one `EquivalentClasses(A D)` and `C` is
+        // `D` or a top-level conjunct of `D`, the told axiom is entailed by the
+        // definition. Such a name may be "relaxed": it is not forced, and its
+        // told axioms (all entailed) are not encoded, because every encoding
+        // of the equivalence below (lazy CCEQ unfolding `A -> D`, trigger
+        // absorption with the forward unfolding `A -> D`, or the two plain
+        // inclusions) contains `A -> D`, which entails `A -> C`. Which names
+        // are relaxed is a speed decision only; see `relaxed_names`.
+        let mut unique_equivalence_defs: HashMap<&str, &SourceConcept> = HashMap::default();
+        for axiom in &tin.source_axioms {
+            if axiom.kind == crate::json_io::SourceAxiomKind::Equivalent {
+                for (named_side, def_side) in
+                    [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                {
+                    if let SourceConcept::Name(name) = named_side {
+                        let count = equivalence_name_counts.entry(name.as_str()).or_default();
+                        *count += 1;
+                        if *count == 1 {
+                            unique_equivalence_defs.insert(name.as_str(), def_side);
+                        } else {
+                            unique_equivalence_defs.remove(name.as_str());
+                        }
+                    }
+                }
+            }
+        }
+        // Diagnostic: `KM_BRIDGE_FORCE_ALL_TOLD_SUBCLASS` restores the old rule
+        // (every told SubClassOf forces its left name) for paired measurement.
+        let force_all_told = std::env::var_os("KM_BRIDGE_FORCE_ALL_TOLD_SUBCLASS").is_some();
+        let entailed_by_unique_definition = |name: &str, right: &SourceConcept| -> bool {
+            if force_all_told {
+                return false;
+            }
+            let Some(&def) = unique_equivalence_defs.get(name) else {
+                return false;
+            };
+            right == def || matches!(def, SourceConcept::And(conjuncts) if conjuncts.contains(right))
+        };
         for axiom in &tin.source_axioms {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
                     if let SourceConcept::Name(name) = &axiom.left {
-                        forced_subclass_names.insert(name.as_str());
+                        if !entailed_by_unique_definition(name.as_str(), &axiom.right) {
+                            forced_subclass_names.insert(name.as_str());
+                        }
                     }
                 }
                 crate::json_io::SourceAxiomKind::Disjoint => {
@@ -6544,13 +7097,126 @@ fn bridge_tinput_with_trigger_absorption(
                         }
                     }
                 }
-                crate::json_io::SourceAxiomKind::Equivalent => {
-                    for side in [&axiom.left, &axiom.right] {
-                        if let SourceConcept::Name(name) = side {
-                            *equivalence_name_counts.entry(name.as_str()).or_default() += 1;
+                crate::json_io::SourceAxiomKind::Equivalent => {}
+            }
+        }
+        let mut relaxed_names: crate::fxhash::FxHashSet<&str> = Default::default();
+        for axiom in &tin.source_axioms {
+            if axiom.kind == crate::json_io::SourceAxiomKind::SubClass {
+                if let SourceConcept::Name(name) = &axiom.left {
+                    if !forced_subclass_names.contains(name.as_str()) {
+                        relaxed_names.insert(name.as_str());
+                    }
+                }
+            }
+        }
+        if !relaxed_names.is_empty() {
+            // Same host choice and fixpoint as `non_triggerable_hosts` below,
+            // over the current forced set.
+            let mut non_triggerable: crate::fxhash::FxHashSet<&str> = Default::default();
+            loop {
+                let before = non_triggerable.len();
+                for axiom in &tin.source_axioms {
+                    if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                        continue;
+                    }
+                    if let Some((name, definition)) =
+                        [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                            .into_iter()
+                            .find_map(|(named_side, definition)| match named_side {
+                                SourceConcept::Name(name)
+                                    if !forced_subclass_names.contains(name.as_str())
+                                        && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
+                                {
+                                    Some((name.as_str(), definition))
+                                }
+                                _ => None,
+                            })
+                    {
+                        if !syntactically_triggerable(definition, true, &non_triggerable) {
+                            non_triggerable.insert(name);
                         }
                     }
                 }
+                if non_triggerable.len() == before {
+                    break;
+                }
+            }
+            // Relax only names whose told superclasses are all named classes and
+            // whose definition requires at least two successors (a positive
+            // `>= n r.C` with n >= 2, or a negated `<= n r.C` with n >= 1). The
+            // reverse direction of such a definition cannot be trigger-absorbed
+            // (triggers need n <= 1), so for a forced name it stays a general
+            // inclusion `not D or A`, whose `<= n-1 r.C` branch is open on every
+            // node. As a lazily unfolded CCEQ definition it is not. Measured
+            // on ore_ont_9540 (`Rectangle == =4 has_point.right_angle_point and
+            // Quadrilateral` with told `SubClassOf(Rectangle Quadrilateral)`):
+            // 12.8-15.5 s / 800 MB to 2.3-2.9 s / 83 MB. Without the cardinality
+            // condition, ore_ont_10080 (six OBI definitions with universal
+            // restrictions) was 30 % slower; with a complex told superclass,
+            // ore_ont_10140 (two definitions with told cardinality superclasses)
+            // was 19 s slower. `KM_BRIDGE_RELAX_ANY_TOLD_SUPERCLASS` drops both
+            // conditions for measurement and differential testing.
+            let any_told = std::env::var_os("KM_BRIDGE_RELAX_ANY_TOLD_SUPERCLASS").is_some();
+            let mut complex_told: crate::fxhash::FxHashSet<&str> = Default::default();
+            for axiom in &tin.source_axioms {
+                if axiom.kind == crate::json_io::SourceAxiomKind::SubClass {
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        if !matches!(axiom.right, SourceConcept::Name(_)) {
+                            complex_told.insert(name.as_str());
+                        }
+                    }
+                }
+            }
+            fn requires_two_successors(concept: &SourceConcept, positive: bool) -> bool {
+                match concept {
+                    SourceConcept::AtLeast(n, _, filler) => {
+                        (positive && *n >= 2) || requires_two_successors(filler, positive)
+                    }
+                    SourceConcept::AtMost(n, _, filler) => {
+                        (!positive && *n >= 1) || requires_two_successors(filler, !positive)
+                    }
+                    SourceConcept::Not(operand) => requires_two_successors(operand, !positive),
+                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                        operands.iter().any(|op| requires_two_successors(op, positive))
+                    }
+                    SourceConcept::Exists(_, filler) => requires_two_successors(filler, positive),
+                    SourceConcept::Forall(_, filler) => requires_two_successors(filler, positive),
+                    _ => false,
+                }
+            }
+            relaxed_names.retain(|name| {
+                non_triggerable.contains(name)
+                    && (any_told
+                        || (!complex_told.contains(name)
+                            && unique_equivalence_defs
+                                .get(name)
+                                .is_some_and(|def| requires_two_successors(def, true))))
+            });
+            for axiom in &tin.source_axioms {
+                if axiom.kind == crate::json_io::SourceAxiomKind::SubClass {
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        if !relaxed_names.contains(name.as_str()) {
+                            forced_subclass_names.insert(name.as_str());
+                        }
+                    }
+                }
+            }
+        }
+        fn collect_source_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
+            match concept {
+                SourceConcept::Name(name) => out.push(name.as_str()),
+                SourceConcept::Not(operand) => collect_source_names(operand, out),
+                SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                    for operand in operands {
+                        collect_source_names(operand, out);
+                    }
+                }
+                SourceConcept::Exists(_, filler)
+                | SourceConcept::Forall(_, filler)
+                | SourceConcept::AtLeast(_, _, filler)
+                | SourceConcept::AtMost(_, _, filler) => collect_source_names(filler, out),
+                _ => {}
             }
         }
         // Lazy unfolding of a CCEQ definition (`A -> D`, `not A -> not D`, no
@@ -6560,22 +7226,6 @@ fn bridge_tinput_with_trigger_absorption(
         // (fuzz s1798). A name whose definition reaches itself through other
         // single-equivalence definitions keeps both inclusions instead.
         {
-            fn collect_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
-                match concept {
-                    SourceConcept::Name(name) => out.push(name.as_str()),
-                    SourceConcept::Not(operand) => collect_names(operand, out),
-                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
-                        for operand in operands {
-                            collect_names(operand, out);
-                        }
-                    }
-                    SourceConcept::Exists(_, filler)
-                    | SourceConcept::Forall(_, filler)
-                    | SourceConcept::AtLeast(_, _, filler)
-                    | SourceConcept::AtMost(_, _, filler) => collect_names(filler, out),
-                    _ => {}
-                }
-            }
             // Edges only from the side the equivalence pass below would make
             // the CCEQ host (the first named side that is not forced and has
             // a single equivalence); the other names of the axiom are atoms of
@@ -6600,7 +7250,7 @@ fn bridge_tinput_with_trigger_absorption(
                         });
                     if let Some((name, definition)) = host {
                         let mut names = Vec::new();
-                        collect_names(definition, &mut names);
+                        collect_source_names(definition, &mut names);
                         definition_edges.entry(name).or_default().extend(names);
                     }
                 }
@@ -6626,89 +7276,6 @@ fn bridge_tinput_with_trigger_absorption(
                 forced_subclass_names.extend(cyclic);
             }
         }
-        // Names in a trigger position of an absorbed inclusion: positive in
-        // the left side or negative in the right side of `L ⊑ R` (through
-        // conjunctions, disjunctions and the fillers of restrictions), and
-        // every name of an equivalence or disjointness that is encoded as two
-        // inclusions. Such an inclusion fires only when the name is in a
-        // label. A CCEQ host `A ≡ D` whose definition is not fully
-        // triggerable is unfolded lazily (`A -> D`, `not A -> not D`): a node
-        // in `D` never receives `A`, so an inclusion triggered by `A` is
-        // missed (`{c} ⊑ ¬C`, `C ≡ =1 k.integer`, `k(c, 2)` came out
-        // consistent). Such a name is not made a lazy CCEQ host; its
-        // equivalence is encoded as the two inclusions instead.
-        let trigger_names: crate::fxhash::FxHashSet<&str> = {
-            fn walk<'a>(concept: &'a SourceConcept, positive: bool, out: &mut crate::fxhash::FxHashSet<&'a str>) {
-                match concept {
-                    SourceConcept::Name(name) => {
-                        if positive {
-                            out.insert(name.as_str());
-                        }
-                    }
-                    SourceConcept::Not(operand) => walk(operand, !positive, out),
-                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
-                        for operand in operands {
-                            walk(operand, positive, out);
-                        }
-                    }
-                    SourceConcept::Exists(_, filler)
-                    | SourceConcept::Forall(_, filler)
-                    | SourceConcept::AtLeast(_, _, filler) => walk(filler, positive, out),
-                    // `≤ n r.C` holds when few successors carry C: C occurs
-                    // negatively; count both polarities to stay on the safe side.
-                    SourceConcept::AtMost(_, _, filler) => {
-                        walk(filler, positive, out);
-                        walk(filler, !positive, out);
-                    }
-                    _ => {}
-                }
-            }
-            let mut out = crate::fxhash::FxHashSet::default();
-            for axiom in &tin.source_axioms {
-                match axiom.kind {
-                    crate::json_io::SourceAxiomKind::SubClass => {
-                        walk(&axiom.left, true, &mut out);
-                        walk(&axiom.right, false, &mut out);
-                    }
-                    crate::json_io::SourceAxiomKind::Disjoint => {
-                        walk(&axiom.left, true, &mut out);
-                        walk(&axiom.right, true, &mut out);
-                    }
-                    crate::json_io::SourceAxiomKind::Equivalent => {}
-                }
-            }
-            // An equivalence without a lazy host is encoded as two
-            // inclusions, so every name in it is in a trigger position. A
-            // host that is itself a trigger name may lose its definition
-            // (above), so iterate to a fixpoint.
-            loop {
-                let before = out.len();
-                for axiom in &tin.source_axioms {
-                    if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
-                        continue;
-                    }
-                    let host = [&axiom.left, &axiom.right].into_iter().find_map(|side| match side {
-                        SourceConcept::Name(name)
-                            if !forced_subclass_names.contains(name.as_str())
-                                && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
-                        {
-                            Some(name.as_str())
-                        }
-                        _ => None,
-                    });
-                    if host.is_none_or(|name| out.contains(name)) {
-                        for side in [&axiom.left, &axiom.right] {
-                            walk(side, true, &mut out);
-                            walk(side, false, &mut out);
-                        }
-                    }
-                }
-                if out.len() == before {
-                    break;
-                }
-            }
-            out
-        };
         bridge_phase!("source-prescan");
         macro_rules! encode {
             ($left:expr, $right:expr $(,)?) => {{
@@ -6745,33 +7312,177 @@ fn bridge_tinput_with_trigger_absorption(
                 }
             }};
         }
+        // Pre-install a non-triggerable CCEQ definition only when an earlier
+        // source axiom (`first_mention < axiom_index`) references its host
+        // name before its `EquivalentClasses` axiom (for example,
+        // `SubClassOf({c}, ¬C)` preceding `EquivalentClasses(C, =1 k.int)`).
+        // Checking triggerability syntactically first avoids touching `b`,
+        // `concept_cache`, or `trigger_caches` on triggerable definitions, so
+        // ConceptId allocation and trigger pairing stay identical to the
+        // single-pass source order.
+        fn syntactically_triggerable(
+            concept: &SourceConcept,
+            positive: bool,
+            non_triggerable_hosts: &crate::fxhash::FxHashSet<&str>,
+        ) -> bool {
+            match concept {
+                SourceConcept::Name(name) => {
+                    positive && !non_triggerable_hosts.contains(name.as_str())
+                }
+                SourceConcept::Top | SourceConcept::Nominal(_) => positive,
+                SourceConcept::Bottom | SourceConcept::HasSelf(_) => false,
+                SourceConcept::Not(operand) => {
+                    syntactically_triggerable(operand, !positive, non_triggerable_hosts)
+                }
+                SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                    !operands.is_empty()
+                        && operands.iter().all(|op| {
+                            syntactically_triggerable(op, positive, non_triggerable_hosts)
+                        })
+                }
+                SourceConcept::Exists(_, filler) => {
+                    positive && syntactically_triggerable(filler, true, non_triggerable_hosts)
+                }
+                SourceConcept::Forall(_, filler) => {
+                    !positive && syntactically_triggerable(filler, false, non_triggerable_hosts)
+                }
+                SourceConcept::AtLeast(n, _, filler) => {
+                    positive
+                        && *n <= 1
+                        && syntactically_triggerable(filler, true, non_triggerable_hosts)
+                }
+                SourceConcept::AtMost(n, _, filler) => {
+                    !positive
+                        && *n == 0
+                        && syntactically_triggerable(filler, false, non_triggerable_hosts)
+                }
+            }
+        }
+        let mut non_triggerable_hosts: crate::fxhash::FxHashSet<&str> = Default::default();
+        loop {
+            let before = non_triggerable_hosts.len();
+            for axiom in &tin.source_axioms {
+                if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                    continue;
+                }
+                if let Some((name, definition)) =
+                    [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                        .into_iter()
+                        .find_map(|(named_side, definition)| match named_side {
+                            SourceConcept::Name(name)
+                                if !forced_subclass_names.contains(name.as_str())
+                                    && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
+                            {
+                                Some((name.as_str(), definition))
+                            }
+                            _ => None,
+                        })
+                {
+                    if !syntactically_triggerable(definition, true, &non_triggerable_hosts) {
+                        non_triggerable_hosts.insert(name);
+                    }
+                }
+            }
+            if non_triggerable_hosts.len() == before {
+                break;
+            }
+        }
+        let mut first_mention: HashMap<&str, usize> = HashMap::default();
+        if !non_triggerable_hosts.is_empty() {
+            for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
+                let mut names = Vec::new();
+                collect_source_names(&axiom.left, &mut names);
+                collect_source_names(&axiom.right, &mut names);
+                for name in names {
+                    first_mention.entry(name).or_insert(axiom_index);
+                }
+            }
+        }
+        let mut preinstalled_cceq: HashMap<usize, (ConceptId, &SourceConcept, &str)> =
+            HashMap::default();
+        if !non_triggerable_hosts.is_empty() {
+            for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
+                if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                    continue;
+                }
+                let candidate = [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                    .into_iter()
+                    .find_map(|(named_side, definition)| {
+                        let SourceConcept::Name(name) = named_side else {
+                            return None;
+                        };
+                        if !non_triggerable_hosts.contains(name.as_str())
+                            || !first_mention
+                                .get(name.as_str())
+                                .is_some_and(|&first| first < axiom_index)
+                        {
+                            return None;
+                        }
+                        let &index = concept_index.get(name.as_str())?;
+                        (b.ctx
+                            .ontology_arenas()
+                            .concept(named[index])
+                            .get_operator_code()
+                            == op::CCATOM)
+                            .then_some((named[index], definition, name.as_str()))
+                    });
+                if let Some((host, definition, name)) = candidate {
+                    if let Some(built) = build_source_concept(
+                        &mut b,
+                        definition,
+                        &concept_index,
+                        &role_index,
+                        &named,
+                        &roles,
+                        &inv_roles,
+                        &nominal_by_name,
+                        &mut concept_cache,
+                    ) {
+                        if b.add_equivalent_definition(host, built.0, built.1) {
+                            preinstalled_cceq.insert(axiom_index, (host, definition, name));
+                        }
+                    }
+                }
+            }
+        }
         for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
+                    // A relaxed name that is still unforced after the cycle
+                    // check is a CCEQ host whose lazy unfolding entails this
+                    // axiom (see `relaxed_names`).
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        if relaxed_names.contains(name.as_str())
+                            && !forced_subclass_names.contains(name.as_str())
+                        {
+                            continue;
+                        }
+                    }
                     encode!(&axiom.left, &axiom.right);
                 }
                 crate::json_io::SourceAxiomKind::Equivalent => {
-                    // `buildPermutableConceptEquivalentClass` chooses a still
-                    // undefined named side for a direct CCEQ definition.
-                    let candidate = [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
-                        .into_iter()
-                        .find_map(|(named_side, definition)| {
-                            let SourceConcept::Name(name) = named_side else {
-                                return None;
-                            };
-                            if forced_subclass_names.contains(name.as_str())
-                                || equivalence_name_counts.get(name.as_str()) != Some(&1)
-                            {
-                                return None;
-                            }
-                            let &index = concept_index.get(name.as_str())?;
-                            (b.ctx
-                                .ontology_arenas()
-                                .concept(named[index])
-                                .get_operator_code()
-                                == op::CCATOM)
-                                .then_some((named[index], definition, name.as_str()))
-                        });
+                    let preinstalled = preinstalled_cceq.get(&axiom_index).copied();
+                    let candidate = preinstalled.or_else(|| {
+                        [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                            .into_iter()
+                            .find_map(|(named_side, definition)| {
+                                let SourceConcept::Name(name) = named_side else {
+                                    return None;
+                                };
+                                if forced_subclass_names.contains(name.as_str())
+                                    || equivalence_name_counts.get(name.as_str()) != Some(&1)
+                                {
+                                    return None;
+                                }
+                                let &index = concept_index.get(name.as_str())?;
+                                (b.ctx
+                                    .ontology_arenas()
+                                    .concept(named[index])
+                                    .get_operator_code()
+                                    == op::CCATOM)
+                                    .then_some((named[index], definition, name.as_str()))
+                            })
+                    });
                     let defined = candidate.is_some_and(|(host, definition, name)| {
                         let Some(built) = build_source_concept(
                             &mut b,
@@ -6786,28 +7497,16 @@ fn bridge_tinput_with_trigger_absorption(
                         ) else {
                             return false;
                         };
-                        if trigger_names.contains(name)
+                        equivalent_definition_names.push(name.to_string());
+                        let triggerable = preinstalled.is_none()
+                            && !non_triggerable_hosts.contains(name)
                             && full_absorption_trigger(
                                 &mut b,
                                 built,
                                 &role_inverses,
                                 &mut trigger_caches,
                             )
-                            .is_none()
-                        {
-                            return false;
-                        }
-                        equivalent_definition_names.push(name.to_string());
-                        // Port of the absorber's equivalence pre-pass. A fully
-                        // triggerable definition is changed CCEQ -> CCSUB and
-                        // gets the reverse direction as a binary implication.
-                        let triggerable = full_absorption_trigger(
-                            &mut b,
-                            built,
-                            &role_inverses,
-                            &mut trigger_caches,
-                        )
-                        .is_some();
+                            .is_some();
                         if triggerable {
                             let forward = b.add_unfolding(host, built.0, built.1);
                             let reverse = absorb_concept_disjunction(
@@ -6824,23 +7523,9 @@ fn bridge_tinput_with_trigger_absorption(
                                 false
                             }
                         } else {
-                            let defined = b.add_equivalent_definition(host, built.0, built.1);
+                            let defined = preinstalled.is_some()
+                                || b.add_equivalent_definition(host, built.0, built.1);
                             if defined && build_eq_candidates {
-                                // Port of the partial-equivalence candidate
-                                // (`PartialEquivalentDefinitionToCandidates-
-                                // Absorption`, default on in Konclude,
-                                // cpp 207-212): the fully triggerable
-                                // conjuncts T of the definition imply a fresh
-                                // marker. `A == D` and `D <= T` give
-                                // `A <= T`, so a complete model whose node
-                                // lacks the marker is not in T, hence not in
-                                // A. The marker has no rule and no class name
-                                // (Konclude's CCEQCAND is likewise rule-free
-                                // in completion); it only adds labels, so all
-                                // verdicts are unchanged. The host stays in
-                                // the non-candidate set below: the marker is
-                                // consumed only by the bridge's own
-                                // countermodel test for pair candidates.
                                 let parts: Vec<&SourceConcept> = match definition {
                                     SourceConcept::And(parts) => parts.iter().collect(),
                                     other => vec![other],
@@ -6860,13 +7545,15 @@ fn bridge_tinput_with_trigger_absorption(
                                     ) else {
                                         continue;
                                     };
-                                    let part_triggerable = full_absorption_trigger(
-                                        &mut b,
-                                        part_built,
-                                        &role_inverses,
-                                        &mut trigger_caches,
-                                    )
-                                    .is_some();
+                                    let part_triggerable =
+                                        syntactically_triggerable(part, true, &non_triggerable_hosts)
+                                            && full_absorption_trigger(
+                                                &mut b,
+                                                part_built,
+                                                &role_inverses,
+                                                &mut trigger_caches,
+                                            )
+                                            .is_some();
                                     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                                         eprintln!(
                                             "BRIDGE-EQ-CANDIDATE-PART {name}: triggerable={part_triggerable} {part:?}"
@@ -6893,14 +7580,6 @@ fn bridge_tinput_with_trigger_absorption(
                                 }
                             }
                             if defined {
-                                // Exact non-candidate branch of
-                                // `CTriggeredImplicationBinaryAbsorberPreProcess`
-                                // (cpp 203-215). Konclude either builds the
-                                // optional partial-equivalence candidate or
-                                // inserts the still-CCEQ host into
-                                // `mEquivConNonCandidateSet`. The bridge does
-                                // not materialise that optional optimization,
-                                // so it takes Konclude's non-candidate branch.
                                 b.ctx
                                     .ontology_arenas_mut()
                                     .insert_equivalent_concept_non_candidate(host);
@@ -7209,16 +7888,50 @@ fn bridge_tinput_with_trigger_absorption(
             }
         }
         // Reflexivity is the universal fact R(x,x), equivalently
-        // owl:Thing <= ObjectHasSelf(R). Install it on every completion node
-        // through the existing global self-restriction machinery.
-        if let ([], [HAtom::Role { r, s, t }]) = (cl.body.as_slice(), cl.head.as_slice()) {
-            if s == t {
-                if let Some(&role) = roles.get(*r) {
-                    let self_concept = b.self_restriction(role);
-                    tbox.push(self_concept);
-                    top_gcis.push(self_concept);
-                    continue;
-                }
+        // owl:Thing <= ObjectHasSelf(R). Under nominal sort relativization it
+        // is emitted as `__data__(x) v R(x,x)`. Install it on every completion
+        // node through the existing global self-restriction machinery.
+        let reflexive_role = match (cl.body.as_slice(), cl.head.as_slice()) {
+            ([], [HAtom::Role { r, s, t }]) if s == t => Some(*r),
+            (
+                [],
+                [
+                    HAtom::Concept {
+                        neg: false,
+                        c,
+                        t: s2,
+                    },
+                    HAtom::Role { r, s, t },
+                ],
+            )
+            | (
+                [],
+                [
+                    HAtom::Role { r, s, t },
+                    HAtom::Concept {
+                        neg: false,
+                        c,
+                        t: s2,
+                    },
+                ],
+            ) if !crate::routing::ground_rule_zero_rules_mode()
+                && s == t
+                && s == s2
+                && tin
+                    .concepts
+                    .get(*c)
+                    .is_some_and(|name| name == crate::frontend::sorts::DATA_SORT) =>
+            {
+                Some(*r)
+            }
+            _ => None,
+        };
+        if let Some(r) = reflexive_role {
+            if let Some(&role) = roles.get(r) {
+                let self_concept = b.self_restriction(role);
+                tbox.push(self_concept);
+                top_gcis.push(self_concept);
+                continue;
             }
         }
         // hierarchy clauses (plain + inverse) were consumed by pass 1
@@ -8019,20 +8732,40 @@ fn bridge_tinput_with_trigger_absorption(
     }
     bridge_phase!("clause-scan");
 
-    // ---- functional roles → `≤1 R` on TOP (every node) ---------------------
-    // Emitted while the Builder still holds the arena borrow. Each functional
-    // role R contributes an unqualified `CCATMOST(R, 1)`; attaching it to TOP
-    // makes every node enforce ≤1 R-successor via the ported merge rule. The
-    // atmost is also seeded on the root each drive pass (it is a universal
-    // constraint, not trigger-gated).
+    // ---- functional roles → `≤1 R` as a domain concept of R ----------------
+    // KM_BRIDGE_FUNCTIONAL_ON_TOP=1 keeps the old encoding below for
+    // measurement. Otherwise, as Konclude's builder does for
+    // FunctionalObjectProperty(R) (`role->addDomainConceptLinker(<=1 R)`),
+    // `<=1 R` is a domain concept of object role R: saturation and completion add it to
+    // exactly the nodes that get an R-edge. `T <= (<=1 R)` and
+    // `exists R.T <= (<=1 R)` are equivalent (a node without R-successors
+    // satisfies `<=1 R`). On TOP, every functional role's `<=1 R` was a
+    // critical at-most test on every saturation node and was propagated into
+    // every copy of it: ore_ont_7361 (337 functional roles) ran 19.7 M
+    // critical tests against Konclude's 2.0 M.
     let functional_count = functional_roles.len();
+    let functional_on_top = std::env::var_os("KM_BRIDGE_FUNCTIONAL_ON_TOP").is_some();
     let atmost_concepts: Vec<ConceptId> = functional_roles
         .iter()
         .map(|&r| b.atmost(roles[r], 1))
         .collect();
-    for &a in &atmost_concepts {
-        tbox.push(a);
-        top_gcis.push(a);
+    for (&r, &a) in functional_roles.iter().zip(&atmost_concepts) {
+        // Data roles stay on TOP: data-property assertions do not pass
+        // through the link creation that applies role domain lists, so
+        // `<=1 d` as a domain concept never reached an individual with two
+        // values (fuzz case: FunctionalDataProperty(:d0) with two
+        // `:d0` values on one individual was reported consistent).
+        let data_role = tin.data_roles.contains(&r)
+            || b.ctx.ontology_arenas().role(roles[r]).is_data_role();
+        if functional_on_top || data_role {
+            tbox.push(a);
+            top_gcis.push(a);
+        } else {
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(roles[r])
+                .add_domain_concept_linker(super::model::substrate::NegLink { target: a, negated: false });
+        }
     }
 
     // ---- first-class number restrictions (KM_HT_CARD `card_defs`) ----------
@@ -8195,6 +8928,23 @@ fn bridge_tinput_with_trigger_absorption(
         }
     }
     bridge_phase!("terminology-stamp");
+
+    // Konclude runs `CCoreBlockingConceptMarkerPreProcess` after the role
+    // automata and propagation-direction passes. The linked candidate-hash
+    // blocker search reads these marks; without them every label set lacks a
+    // core descriptor and the search falls back to the linear candidate scan.
+    // `KM_HT_NO_CORE_BLOCKING_MARK=1` leaves the marks out (the candidate
+    // order before 1ba05c77), so the negative controls of
+    // tests/bridge_satcache.rs keep reproducing their historical misses.
+    let core_blocking_marked = if std::env::var_os("KM_HT_NO_CORE_BLOCKING_MARK").is_some() {
+        0
+    } else {
+        mark_core_blocking_concepts(ctx)
+    };
+    bridge_phase!("core-blocking-marker");
+    if std::env::var_os("KM_HT_STATS").is_some() {
+        eprintln!("bridge [core-blocking] marked={core_blocking_marked}");
+    }
 
     // Konclude's preprocessors may add assertions after the source ABox was
     // materialized. In particular, nominal trigger absorption asserts a fresh
@@ -9544,10 +10294,6 @@ fn analyse_kpset_completion_model(
         state.concept_reference_linking_data_hash.clone(),
         EFEXTRACTALL,
     );
-    let individual_vector = ctx
-        .processing_data_box()
-        .individual_process_node_vector()
-        .clone();
     let max_branch_tag = ctx.processing_data_box().maximum_deterministic_branch_tag();
     let snapshot_finished = timing_start.map(|_| std::time::Instant::now());
     let mut observer = RecordingClassificationMessageDataObserver::new();
@@ -9555,17 +10301,19 @@ fn analyse_kpset_completion_model(
         .ontology_item
         .get_concept_satisfiable_test_item_container();
     // `mEquivConNonCandidateSet` belongs to the live TBox in Konclude. Split
-    // the two disjoint context fields so the analyser can update completion
-    // bookkeeping while reading that ontology-owned set.
+    // the disjoint context fields so the analyser can update completion
+    // bookkeeping while reading that ontology-owned set and the individual
+    // node vector without cloning the vector on every job.
     let base = &mut ctx.base;
     let process_context = &mut base.used_process_context;
     let ontology = &base.ontology_arenas;
+    let individual_vector = base.used_processing_data_box.individual_process_node_vector();
     let analysed = analyser.analyse_satisfiable_task_classification_messages_with_live_other_nodes_and_live_equivalent_non_candidates(
         &adapter,
         process_context,
         ontology,
         root,
-        &individual_vector,
+        individual_vector,
         max_branch_tag,
         ontology.concepts(),
         ontology.concept_process_datas(),
@@ -9768,6 +10516,18 @@ fn fresh_bridge_env_with_trigger_absorption(
     CalculationAlgorithmContextBase,
     Bridged,
 ) {
+    fresh_bridge_env_with_trigger_absorption_init(tin, trigger_absorb, true)
+}
+
+fn fresh_bridge_env_with_trigger_absorption_init(
+    tin: &TInput,
+    trigger_absorb: bool,
+    initialize_nominals: bool,
+) -> (
+    CompletionTaskHandleAlgorithm,
+    CalculationAlgorithmContextBase,
+    Bridged,
+) {
     use super::completion::strategy::ConceptProcessingPriorityStrategy;
     let mut algo = CompletionTaskHandleAlgorithm::new();
     configure_default_blocking(&mut algo);
@@ -9803,13 +10563,16 @@ fn fresh_bridge_env_with_trigger_absorption(
         std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
     );
     algo.conf_direct_rule_preprocessing = card_nominal_profile;
-    algo.conf_cache_oriented_or_ordering = card_nominal_profile;
-    if card_nominal_profile {
+    algo.conf_cache_oriented_or_ordering =
+        card_nominal_profile || (bridged.source_tbox && tin.number && !bridged.has_native_nominals());
+    if algo.conf_direct_rule_preprocessing {
         // Konclude's null-configuration production defaults allow eager
         // preprocessing to recurse through 300 nested rule applications. A
         // zero limit only preprocesses the first descriptor and then silently
         // falls back to ordinary queueing for every conclusion it produces.
         algo.current_rec_proc_depth_limit = 300;
+    }
+    if card_nominal_profile {
         algo.conf_atomic_semantic_branching = true;
         // This is also Konclude's production dependency profile. The
         // cardinality+ABox route has complete branch epochs and now preserves
@@ -9823,7 +10586,7 @@ fn fresh_bridge_env_with_trigger_absorption(
         // Forced singleton merges can cross an OR alternative. Full in-process
         // COW is the existing complete restore mechanism for those writes.
         algo.conf_inprocess_cow = true;
-        if !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
+        if initialize_nominals && !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
             ctx.raise_stop(false);
         }
     }
@@ -9843,6 +10606,47 @@ fn initialize_native_nominal_state(
     initialize_native_nominal_state_for_tags(algo, ctx, bridged, None)
 }
 
+#[inline]
+fn nominal_seed_by_tag(bridged: &Bridged, tag: Cint64) -> Option<&NominalSeed> {
+    if let Ok(idx) = usize::try_from(tag) {
+        if let Some(seed) = bridged.nominal_seeds.get(idx) {
+            if seed.individual_tag == tag {
+                return Some(seed);
+            }
+        }
+    }
+    bridged
+        .nominal_seeds
+        .iter()
+        .find(|candidate| candidate.individual_tag == tag)
+}
+
+#[inline]
+fn nominal_seed_by_concept<'a>(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &'a Bridged,
+    concept: ConceptId,
+) -> Option<&'a NominalSeed> {
+    if concept.is_some() && concept.index() < ctx.ontology_arenas().concept_count() as usize {
+        let concept_ref = ctx.ontology_arenas().concept(concept);
+        if concept_ref.get_operator_code() == op::CCNOMINAL {
+            let ind = concept_ref.get_nominal_individual();
+            if ind.is_some() && ind.index() < ctx.ontology_arenas().individual_count() as usize {
+                let tag = ctx.ontology_arenas().individual(ind).get_individual_id();
+                if let Some(seed) = nominal_seed_by_tag(bridged, tag) {
+                    if seed.nominal_concept == concept {
+                        return Some(seed);
+                    }
+                }
+            }
+        }
+    }
+    bridged
+        .nominal_seeds
+        .iter()
+        .find(|target| target.nominal_concept == concept)
+}
+
 /// Nominal concepts of the other members of `entry`'s deterministic
 /// same-individual set, or `None` when that set is not recorded or names an
 /// individual without a nominal seed. See
@@ -9858,10 +10662,7 @@ fn native_deterministic_same_nominal_concepts(
         if tag == seed.individual_tag {
             continue;
         }
-        let other = bridged
-            .nominal_seeds
-            .iter()
-            .find(|candidate| candidate.individual_tag == tag)?;
+        let other = nominal_seed_by_tag(bridged, tag)?;
         if other.nominal_concept.is_none() {
             return None;
         }
@@ -9887,6 +10688,16 @@ fn install_native_nominal_backend_replay(
     let saturation_labels_replayable = cache.as_ref()
         .is_some_and(NativeAboxRepresentativeCache::saturation_labels_replayable)
         && !precomputation_replay_disabled(bridged);
+    let empty_det_arc = std::sync::Arc::new(Vec::new());
+    let empty_val_arc = std::sync::Arc::new(Vec::new());
+    let mut shared_concept_cache: HashMap<
+        (usize, bool),
+        (
+            std::sync::Arc<Vec<(ConceptId, bool)>>,
+            std::sync::Arc<Vec<(ConceptId, bool, bool)>>,
+        ),
+    > = HashMap::default();
+    let mut well_formed_cache: HashMap<(usize, usize), bool> = HashMap::default();
     for seed in &bridged.nominal_seeds {
         let association_entry = cache
             .as_ref()
@@ -9897,7 +10708,7 @@ fn install_native_nominal_backend_replay(
         // association header and version, however, and writeback must compare
         // against it exactly.
         let replay_entry = association_entry.filter(|entry|
-            native_cache_entry_covers_seed(entry, seed));
+            native_cache_entry_covers_seed_cached(entry, seed, Some(&mut well_formed_cache)));
         // Positive nominal concepts are not cache values, so the deterministic
         // labels below are a closure only together with the nominal concepts of
         // the deterministic same individuals. When that set is unknown, or one
@@ -9905,22 +10716,41 @@ fn install_native_nominal_backend_replay(
         // assertions then re-derive the whole closure.
         let deterministic_same_nominal_concepts =
             replay_entry.and_then(|entry| native_deterministic_same_nominal_concepts(bridged, entry, seed));
-        let deterministic_cached_concepts = replay_entry
-            .filter(|_| deterministic_same_nominal_concepts.is_some())
-            .and_then(|entry| entry.concept_values.as_ref())
-            .into_iter()
-            .flatten()
-            .filter(|value| value.deterministic)
-            .map(|value| (value.concept, value.negated))
-            .collect();
         let replay_closed = deterministic_same_nominal_concepts.is_some();
+        let (deterministic_cached_concepts, cached_concept_values) =
+            if let Some(values_arc) = replay_entry.and_then(|entry| entry.concept_values.as_ref()) {
+                let key = (std::sync::Arc::as_ptr(values_arc) as usize, replay_closed);
+                if let Some(cached) = shared_concept_cache.get(&key) {
+                    (std::sync::Arc::clone(&cached.0), std::sync::Arc::clone(&cached.1))
+                } else {
+                    let det = if replay_closed {
+                        std::sync::Arc::new(
+                            values_arc
+                                .iter()
+                                .filter(|value| value.deterministic)
+                                .map(|value| (value.concept, value.negated))
+                                .collect(),
+                        )
+                    } else {
+                        std::sync::Arc::clone(&empty_det_arc)
+                    };
+                    let all = std::sync::Arc::new(
+                        values_arc
+                            .iter()
+                            .map(|value| (value.concept, value.negated, value.deterministic))
+                            .collect(),
+                    );
+                    shared_concept_cache
+                        .insert(key, (std::sync::Arc::clone(&det), std::sync::Arc::clone(&all)));
+                    (det, all)
+                }
+            } else {
+                (
+                    std::sync::Arc::clone(&empty_det_arc),
+                    std::sync::Arc::clone(&empty_val_arc),
+                )
+            };
         let deterministic_same_nominal_concepts = deterministic_same_nominal_concepts.unwrap_or_default();
-        let cached_concept_values = replay_entry
-            .and_then(|entry| entry.concept_values.as_ref())
-            .into_iter()
-            .flatten()
-            .map(|value| (value.concept, value.negated, value.deterministic))
-            .collect();
         let mut cached_neighbour_roles: Vec<(Cint64, RoleId, bool, bool)> = replay_entry
             .into_iter()
             .flat_map(|entry| entry.neighbour_role_combinations.iter())
@@ -10027,10 +10857,81 @@ fn initialize_native_nominal_state_for_tags(
     }
     let base_tp = ctx.get_or_create_base_dependency_track_point();
     let top = ctx.processing_data_box().ontology_top_concept();
+    let allow_delayed_concept_set_init = selected_tags.is_none()
+        && std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_none()
+        && algo.conf_allow_backend_successor_expansion_blocking
+        && algo.conf_allow_backend_neighbour_expansion_blocking;
+    let mut seen_shared_concept_sets: HashMap<usize, bool> = HashMap::default();
+    let mut materialized_any = false;
+    let saturation_labels_replayable = {
+        let cache = bridged.native_representative_cache.borrow();
+        cache
+            .as_ref()
+            .is_some_and(|c| !c.association_write_aborted && c.saturation_labels_replayable())
+    };
+    let mut well_formed_cache: HashMap<(usize, usize), bool> = HashMap::default();
     for seed in &bridged.nominal_seeds {
         if selected_tags.is_some_and(|tags| !tags.contains(&seed.individual_tag)) {
             continue;
         }
+        if allow_delayed_concept_set_init && seed.role_assertions.is_empty() {
+            if let Some(group_delayable) = algo
+                .native_nominal_backend_replay
+                .get(&seed.individual_tag)
+                .filter(|replay| {
+                    replay.association_present
+                        && replay.expansion_blocking_candidate
+                        && replay.neighbour_expansion_blocking_candidate
+                        && !replay.deterministic_cached_concepts.is_empty()
+                        && replay.cached_neighbour_roles.is_empty()
+                        && !replay.has_reusable_elements
+                        && replay.deterministic_same_nominal_concepts.is_empty()
+                })
+                .and_then(|replay| {
+                    let group_ptr =
+                        std::sync::Arc::as_ptr(&replay.deterministic_cached_concepts) as usize;
+                    let delayable = if let Some(&delayable) = seen_shared_concept_sets.get(&group_ptr)
+                    {
+                        delayable
+                    } else {
+                        let has_singleton = bridged.singleton_concepts.iter().any(|sc| {
+                            replay
+                                .deterministic_cached_concepts
+                                .binary_search_by_key(&(sc.raw, false), |(c, neg)| (c.raw, *neg))
+                                .is_ok()
+                        });
+                        let d = !has_singleton;
+                        seen_shared_concept_sets.insert(group_ptr, d);
+                        d
+                    };
+                    if materialized_any {
+                        Some(delayable)
+                    } else {
+                        None
+                    }
+                })
+            {
+                if group_delayable {
+                    let existing = ctx
+                        .processing_data_box()
+                        .individual_process_node_vector()
+                        .get_data(-seed.individual_tag);
+                    if existing.is_none() {
+                        let node = algo.allocate_delayed_backend_nominal_individual(
+                            -seed.individual_tag,
+                            seed.individual,
+                            base_tp,
+                            ctx,
+                        );
+                        if node.is_none() {
+                            return false;
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
+        materialized_any = true;
         let mut node = algo.get_up_to_date_individual_by_id(-seed.individual_tag, ctx);
         if node.is_none()
             || ctx.process_context().node(node).nominal_individual() != seed.individual
@@ -10046,6 +10947,10 @@ fn initialize_native_nominal_state_for_tags(
         if algo
             .native_nominal_backend_replay
             .contains_key(&seed.individual_tag)
+            && !ctx
+                .process_context()
+                .node(node)
+                .is_nominal_individual_representative_backend_data_loaded()
         {
             if !replay_native_representative_cache(algo, ctx, bridged, seed, node, base_tp) {
                 return false;
@@ -10109,7 +11014,15 @@ fn initialize_native_nominal_state_for_tags(
             .native_nominal_backend_replay
             .contains_key(&seed.individual_tag)
         {
-            let _ = try_establish_native_backend_expansion_blocking(algo, ctx, bridged, seed, node);
+            let _ = try_establish_native_backend_expansion_blocking_cached(
+                algo,
+                ctx,
+                bridged,
+                seed,
+                node,
+                Some(saturation_labels_replayable),
+                Some(&mut well_formed_cache),
+            );
         }
     }
     true
@@ -10184,6 +11097,7 @@ fn reset_classification_algorithm_on_retained_base(
     fresh.or_branch_learning_stats = branch_learning;
     // Immutable index of the same retained base (u20 `BlockingBaseIndex`).
     fresh.blocking_base_index = algo.blocking_base_index.clone();
+    fresh.retained_singleton_base = algo.retained_singleton_base.clone();
     *algo = fresh;
     if let Some(snapshot) = replay_snapshot {
         // Only immutable input is shared; every mutable per-job field is fresh.
@@ -10369,6 +11283,10 @@ struct RetainedConsistencyLeaf {
     /// The job algorithm's backend replay map at the build: immutable input
     /// data, shared by every leaf job instead of being rebuilt per job.
     replay: NativeReplaySnapshot,
+    /// Blocking candidate index of the retained leaf (`u20::BlockingBaseIndex`).
+    blocking_index: Option<std::sync::Arc<super::completion::u20::BlockingBaseIndex>>,
+    /// Singleton carrier snapshot of the retained leaf (`u02::RetainedSingletonBase`).
+    singleton_base: Option<std::sync::Arc<super::completion::u02::RetainedSingletonBase>>,
 }
 
 /// Counters of the reuse branch point (reported under `KM_BRIDGE_PROGRESS`
@@ -10385,6 +11303,7 @@ struct RetainedLeafCounts {
     fallback_unsat: usize,
     /// Alternative 1 taken: a STOP, a poisoned search or a withheld witness.
     fallback_unknown: usize,
+    consecutive_fallbacks: usize,
     drops: usize,
 }
 
@@ -10444,16 +11363,32 @@ fn build_retained_consistency_leaf(
     algo.or_branch_stack.clear();
     ctx.clear_pending_signal();
     ctx.base.set_current_individual_node(NodeId::NONE);
+    ctx.coalesce_branch_epochs_to(base_depth + 1);
+    crate::mem::release_before_worker_wait();
     let depth = ctx.process_context().branch_epoch_depth();
     let databox = ctx.processing_data_box().clone();
     let next_id = ctx.processing_data_box_mut().next_individual_node_id(false);
     let branch_node = ctx.base.used_branch_tree_node;
+    let blocking_index = std::env::var_os("KM_HT_NO_BLOCKING_BASE_INDEX")
+        .is_none()
+        .then(|| std::sync::Arc::new(algo.build_blocking_base_index(ctx)));
+    let singleton_base = algo.build_retained_singleton_base(ctx);
     // Spine journal 2: one class job's spine changes, undone per job.
     ctx.process_context_mut().push_spine_journal_epoch();
     // The first leaf job's epoch (popped by `restore_retained_consistency_leaf`).
     ctx.push_branch_epoch();
     let replay = std::sync::Arc::clone(&algo.native_nominal_backend_replay);
-    Some(RetainedConsistencyLeaf { depth, base_depth, databox, branch_node, next_id, decisions, replay })
+    Some(RetainedConsistencyLeaf {
+        depth,
+        base_depth,
+        databox,
+        branch_node,
+        next_id,
+        decisions,
+        replay,
+        blocking_index,
+        singleton_base,
+    })
 }
 
 /// Start the next class job on the leaf: roll the previous job back (its
@@ -10495,6 +11430,11 @@ fn restore_retained_consistency_leaf(
         bridged,
         Some(replay_snapshot.unwrap_or(&leaf.replay)),
     );
+    if let Some(blocking_index) = &leaf.blocking_index {
+        algo.blocking_base_index = Some(std::sync::Arc::clone(blocking_index));
+    }
+    algo.retained_singleton_base = leaf.singleton_base.clone();
+    algo.singleton_base_prepared = true;
     // A continuation of the consistency completion: no retained-node special
     // casing, as on the resuming base.
     algo.retained_base_node_count = 0;
@@ -10627,7 +11567,7 @@ fn reset_probe_env_impl(
     // component tasks teach the later consistency/classification tasks.
     let budget = algo.probe_budget;
     let card_nominal_profile =
-        algo.conf_direct_rule_preprocessing && algo.conf_cache_oriented_or_ordering;
+        algo.conf_direct_rule_preprocessing && algo.conf_cache_oriented_or_ordering && algo.conf_atomic_semantic_branching;
     let direct_rule_preprocessing = algo.conf_direct_rule_preprocessing;
     let cache_oriented_or_ordering = algo.conf_cache_oriented_or_ordering;
     let current_rec_proc_depth_limit = algo.current_rec_proc_depth_limit;
@@ -10635,7 +11575,7 @@ fn reset_probe_env_impl(
     let dependency_backjumping = algo.conf_dependency_backjumping;
     let build_dependencies = algo.conf_build_dependencies;
     let atomic_semantic_branching = algo.conf_atomic_semantic_branching;
-    let branch_learning = if card_nominal_profile {
+    let branch_learning = if cache_oriented_or_ordering {
         std::mem::take(&mut algo.or_branch_learning_stats)
     } else {
         HashMap::default()
@@ -10644,15 +11584,17 @@ fn reset_probe_env_impl(
     configure_default_blocking(&mut a);
     a.singleton_concepts = bridged.singleton_concepts.clone();
     a.probe_budget = budget;
+    a.conf_direct_rule_preprocessing = direct_rule_preprocessing;
+    a.conf_cache_oriented_or_ordering = cache_oriented_or_ordering;
+    a.current_rec_proc_depth_limit = current_rec_proc_depth_limit;
+    if cache_oriented_or_ordering {
+        a.or_branch_learning_stats = branch_learning;
+    }
     if card_nominal_profile {
-        a.conf_direct_rule_preprocessing = direct_rule_preprocessing;
-        a.conf_cache_oriented_or_ordering = cache_oriented_or_ordering;
-        a.current_rec_proc_depth_limit = current_rec_proc_depth_limit;
         a.conf_dependency_backtracking = dependency_backtracking;
         a.conf_dependency_backjumping = dependency_backjumping;
         a.conf_build_dependencies = build_dependencies;
         a.conf_atomic_semantic_branching = atomic_semantic_branching;
-        a.or_branch_learning_stats = branch_learning;
     }
     *algo = a;
     if card_nominal_profile {
@@ -10728,7 +11670,7 @@ fn reset_probe_env_impl(
 /// even when dependency-directed backjumping itself remains opt-in.
 fn configure_production_search(algo: &mut CompletionTaskHandleAlgorithm) {
     algo.conf_build_dependencies = true;
-    if algo.conf_cache_oriented_or_ordering {
+    if algo.conf_cache_oriented_or_ordering && algo.conf_direct_rule_preprocessing {
         // The representative-batch profile replays learned disjunct
         // priorities. Its alternatives must therefore remain disjoint. Keep
         // the legacy nominal-only and cardinality-only schedules unchanged.
@@ -11611,12 +12553,7 @@ fn commit_native_representative_association_batch(
     prepared: Vec<(Cint64, NativeAboxRepresentativeEntry)>,
     selected_individuals: &HashSet<Cint64>,
 ) -> Option<HashSet<Cint64>> {
-    if prepared.is_empty()
-        || selected_individuals.is_empty()
-        || !selected_individuals
-            .iter()
-            .all(|tag| prepared.iter().any(|(prepared_tag, _)| prepared_tag == tag))
-    {
+    if prepared.is_empty() || selected_individuals.is_empty() {
         return None;
     }
     let mut seen = HashSet::with_capacity_and_hasher(prepared.len(), Default::default());
@@ -11632,6 +12569,9 @@ fn commit_native_representative_association_batch(
         {
             return None;
         }
+    }
+    if !selected_individuals.iter().all(|tag| seen.contains(tag)) {
+        return None;
     }
 
     let mut updated = HashSet::with_capacity_and_hasher(prepared.len(), Default::default());
@@ -11658,6 +12598,14 @@ fn write_completed_native_representative_associations(
     let mut deterministic_same_index = None;
     let mut nondeterministic_same_index = None;
     let mut assertion_journal = None;
+    let mut shared_completion_labels: HashMap<
+        std::sync::Arc<Vec<NativeAboxConceptValue>>,
+        (
+            std::sync::Arc<Vec<(ConceptId, bool)>>,
+            std::sync::Arc<Vec<NativeAboxConceptValue>>,
+        ),
+    > = HashMap::default();
+    let mut well_formed_cache: HashMap<(usize, usize), bool> = HashMap::default();
     for seed in &bridged.nominal_seeds {
         let Some(original) = native_exact_nominal_process_node(ctx, seed.individual_tag) else {
             if selected_individuals.contains(&seed.individual_tag) {
@@ -11670,6 +12618,18 @@ fn write_completed_native_representative_associations(
             // is not a touched association for nominal tag zero.
             continue;
         };
+        if ctx
+            .process_context()
+            .node(original)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENPROCESSINGDELAYING,
+            )
+        {
+            if selected_individuals.contains(&seed.individual_tag) {
+                return None;
+            }
+            continue;
+        }
         let deterministic_node = native_completion_merge_target(ctx, original, true)?;
         let extraction_node = native_completion_merge_target(ctx, deterministic_node, false)?;
         let deterministic_representative_tag =
@@ -11677,21 +12637,37 @@ fn write_completed_native_representative_associations(
         let extraction_representative_tag = native_completion_nominal_tag(ctx, extraction_node)?;
         let representative_same_individual_merging =
             deterministic_representative_tag != seed.individual_tag;
-        let (concept_values, descriptor_count) =
+        let (raw_concept_values, descriptor_count) =
             native_completion_label_values(ctx, extraction_node, deterministic_node)?;
-        let concepts = concept_values
-            .iter()
-            .map(|value| (value.concept, value.negated))
-            .collect();
         let role_metadata =
             native_completion_role_metadata(
                 ctx,
                 extraction_node,
-                &concept_values,
+                &raw_concept_values,
                 bridged,
                 seed,
                 &mut assertion_journal,
             )?;
+        let raw_values_arc = std::sync::Arc::new(raw_concept_values);
+        let (concepts, concept_values) =
+            if let Some(cached) = shared_completion_labels.get(&raw_values_arc) {
+                (std::sync::Arc::clone(&cached.0), std::sync::Arc::clone(&cached.1))
+            } else {
+                let concepts_arc = std::sync::Arc::new(
+                    raw_values_arc
+                        .iter()
+                        .map(|value| (value.concept, value.negated))
+                        .collect(),
+                );
+                shared_completion_labels.insert(
+                    std::sync::Arc::clone(&raw_values_arc),
+                    (
+                        std::sync::Arc::clone(&concepts_arc),
+                        std::sync::Arc::clone(&raw_values_arc),
+                    ),
+                );
+                (concepts_arc, raw_values_arc)
+            };
         let deterministic_different_individuals = native_completion_different_individuals(
             ctx,
             deterministic_node,
@@ -11784,7 +12760,8 @@ fn write_completed_native_representative_associations(
         // individual cannot be skipped because its task would otherwise be
         // falsely reported as having discharged the association.
         let typed_complete = entry.complete_for_precomputation();
-        let seed_covered = native_cache_entry_covers_seed(&entry, seed);
+        let seed_covered =
+            native_cache_entry_covers_seed_cached(&entry, seed, Some(&mut well_formed_cache));
         let complete = typed_complete && seed_covered;
         if !complete {
             if selected_individuals.contains(&seed.individual_tag) {
@@ -12134,6 +13111,22 @@ fn snapshot_native_consistency_nominal_nondeterministic_prefix(
 ) -> Option<HashMap<Cint64, Vec<(ConceptId, bool)>>> {
     let mut snapshot = HashMap::with_capacity_and_hasher(bridged.nominal_seeds.len(), Default::default());
     for seed in &bridged.nominal_seeds {
+        let existing = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-seed.individual_tag);
+        if existing.is_some()
+            && existing.index() < ctx.process_context().node_count()
+            && ctx
+                .process_context()
+                .node(existing)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENPROCESSINGDELAYING,
+                )
+        {
+            snapshot.insert(seed.individual_tag, Vec::new());
+            continue;
+        }
         let node = algo.get_up_to_date_individual_by_id(-seed.individual_tag, ctx);
         if node.is_none() {
             return None;
@@ -12536,6 +13529,88 @@ fn extract_propagation_into_creation_direction(ctx: &mut CalculationAlgorithmCon
                 .propagation_into_creation_direction = true;
         }
     }
+}
+
+/// Port of `CCoreBlockingConceptMarkerPreProcess::preprocess`
+/// (Reasoner/Preprocess, cpp 39-90, on by default via
+/// `Konclude.Calculation.Preprocessing.CoreBlockingConceptMarking`).
+///
+/// For every SOME/ALL/ATLEAST/AQSOME/ATMOST concept the C++ walks the operand
+/// list and marks the QUANTIFIER concept itself (`opConcept = concept`) as a
+/// core blocking concept with polarity `opNegated ^ opNegate`, where
+/// `opNegated = (opCode == CCALL)` and `opNegate = opNegated ^ linker.isNegated()`;
+/// the polarity is therefore the operand linker's negation flag. This is
+/// ported literally, including that polarity.
+///
+/// KONCLUDE-PORT-NOTE[data]: Konclude's `CDataExtenderPreProcess` gives every
+/// concept a `CConceptProcessData` before this pass; the port allocates it
+/// lazily, so a missing record is allocated here (the C++ `if (conProDes)`
+/// is always true at this point in Konclude).
+/// KONCLUDE-PORT-NOTE[el-skip]: the C++ skips the pass when
+/// `SkipForELFragment` (default true) holds and the expression builder saw no
+/// non-EL construct. The port has no builder construct flags; it treats the
+/// arena as EL when no concept has an operator outside atom, TOP, BOTTOM,
+/// AND, SOME, nominal, EQ and SUB. Marks only steer which blocker candidate
+/// the linked hash search tests first; every candidate still passes the full
+/// blocking test, so this approximation affects speed, not answers.
+fn mark_core_blocking_concepts(ctx: &mut CalculationAlgorithmContextBase) -> usize {
+    use super::model::concept_process::{ConceptProcessData, ConceptProcessDataId};
+    let n = ctx.ontology_arenas().concept_count();
+    let non_el_constructs_used = (0..n).any(|i| {
+        !matches!(
+            ctx.ontology_arenas()
+                .concept(ConceptId::new(i as Cint64))
+                .get_operator_code(),
+            op::CCATOM
+                | op::CCTOP
+                | op::CCBOTTOM
+                | op::CCAND
+                | op::CCSOME
+                | op::CCNOMINAL
+                | op::CCEQ
+                | op::CCSUB
+        )
+    });
+    if !non_el_constructs_used {
+        return 0;
+    }
+    let mut marked = 0usize;
+    for i in 0..n {
+        let cid = ConceptId::new(i as Cint64);
+        let (op_code, polarities): (Cint64, Vec<bool>) = {
+            let c = ctx.ontology_arenas().concept(cid);
+            (
+                c.get_operator_code(),
+                c.get_operand_list().iter().map(|l| l.negated).collect(),
+            )
+        };
+        if !matches!(
+            op_code,
+            op::CCSOME | op::CCALL | op::CCATLEAST | op::CCAQSOME | op::CCATMOST
+        ) {
+            continue;
+        }
+        let op_negated = op_code == op::CCALL;
+        for linker_negated in polarities {
+            let op_negate = op_negated ^ linker_negated;
+            let negated = op_negated ^ op_negate;
+            let arenas = ctx.ontology_arenas_mut();
+            let concept_data = arenas.concept(cid).get_concept_data();
+            let con_pro_data = if concept_data == super::model::substrate::INVALID {
+                let fresh = arenas.alloc_concept_process_data(ConceptProcessData::new());
+                arenas.concept_mut(cid).set_concept_data(fresh.raw);
+                fresh
+            } else {
+                ConceptProcessDataId::new(concept_data)
+            };
+            let data = arenas.concept_process_data_mut(con_pro_data);
+            if !data.is_core_blocking_concept(negated) {
+                marked += 1;
+                data.set_core_blocking_concept(negated, true);
+            }
+        }
+    }
+    marked
 }
 
 /// Port of the CONSTRUCTION half of
@@ -13583,15 +14658,70 @@ fn write_native_abox_representative_cache(
     }
     let mut cache = NativeAboxRepresentativeCache::default();
     let mut saturation_journal = None;
+    type SharedLabelData = (
+        std::sync::Arc<Vec<(ConceptId, bool)>>,
+        Vec<RoleId>,
+        Vec<NativeAboxRoleValue>,
+        Vec<(RoleId, Cint64)>,
+        Vec<(RoleId, Cint64)>,
+        bool,
+    );
+    let mut shared_label_by_key: HashMap<
+        (
+            super::saturation::satellites::ConceptSaturationDescriptorId,
+            Vec<(ConceptId, bool)>,
+        ),
+        SharedLabelData,
+    > = HashMap::default();
+    let mut tail_concepts_by_head: HashMap<
+        super::saturation::satellites::ConceptSaturationDescriptorId,
+        Vec<(ConceptId, bool)>,
+    > = HashMap::default();
+    let mut shared_label_by_concepts: HashMap<
+        std::sync::Arc<Vec<(ConceptId, bool)>>,
+        SharedLabelData,
+    > = HashMap::default();
+    let mut shared_values_by_concepts: HashMap<
+        (usize, bool),
+        std::sync::Arc<Vec<NativeAboxConceptValue>>,
+    > = HashMap::default();
     for &(individual_tag, node) in nodes {
         if node.is_none() || node.index() >= ctx.process_context().sat_node_count() {
             return None;
         }
-        let (direct_flags, indirect_flags) = {
+        let (direct_flags, indirect_flags, label_head, copy_head) = {
             let saturation_node = ctx.process_context().sat_node(node);
+            let label = saturation_node.reapply_con_sat_label_set;
+            let head = if label.is_some() {
+                ctx.process_context()
+                    .reapply_con_sat_label_set(label)
+                    .get_concept_saturation_description_linker()
+            } else {
+                super::saturation::satellites::ConceptSaturationDescriptorId::NONE
+            };
+            let copy_node = saturation_node.get_copy_individual_node();
+            let c_head = if copy_node.is_some()
+                && copy_node.index() < ctx.process_context().sat_node_count()
+            {
+                let cl = ctx
+                    .process_context()
+                    .sat_node(copy_node)
+                    .reapply_con_sat_label_set;
+                if cl.is_some() {
+                    ctx.process_context()
+                        .reapply_con_sat_label_set(cl)
+                        .get_concept_saturation_description_linker()
+                } else {
+                    super::saturation::satellites::ConceptSaturationDescriptorId::NONE
+                }
+            } else {
+                super::saturation::satellites::ConceptSaturationDescriptorId::NONE
+            };
             (
                 saturation_node.direct_status_flags.get_flags(),
                 saturation_node.indirect_status_flags.get_flags(),
+                head,
+                c_head,
             )
         };
         if direct_flags & F::INDSATFLAGCLASHED != 0 || indirect_flags & F::INDSATFLAGCLASHED != 0 {
@@ -13600,54 +14730,160 @@ fn write_native_abox_representative_cache(
             return Some(cache);
         }
 
-        let concepts = native_cache_label_concepts(ctx, node)?;
-        let mut existential_roles: BTreeSet<Cint64> = BTreeSet::new();
-        let mut existential_max: BTreeMap<Cint64, Cint64> = BTreeMap::new();
-        let mut at_most: BTreeMap<Cint64, Cint64> = BTreeMap::new();
-        for &(concept, negated) in &concepts {
-            if concept.is_none()
-                || concept.index() >= ctx.ontology_arenas().concept_count() as usize
-            {
+        let mut prefix_concepts = Vec::new();
+        let mut descriptor = label_head;
+        let mut walked = 0usize;
+        let max_desc = ctx.process_context().con_sat_desc_count();
+        while descriptor.is_some() && !(copy_head.is_some() && descriptor == copy_head) {
+            if descriptor.index() >= max_desc || walked > max_desc {
                 return None;
             }
-            let concept_ref = ctx.ontology_arenas().concept(concept);
-            let operator = concept_ref.get_operator_code();
-            let role = concept_ref.get_role();
-            if role.is_some()
-                && ((!negated
-                    && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF | CCATLEAST))
-                    || (negated && matches!(operator, CCALL | CCAQALL | CCATMOST)))
-            {
-                existential_roles.insert(role.raw);
-                let cardinality = if (!negated
-                    && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF))
-                    || (negated && matches!(operator, CCALL | CCAQALL))
-                {
-                    1
-                } else if !negated && operator == CCATLEAST {
-                    concept_ref.get_parameter().max(0)
-                } else {
-                    concept_ref.get_parameter().saturating_add(1).max(0)
-                };
-                existential_max
-                    .entry(role.raw)
-                    .and_modify(|current| *current = (*current).max(cardinality))
-                    .or_insert(cardinality);
-            }
-            let bound = if !negated && operator == CCATMOST {
-                Some(concept_ref.get_parameter())
-            } else if negated && operator == CCATLEAST {
-                Some(concept_ref.get_parameter().saturating_sub(1))
-            } else {
-                None
-            };
-            if let (Some(bound), true) = (bound, role.is_some()) {
-                at_most
-                    .entry(role.raw)
-                    .and_modify(|current| *current = (*current).min(bound))
-                    .or_insert(bound);
-            }
+            let data = ctx.process_context().con_sat_desc(descriptor);
+            prefix_concepts.push((data.get_concept(), data.get_negation()));
+            descriptor = data.get_next_concept_desciptor();
+            walked += 1;
         }
+        prefix_concepts.sort_unstable_by_key(|(concept, negated)| (concept.raw, *negated));
+        prefix_concepts.dedup();
+        let tail_head = if copy_head.is_some() && descriptor == copy_head {
+            copy_head
+        } else {
+            super::saturation::satellites::ConceptSaturationDescriptorId::NONE
+        };
+        let lookup_key = (tail_head, prefix_concepts);
+
+        let (
+            concepts,
+            existential_roles,
+            existential_role_values,
+            at_most_cardinalities,
+            existential_max_cardinalities,
+            label_has_positive_self,
+        ) = if let Some(cached) = shared_label_by_key.get(&lookup_key) {
+            (
+                std::sync::Arc::clone(&cached.0),
+                cached.1.clone(),
+                cached.2.clone(),
+                cached.3.clone(),
+                cached.4.clone(),
+                cached.5,
+            )
+        } else {
+            let mut raw_concepts = lookup_key.1.clone();
+            if tail_head.is_some() {
+                if let Some(tail) = tail_concepts_by_head.get(&tail_head) {
+                    raw_concepts.extend_from_slice(tail);
+                } else {
+                    let mut tail = Vec::new();
+                    let mut d = tail_head;
+                    let mut w = 0usize;
+                    while d.is_some() {
+                        if d.index() >= max_desc || w > max_desc {
+                            return None;
+                        }
+                        let data = ctx.process_context().con_sat_desc(d);
+                        tail.push((data.get_concept(), data.get_negation()));
+                        d = data.get_next_concept_desciptor();
+                        w += 1;
+                    }
+                    tail.sort_unstable_by_key(|(concept, negated)| (concept.raw, *negated));
+                    tail.dedup();
+                    raw_concepts.extend_from_slice(&tail);
+                    tail_concepts_by_head.insert(tail_head, tail);
+                }
+                raw_concepts.sort_unstable_by_key(|(concept, negated)| (concept.raw, *negated));
+                raw_concepts.dedup();
+            }
+            let raw_arc = std::sync::Arc::new(raw_concepts);
+            let shared_data = if let Some(existing) = shared_label_by_concepts.get(&raw_arc) {
+                existing.clone()
+            } else {
+                let mut existential_roles_set: BTreeSet<Cint64> = BTreeSet::new();
+                let mut existential_max: BTreeMap<Cint64, Cint64> = BTreeMap::new();
+                let mut at_most: BTreeMap<Cint64, Cint64> = BTreeMap::new();
+                let mut has_pos_self = false;
+                for &(concept, negated) in raw_arc.iter() {
+                    if concept.is_none()
+                        || concept.index() >= ctx.ontology_arenas().concept_count() as usize
+                    {
+                        return None;
+                    }
+                    let concept_ref = ctx.ontology_arenas().concept(concept);
+                    let operator = concept_ref.get_operator_code();
+                    if !negated && operator == CCSELF {
+                        has_pos_self = true;
+                    }
+                    let role = concept_ref.get_role();
+                    if role.is_some()
+                        && ((!negated
+                            && matches!(
+                                operator,
+                                CCSOME | CCAQSOME | CCVALUE | CCSELF | CCATLEAST
+                            ))
+                            || (negated && matches!(operator, CCALL | CCAQALL | CCATMOST)))
+                    {
+                        existential_roles_set.insert(role.raw);
+                        let cardinality = if (!negated
+                            && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF))
+                            || (negated && matches!(operator, CCALL | CCAQALL))
+                        {
+                            1
+                        } else if !negated && operator == CCATLEAST {
+                            concept_ref.get_parameter().max(0)
+                        } else {
+                            concept_ref.get_parameter().saturating_add(1).max(0)
+                        };
+                        existential_max
+                            .entry(role.raw)
+                            .and_modify(|current| *current = (*current).max(cardinality))
+                            .or_insert(cardinality);
+                    }
+                    let bound = if !negated && operator == CCATMOST {
+                        Some(concept_ref.get_parameter())
+                    } else if negated && operator == CCATLEAST {
+                        Some(concept_ref.get_parameter().saturating_sub(1))
+                    } else {
+                        None
+                    };
+                    if let (Some(bound), true) = (bound, role.is_some()) {
+                        at_most
+                            .entry(role.raw)
+                            .and_modify(|current| *current = (*current).min(bound))
+                            .or_insert(bound);
+                    }
+                }
+                let existential_roles_vec: Vec<RoleId> =
+                    existential_roles_set.into_iter().map(RoleId::new).collect();
+                let existential_role_values_vec: Vec<NativeAboxRoleValue> = existential_roles_vec
+                    .iter()
+                    .map(|&role| NativeAboxRoleValue {
+                        role,
+                        inversed: false,
+                        deterministic: true,
+                    })
+                    .collect();
+                let at_most_vec: Vec<(RoleId, Cint64)> = at_most
+                    .into_iter()
+                    .map(|(role, cardinality)| (RoleId::new(role), cardinality))
+                    .collect();
+                let existential_max_vec: Vec<(RoleId, Cint64)> = existential_max
+                    .into_iter()
+                    .map(|(role, cardinality)| (RoleId::new(role), cardinality))
+                    .collect();
+                let data = (
+                    std::sync::Arc::clone(&raw_arc),
+                    existential_roles_vec,
+                    existential_role_values_vec,
+                    at_most_vec,
+                    existential_max_vec,
+                    has_pos_self,
+                );
+                shared_label_by_concepts.insert(raw_arc, data.clone());
+                data
+            };
+            shared_label_by_key.insert(lookup_key, shared_data.clone());
+            shared_data
+        };
 
         let mut instantiated_role_orientations: BTreeSet<(Cint64, bool)> = BTreeSet::new();
         let mut neighbour_roles: BTreeMap<Cint64, BTreeSet<(Cint64, bool)>> = BTreeMap::new();
@@ -13808,21 +15044,36 @@ fn write_native_abox_representative_cache(
             neighbour_roles.entry(other).or_default().insert((role, negated));
         }
 
-        let (completely_handled, completely_propagated) =
+        let (raw_completely_handled, completely_propagated) =
             native_abox_association_status(direct_flags, indirect_flags);
+        let completely_handled = raw_completely_handled && !label_has_positive_self;
         let status_incomplete = !completely_handled;
         // The saturation substrate does not retain per-descriptor dependency
         // track points. Only a completely handled association certifies its
         // final label. Values from an insufficient association remain
         // metadata and must not be replayed as branch-zero facts.
-        let concept_values = concepts
-            .iter()
-            .map(|&(concept, negated)| NativeAboxConceptValue {
-                concept,
-                negated,
-                deterministic: completely_handled,
-            })
-            .collect();
+        let concepts_ptr = std::sync::Arc::as_ptr(&concepts) as usize;
+        let concept_values = if let Some(cached) =
+            shared_values_by_concepts.get(&(concepts_ptr, completely_handled))
+        {
+            std::sync::Arc::clone(cached)
+        } else {
+            let values_arc = std::sync::Arc::new(
+                concepts
+                    .iter()
+                    .map(|&(concept, negated)| NativeAboxConceptValue {
+                        concept,
+                        negated,
+                        deterministic: completely_handled,
+                    })
+                    .collect(),
+            );
+            shared_values_by_concepts.insert(
+                (concepts_ptr, completely_handled),
+                std::sync::Arc::clone(&values_arc),
+            );
+            values_arc
+        };
         let deterministic_same_individuals = Vec::new();
         let deterministic_same_label_identity =
             native_individual_label_identity(&deterministic_same_individuals);
@@ -13857,33 +15108,16 @@ fn write_native_abox_representative_cache(
             .iter()
             .map(|value| value.role)
             .collect();
-        let existential_roles: Vec<RoleId> =
-            existential_roles.into_iter().map(RoleId::new).collect();
         let entry = NativeAboxRepresentativeEntry {
             individual_tag,
             concepts,
             concept_values: Some(concept_values),
             instantiated_role_values: Some(instantiated_role_values),
             instantiated_roles,
-            existential_role_values: Some(
-                existential_roles
-                    .iter()
-                    .map(|&role| NativeAboxRoleValue {
-                        role,
-                        inversed: false,
-                        deterministic: true,
-                    })
-                    .collect(),
-            ),
+            existential_role_values: Some(existential_role_values),
             existential_roles,
-            at_most_cardinalities: at_most
-                .into_iter()
-                .map(|(role, cardinality)| (RoleId::new(role), cardinality))
-                .collect(),
-            existential_max_cardinalities: existential_max
-                .into_iter()
-                .map(|(role, cardinality)| (RoleId::new(role), cardinality))
-                .collect(),
+            at_most_cardinalities,
+            existential_max_cardinalities,
             indirect_nominal_connections: indirect_nominals.into_iter().collect(),
             neighbour_role_combinations: neighbour_roles
                 .into_iter()
@@ -13946,6 +15180,14 @@ fn native_cache_entry_covers_seed(
     entry: &NativeAboxRepresentativeEntry,
     seed: &NominalSeed,
 ) -> bool {
+    native_cache_entry_covers_seed_cached(entry, seed, None)
+}
+
+fn native_cache_entry_covers_seed_cached(
+    entry: &NativeAboxRepresentativeEntry,
+    seed: &NominalSeed,
+    well_formed_cache: Option<&mut HashMap<(usize, usize), bool>>,
+) -> bool {
     let sorted_roles = |roles: &[RoleId]| {
         roles.iter().all(|role| role.is_some())
             // The same role may occur once in each orientation. The typed
@@ -14005,13 +15247,32 @@ fn native_cache_entry_covers_seed(
                 .all(|pair| (pair[0].0.raw, pair[0].1) < (pair[1].0.raw, pair[1].1))
     });
     let concept_values_well_formed = entry.concept_values.as_ref().is_some_and(|values| {
-        values.windows(2).all(|pair| {
-            (pair[0].concept.raw, pair[0].negated, pair[0].deterministic)
-                < (pair[1].concept.raw, pair[1].negated, pair[1].deterministic)
-        }) && values
-            .iter()
-            .map(|value| (value.concept, value.negated))
-            .eq(entry.concepts.iter().copied())
+        let key = (
+            std::sync::Arc::as_ptr(&entry.concepts) as usize,
+            std::sync::Arc::as_ptr(values) as usize,
+        );
+        if let Some(cache) = well_formed_cache {
+            if let Some(&cached) = cache.get(&key) {
+                return cached;
+            }
+            let ok = values.windows(2).all(|pair| {
+                (pair[0].concept.raw, pair[0].negated, pair[0].deterministic)
+                    < (pair[1].concept.raw, pair[1].negated, pair[1].deterministic)
+            }) && values
+                .iter()
+                .map(|value| (value.concept, value.negated))
+                .eq(entry.concepts.iter().copied());
+            cache.insert(key, ok);
+            ok
+        } else {
+            values.windows(2).all(|pair| {
+                (pair[0].concept.raw, pair[0].negated, pair[0].deterministic)
+                    < (pair[1].concept.raw, pair[1].negated, pair[1].deterministic)
+            }) && values
+                .iter()
+                .map(|value| (value.concept, value.negated))
+                .eq(entry.concepts.iter().copied())
+        }
     });
     let role_values_well_formed = |roles: &[RoleId], values: &Option<Vec<NativeAboxRoleValue>>| {
         values.as_ref().is_some_and(|values| {
@@ -14069,11 +15330,7 @@ fn native_generated_role_assertion_synchronized(
     if filler.negated {
         return false;
     }
-    let Some(target) = bridged
-        .nominal_seeds
-        .iter()
-        .find(|target| target.nominal_concept == filler.target)
-    else {
+    let Some(target) = nominal_seed_by_concept(ctx, bridged, filler.target) else {
         return false;
     };
     seed.role_assertions
@@ -14189,6 +15446,18 @@ fn try_establish_native_backend_expansion_blocking(
     seed: &NominalSeed,
     node: NodeId,
 ) -> bool {
+    try_establish_native_backend_expansion_blocking_cached(algo, ctx, bridged, seed, node, None, None)
+}
+
+fn try_establish_native_backend_expansion_blocking_cached(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    seed: &NominalSeed,
+    node: NodeId,
+    saturation_labels_replayable_cached: Option<bool>,
+    well_formed_cache: Option<&mut HashMap<(usize, usize), bool>>,
+) -> bool {
     if precomputation_replay_disabled(bridged)
         || node.is_none()
         || node.index() >= ctx.process_context().node_count()
@@ -14202,7 +15471,10 @@ fn try_establish_native_backend_expansion_blocking(
     // `if (assocData)` — the typed association must additionally COVER the seed's
     // asserted edges to stand in for the raw assertion linkers (see
     // `neighbour_expansion_blocking_candidate`).
-    let entry = {
+    // backendExpBlocking = isCompletelyHandled() && !hasRepresentativeSameIndividualMerging()
+    //                      && detMergedSameConsideredLabel == DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL
+    let mut expansion_blocked = false;
+    {
         let cache = bridged.native_representative_cache.borrow();
         let Some(cache) = cache.as_ref() else {
             return false;
@@ -14210,24 +15482,24 @@ fn try_establish_native_backend_expansion_blocking(
         if cache.association_write_aborted {
             return false;
         }
-        if !cache.saturation_labels_replayable() {
-            return false;
-        }
         let Some(entry) = cache.entries.get(&seed.individual_tag) else {
             return false;
         };
-        if !native_cache_entry_covers_seed(entry, seed) {
+        if !saturation_labels_replayable_cached
+            .unwrap_or_else(|| cache.saturation_labels_replayable())
+        {
             return false;
         }
-        entry.clone()
-    };
-
-    // backendExpBlocking = isCompletelyHandled() && !hasRepresentativeSameIndividualMerging()
-    //                      && detMergedSameConsideredLabel == DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL
-    let mut expansion_blocked = false;
-    if entry.reusable_for_full_completion()
-        && native_backend_concepts_synchronized(algo, ctx, bridged, seed, node, &entry)
-    {
+        if !native_cache_entry_covers_seed_cached(entry, seed, well_formed_cache) {
+            return false;
+        }
+        if entry.reusable_for_full_completion()
+            && native_backend_concepts_synchronized(algo, ctx, bridged, seed, node, entry)
+        {
+            expansion_blocked = true;
+        }
+    }
+    if expansion_blocked {
         if !ctx
             .process_context()
             .node(node)
@@ -14244,7 +15516,6 @@ fn try_establish_native_backend_expansion_blocking(
                     | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
             );
         }
-        expansion_blocked = true;
     }
     // The independent neighbour block: gated only on the config flag, exactly as
     // upstream. `PRFRETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED` schedules the
@@ -14274,7 +15545,7 @@ fn replay_native_representative_cache(
     node: NodeId,
     dependency_track_point: super::process::TrackPointId,
 ) -> bool {
-    let entry = {
+    {
         let cache = bridged.native_representative_cache.borrow();
         let Some(cache) = cache.as_ref() else {
             return true;
@@ -14288,48 +15559,46 @@ fn replay_native_representative_cache(
         if !native_cache_entry_covers_seed(entry, seed) {
             return false;
         }
-        entry.clone()
-    };
-
-    let Some(concept_values) = entry.concept_values.as_ref() else {
-        return false;
-    };
-    // Without the deterministic same individuals' nominal concepts the cached
-    // labels are not closed (positive nominals are not cache values), so the
-    // replay is skipped and the raw assertions re-derive the closure.
-    let Some(same_nominals) = native_deterministic_same_nominal_concepts(bridged, &entry, seed)
-    else {
-        return true;
-    };
-    for value in concept_values.iter().filter(|value| value.deterministic) {
-        algo.add_concept_to_individual_skip_and_processing(
-            value.concept,
-            value.negated,
-            node,
-            dependency_track_point,
-            true,
-            false,
-            false,
-            ctx,
-        );
-        if ctx.has_pending_signal() {
-            break;
+        let Some(concept_values) = entry.concept_values.as_ref() else {
+            return false;
+        };
+        // Without the deterministic same individuals' nominal concepts the cached
+        // labels are not closed (positive nominals are not cache values), so the
+        // replay is skipped and the raw assertions re-derive the closure.
+        let Some(same_nominals) = native_deterministic_same_nominal_concepts(bridged, entry, seed)
+        else {
+            return true;
+        };
+        for value in concept_values.iter().filter(|value| value.deterministic) {
+            algo.add_concept_to_individual_skip_and_processing(
+                value.concept,
+                value.negated,
+                node,
+                dependency_track_point,
+                true,
+                false,
+                false,
+                ctx,
+            );
+            if ctx.has_pending_signal() {
+                break;
+            }
         }
-    }
-    for concept in same_nominals {
-        if ctx.has_pending_signal() {
-            break;
+        for concept in same_nominals {
+            if ctx.has_pending_signal() {
+                break;
+            }
+            let mut target = node;
+            algo.add_concept_to_individual(
+                concept,
+                false,
+                &mut target,
+                dependency_track_point,
+                true,
+                true,
+                ctx,
+            );
         }
-        let mut target = node;
-        algo.add_concept_to_individual(
-            concept,
-            false,
-            &mut target,
-            dependency_track_point,
-            true,
-            true,
-            ctx,
-        );
     }
     ctx.process_context_mut()
         .node_mut(node)
@@ -14532,6 +15801,10 @@ fn extract_saturation_outcome(
     let mut unknown_unprocessed = 0usize;
     let mut unknown_eq_candidate = 0usize;
     let trust_insufficient = std::env::var_os("KM_HT_TRUST_INSUFFICIENT").is_some();
+    let mut shared_label_subsumers: HashMap<
+        super::saturation::satellites::ConceptSaturationDescriptorId,
+        (Vec<usize>, bool),
+    > = HashMap::default();
     for (i, &named) in bridged.named.iter().enumerate() {
         let base_node =
             super::saturation::algorithm::SaturationTaskHandleAlgorithm::s07_concept_reference_node(
@@ -14552,14 +15825,36 @@ fn extract_saturation_outcome(
             let sat_node = ctx.process_context().sat_node(node);
             let ind = sat_node.indirect_status_flags.get_flags();
             let dir = sat_node.direct_status_flags.get_flags();
+            let flags = ind | dir;
+            let nominal_or_incomplete = (bridged.has_native_nominals()
+                && (flags & F::INDSATFLAGNOMINALCONNECTION != 0
+                    || sat_node.is_abox_individual_representation_node()))
+                || (!sat_node.is_completed() && flags & F::INDSATFLAGCLASHED == 0);
             (
-                ind & F::INDSATFLAGCLASHED != 0,
-                ind & F::INDSATFLAGINSUFFICIENT != 0,
-                ind & F::INDSATFLAGUNPROCESSED != 0,
-                dir & F::INDSATFLAGEQCANDPROPLEMATIC != 0,
+                flags & F::INDSATFLAGCLASHED != 0,
+                flags & F::INDSATFLAGINSUFFICIENT != 0 || nominal_or_incomplete,
+                flags & F::INDSATFLAGUNPROCESSED != 0,
+                flags & F::INDSATFLAGEQCANDPROPLEMATIC != 0,
             )
         };
-        let (b_clash, b_insuf, b_unproc, _b_eqprob) = read(base_node, ctx);
+        let (mut b_clash, mut b_insuf, mut b_unproc, _b_eqprob) = read(base_node, ctx);
+        {
+            let mut chain_node = base_node;
+            while ctx
+                .process_context()
+                .sat_node(chain_node)
+                .has_substitute_individual_node()
+            {
+                let (c_clash, c_insuf, c_unproc, _) = read(chain_node, ctx);
+                b_clash |= c_clash;
+                b_insuf |= c_insuf;
+                b_unproc |= c_unproc;
+                chain_node = ctx
+                    .process_context()
+                    .sat_node(chain_node)
+                    .get_substitute_individual_node();
+            }
+        }
         let (r_clash, r_insuf, r_unproc, r_eqprob) = read(resolved, ctx);
         if std::env::var_os("KM_SAT_DEBUG").is_some() {
             eprintln!(
@@ -14578,28 +15873,95 @@ fn extract_saturation_outcome(
             .sat_node(resolved)
             .reapply_con_sat_label_set;
         if label.is_some() {
-            let mut des = ctx
+            let head = ctx
                 .process_context()
                 .reapply_con_sat_label_set(label)
                 .get_concept_saturation_description_linker();
-            while des.is_some() {
-                let (concept, negated) = {
-                    let d = ctx.process_context().con_sat_desc(des);
-                    (d.get_concept(), d.get_negation())
-                };
-                let op_code = ctx.ontology_arenas().concept(concept).get_operator_code();
-                eq_candidate_present |= op_code == op::CCEQCAND;
-                if !negated {
-                    if let Some(&idx) = named_index.get(&concept) {
-                        if idx != i {
-                            subs.push(idx);
+            if head.is_some() {
+                let copy_node = ctx
+                    .process_context()
+                    .sat_node(resolved)
+                    .get_copy_individual_node();
+                if copy_node.is_some()
+                    && copy_node.index() < ctx.process_context().sat_node_count()
+                {
+                    let copy_label = ctx
+                        .process_context()
+                        .sat_node(copy_node)
+                        .reapply_con_sat_label_set;
+                    if copy_label.is_some() {
+                        let copy_head = ctx
+                            .process_context()
+                            .reapply_con_sat_label_set(copy_label)
+                            .get_concept_saturation_description_linker();
+                        if copy_head.is_some() && !shared_label_subsumers.contains_key(&copy_head) {
+                            let mut copy_subs = Vec::new();
+                            let mut copy_eq = false;
+                            let mut d = copy_head;
+                            while d.is_some() {
+                                if let Some((cached_s, cached_e)) = shared_label_subsumers.get(&d) {
+                                    copy_eq |= *cached_e;
+                                    copy_subs.extend_from_slice(cached_s);
+                                    break;
+                                }
+                                let (concept, negated, next) = {
+                                    let desc = ctx.process_context().con_sat_desc(d);
+                                    (
+                                        desc.get_concept(),
+                                        desc.get_negation(),
+                                        desc.get_next_concept_desciptor(),
+                                    )
+                                };
+                                let op_code =
+                                    ctx.ontology_arenas().concept(concept).get_operator_code();
+                                copy_eq |= op_code == op::CCEQCAND;
+                                if !negated {
+                                    if let Some(&idx) = named_index.get(&concept) {
+                                        copy_subs.push(idx);
+                                    }
+                                }
+                                d = next;
+                            }
+                            copy_subs.sort_unstable();
+                            copy_subs.dedup();
+                            shared_label_subsumers.insert(copy_head, (copy_subs, copy_eq));
                         }
                     }
                 }
-                des = ctx
-                    .process_context()
-                    .con_sat_desc(des)
-                    .get_next_concept_desciptor();
+                if let Some((cached_subs, cached_eq)) = shared_label_subsumers.get(&head) {
+                    eq_candidate_present = *cached_eq;
+                    subs.extend(cached_subs.iter().copied().filter(|&idx| idx != i));
+                } else {
+                    let mut label_subs = Vec::new();
+                    let mut des = head;
+                    while des.is_some() {
+                        if let Some((cached_subs, cached_eq)) = shared_label_subsumers.get(&des) {
+                            eq_candidate_present |= *cached_eq;
+                            label_subs.extend_from_slice(cached_subs);
+                            break;
+                        }
+                        let (concept, negated, next) = {
+                            let d = ctx.process_context().con_sat_desc(des);
+                            (
+                                d.get_concept(),
+                                d.get_negation(),
+                                d.get_next_concept_desciptor(),
+                            )
+                        };
+                        let op_code = ctx.ontology_arenas().concept(concept).get_operator_code();
+                        eq_candidate_present |= op_code == op::CCEQCAND;
+                        if !negated {
+                            if let Some(&idx) = named_index.get(&concept) {
+                                label_subs.push(idx);
+                            }
+                        }
+                        des = next;
+                    }
+                    label_subs.sort_unstable();
+                    label_subs.dedup();
+                    subs.extend(label_subs.iter().copied().filter(|&idx| idx != i));
+                    shared_label_subsumers.insert(head, (label_subs, eq_candidate_present));
+                }
             }
         }
         subs.sort_unstable();
@@ -14631,7 +15993,7 @@ fn extract_saturation_outcome(
                     index != i && subs.binary_search(&index).is_err()
                 })
             });
-        if !missing_equivalence {
+        if !missing_equivalence && (!bridged.has_native_nominals() || bridged.unguarded_top_gcis == 0) {
             certain_subsumers[i] = Some(subs);
         }
     }
@@ -14737,12 +16099,18 @@ fn saturation_refuses_self_terminology(
     bridged: &Bridged,
     native_consistency_prefix: bool,
 ) -> bool {
+    if std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some() {
+        return saturation_refuses_terminology(ctx);
+    }
     if !saturation_refuses_terminology(ctx) {
         return false;
     }
-    bridged.has_native_nominals()
-        || native_consistency_prefix
-        || std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some()
+    native_consistency_prefix
+        || (bridged.has_native_nominals()
+            && bridged
+                .nominal_seeds
+                .iter()
+                .any(|seed| !seed.role_assertions.is_empty()))
 }
 
 /// Whether the terminology has a SELF concept that can create a self edge,
@@ -14802,6 +16170,7 @@ fn run_bridged_saturation_with_native_consistency_prefix(
     }
     let mut sat_algo = super::saturation::algorithm::SaturationTaskHandleAlgorithm::new();
     sat_algo.native_consistency_nominal_nondeterministic_prefix = native_consistency_prefix;
+    sat_algo.value_singletons = bridged.singleton_concepts.iter().copied().collect();
     configure_production_saturation(&mut sat_algo);
     let preparation_started = std::time::Instant::now();
     let preparation_budget =
@@ -14884,6 +16253,26 @@ fn run_bridged_saturation_with_native_consistency_prefix(
                 }
             }
             *bridged.native_representative_cache.borrow_mut() = Some(cache);
+        }
+    }
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        use super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as F;
+        let n_sat = ctx.process_context().sat_node_count();
+        for i in 0..n_sat {
+            let mut node = super::process::SatNodeId::new(i as Cint64);
+            let (init, comp, clashed) = {
+                let sn = ctx.process_context().sat_node(node);
+                (
+                    sn.is_initialized(),
+                    sn.is_completed(),
+                    (sn.direct_status_flags.get_flags() | sn.indirect_status_flags.get_flags())
+                        & F::INDSATFLAGCLASHED
+                        != 0,
+                )
+            };
+            if init && comp && !clashed {
+                sat_algo.collect_linked_successor_nodes(&mut node, ctx, INVALID);
+            }
         }
     }
     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
@@ -15047,6 +16436,29 @@ fn source_named_subsumer_closure_seeded(
     tin: &TInput,
     seed_pairs: &[(usize, usize)],
 ) -> crate::fxhash::FxHashSet<(usize, usize)> {
+    let supers = source_named_subsumer_closure_seeded_rows(tin, seed_pairs);
+    let total: usize = supers.iter().map(Vec::len).sum();
+    let mut closure: crate::fxhash::FxHashSet<(usize, usize)> =
+        crate::fxhash::FxHashSet::with_capacity_and_hasher(total, Default::default());
+    for (sub, row) in supers.into_iter().enumerate() {
+        for sup in row {
+            closure.insert((sub, sup as usize));
+        }
+    }
+    closure
+}
+
+fn source_named_subsumer_closure_seeded_rows(
+    tin: &TInput,
+    seed_pairs: &[(usize, usize)],
+) -> Vec<Vec<u32>> {
+    source_named_subsumer_closure_seeded_rows_with_initial_len(tin, seed_pairs).0
+}
+
+fn source_named_subsumer_closure_seeded_rows_with_initial_len(
+    tin: &TInput,
+    seed_pairs: &[(usize, usize)],
+) -> (Vec<Vec<u32>>, Vec<usize>) {
     let index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -15084,6 +16496,7 @@ fn source_named_subsumer_closure_seeded(
         index: &HashMap<&str, usize>,
         keys: &mut HashMap<&'a SourceConcept, usize>,
         providers: &mut Vec<Provider>,
+        direct_pairs: &mut Vec<(usize, usize)>,
     ) {
         let SourceConcept::Name(head) = head else {
             return;
@@ -15119,7 +16532,10 @@ fn source_named_subsumer_closure_seeded(
         if named.is_empty() && structural.is_empty() {
             return;
         }
-        if structural.is_empty() && named.len() == 1 && named[0] == sup {
+        if structural.is_empty() && named.len() == 1 {
+            if named[0] != sup {
+                direct_pairs.push((named[0], sup));
+            }
             return;
         }
         providers.push((sup, named, structural));
@@ -15127,27 +16543,52 @@ fn source_named_subsumer_closure_seeded(
 
     let mut keys: HashMap<&SourceConcept, usize> = HashMap::default();
     let mut providers: Vec<Provider> = Vec::new();
+    let mut direct_pairs: Vec<(usize, usize)> = Vec::new();
     for axiom in &tin.source_axioms {
         match axiom.kind {
             // `D ⊑ M` with a named right side — including the structural-left
             // GCI half of an equivalence the terminology could not host as a
             // direct definition.
             crate::json_io::SourceAxiomKind::SubClass => {
-                record_provider(&axiom.right, &axiom.left, &index, &mut keys, &mut providers);
+                record_provider(
+                    &axiom.right,
+                    &axiom.left,
+                    &index,
+                    &mut keys,
+                    &mut providers,
+                    &mut direct_pairs,
+                );
             }
             crate::json_io::SourceAxiomKind::Equivalent => {
-                record_provider(&axiom.left, &axiom.right, &index, &mut keys, &mut providers);
-                record_provider(&axiom.right, &axiom.left, &index, &mut keys, &mut providers);
+                record_provider(
+                    &axiom.left,
+                    &axiom.right,
+                    &index,
+                    &mut keys,
+                    &mut providers,
+                    &mut direct_pairs,
+                );
+                record_provider(
+                    &axiom.right,
+                    &axiom.left,
+                    &index,
+                    &mut keys,
+                    &mut providers,
+                    &mut direct_pairs,
+                );
             }
             crate::json_io::SourceAxiomKind::Disjoint => {}
         }
     }
 
     // Seed the per-class state from the asserted superclass sides.
-    let mut upper: Vec<crate::fxhash::FxHashSet<usize>> = vec![Default::default(); n_named];
-    let mut key_subjects: Vec<Vec<usize>> = vec![Vec::new(); keys.len()];
-    let mut pair_stack: Vec<(usize, usize)> = Vec::new();
-    let mut key_stack: Vec<(usize, usize)> = Vec::new();
+    let mut adj: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut direct_key_owners: Vec<Vec<u32>> = vec![Vec::new(); keys.len()];
+    for (sub, sup) in direct_pairs {
+        if sub != sup && sub < n_named && sup < n_named {
+            adj[sub].push(sup as u32);
+        }
+    }
     {
         let mut seed = |left: &SourceConcept, right: &SourceConcept| {
             let SourceConcept::Name(left) = left else {
@@ -15162,15 +16603,14 @@ fn source_named_subsumer_closure_seeded(
                 match part {
                     SourceConcept::Name(name) => {
                         if let Some(&sup) = index.get(name.as_str()) {
-                            pair_stack.push((sub, sup));
+                            if sub != sup {
+                                adj[sub].push(sup as u32);
+                            }
                         }
                     }
                     other => {
                         if let Some(&key) = keys.get(other) {
-                            if upper[sub].insert(key) {
-                                key_subjects[key].push(sub);
-                                key_stack.push((sub, key));
-                            }
+                            direct_key_owners[key].push(sub as u32);
                         }
                     }
                 }
@@ -15193,43 +16633,187 @@ fn source_named_subsumer_closure_seeded(
         // encounter. Every seed is already an established entailment, and the
         // only additional rule is conjunction introduction followed by the
         // asserted `D ⊑ M` definition direction.
-        pair_stack.extend(seed_pairs.iter().copied());
+        for &(sub, sup) in seed_pairs {
+            if sub != sup && sub < n_named && sup < n_named {
+                adj[sub].push(sup as u32);
+            }
+        }
+    }
+    for list in &mut adj {
+        list.sort_unstable();
+        list.dedup();
+    }
+    let initial_adj_len: Vec<usize> = adj.iter().map(Vec::len).collect();
+    for owners in &mut direct_key_owners {
+        owners.sort_unstable();
+        owners.dedup();
     }
 
-    let mut closure: crate::fxhash::FxHashSet<(usize, usize)> = crate::fxhash::FxHashSet::default();
-    let mut supers: Vec<Vec<usize>> = vec![Vec::new(); n_named];
-    let mut subs: Vec<Vec<usize>> = vec![Vec::new(); n_named];
+    let need_subs = !providers.is_empty();
+    let mut supers: Vec<Vec<u32>> = vec![Vec::new(); n_named];
+    let mut subs: Vec<Vec<u32>> = if need_subs {
+        vec![Vec::new(); n_named]
+    } else {
+        Vec::new()
+    };
+    let mut upper: Vec<Vec<u32>> = if need_subs {
+        vec![Vec::new(); n_named]
+    } else {
+        Vec::new()
+    };
+    let mut key_subjects: Vec<Vec<u32>> = if need_subs {
+        vec![Vec::new(); keys.len()]
+    } else {
+        Vec::new()
+    };
+    let mut seen: Vec<u32> = vec![0; n_named];
+    let mut epoch: u32 = 0;
+    let mut stack: Vec<u32> = Vec::new();
+    let mut non_universal_supers: Vec<Vec<u32>> = Vec::new();
+    let next_epoch = |seen: &mut Vec<u32>, epoch: &mut u32| -> u32 {
+        *epoch = epoch.wrapping_add(1);
+        if *epoch == 0 {
+            seen.fill(0);
+            *epoch = 1;
+        }
+        *epoch
+    };
     loop {
         // Propagate the current facts to a fixpoint: transitivity of the pair
         // relation, and inheritance of a superclass's conjuncts by its
         // subclasses (`N ⊑ M ⊑ D` ⇒ `N ⊑ D`).
-        while !pair_stack.is_empty() || !key_stack.is_empty() {
-            while let Some((sub, sup)) = pair_stack.pop() {
-                if sub == sup || sub >= n_named || sup >= n_named || !closure.insert((sub, sup)) {
-                    continue;
-                }
-                supers[sub].push(sup);
-                subs[sup].push(sub);
-                let inherited: Vec<usize> = upper[sup].iter().copied().collect();
-                for key in inherited {
-                    if upper[sub].insert(key) {
-                        key_subjects[key].push(sub);
-                        key_stack.push((sub, key));
-                    }
-                }
-                for i in 0..supers[sup].len() {
-                    pair_stack.push((sub, supers[sup][i]));
-                }
-                for i in 0..subs[sub].len() {
-                    pair_stack.push((subs[sub][i], sup));
+        let active_count = adj.iter().filter(|list| !list.is_empty()).count();
+        let mut in_deg = vec![0usize; n_named];
+        for list in &adj {
+            for &v in list {
+                if (v as usize) < n_named {
+                    in_deg[v as usize] += 1;
                 }
             }
-            while let Some((sub, key)) = key_stack.pop() {
-                for i in 0..subs[sub].len() {
-                    let descendant = subs[sub][i];
-                    if upper[descendant].insert(key) {
-                        key_subjects[key].push(descendant);
-                        key_stack.push((descendant, key));
+        }
+        // Any target `w` that already appears in `adj[u]` for every active
+        // `u != w` is marked `seen[w] = ep` in `u`'s direct-neighbour seeding
+        // loop before the stack DFS begins (`seen[u] = ep` when `u == w`).
+        // Scanning `w` inside `supers[vi]` or `adj[vi]` during the stack DFS
+        // can therefore never observe `seen[w] != ep`, so omitting universal
+        // targets from those secondary expansion lists is an exact graph
+        // identity.
+        let universal: Vec<bool> = (0..n_named)
+            .map(|w| {
+                active_count > 1
+                    && in_deg[w] + usize::from(!adj[w].is_empty()) == active_count
+            })
+            .collect();
+        let any_universal = universal.iter().any(|&u| u);
+        let non_universal_adj: Vec<Vec<u32>> = if any_universal {
+            adj.iter()
+                .map(|list| {
+                    list.iter()
+                        .copied()
+                        .filter(|&w| (w as usize) < n_named && !universal[w as usize])
+                        .collect()
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if any_universal && non_universal_supers.len() < n_named {
+            non_universal_supers.resize_with(n_named, Vec::new);
+        }
+        if need_subs {
+            for v in &mut subs {
+                v.clear();
+            }
+        }
+        for u in 0..n_named {
+            supers[u].clear();
+            if any_universal {
+                non_universal_supers[u].clear();
+            }
+            if adj[u].is_empty() {
+                continue;
+            }
+            let ep = next_epoch(&mut seen, &mut epoch);
+            seen[u] = ep;
+            for &v in &adj[u] {
+                let vi = v as usize;
+                if vi < n_named && seen[vi] != ep {
+                    seen[vi] = ep;
+                    stack.push(v);
+                }
+            }
+            while let Some(v) = stack.pop() {
+                let vi = v as usize;
+                supers[u].push(v);
+                if any_universal && !universal[vi] {
+                    non_universal_supers[u].push(v);
+                }
+                if need_subs {
+                    subs[vi].push(u as u32);
+                }
+                if vi < u {
+                    let v_len = if any_universal {
+                        non_universal_supers[vi].len()
+                    } else {
+                        supers[vi].len()
+                    };
+                    for idx in 0..v_len {
+                        let w = if any_universal {
+                            non_universal_supers[vi][idx]
+                        } else {
+                            supers[vi][idx]
+                        };
+                        let wi = w as usize;
+                        if seen[wi] != ep {
+                            seen[wi] = ep;
+                            supers[u].push(w);
+                            if any_universal && !universal[wi] {
+                                non_universal_supers[u].push(w);
+                            }
+                            if need_subs {
+                                subs[wi].push(u as u32);
+                            }
+                        }
+                    }
+                } else {
+                    let v_adj = if any_universal {
+                        &non_universal_adj[vi]
+                    } else {
+                        &adj[vi]
+                    };
+                    for &w in v_adj {
+                        let wi = w as usize;
+                        if wi < n_named && seen[wi] != ep {
+                            seen[wi] = ep;
+                            stack.push(w);
+                        }
+                    }
+                }
+            }
+            supers[u].sort_unstable();
+        }
+        if need_subs {
+            for u in &mut upper {
+                u.clear();
+            }
+            for key in 0..keys.len() {
+                key_subjects[key].clear();
+                let ep = next_epoch(&mut seen, &mut epoch);
+                let key_u32 = key as u32;
+                for &owner in &direct_key_owners[key] {
+                    let oi = owner as usize;
+                    if seen[oi] != ep {
+                        seen[oi] = ep;
+                        key_subjects[key].push(owner);
+                        upper[oi].push(key_u32);
+                    }
+                    for &desc in &subs[oi] {
+                        let di = desc as usize;
+                        if seen[di] != ep {
+                            seen[di] = ep;
+                            key_subjects[key].push(desc);
+                            upper[di].push(key_u32);
+                        }
                     }
                 }
             }
@@ -15239,6 +16823,7 @@ fn source_named_subsumer_closure_seeded(
         // discharge a body if it already carries every one of its conjuncts.
         let mut derived = false;
         for (sup, named, structural) in &providers {
+            let sup_u32 = *sup as u32;
             let mut best: Option<(usize, bool, usize)> = None;
             for &class in named {
                 let len = subs[class].len() + 1;
@@ -15252,25 +16837,28 @@ fn source_named_subsumer_closure_seeded(
                     best = Some((len, false, key));
                 }
             }
-            let candidates: Vec<usize> = match best {
+            let candidates: Vec<u32> = match best {
                 Some((_, true, class)) => {
                     let mut candidates = subs[class].clone();
-                    candidates.push(class);
+                    candidates.push(class as u32);
                     candidates
                 }
                 Some((_, false, key)) => key_subjects[key].clone(),
                 None => continue,
             };
-            for sub in candidates {
-                if sub == *sup || closure.contains(&(sub, *sup)) {
+            for sub_u32 in candidates {
+                let sub = sub_u32 as usize;
+                if sub == *sup || supers[sub].binary_search(&sup_u32).is_ok() {
                     continue;
                 }
-                let discharged = structural.iter().all(|key| upper[sub].contains(key))
-                    && named
-                        .iter()
-                        .all(|&class| class == sub || closure.contains(&(sub, class)));
+                let discharged = structural
+                    .iter()
+                    .all(|&key| upper[sub].binary_search(&(key as u32)).is_ok())
+                    && named.iter().all(|&class| {
+                        class == sub || supers[sub].binary_search(&(class as u32)).is_ok()
+                    });
                 if discharged {
-                    pair_stack.push((sub, *sup));
+                    adj[sub].push(sup_u32);
                     derived = true;
                 }
             }
@@ -15278,8 +16866,12 @@ fn source_named_subsumer_closure_seeded(
         if !derived {
             break;
         }
+        for list in &mut adj {
+            list.sort_unstable();
+            list.dedup();
+        }
     }
-    closure
+    (supers, initial_adj_len)
 }
 
 fn source_named_subsumer_closure(tin: &TInput) -> crate::fxhash::FxHashSet<(usize, usize)> {
@@ -15566,11 +17158,18 @@ fn bridged_classify_opts_with_trigger_absorption(
     use_satcache: bool,
     trigger_absorb: bool,
 ) -> Option<BridgedClassification> {
+    let max_workers = if std::env::var_os("KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE").is_some() {
+        8
+    } else {
+        std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .clamp(1, 8)
+    };
     let subject_workers = std::env::var("KM_BRIDGE_SUBJECT_WORKERS")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(1)
-        .clamp(1, 8);
+        .clamp(1, max_workers);
     bridged_classify_opts_with_trigger_absorption_workers(
         tin,
         use_saturation,
@@ -15587,11 +17186,20 @@ fn bridged_classify_opts_with_trigger_absorption_workers(
     trigger_absorb: bool,
     subject_workers: usize,
 ) -> Option<BridgedClassification> {
-    let subject_workers = subject_workers.clamp(1, 8);
-    let subject_batch = std::env::var("KM_BRIDGE_SUBJECT_BATCH")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .filter(|&value| value > 0);
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let subject_workers = if export_active {
+        1
+    } else {
+        subject_workers.clamp(1, 8)
+    };
+    let subject_batch = (!export_active)
+        .then(|| {
+            std::env::var("KM_BRIDGE_SUBJECT_BATCH")
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .filter(|&value| value > 0)
+        })
+        .flatten();
     if subject_workers == 1 {
         if let Some(batch_size) = subject_batch.filter(|&size| tin.queries.len() > size) {
             // Execute the unchanged complete per-subject classifier in bounded
@@ -15786,6 +17394,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // `saturation_expansion_concept_count` are 0 by construction and every
     // generated successor is expanded by the tableau instead of being replayed
     // from, and blocked by, its saturation node.
+    let native_saturation_outcome_requested =
+        use_saturation && std::env::var_os("KM_HT_NO_NATIVE_SAT_OUTCOME").is_none();
     let native_saturation_coupling_requested =
         use_satcache && native_nominals && !independent_abox_elided;
     let use_saturation = use_saturation && (!native_nominals || independent_abox_elided);
@@ -15804,6 +17414,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // name heuristic only to non-query helper concepts.
     let declared_queries: crate::fxhash::FxHashSet<usize> =
         tin.queries.iter().map(|&query| query as usize).collect();
+    let filter_ground_assertions = std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE").is_some();
     let universe: crate::fxhash::FxHashSet<usize> = tin
         .concepts
         .iter()
@@ -15811,6 +17422,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         .filter(|(index, n)| {
             (declared_queries.contains(index) || !crate::orchestrate::cb_to_ht::is_internal(n))
                 && !crate::orchestrate::cb_to_ht::is_bottom(n)
+                && !(filter_ground_assertions && n.contains("__ground_assertion_"))
         })
         .map(|(i, _)| i)
         .collect();
@@ -15834,8 +17446,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // reset to pristine between probes (`reset_probe_env`), instead of an
     // O(TBox) rebuild per subject AND per pairwise probe.
     let t_env = std::time::Instant::now();
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     let (mut algo, mut ctx, bridged) =
-        fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+        fresh_bridge_env_with_trigger_absorption_init(tin, trigger_absorb, false);
     report_bridge_memory("fresh-env");
     if progress {
         eprintln!(
@@ -15852,6 +17465,21 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         ));
         return None;
     }
+    let export_rbox = if export_active {
+        collect_bridge_rbox_rows(tin)
+    } else {
+        Vec::new()
+    };
+    let export_lazy_cceq = if export_active {
+        collect_lazy_cceq_defs(&ctx, &bridged, tin)
+    } else {
+        Vec::new()
+    };
+    let mut harvested_base_comp: Option<BridgeExtractedComponent> = None;
+    let harvested_subject_comps: std::cell::RefCell<HashMap<usize, Vec<BridgeExtractedComponent>>> =
+        std::cell::RefCell::new(HashMap::default());
+    let harvest_elapsed: std::cell::Cell<std::time::Duration> =
+        std::cell::Cell::new(std::time::Duration::ZERO);
     // Milestone: later exits that record no reason of their own report the
     // phase they left from.
     note_bridge_defer("consistency or classification phase (no specific reason recorded)");
@@ -15888,7 +17516,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     }
     out.subsumptions
         .extend(saturation_known_pairs.iter().copied());
+    let initial_out_subsumptions_len = out.subsumptions.len();
     let mut native_saturation_ran = false;
+    let mut precomputed_saturation_outcome: Option<SaturationOutcome> = None;
+    let mut saturation_aborted = false;
     // Armed once, after the precomputation saturation has COMPLETED and its
     // concept→saturation reference linkings have been verified to be present,
     // in range and disjoint from the ABox representation nodes. Stays false on
@@ -15902,8 +17533,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // branch-epoch journals do NOT restore (see the snapshot site below).
     let mut retained_consistency_branch_node = super::process::BranchNodeId::NONE;
     let mut retained_consistency_databox: Option<super::process::databox::ProcessingDataBox> = None;
+    let mut prebuilt_leaf: Option<RetainedConsistencyLeaf> = None;
     if bridged.has_native_nominals() {
-        if independent_abox_elided {
+        if independent_abox_elided && !export_active {
             // Role-free duplicate assertion signatures need one root each.
             // Otherwise decide every complete connected ABox component in a
             // fresh task. The disjoint-union certificate above is what permits
@@ -15929,18 +17561,35 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 configure_production_search(&mut algo);
                 match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
                     Some(false) => {
+                        if export_active {
+                            store_last_bridge_export_model(Ok(BridgeExportModel::inconsistent()));
+                        }
                         return Some(BridgedClassification {
                             consistent: false,
                             unsatisfiable: Vec::new(),
                             subsumptions: Vec::new(),
                         });
                     }
-                    Some(true) => {}
+                    Some(true) => {
+                        if export_active {
+                            harvested_base_comp = extract_bridge_component(
+                                &mut ctx,
+                                &bridged,
+                                tin,
+                                &export_rbox,
+                                &export_lazy_cceq,
+                                None,
+                                Some("⊤"),
+                                false,
+                            );
+                        }
+                    }
                     None => return None,
                 }
             }
         } else {
-            let model_certified = empty_role_nominal_model_certificate(tin, &bridged);
+            let model_certified =
+                !export_active && empty_role_nominal_model_certificate(tin, &bridged);
             if progress && model_certified {
                 eprintln!("BRIDGE-NOMINAL-CONSISTENCY: exact empty-role source model");
             }
@@ -15953,12 +17602,22 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // finished, unpoisoned completion (`native_nominal_consistency`).
             // A refusal here is known before any state is mutated.
             let conditional_full_schedule =
-                card_nominal_profile && !saturation_refuses_terminology(&ctx);
+                card_nominal_profile && !saturation_refuses_self_terminology(&ctx, &bridged, false);
             if progress && card_nominal_profile && !conditional_full_schedule {
                 eprintln!("BRIDGE-NOMINAL-CONSISTENCY: saturation refuses SELF; completion-only schedule");
             }
             if !model_certified {
+                let mut saturation_ok = false;
                 if conditional_full_schedule {
+                    reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
+                    saturation_ok = run_bridged_saturation(&mut ctx, &bridged);
+                    if !saturation_ok {
+                        saturation_aborted = true;
+                        let _ = extract_finished_saturation_outcome(&mut ctx, &bridged, false);
+                        reset_probe_env(&mut algo, &mut ctx, &bridged, false);
+                    }
+                }
+                if saturation_ok {
                     // `CTotallyPrecomputationThread` schedules these phases in this
                     // exact default conditional-full order: saturation first, then
                     // one all-root consistency completion. At 198 individuals the
@@ -15968,11 +17627,28 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         &mut precomputation_phase,
                         NativePrecomputationPhase::IndividualSaturation,
                     )?;
-                    reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
-                    if !run_bridged_saturation(&mut ctx, &bridged) {
-                        return None;
-                    }
                     native_saturation_ran = true;
+                    if native_saturation_outcome_requested && bridged.unguarded_top_gcis == 0 {
+                        if let Some(mut extracted) =
+                            extract_finished_saturation_outcome(&mut ctx, &bridged, true)
+                        {
+                            let any_certified = extracted.sat_verdict.iter().enumerate().any(
+                                |(idx, verdict)| {
+                                    *verdict == Some(true)
+                                        || (*verdict == Some(false)
+                                            && extracted.certain_subsumers[idx].is_some())
+                                },
+                            );
+                            if any_certified {
+                                for sub in 0..n_named {
+                                    if !extracted.label_certified(sub) {
+                                        extracted.known_subsumers[sub].clear();
+                                    }
+                                }
+                                precomputed_saturation_outcome = Some(extracted);
+                            }
+                        }
+                    }
                     advance_native_precomputation_phase(
                         &mut precomputation_phase,
                         NativePrecomputationPhase::FullConsistencyCompletion,
@@ -16074,6 +17750,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     algo.capture_first_fork_databox = false;
                     match consistency {
                         Some(false) => {
+                            if export_active {
+                                store_last_bridge_export_model(Ok(
+                                    BridgeExportModel::inconsistent(),
+                                ));
+                            }
                             return Some(BridgedClassification {
                                 consistent: false,
                                 unsatisfiable: Vec::new(),
@@ -16081,6 +17762,18 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             });
                         }
                         Some(true) => {
+                            if export_active {
+                                harvested_base_comp = extract_bridge_component(
+                                    &mut ctx,
+                                    &bridged,
+                                    tin,
+                                    &export_rbox,
+                                    &export_lazy_cceq,
+                                    None,
+                                    Some("⊤"),
+                                    false,
+                                );
+                            }
                             if algo.or_branch_open_count != branch_points_before
                                 || !algo.or_branch_stack.is_empty()
                                 || std::env::var_os("KM_BRIDGE_REPLAY_ALWAYS_OFF").is_some()
@@ -16317,7 +18010,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 resume_fork = false;
                                 drained_konclude = true;
                             }
-                            bridged.retained_base_depth.set(1);
+                            ctx.coalesce_branch_epochs_to(0);
+                            crate::mem::release_before_worker_wait();
+                            bridged.retained_base_depth.set(0);
                         } else {
                             drain_failed = true;
                             while let Some(open) = algo.or_branch_stack.pop() {
@@ -16384,6 +18079,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             }
                             algo.blocking_base_index = Some(std::sync::Arc::new(index));
                         }
+                        algo.retained_singleton_base = algo.build_retained_singleton_base(&ctx);
                         ctx.push_branch_epoch();
                         retained_consistency_base = true;
                     } else if progress {
@@ -16394,14 +18090,41 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 } else {
                     // Preserve the exact nominal-only schedule from efbcbbc. Its
                     // 10621 classification is a validated full-IRI reference.
+                    let prebuild_leaf_candidate = !export_active
+                        && std::env::var_os("KM_BRIDGE_FRESH_ENV").is_none()
+                        && std::env::var_os("KM_BRIDGE_NO_LEAF_REUSE").is_none()
+                        && bridged.has_native_nominals()
+                        && !independent_abox_elided
+                        && algo.conf_direct_rule_preprocessing
+                        && algo.conf_cache_oriented_or_ordering;
+                    if prebuild_leaf_candidate {
+                        install_native_nominal_backend_replay(&mut algo, &bridged);
+                    }
+                    if !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
+                        ctx.raise_stop(false);
+                    }
                     let mut decided = None;
                     for round in 0..=retry_rounds {
                         algo.probe_budget = Some(std::time::Duration::from_secs(
                             base_budget.saturating_mul(4u64.saturating_pow(round)),
                         ));
                         configure_production_search(&mut algo);
+                        let leaf_epoch_pushed = round == 0
+                            && prebuild_leaf_candidate
+                            && !ctx.has_pending_signal()
+                            && ctx.process_context().branch_epoch_depth() == 0
+                            && algo.or_branch_stack.is_empty();
+                        if leaf_epoch_pushed {
+                            ctx.push_branch_epoch();
+                            ctx.process_context_mut().push_spine_journal_epoch();
+                        }
                         match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
                             Some(false) => {
+                                if export_active {
+                                    store_last_bridge_export_model(Ok(
+                                        BridgeExportModel::inconsistent(),
+                                    ));
+                                }
                                 return Some(BridgedClassification {
                                     consistent: false,
                                     unsatisfiable: Vec::new(),
@@ -16409,6 +18132,73 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 });
                             }
                             Some(true) => {
+                                if leaf_epoch_pushed {
+                                    let owned = algo
+                                        .or_branch_stack
+                                        .iter()
+                                        .filter(|branch| branch.own_epoch)
+                                        .count();
+                                    let trusted = !ctx.has_pending_signal()
+                                        && !algo.completeness_poisoned
+                                        && algo.unrestored_advance_count == 0
+                                        && ctx.process_context().branch_epoch_depth() == 1 + owned;
+                                    if trusted {
+                                        let decisions = algo.or_branch_stack.len();
+                                        algo.or_branch_stack.clear();
+                                        ctx.clear_pending_signal();
+                                        ctx.base.set_current_individual_node(NodeId::NONE);
+                                        ctx.coalesce_branch_epochs_to(1);
+                                        crate::mem::release_before_worker_wait();
+                                        let depth = ctx.process_context().branch_epoch_depth();
+                                        let databox = ctx.processing_data_box().clone();
+                                        let next_id = ctx
+                                            .processing_data_box_mut()
+                                            .next_individual_node_id(false);
+                                        let branch_node = ctx.base.used_branch_tree_node;
+                                        let blocking_index = std::env::var_os("KM_HT_NO_BLOCKING_BASE_INDEX")
+                                            .is_none()
+                                            .then(|| std::sync::Arc::new(algo.build_blocking_base_index(&ctx)));
+                                        let singleton_base = algo.build_retained_singleton_base(&ctx);
+                                        ctx.process_context_mut().push_spine_journal_epoch();
+                                        ctx.push_branch_epoch();
+                                        let replay = std::sync::Arc::clone(
+                                            &algo.native_nominal_backend_replay,
+                                        );
+                                        if progress {
+                                            eprintln!(
+                                                "BRIDGE-LEAF built: decisions={} depth={} nodes={}",
+                                                decisions,
+                                                depth,
+                                                ctx.process_context().node_count()
+                                            );
+                                        }
+                                        prebuilt_leaf = Some(RetainedConsistencyLeaf {
+                                            depth,
+                                            base_depth: 0,
+                                            databox,
+                                            branch_node,
+                                            next_id,
+                                            decisions,
+                                            replay,
+                                            blocking_index,
+                                            singleton_base,
+                                        });
+                                    } else {
+                                        ctx.process_context_mut().pop_spine_journal_epoch();
+                                    }
+                                }
+                                if export_active {
+                                    harvested_base_comp = extract_bridge_component(
+                                        &mut ctx,
+                                        &bridged,
+                                        tin,
+                                        &export_rbox,
+                                        &export_lazy_cceq,
+                                        None,
+                                        Some("⊤"),
+                                        false,
+                                    );
+                                }
                                 decided = Some(());
                                 break;
                             }
@@ -16422,7 +18212,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 }
             }
         }
-        if !retained_consistency_base {
+        if !retained_consistency_base && prebuilt_leaf.is_none() {
             reset_classification_probe_env(
                 &mut algo,
                 &mut ctx,
@@ -16430,6 +18220,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 native_saturation_ran,
                 independent_abox_elided,
             );
+            if native_saturation_coupling {
+                install_bridge_saturation_node_expansion_cache(&mut ctx);
+            }
         }
     }
     let certified_unsatisfiable: crate::fxhash::FxHashSet<usize> = bridged
@@ -16465,10 +18258,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // with the coupling (u08/u17/u22) armed when `use_satcache`.
     let mut saturation_ran = native_saturation_ran;
     let mut satcache_active = false;
-    if use_saturation {
+    if (use_saturation || precomputed_saturation_outcome.is_some()) && !saturation_aborted {
         let t_sat = std::time::Instant::now();
         let mut saturation_complete = true;
-        let outcome = if use_satcache {
+        let outcome = if let Some(precomputed) = precomputed_saturation_outcome.take() {
+            Some(precomputed)
+        } else if use_satcache {
             let native_consistency_prefix = bridged
                 .native_consistency_nominal_nondeterministic_prefix
                 .borrow()
@@ -16557,13 +18352,25 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // labels emitted unconditionally); those subjects stay in the
             // residue below, where every candidate pair is re-derived by the
             // completion path before it may reach the output.
+            let has_pending_residue = pending
+                .iter()
+                .any(|&s| s < n_named && !outcome.label_certified(s));
+            let mut seen_certified = vec![false; n_named];
             for &s in &pending {
-                if !outcome.label_certified(s) {
+                if s >= n_named || seen_certified[s] || !outcome.label_certified(s) {
                     continue;
                 }
+                seen_certified[s] = true;
                 for &c in &outcome.known_subsumers[s] {
-                    if c != s && universe.contains(&c) && saturation_known_pairs.insert((s, c)) {
-                        out.subsumptions.push((s, c));
+                    if c != s && universe.contains(&c) {
+                        let is_new = if has_pending_residue {
+                            saturation_known_pairs.insert((s, c))
+                        } else {
+                            !saturation_known_pairs.contains(&(s, c))
+                        };
+                        if is_new {
+                            out.subsumptions.push((s, c));
+                        }
                     }
                 }
             }
@@ -16608,21 +18415,63 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // SCHEDULING unconditionally; only certified labels (see
             // `SaturationOutcome::label_certified`) may enter the trusted
             // subsumer sets that `certain_subsumer` accepts without a probe.
+            if !pending.is_empty() {
+                for &(sub, sup) in &saturation_known_pairs {
+                    if sub < n_named && sup < n_named && sub != sup {
+                        if let Err(pos) = outcome.known_subsumers[sub].binary_search(&sup) {
+                            outcome.known_subsumers[sub].insert(pos, sup);
+                        }
+                    }
+                }
+            }
             let known_subsumers_entailed: Vec<bool> = (0..n_named)
                 .map(|subject| outcome.label_certified(subject))
                 .collect();
-            let state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            let empty_verdict;
+            let empty_certain;
+            let empty_known;
+            let (kpset_verdict, kpset_certain, kpset_known) = if pending.is_empty() {
+                empty_verdict = vec![None; n_named];
+                empty_certain = vec![None; n_named];
+                empty_known = vec![Vec::new(); n_named];
+                (&empty_verdict, &empty_certain, &empty_known)
+            } else {
+                (
+                    &outcome.sat_verdict,
+                    &outcome.certain_subsumers,
+                    &outcome.known_subsumers,
+                )
+            };
+            let mut state = classifier.initialize_synchronous_kpset_from_saturation_data(
                 &bridged.named,
-                &outcome.sat_verdict,
-                &outcome.certain_subsumers,
-                &outcome.known_subsumers,
+                kpset_verdict,
+                kpset_certain,
+                kpset_known,
                 &known_subsumers_entailed,
                 &pending,
                 ctx.ontology_arenas().concepts(),
             );
+            if !pending.is_empty() {
+                for &(sub, sup) in &saturation_known_pairs {
+                    if sub < n_named
+                        && sup < n_named
+                        && sub != sup
+                        && !known_subsumers_entailed[sub]
+                        && state.item_ids[sub].is_some()
+                        && state.item_ids[sup].is_some()
+                    {
+                        if let Some(item) = state
+                            .ontology_item
+                            .get_concept_satisfiable_test_item_mut(state.item_ids[sub])
+                        {
+                            item.add_subsuming_concept_item(state.item_ids[sup]);
+                        }
+                    }
+                }
+            }
             pending = state.ordered_subjects.clone();
             kpset_state = Some(state);
-            saturation_ran = use_satcache && saturation_complete;
+            saturation_ran = native_saturation_ran || (use_satcache && saturation_complete);
             satcache_active = use_satcache && saturation_complete;
             if progress {
                 eprintln!(
@@ -16906,7 +18755,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // `saturation_known_pairs` is final from here on. Index it by subject once
     // so propagating a refuted candidate visits only that subject's known
     // supers instead of scanning every known pair.
-    let known_supers_by_sub: HashMap<usize, Vec<usize>> = {
+    let known_supers_by_sub: HashMap<usize, Vec<usize>> = if pending.is_empty() {
+        HashMap::default()
+    } else {
         let mut index: HashMap<usize, Vec<usize>> = HashMap::default();
         for &(sub, sup) in &saturation_known_pairs {
             index.entry(sub).or_default().push(sup);
@@ -16970,11 +18821,16 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 && algo.conf_direct_rule_preprocessing
                 && algo.conf_cache_oriented_or_ordering
         };
-    let leaf_state: std::cell::RefCell<Option<RetainedConsistencyLeaf>> = Default::default();
+    let mut initial_leaf_counts = RetainedLeafCounts::default();
+    if prebuilt_leaf.is_some() {
+        initial_leaf_counts.builds = 1;
+    }
+    let leaf_state: std::cell::RefCell<Option<RetainedConsistencyLeaf>> =
+        std::cell::RefCell::new(prebuilt_leaf);
     let leaf_job = std::cell::Cell::new(false);
     let leaf_job_ran = std::cell::Cell::new(false);
     let leaf_disabled = std::cell::Cell::new(false);
-    let leaf_counts = std::cell::Cell::new(RetainedLeafCounts::default());
+    let leaf_counts = std::cell::Cell::new(initial_leaf_counts);
     let leaf_update = |f: &dyn Fn(&mut RetainedLeafCounts)| {
         let mut counts = leaf_counts.get();
         f(&mut counts);
@@ -16982,7 +18838,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     };
     // Scheduling only: stop trying the leaf once alternative 1 was taken at
     // least 256 times and on more than half of the attempts (each fallback
-    // costs the attempt, the resuming job and a rebuild of the leaf).
+    // costs the attempt, the resuming job and a rebuild of the leaf). The
+    // round-2 caps (16 consecutive fallbacks, 32 drops) were dropped in
+    // engine10 round 5: together with the singleton batch split they made
+    // nominal-cover realization probes overrun the bounded bridge budget.
     let leaf_useful = || {
         let counts = leaf_counts.get();
         !leaf_disabled.get()
@@ -17104,7 +18963,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 // cpp 194-199 and readCalculationConfig cpp 536-539.
                 algo.conf_sat_exp_cache_retrieval = true;
                 algo.conf_sat_exp_cache_concept_expansion = true;
-                algo.conf_sat_exp_cache_satisfiable_blocking = true;
+                algo.conf_sat_exp_cache_satisfiable_blocking = !(export_active && prepare_only);
                 algo.conf_sat_exp_cache_writing = true;
             }
             // Saturation-node coupling (task #24 wave 2): Konclude's production
@@ -17343,6 +19202,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     let accepted = attempt.is_some() && retained_leaf_verdict_accepted(algo, ctx, unsat);
                     leaf_update(&|c| {
                         c.attempts += 1;
+                        if accepted {
+                            c.consecutive_fallbacks = 0;
+                        } else {
+                            c.consecutive_fallbacks += 1;
+                        }
                         match (accepted, unsat, attempt.is_some()) {
                             (true, false, _) => c.accepted_sat += 1,
                             (true, true, _) => c.accepted_root_cancel += 1,
@@ -17457,6 +19321,28 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 );
             }
             let (subs, authoritative, root) = readoff?;
+            if export_active
+                && !(authoritative && subs.len() == n_named)
+                && harvest_elapsed.get() < std::time::Duration::from_secs(30)
+                && !harvested_subject_comps.borrow().contains_key(&s)
+            {
+                let t_harv = std::time::Instant::now();
+                if let Some(comp) = extract_bridge_component(
+                    ctx,
+                    &bridged,
+                    tin,
+                    &export_rbox,
+                    &export_lazy_cceq,
+                    Some(root),
+                    Some(&tin.concepts[s]),
+                    true,
+                ) {
+                    if !comp.abbreviated_by_cache {
+                        harvested_subject_comps.borrow_mut().entry(s).or_default().push(comp);
+                    }
+                }
+                harvest_elapsed.set(harvest_elapsed.get() + t_harv.elapsed());
+            }
             // An authoritative read-off answers every named subsumer of `s`
             // except the still-`CCEQ` hosts, which no completion adds from
             // their definition. Those stay possible subsumers and are
@@ -17682,13 +19568,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 // a universal over has_part to every one of them, about 880
                 // nodes and 0.09 s per full batch on 1,374 subjects).
                 let mut refuted: HashSet<usize> = HashSet::default();
-                for chunk in batch.chunks(batch_chunk) {
-                    if chunk.len() < 2 {
-                        continue;
-                    }
+                for chunk in batch.chunks(batch_chunk).filter(|c| c.len() >= 2) {
                     // Only a satisfiable batch verdict is used, and that one is
                     // accepted on the leaf (docs/HYBRID-CB-HT.md §16); any other
-                    // verdict just leaves the pairs to their own probes.
+                    // verdict falls back or leaves the pairs to their own probes.
                     let on_leaf = leaf_reuse && leaf_useful();
                     leaf_job.set(on_leaf);
                     let restored = renew(algo, ctx, false);
@@ -17698,13 +19581,28 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     let mut seeds: Vec<(ConceptId, bool)> = vec![(bridged.named[s], false)];
                     seeds.extend(chunk.iter().map(|&c| (bridged.named[c], true)));
                     let mut batch_root = None;
-                    let t_batch = phase_timing.then(std::time::Instant::now);
-                    let (ins0, bt0, bo0) = (algo.stat_con_des_insertion_count, algo.or_backtrack_count, algo.or_branch_open_count);
-                    let verdict = bridged_unsat_rooted(algo, ctx, &bridged, &mut id_batch, &seeds, &mut batch_root);
+                    let mut t_batch = phase_timing.then(std::time::Instant::now);
+                    let (mut ins0, mut bt0, mut bo0) = (
+                        algo.stat_con_des_insertion_count,
+                        algo.or_backtrack_count,
+                        algo.or_branch_open_count,
+                    );
+                    let mut verdict = bridged_unsat_rooted(
+                        algo,
+                        ctx,
+                        &bridged,
+                        &mut id_batch,
+                        &seeds,
+                        &mut batch_root,
+                    );
+                    let backtracks = algo.or_backtrack_count - bt0;
                     if progress {
                         eprintln!(
                             "BRIDGE-BATCH-REFUTATION {} candidates={} of {} verdict={:?}",
-                            tin.concepts[s], chunk.len(), batch.len(), verdict.map(|unsat| if unsat { "unsat" } else { "sat" })
+                            tin.concepts[s],
+                            chunk.len(),
+                            batch.len(),
+                            verdict.map(|unsat| if unsat { "unsat" } else { "sat" })
                         );
                     }
                     if let Some(t) = t_batch {
@@ -17715,13 +19613,41 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             t.elapsed().as_secs_f64(),
                             ctx.process_context().node_count(),
                             algo.stat_con_des_insertion_count - ins0,
-                            algo.or_backtrack_count - bt0,
+                            backtracks,
                             algo.or_branch_open_count - bo0,
                         );
                     }
-                    let leaf_batch_ok = !leaf_job_ran.get() || retained_leaf_verdict_accepted(algo, ctx, false);
+                    let leaf_batch_ok =
+                        !leaf_job_ran.get() || retained_leaf_verdict_accepted(algo, ctx, false);
                     if verdict == Some(false) && leaf_batch_ok {
                         refuted.extend(chunk.iter().copied());
+                        if export_active
+                            && harvest_elapsed.get() < std::time::Duration::from_secs(30)
+                            && harvested_subject_comps.borrow().get(&s).map_or(0, Vec::len) < 4
+                        {
+                            if let Some(b_root) = batch_root {
+                                let t_harv = std::time::Instant::now();
+                                if let Some(comp) = extract_bridge_component(
+                                    ctx,
+                                    &bridged,
+                                    tin,
+                                    &export_rbox,
+                                    &export_lazy_cceq,
+                                    Some(b_root),
+                                    Some(&tin.concepts[s]),
+                                    true,
+                                ) {
+                                    if !comp.abbreviated_by_cache {
+                                        harvested_subject_comps
+                                            .borrow_mut()
+                                            .entry(s)
+                                            .or_default()
+                                            .push(comp);
+                                    }
+                                }
+                                harvest_elapsed.set(harvest_elapsed.get() + t_harv.elapsed());
+                            }
+                        }
                     }
                 }
                 refuted
@@ -17912,10 +19838,14 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 leaf_job.set(false);
                 restored?;
                 if leaf_job_ran.get() {
+                    algo.empty_alternative_witnesses =
+                        std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                    algo.empty_alternative_witness_requests.clear();
+                    algo.stop_on_unknown_empty_alternative_witness = true;
                     let mut id_leaf: i64 = probe_start_id;
-                    let parked = algo.saturation_cached_absorbed_disjunction_count;
+                    let mut parked = algo.saturation_cached_absorbed_disjunction_count;
                     let mut leaf_root = None;
-                    let verdict = bridged_unsat_rooted(
+                    let mut verdict = bridged_unsat_rooted(
                         algo,
                         ctx,
                         &bridged,
@@ -17923,9 +19853,55 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         &[(bridged.named[s], false), (bridged.named[c], true)],
                         &mut leaf_root,
                     );
-                    let accepted = verdict.is_some_and(|unsat| retained_leaf_verdict_accepted(algo, ctx, unsat));
+                    let mut accepted = verdict.is_some_and(|unsat| retained_leaf_verdict_accepted(algo, ctx, unsat));
+                    let mut leaf_witness_rounds = 0usize;
+                    while !accepted
+                        && !algo.empty_alternative_witness_requests.is_empty()
+                        && leaf_witness_rounds < 16
+                    {
+                        leaf_witness_rounds += 1;
+                        let requests = std::mem::take(&mut algo.empty_alternative_witness_requests);
+                        probe_empty_alternative_witnesses(
+                            tin,
+                            trigger_absorb,
+                            ctx,
+                            requests,
+                            &empty_alternative_witnesses,
+                            progress.then_some(s),
+                        );
+                        leaf_job.set(true);
+                        let restored = renew(algo, ctx, false);
+                        leaf_job.set(false);
+                        if restored.is_none() || !leaf_job_ran.get() {
+                            break;
+                        }
+                        algo.empty_alternative_witnesses =
+                            std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                        algo.empty_alternative_witness_requests.clear();
+                        algo.stop_on_unknown_empty_alternative_witness = true;
+                        id_leaf = probe_start_id;
+                        parked = algo.saturation_cached_absorbed_disjunction_count;
+                        leaf_root = None;
+                        verdict = bridged_unsat_rooted(
+                            algo,
+                            ctx,
+                            &bridged,
+                            &mut id_leaf,
+                            &[(bridged.named[s], false), (bridged.named[c], true)],
+                            &mut leaf_root,
+                        );
+                        accepted = verdict
+                            .is_some_and(|unsat| retained_leaf_verdict_accepted(algo, ctx, unsat));
+                    }
+                    algo.stop_on_unknown_empty_alternative_witness = false;
+                    algo.empty_alternative_witness_requests.clear();
                     leaf_update(&|counts| {
                         counts.attempts += 1;
+                        if accepted {
+                            counts.consecutive_fallbacks = 0;
+                        } else {
+                            counts.consecutive_fallbacks += 1;
+                        }
                         match (accepted, verdict) {
                             (true, Some(false)) => counts.accepted_sat += 1,
                             (true, _) => counts.accepted_root_cancel += 1,
@@ -17945,6 +19921,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 accepted
             } else {
             renew(algo, ctx, false)?;
+            algo.empty_alternative_witnesses =
+                std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+            algo.empty_alternative_witness_requests.clear();
+            algo.stop_on_unknown_empty_alternative_witness = true;
             let mut id2: i64 = probe_start_id;
             // Model harvesting needs a materialized model, as in the read-off:
             // SAT caching may park disjunctions without expanding them, which
@@ -17952,9 +19932,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // turns the parking off; forcing that here made probes up to 4x
             // dearer (ore_ont_5260), so keep the configured parking and use
             // the model only when the probe parked no disjunction at all.
-            let parked_before = algo.saturation_cached_absorbed_disjunction_count;
+            let mut parked_before = algo.saturation_cached_absorbed_disjunction_count;
             let mut model_root = None;
-            let v = bridged_unsat_rooted(
+            let mut v = bridged_unsat_rooted(
                 algo,
                 ctx,
                 &bridged,
@@ -17962,6 +19942,40 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 &[(bridged.named[s], false), (bridged.named[c], true)],
                 &mut model_root,
             );
+            let mut witness_rounds = 0usize;
+            while v.is_none()
+                && !algo.empty_alternative_witness_requests.is_empty()
+                && witness_rounds < 64
+            {
+                witness_rounds += 1;
+                let requests = std::mem::take(&mut algo.empty_alternative_witness_requests);
+                probe_empty_alternative_witnesses(
+                    tin,
+                    trigger_absorb,
+                    ctx,
+                    requests,
+                    &empty_alternative_witnesses,
+                    progress.then_some(s),
+                );
+                renew(algo, ctx, false)?;
+                algo.empty_alternative_witnesses =
+                    std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                algo.empty_alternative_witness_requests.clear();
+                algo.stop_on_unknown_empty_alternative_witness = true;
+                id2 = probe_start_id;
+                parked_before = algo.saturation_cached_absorbed_disjunction_count;
+                model_root = None;
+                v = bridged_unsat_rooted(
+                    algo,
+                    ctx,
+                    &bridged,
+                    &mut id2,
+                    &[(bridged.named[s], false), (bridged.named[c], true)],
+                    &mut model_root,
+                );
+            }
+            algo.stop_on_unknown_empty_alternative_witness = false;
+            algo.empty_alternative_witness_requests.clear();
             (v, parked_before, model_root)
             };
             if v.is_none() && algo.completeness_poisoned && cow_confirm {
@@ -17984,6 +19998,34 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             {
                 if let Some(tags) = model_root.and_then(|root| bridge_model_root_positive_tags(ctx, root)) {
                     probe_models.push(tags);
+                }
+            }
+            if export_active
+                && v == Some(false)
+                && harvest_elapsed.get() < std::time::Duration::from_secs(30)
+                && harvested_subject_comps.borrow().get(&s).map_or(0, Vec::len) < 4
+            {
+                if let Some(m_root) = model_root {
+                    let t_harv = std::time::Instant::now();
+                    if let Some(comp) = extract_bridge_component(
+                        ctx,
+                        &bridged,
+                        tin,
+                        &export_rbox,
+                        &export_lazy_cceq,
+                        Some(m_root),
+                        Some(&tin.concepts[s]),
+                        true,
+                    ) {
+                        if !comp.abbreviated_by_cache {
+                            harvested_subject_comps
+                                .borrow_mut()
+                                .entry(s)
+                                .or_default()
+                                .push(comp);
+                        }
+                    }
+                    harvest_elapsed.set(harvest_elapsed.get() + t_harv.elapsed());
                 }
             }
             match v {
@@ -18188,6 +20230,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             break;
         }
     }
+    drop(classify_one);
     if progress {
         eprintln!(
             "BRIDGE-SAT-PHASE verify-total: {:.2}s",
@@ -18226,10 +20269,31 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         }
         return None;
     }
-    if source_definition_closure {
+    drop(kpset_state);
+    drop(classifier);
+    if !export_active {
+        let _ = leaf_state.borrow_mut().take();
+        let _ = retained_consistency_databox.take();
+        ctx = CalculationAlgorithmContextBase::new();
+        algo = CompletionTaskHandleAlgorithm::new();
+    }
+    if source_definition_closure && out.subsumptions.len() > initial_out_subsumptions_len {
         let before = out.subsumptions.len();
-        let closed = source_named_subsumer_closure_seeded(tin, &out.subsumptions);
-        out.subsumptions.extend(closed);
+        let (closed, initial_adj_len) = source_named_subsumer_closure_seeded_rows_with_initial_len(
+            tin,
+            &out.subsumptions[initial_out_subsumptions_len..],
+        );
+        for (sub, row) in closed.into_iter().enumerate() {
+            if !subject_set.contains(&sub) || row.len() == initial_adj_len[sub] {
+                continue;
+            }
+            for sup_u32 in row {
+                let sup = sup_u32 as usize;
+                if universe.contains(&sup) && saturation_known_pairs.insert((sub, sup)) {
+                    out.subsumptions.push((sub, sup));
+                }
+            }
+        }
         if progress {
             eprintln!(
                 "BRIDGE-SOURCE-POST-CLOSURE seeded={} combined={}",
@@ -18238,6 +20302,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             );
         }
     }
+    drop(saturation_known_pairs);
     out.unsatisfiable.sort_unstable();
     out.unsatisfiable.dedup();
     if !out.unsatisfiable.is_empty() {
@@ -18258,18 +20323,60 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         let unsatisfiable: crate::fxhash::FxHashSet<usize> =
             out.unsatisfiable.iter().copied().collect();
         if !subjects.iter().any(|subject| !unsatisfiable.contains(subject)) {
-            drop((algo, ctx, bridged));
+            if !export_active {
+                drop((algo, ctx, bridged));
+                let (mut top_algo, mut top_ctx, top_bridged) =
+                    fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+                top_algo.probe_budget = Some(std::time::Duration::from_secs(base_budget));
+                configure_production_search(&mut top_algo);
+                let mut next_id = 1_000i64;
+                match bridged_top_satisfiable(&mut top_algo, &mut top_ctx, &top_bridged, &mut next_id) {
+                    Some(true) => {}
+                    Some(false) => {
+                        if progress {
+                            eprintln!("BRIDGE-CLASSIFY: owl:Thing is unsatisfiable, the ontology is inconsistent");
+                        }
+                        return Some(BridgedClassification {
+                            consistent: false,
+                            unsatisfiable: Vec::new(),
+                            subsumptions: Vec::new(),
+                        });
+                    }
+                    None => {
+                        note_bridge_defer("classify: owl:Thing satisfiability undecided");
+                        if progress {
+                            eprintln!("BRIDGE-CLASSIFY defer: owl:Thing satisfiability undecided");
+                        }
+                        return None;
+                    }
+                }
+                return Some(out);
+            }
             let (mut top_algo, mut top_ctx, top_bridged) =
                 fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
             top_algo.probe_budget = Some(std::time::Duration::from_secs(base_budget));
             configure_production_search(&mut top_algo);
             let mut next_id = 1_000i64;
             match bridged_top_satisfiable(&mut top_algo, &mut top_ctx, &top_bridged, &mut next_id) {
-                Some(true) => {}
+                Some(true) => {
+                    if harvested_base_comp.is_none() {
+                        harvested_base_comp = extract_bridge_component(
+                            &mut top_ctx,
+                            &top_bridged,
+                            tin,
+                            &export_rbox,
+                            &export_lazy_cceq,
+                            None,
+                            Some("⊤"),
+                            false,
+                        );
+                    }
+                }
                 Some(false) => {
                     if progress {
                         eprintln!("BRIDGE-CLASSIFY: owl:Thing is unsatisfiable, the ontology is inconsistent");
                     }
+                    store_last_bridge_export_model(Ok(BridgeExportModel::inconsistent()));
                     return Some(BridgedClassification {
                         consistent: false,
                         unsatisfiable: Vec::new(),
@@ -18286,7 +20393,4177 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             }
         }
     }
+    if export_active {
+        if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
+            let _ = std::fs::write(marker, b"bridge");
+        }
+        let classify_elapsed = t_env.elapsed();
+        let harvested_map = harvested_subject_comps.into_inner();
+        let base_abbreviated = harvested_base_comp
+            .as_ref()
+            .is_some_and(|c| c.abbreviated_by_cache);
+        let model_res = finish_bridge_export_model_from_live_state(
+            tin,
+            &out,
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &export_rbox,
+            &export_lazy_cceq,
+            harvested_base_comp,
+            harvested_map,
+            saturation_ran,
+            probe_start_id,
+            classify_elapsed,
+            |algo, ctx, force_reset_base| {
+                if let Some(leaf) = leaf_state.borrow_mut().take() {
+                    if retained_consistency_base && !force_reset_base {
+                        let _ = drop_retained_consistency_leaf(algo, ctx, &leaf);
+                    }
+                }
+                let restored = if retained_consistency_base && !force_reset_base {
+                    bridged.precomputation_replay_disabled.set(false);
+                    restore_retained_classification_base_with(
+                        algo,
+                        ctx,
+                        &bridged,
+                        retained_consistency_databox.as_ref()?,
+                        retained_consistency_branch_node,
+                        retained_consistency_next_id,
+                        retained_replay_snapshot.as_ref(),
+                        false,
+                    )
+                } else {
+                    None
+                };
+                if restored.is_none() {
+                    bridged
+                        .precomputation_replay_disabled
+                        .set(force_reset_base || base_abbreviated);
+                    reset_classification_probe_env(
+                        algo,
+                        ctx,
+                        &bridged,
+                        saturation_ran || native_saturation_ran,
+                        independent_abox_elided,
+                    );
+                }
+                configure_production_search(algo);
+                algo.empty_alternative_witnesses =
+                    std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                if ctx.base.used_sat_exp_cache_handler.is_some() {
+                    algo.conf_sat_exp_cache_retrieval = true;
+                    algo.conf_sat_exp_cache_concept_expansion = true;
+                    algo.conf_sat_exp_cache_satisfiable_blocking = false;
+                    algo.conf_sat_exp_cache_writing = true;
+                }
+                if satcache_active && !fresh_env {
+                    configure_production_completion_saturation_coupling(algo);
+                    algo.conf_saturation_satisfiabilitiy_expansion_cache_writing = false;
+                    algo.conf_saturation_concept_unsatisfiability_saturated_cache_writing = false;
+                    if self_cardinality {
+                        algo.conf_expand_created_successors_from_saturation = false;
+                        algo.conf_caching_blocking_from_saturation = false;
+                    }
+                } else if native_saturation_coupling && !fresh_env {
+                    configure_native_nominal_completion_saturation_coupling(algo);
+                }
+                algo.conf_sat_exp_cached_disj_absorp = false;
+                Some(())
+            },
+        );
+        store_last_bridge_export_model(model_res);
+    }
     Some(out)
+}
+
+/// Exported completion model from the native bridge (`km classify --export-model`,
+/// `docs/MODEL-EXPORT.md`).
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub(crate) struct BridgeExportModel {
+    pub contexts: Vec<String>,
+    pub labels: Vec<Vec<String>>,
+    pub edges: Vec<(usize, String, usize)>,
+    pub blocked: Vec<(usize, usize)>,
+    pub class_witnesses: Vec<(String, usize, bool)>,
+    pub inconsistent: bool,
+    pub partial_reason: Option<String>,
+    #[serde(default)]
+    pub base_labels: Vec<Vec<String>>,
+    #[serde(default)]
+    pub base_edges: Vec<(usize, String, usize)>,
+}
+
+impl BridgeExportModel {
+    pub(crate) fn inconsistent() -> Self {
+        Self {
+            inconsistent: true,
+            ..Self::default()
+        }
+    }
+}
+
+static LAST_BRIDGE_EXPORT_MODEL: std::sync::Mutex<Option<Result<BridgeExportModel, String>>> =
+    std::sync::Mutex::new(None);
+static BRIDGE_EXPORT_RBOX_OVERRIDE: std::sync::Mutex<Option<Vec<Vec<String>>>> =
+    std::sync::Mutex::new(None);
+
+pub(crate) fn store_last_bridge_export_model(res: Result<BridgeExportModel, String>) {
+    if let Ok(mut slot) = LAST_BRIDGE_EXPORT_MODEL.lock() {
+        *slot = Some(res);
+    }
+}
+
+pub(crate) fn take_last_bridge_export_model() -> Option<Result<BridgeExportModel, String>> {
+    LAST_BRIDGE_EXPORT_MODEL
+        .lock()
+        .ok()
+        .and_then(|mut slot| slot.take())
+}
+
+pub(crate) fn set_bridge_export_rbox_override(rbox: Vec<Vec<String>>) {
+    if let Ok(mut slot) = BRIDGE_EXPORT_RBOX_OVERRIDE.lock() {
+        *slot = Some(rbox);
+    }
+}
+
+fn collect_bridge_rbox_rows(tin: &TInput) -> Vec<Vec<String>> {
+    let mut rows: Vec<Vec<String>> = BRIDGE_EXPORT_RBOX_OVERRIDE
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .unwrap_or_default();
+    for &(r1, r2, sup) in &tin.chains {
+        if let (Some(n1), Some(n2), Some(ns)) =
+            (tin.roles.get(r1), tin.roles.get(r2), tin.roles.get(sup))
+        {
+            rows.push(vec![
+                "chain".to_string(),
+                n1.clone(),
+                n2.clone(),
+                ns.clone(),
+            ]);
+        }
+    }
+    for &r in &tin.transitive {
+        if let Some(nr) = tin.roles.get(r) {
+            rows.push(vec!["transitive".to_string(), nr.clone()]);
+        }
+    }
+    for clause in &tin.clauses {
+        if clause.body.len() == 1 && clause.head.len() == 1 {
+            if let (
+                HAtom::Role {
+                    r: sub,
+                    s: bs,
+                    t: bt,
+                },
+                HAtom::Role {
+                    r: sup,
+                    s: hs,
+                    t: ht,
+                },
+            ) = (&clause.body[0], &clause.head[0])
+            {
+                if let (Some(sub_name), Some(sup_name)) = (tin.roles.get(*sub), tin.roles.get(*sup))
+                {
+                    if bs == hs && bt == ht && bs != bt {
+                        rows.push(vec![
+                            "sub-role".to_string(),
+                            sub_name.clone(),
+                            sup_name.clone(),
+                        ]);
+                    } else if bs == ht && bt == hs && bs != bt {
+                        rows.push(vec![
+                            "inverse".to_string(),
+                            sub_name.clone(),
+                            sup_name.clone(),
+                        ]);
+                    }
+                }
+            }
+        } else if clause.body.is_empty() && clause.head.len() == 1 {
+            if let HAtom::Role { r, s, t } = &clause.head[0] {
+                if s == t {
+                    if let Some(r_name) = tin.roles.get(*r) {
+                        rows.push(vec!["reflexive".to_string(), r_name.clone()]);
+                    }
+                }
+            }
+        }
+    }
+    rows.sort();
+    rows.dedup();
+    rows
+}
+
+fn collect_lazy_cceq_defs(
+    _ctx: &CalculationAlgorithmContextBase,
+    _bridged: &Bridged,
+    tin: &TInput,
+) -> Vec<(usize, SourceConcept)> {
+    let name_to_idx: HashMap<&str, usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.as_str(), i))
+        .collect();
+    let mut lazy_cceq_defs: Vec<(usize, SourceConcept)> = Vec::new();
+    for ax in &tin.source_axioms {
+        if ax.kind != crate::json_io::SourceAxiomKind::Equivalent {
+            continue;
+        }
+        match (&ax.left, &ax.right) {
+            (SourceConcept::Name(n), rhs) if !matches!(rhs, SourceConcept::Name(_)) => {
+                if let Some(&c) = name_to_idx.get(n.as_str()) {
+                    lazy_cceq_defs.push((c, rhs.clone()));
+                }
+            }
+            (lhs, SourceConcept::Name(n)) if !matches!(lhs, SourceConcept::Name(_)) => {
+                if let Some(&c) = name_to_idx.get(n.as_str()) {
+                    lazy_cceq_defs.push((c, lhs.clone()));
+                }
+            }
+            _ => {}
+        }
+    }
+    lazy_cceq_defs
+}
+
+fn cceq_anchor_name(concept: &SourceConcept) -> Option<&str> {
+    match concept {
+        SourceConcept::Name(n)
+            if !n.starts_with("__")
+                && !matches!(
+                    n.as_str(),
+                    "owl:Thing" | "Thing" | "⊤" | "http://www.w3.org/2002/07/owl#Thing"
+                ) =>
+        {
+            Some(n.as_str())
+        }
+        SourceConcept::And(ops) => {
+            let mut found = None;
+            for op in ops {
+                if let Some(a) = cceq_anchor_name(op) {
+                    found = Some(a);
+                }
+            }
+            found
+        }
+        _ => None,
+    }
+}
+
+fn prune_redundant_sat_edges(
+    rep_ids: &[Cint64],
+    labels: &[HashSet<String>],
+    edges: &mut HashSet<(usize, String, usize)>,
+    multi_sat_counts: &mut HashMap<(usize, usize), usize>,
+) {
+    let mut by_src_role: HashMap<(usize, String), Vec<usize>> = HashMap::default();
+    for (u, r, v) in edges.iter() {
+        if *u != *v
+            && rep_ids.get(*v).copied().unwrap_or(0) >= SAT_REP_ID_BASE
+            && !labels.get(*v).is_none_or(HashSet::is_empty)
+        {
+            by_src_role.entry((*u, r.clone())).or_default().push(*v);
+        }
+    }
+    let mut to_remove: Vec<(usize, String, usize)> = Vec::new();
+    for ((u, r), targets) in by_src_role {
+        if targets.len() <= 1 {
+            continue;
+        }
+        for &v1 in &targets {
+            let c1 = multi_sat_counts.get(&(u, v1)).copied().unwrap_or(1);
+            let subsumed = targets.iter().any(|&v2| {
+                v2 != v1
+                    && labels[v1].is_subset(&labels[v2])
+                    && (labels[v1].len() < labels[v2].len() || v1 > v2)
+                    && multi_sat_counts.get(&(u, v2)).copied().unwrap_or(1) >= c1
+            });
+            if subsumed {
+                to_remove.push((u, r.clone(), v1));
+            }
+        }
+    }
+    for (u, r, v1) in to_remove {
+        edges.remove(&(u, r, v1));
+        if !edges.iter().any(|(su, _, sv)| *su == u && *sv == v1) {
+            multi_sat_counts.remove(&(u, v1));
+        }
+    }
+}
+
+#[derive(Clone)]
+struct BridgeExtractedComponent {
+    rep_ids: Vec<Cint64>,
+    contexts: Vec<String>,
+    labels: Vec<HashSet<String>>,
+    negated_named: Vec<HashSet<usize>>,
+    cceq_added: Vec<HashSet<usize>>,
+    edges: HashSet<(usize, String, usize)>,
+    blocked: Vec<(usize, usize)>,
+    external_blocked: Vec<(usize, Cint64)>,
+    root_local: Option<usize>,
+    abbreviated_by_cache: bool,
+}
+
+fn eval_source_concept_on_component(
+    concept: &SourceConcept,
+    u: usize,
+    n_elems: usize,
+    labels: &[HashSet<String>],
+    edges: &HashSet<(usize, String, usize)>,
+    out_adj: &HashMap<&str, Vec<Vec<usize>>>,
+    in_adj: &HashMap<&str, Vec<Vec<usize>>>,
+    blocked_map: &HashMap<usize, usize>,
+) -> bool {
+    use crate::frontend::syntax::Role as SynRole;
+    let eff = blocked_map.get(&u).copied().unwrap_or(u);
+    let empty_slice: &[usize] = &[];
+    let succs = |from: usize, role: &SynRole| -> Vec<usize> {
+        match role {
+            SynRole::Name(r) => {
+                if let Some(base) = r.strip_prefix("__inv__") {
+                    in_adj
+                        .get(base)
+                        .and_then(|v| v.get(from))
+                        .map_or(empty_slice, Vec::as_slice)
+                        .to_vec()
+                } else {
+                    out_adj
+                        .get(r.as_str())
+                        .and_then(|v| v.get(from))
+                        .map_or(empty_slice, Vec::as_slice)
+                        .to_vec()
+                }
+            }
+            SynRole::Inverse(r) => {
+                if let Some(base) = r.strip_prefix("__inv__") {
+                    out_adj
+                        .get(base)
+                        .and_then(|v| v.get(from))
+                        .map_or(empty_slice, Vec::as_slice)
+                        .to_vec()
+                } else {
+                    in_adj
+                        .get(r.as_str())
+                        .and_then(|v| v.get(from))
+                        .map_or(empty_slice, Vec::as_slice)
+                        .to_vec()
+                }
+            }
+            SynRole::Universal => (0..n_elems).collect(),
+        }
+    };
+    match concept {
+        SourceConcept::Top => true,
+        SourceConcept::Bottom => false,
+        SourceConcept::Name(name) => {
+            if matches!(name.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                true
+            } else if matches!(name.as_str(), "owl:Nothing" | "Nothing" | "⊥") {
+                false
+            } else {
+                labels[u].contains(name.as_str())
+            }
+        }
+        SourceConcept::Nominal(ind) => labels[u].contains(&format!("__nom__{ind}")),
+        SourceConcept::HasSelf(role) => match role {
+            SynRole::Name(r) | SynRole::Inverse(r) => {
+                let base = r.strip_prefix("__inv__").unwrap_or(r.as_str());
+                edges.contains(&(u, base.to_string(), u))
+                    || edges.contains(&(eff, base.to_string(), eff))
+            }
+            SynRole::Universal => true,
+        },
+        SourceConcept::Not(inner) => !eval_source_concept_on_component(
+            inner,
+            u,
+            n_elems,
+            labels,
+            edges,
+            out_adj,
+            in_adj,
+            blocked_map,
+        ),
+        SourceConcept::And(ops) => ops.iter().all(|op| {
+            eval_source_concept_on_component(
+                op,
+                u,
+                n_elems,
+                labels,
+                edges,
+                out_adj,
+                in_adj,
+                blocked_map,
+            )
+        }),
+        SourceConcept::Or(ops) => ops.iter().any(|op| {
+            eval_source_concept_on_component(
+                op,
+                u,
+                n_elems,
+                labels,
+                edges,
+                out_adj,
+                in_adj,
+                blocked_map,
+            )
+        }),
+        SourceConcept::Exists(role, filler) => succs(eff, role).into_iter().any(|v| {
+            eval_source_concept_on_component(
+                filler,
+                v,
+                n_elems,
+                labels,
+                edges,
+                out_adj,
+                in_adj,
+                blocked_map,
+            )
+        }),
+        SourceConcept::Forall(role, filler) => succs(eff, role).into_iter().all(|v| {
+            eval_source_concept_on_component(
+                filler,
+                v,
+                n_elems,
+                labels,
+                edges,
+                out_adj,
+                in_adj,
+                blocked_map,
+            )
+        }),
+        SourceConcept::AtLeast(n, role, filler) => {
+            succs(eff, role)
+                .into_iter()
+                .filter(|&v| {
+                    eval_source_concept_on_component(
+                        filler,
+                        v,
+                        n_elems,
+                        labels,
+                        edges,
+                        out_adj,
+                        in_adj,
+                        blocked_map,
+                    )
+                })
+                .count()
+                >= (*n).max(0) as usize
+        }
+        SourceConcept::AtMost(n, role, filler) => {
+            succs(eff, role)
+                .into_iter()
+                .filter(|&v| {
+                    eval_source_concept_on_component(
+                        filler,
+                        v,
+                        n_elems,
+                        labels,
+                        edges,
+                        out_adj,
+                        in_adj,
+                        blocked_map,
+                    )
+                })
+                .count()
+                <= (*n).max(0) as usize
+        }
+    }
+}
+
+const SAT_REP_ID_BASE: Cint64 = 1_000_000_000;
+
+fn sat_node_is_sufficient(
+    ctx: &CalculationAlgorithmContextBase,
+    node: super::process::SatNodeId,
+) -> bool {
+    use super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as F;
+    if node.is_none() || node.index() >= ctx.process_context().sat_node_count() {
+        return false;
+    }
+    let sn = ctx.process_context().sat_node(node);
+    let ind = sn.indirect_status_flags.get_flags();
+    let dir = sn.direct_status_flags.get_flags();
+    if (ind | dir)
+        & (F::INDSATFLAGCLASHED | F::INDSATFLAGINSUFFICIENT | F::INDSATFLAGUNPROCESSED)
+        != 0
+    {
+        return false;
+    }
+    let eqprob = dir & F::INDSATFLAGEQCANDPROPLEMATIC != 0;
+    if eqprob {
+        let label = sn.reapply_con_sat_label_set;
+        if label.is_some() {
+            let mut des = ctx
+                .process_context()
+                .reapply_con_sat_label_set(label)
+                .get_concept_saturation_description_linker();
+            while des.is_some() {
+                let c = ctx.process_context().con_sat_desc(des).get_concept();
+                if c.is_some() && ctx.ontology_arenas().concept(c).get_operator_code() == op::CCEQCAND
+                {
+                    return false;
+                }
+                des = ctx
+                    .process_context()
+                    .con_sat_desc(des)
+                    .get_next_concept_desciptor();
+            }
+        }
+    }
+    true
+}
+
+fn extract_bridge_component(
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    tin: &TInput,
+    rbox: &[Vec<String>],
+    lazy_cceq_defs: &[(usize, SourceConcept)],
+    root_node: Option<NodeId>,
+    root_context_name: Option<&str>,
+    only_root_connected: bool,
+) -> Option<BridgeExtractedComponent> {
+    let n_named = tin.concepts.len();
+    let n_roles = tin.roles.len() as Cint64;
+    let root_rep = match root_node {
+        Some(r) => Some(native_completion_merge_target(ctx, r, false)?),
+        None => None,
+    };
+    let root_rep_id = root_rep.map(|r| ctx.process_context().node(r).individual_node_id());
+
+    let skip_flags =
+        IndividualProcessNode::PRF_PURGEDBLOCKED | IndividualProcessNode::PRF_INDIRECTBLOCKED;
+    let mut reps: Vec<(Cint64, NodeId)> = Vec::new();
+    let mut seen_rep_ids: HashSet<Cint64> = HashSet::default();
+    let mut abbreviated_by_cache = false;
+
+    if only_root_connected {
+        if let Some(r_rep) = root_rep {
+            let r_id = ctx.process_context().node(r_rep).individual_node_id();
+            seen_rep_ids.insert(r_id);
+            reps.push((r_id, r_rep));
+            let mut cursor = 0usize;
+            while cursor < reps.len() {
+                let (cur_id, cur_node) = reps[cursor];
+                cursor += 1;
+                if cur_id < 0 {
+                    // Do not expand the global ABox from a reached nominal node;
+                    // the base consistency component already extracted the ABox.
+                    continue;
+                }
+                let mut neighbor_nodes: Vec<NodeId> = Vec::new();
+                {
+                    let pc = ctx.process_context();
+                    let flags = pc.node(cur_node).processing_restriction_flags;
+                    if flags & IndividualProcessNode::PRF_DIRECTBLOCKED != 0 {
+                        let blocker_raw = pc.node(cur_node).blocker_individual_node();
+                        if blocker_raw.is_some() {
+                            let b_id = pc.node(blocker_raw).individual_node_id();
+                            let cur = ctx
+                                .processing_data_box()
+                                .individual_process_node_vector()
+                                .get_data(b_id);
+                            let b_cand = if cur.is_some() { cur } else { blocker_raw };
+                            if let Some(b_rep) = native_completion_merge_target(ctx, b_cand, false)
+                            {
+                                let in_root_tree = b_rep == r_rep
+                                    || IndividualProcessNode::is_individual_ancestor_in_context(
+                                        pc, b_rep, r_rep,
+                                    );
+                                if in_root_tree {
+                                    neighbor_nodes.push(b_cand);
+                                }
+                            }
+                        }
+                    }
+                    let mut it = pc.node_successor_iterator(cur_node);
+                    while it.has_next() {
+                        let link = it.next_link(false);
+                        let other_id = it.next_individual_id(true);
+                        if link.is_some() {
+                            let raw = ctx
+                                .processing_data_box()
+                                .individual_process_node_vector()
+                                .get_data(other_id);
+                            if raw.is_some() {
+                                neighbor_nodes.push(raw);
+                            }
+                        }
+                    }
+                }
+                for raw_node in neighbor_nodes {
+                    let Some(rep) = native_completion_merge_target(ctx, raw_node, false) else {
+                        continue;
+                    };
+                    let flags = ctx.process_context().node(rep).processing_restriction_flags;
+                    if flags & skip_flags != 0 {
+                        continue;
+                    }
+                    let rep_id = ctx.process_context().node(rep).individual_node_id();
+                    if r_id >= 0 && rep_id >= 0 && rep_id < r_id {
+                        abbreviated_by_cache = true;
+                        continue;
+                    }
+                    if cur_id >= 0
+                        && rep_id < 0
+                        && IndividualProcessNode::is_individual_ancestor_in_context(
+                            ctx.process_context(),
+                            cur_node,
+                            rep,
+                        )
+                    {
+                        continue;
+                    }
+                    if seen_rep_ids.insert(rep_id) {
+                        reps.push((rep_id, rep));
+                    }
+                }
+            }
+        }
+    }
+
+    if reps.is_empty() {
+        let (lo, hi) = {
+            let v = ctx.processing_data_box().individual_process_node_vector();
+            (v.get_item_min_index(), v.get_item_max_index())
+        };
+        let mut raw_ids: Vec<Cint64> = (lo..=hi).collect();
+        for seed in &bridged.nominal_seeds {
+            raw_ids.push(-seed.individual_tag);
+        }
+        raw_ids.sort_unstable();
+        raw_ids.dedup();
+        for id in raw_ids {
+            let raw_node = ctx
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(id);
+            if raw_node.is_none() {
+                continue;
+            }
+            let Some(rep) = native_completion_merge_target(ctx, raw_node, false) else {
+                continue;
+            };
+            let flags = ctx.process_context().node(rep).processing_restriction_flags;
+            if flags & skip_flags != 0 {
+                continue;
+            }
+            let rep_id = ctx.process_context().node(rep).individual_node_id();
+            if seen_rep_ids.insert(rep_id) {
+                reps.push((rep_id, rep));
+            }
+        }
+    }
+    reps.sort_by_key(|&(rep_id, _)| (Some(rep_id) != root_rep_id, rep_id != 0, rep_id));
+
+    let mut rep_id_to_local: HashMap<Cint64, usize> = HashMap::default();
+    for (idx, &(rep_id, _)) in reps.iter().enumerate() {
+        rep_id_to_local.insert(rep_id, idx);
+    }
+
+    let n_comp_elems = reps.len();
+    let mut contexts: Vec<String> = Vec::with_capacity(n_comp_elems);
+    let mut labels: Vec<HashSet<String>> = vec![HashSet::default(); n_comp_elems];
+    let mut negated_named: Vec<HashSet<usize>> = vec![HashSet::default(); n_comp_elems];
+    let mut edges: HashSet<(usize, String, usize)> = HashSet::default();
+    let mut blocked: Vec<(usize, usize)> = Vec::new();
+    let mut external_blocked: Vec<(usize, Cint64)> = Vec::new();
+    let mut sat_expansion_roots: Vec<(usize, super::process::SatNodeId)> = Vec::new();
+
+    const ROLE_TAG_BASE: Cint64 = 100;
+    let decode_role = |r_tag: Cint64, src: usize, dst: usize| -> Option<(usize, String, usize)> {
+        if r_tag >= ROLE_TAG_BASE && r_tag < ROLE_TAG_BASE + n_roles {
+            let r_name = &tin.roles[(r_tag - ROLE_TAG_BASE) as usize];
+            if let Some(base) = r_name.strip_prefix("__inv__") {
+                Some((dst, base.to_string(), src))
+            } else {
+                Some((src, r_name.clone(), dst))
+            }
+        } else if r_tag >= ROLE_TAG_BASE + n_roles && r_tag < ROLE_TAG_BASE + 2 * n_roles {
+            let r_name = &tin.roles[(r_tag - ROLE_TAG_BASE - n_roles) as usize];
+            if let Some(base) = r_name.strip_prefix("__inv__") {
+                Some((src, base.to_string(), dst))
+            } else {
+                Some((dst, r_name.clone(), src))
+            }
+        } else {
+            None
+        }
+    };
+
+    for (local_idx, &(_rep_id, rep_node)) in reps.iter().enumerate() {
+        let ls = ctx
+            .process_context_mut()
+            .node_reapply_concept_label_set(rep_node);
+        if ls.is_some() {
+            let pc = ctx.process_context();
+            let onto = ctx.ontology_arenas();
+            let mut it = pc.label_set_concept_label_set_iterator(ls, true, false, true);
+            while it.has_value() {
+                let tag = it.get_data_tag(pc, onto);
+                let cd = it.get_concept_descriptor();
+                if cd.is_some() {
+                    let des = pc.con_desc(cd);
+                    if !des.is_negated() {
+                        if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                            labels[local_idx]
+                                .insert(tin.concepts[(tag - TAG_BASE) as usize].clone());
+                        }
+                        let con = des.get_concept();
+                        if con.is_some() && onto.concept(con).get_operator_code() == op::CCSELF {
+                            let role_id = onto.concept(con).get_role();
+                            if role_id.is_some() {
+                                let r_tag = onto.role(role_id).get_role_tag();
+                                if let Some(edge) = decode_role(r_tag, local_idx, local_idx) {
+                                    edges.insert(edge);
+                                }
+                            }
+                        }
+                    } else if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                        negated_named[local_idx].insert((tag - TAG_BASE) as usize);
+                    }
+                }
+                it.next_pp(pc);
+            }
+        }
+    }
+
+    if !only_root_connected || reps.iter().any(|&(id, _)| id < 0) {
+        for seed in &bridged.nominal_seeds {
+            let raw_node = ctx
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-seed.individual_tag);
+            if raw_node.is_none() {
+                continue;
+            }
+            let Some(rep) = native_completion_merge_target(ctx, raw_node, false) else {
+                continue;
+            };
+            let rep_id = ctx.process_context().node(rep).individual_node_id();
+            let Some(&src_local) = rep_id_to_local.get(&rep_id) else {
+                continue;
+            };
+            let c_tag = ctx
+                .ontology_arenas()
+                .concept(seed.nominal_concept)
+                .get_concept_tag();
+            if c_tag >= TAG_BASE && c_tag < TAG_BASE + n_named as Cint64 {
+                labels[src_local].insert(tin.concepts[(c_tag - TAG_BASE) as usize].clone());
+            }
+            if !only_root_connected {
+                for &(role_id, target_tag) in &seed.role_assertions {
+                    let t_raw = ctx
+                        .processing_data_box()
+                        .individual_process_node_vector()
+                        .get_data(-target_tag);
+                    if t_raw.is_none() {
+                        continue;
+                    }
+                    let Some(t_rep) = native_completion_merge_target(ctx, t_raw, false) else {
+                        continue;
+                    };
+                    let t_rep_id = ctx.process_context().node(t_rep).individual_node_id();
+                    let Some(&dst_local) = rep_id_to_local.get(&t_rep_id) else {
+                        continue;
+                    };
+                    if role_id.is_some() {
+                        let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+                        if let Some(edge) = decode_role(r_tag, src_local, dst_local) {
+                            edges.insert(edge);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (local_idx, &(rep_id, rep_node)) in reps.iter().enumerate() {
+        let ctx_name = if Some(rep_id) == root_rep_id {
+            root_context_name
+                .map(str::to_string)
+                .unwrap_or_else(|| "⊤".to_string())
+        } else if let Some(nom) = labels[local_idx]
+            .iter()
+            .filter(|c| c.starts_with("__nom__"))
+            .min()
+        {
+            nom.clone()
+        } else if rep_id == 0 {
+            "⊤".to_string()
+        } else {
+            format!("__ht_node_{rep_id}")
+        };
+        contexts.push(ctx_name);
+
+        if only_root_connected && rep_id < 0 {
+            continue;
+        }
+
+        let flags = ctx.process_context().node(rep_node).processing_restriction_flags;
+        if flags & IndividualProcessNode::PRF_DIRECTBLOCKED != 0 {
+            let blocker_raw = ctx.process_context().node(rep_node).blocker_individual_node();
+            if blocker_raw.is_some() {
+                let b_id = ctx
+                    .process_context()
+                    .node(blocker_raw)
+                    .individual_node_id();
+                let cur = ctx
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(b_id);
+                let b_node = if cur.is_some() { cur } else { blocker_raw };
+                if let Some(b_rep) = native_completion_merge_target(ctx, b_node, false) {
+                    let b_rep_id = ctx.process_context().node(b_rep).individual_node_id();
+                    if let Some(&b_local) = rep_id_to_local.get(&b_rep_id) {
+                        if b_local != local_idx {
+                            blocked.push((local_idx, b_local));
+                        }
+                    } else {
+                        let b_ls = ctx
+                            .process_context_mut()
+                            .node_reapply_concept_label_set(b_rep);
+                        if b_ls.is_some() {
+                            let pc = ctx.process_context();
+                            let onto = ctx.ontology_arenas();
+                            let mut it = pc.label_set_concept_label_set_iterator(
+                                b_ls, true, false, true,
+                            );
+                            while it.has_value() {
+                                let tag = it.get_data_tag(pc, onto);
+                                let cd = it.get_concept_descriptor();
+                                if cd.is_some() && !pc.con_desc(cd).is_negated() {
+                                    if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                        labels[local_idx].insert(
+                                            tin.concepts[(tag - TAG_BASE) as usize].clone(),
+                                        );
+                                    }
+                                }
+                                it.next_pp(pc);
+                            }
+                        }
+                        external_blocked.push((local_idx, b_rep_id));
+                        let nom_parent = {
+                            let pc = ctx.process_context();
+                            let al = pc.node(b_rep).ancestor_link;
+                            al.is_some() && {
+                                let src = pc.edge(al).get_source_individual();
+                                src.is_some() && pc.node(src).individual_node_id() < 0
+                            }
+                        };
+                        if !nom_parent {
+                            abbreviated_by_cache = true;
+                        }
+                    }
+                }
+            }
+        } else {
+            if flags
+                & (IndividualProcessNode::PRF_SATISFIABLECACHED
+                    | IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED
+                    | IndividualProcessNode::PRF_ANCESTORSATISFIABLECACHED
+                    | IndividualProcessNode::PRF_ANCESTORSIGNATUREBLOCKINGCACHED)
+                != 0
+            {
+                abbreviated_by_cache = true;
+            }
+            if flags & IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHEDINVALIDATED == 0 {
+                let mut resolved_sat = None;
+                let sbd = ctx.process_context().node(rep_node).indi_sat_block_data;
+                if sbd.is_some() {
+                    let pc = ctx.process_context();
+                    let sbd_ref = pc.indi_sat_block_data(sbd);
+                    let snode = sbd_ref.get_saturation_individual_node();
+                    let last_conf = sbd_ref.get_last_confirmed_concept_descriptior();
+                    if snode.is_some() {
+                        resolved_sat = Some(snode);
+                    }
+                    let con_set = pc.node(rep_node).use_reapply_con_label_set;
+                    let last_add = if con_set.is_some() {
+                        pc.label_set(con_set)
+                            .get_adding_sorted_concept_description_linker()
+                    } else {
+                        last_conf
+                    };
+                    if Some(rep_id) != root_rep_id
+                        && last_conf != last_add
+                        && flags
+                            & (IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED
+                                | IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED
+                                | IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED)
+                            != 0
+                    {
+                        abbreviated_by_cache = true;
+                    }
+                }
+                if let Some(snode) = resolved_sat {
+                    sat_expansion_roots.push((local_idx, snode));
+                } else if flags
+                    & (IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED
+                        | IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED
+                        | IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED)
+                    != 0
+                {
+                    abbreviated_by_cache = true;
+                }
+            }
+            if flags & IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED != 0
+            {
+                let mut resolved_sat = None;
+                if rep_id < 0 {
+                    if let Some(v) = ctx
+                        .processing_data_box()
+                        .individual_saturation_process_node_vector_ref()
+                    {
+                        let snode = v.get_data(-rep_id);
+                        if snode.is_some() {
+                            resolved_sat = Some(snode);
+                        }
+                    }
+                }
+                if let Some(snode) = resolved_sat {
+                    sat_expansion_roots.push((local_idx, snode));
+                } else {
+                    abbreviated_by_cache = true;
+                }
+            }
+        }
+
+        let mut keys: Vec<Cint64> = Vec::new();
+        {
+            let pc = ctx.process_context();
+            let mut it = pc.node_successor_iterator(rep_node);
+            while it.has_next() {
+                let link = it.next_link(false);
+                let other = it.next_individual_id(true);
+                if link.is_some() {
+                    keys.push(other);
+                }
+            }
+        }
+        keys.sort_unstable();
+        keys.dedup();
+        let mut raw_links: Vec<(RoleId, NodeId, NodeId)> = Vec::new();
+        {
+            let pc = ctx.process_context();
+            for other in keys {
+                let mut rit = pc.node_successor_role_iterator(rep_node, other);
+                while rit.has_next() {
+                    let link = rit.next(true);
+                    if link.is_some() {
+                        let e = pc.edge(link);
+                        raw_links.push((
+                            e.get_link_role(),
+                            e.get_source_individual(),
+                            e.get_destination_individual(),
+                        ));
+                    }
+                }
+            }
+        }
+        for (role_id, src_node, dst_node) in raw_links {
+            if !role_id.is_some() || !src_node.is_some() || !dst_node.is_some() {
+                continue;
+            }
+            let Some(src_rep) = native_completion_merge_target(ctx, src_node, false) else {
+                continue;
+            };
+            let Some(dst_rep) = native_completion_merge_target(ctx, dst_node, false) else {
+                continue;
+            };
+            let src_id = ctx.process_context().node(src_rep).individual_node_id();
+            let dst_id = ctx.process_context().node(dst_rep).individual_node_id();
+            if only_root_connected
+                && ((src_id < 0
+                    && dst_id >= 0
+                    && IndividualProcessNode::is_individual_ancestor_in_context(
+                        ctx.process_context(),
+                        dst_rep,
+                        src_rep,
+                    ))
+                    || (dst_id < 0
+                        && src_id >= 0
+                        && IndividualProcessNode::is_individual_ancestor_in_context(
+                            ctx.process_context(),
+                            src_rep,
+                            dst_rep,
+                        )))
+            {
+                continue;
+            }
+            let (Some(&src_local), Some(&dst_local)) =
+                (rep_id_to_local.get(&src_id), rep_id_to_local.get(&dst_id))
+            else {
+                continue;
+            };
+            let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+            if let Some(edge) = decode_role(r_tag, src_local, dst_local) {
+                edges.insert(edge);
+            }
+        }
+    }
+
+    if let (Some(rl), Some(rc_name)) = (
+        root_rep_id.and_then(|id| rep_id_to_local.get(&id).copied()),
+        root_context_name,
+    ) {
+        if rc_name != "⊤" && !rc_name.starts_with("__") {
+            labels[rl].insert(rc_name.to_string());
+        }
+    }
+
+    let mut all_rep_ids: Vec<Cint64> = reps.iter().map(|&(id, _)| id).collect();
+    if !sat_expansion_roots.is_empty() {
+        if !edges.is_empty() {
+            crate::engine::close_edges_under_rbox_rows(rbox, n_comp_elems, &mut edges).ok()?;
+        }
+        let comp_edges = edges.clone();
+        let named_index: crate::fxhash::FxHashMap<ConceptId, usize> = bridged
+            .named
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| (c, i))
+            .collect();
+        let resolve_sat_terminal = |ctx: &CalculationAlgorithmContextBase,
+                                    base: super::process::SatNodeId,
+                                    subs: &mut Vec<usize>,
+                                    chain_nodes: &mut Vec<super::process::SatNodeId>|
+         -> super::process::SatNodeId {
+            let mut cur = base;
+            let mut hops = 0usize;
+            while cur.is_some()
+                && cur.index() < ctx.process_context().sat_node_count()
+                && hops <= ctx.process_context().sat_node_count()
+            {
+                chain_nodes.push(cur);
+                let ref_link = ctx
+                    .process_context()
+                    .sat_node(cur)
+                    .get_saturation_concept_reference_linking();
+                if ref_link.is_some() {
+                    let item = ctx
+                        .process_context()
+                        .extended_con_ref_linking_data(ref_link);
+                    let concept = item.get_saturation_concept();
+                    if !item.get_saturation_negation() {
+                        if let Some(&idx) = named_index.get(&concept) {
+                            subs.push(idx);
+                        }
+                    }
+                }
+                if !ctx.process_context().sat_node(cur).has_substitute_individual_node() {
+                    break;
+                }
+                let nxt = ctx
+                    .process_context()
+                    .sat_node(cur)
+                    .get_substitute_individual_node();
+                if nxt == cur {
+                    break;
+                }
+                cur = nxt;
+                hops += 1;
+            }
+            cur
+        };
+
+        let add_sat_labels = |ctx: &CalculationAlgorithmContextBase,
+                              chain_nodes: &[super::process::SatNodeId],
+                              inter_subs: &[usize],
+                              local_idx: usize,
+                              labels: &mut [HashSet<String>],
+                              negated_named: &mut [HashSet<usize>],
+                              edges: &mut HashSet<(usize, String, usize)>| {
+            for &c_idx in inter_subs {
+                if c_idx < n_named {
+                    labels[local_idx].insert(tin.concepts[c_idx].clone());
+                }
+            }
+            for &snode in chain_nodes {
+                let label = ctx
+                    .process_context()
+                    .sat_node(snode)
+                    .reapply_con_sat_label_set;
+                if label.is_some() {
+                    let mut des = ctx
+                        .process_context()
+                        .reapply_con_sat_label_set(label)
+                        .get_concept_saturation_description_linker();
+                    let mut walked = 0usize;
+                    while des.is_some()
+                        && des.index() < ctx.process_context().con_sat_desc_count()
+                        && walked <= ctx.process_context().con_sat_desc_count()
+                    {
+                        let (concept, negated, next) = {
+                            let d = ctx.process_context().con_sat_desc(des);
+                            (
+                                d.get_concept(),
+                                d.get_negation(),
+                                d.get_next_concept_desciptor(),
+                            )
+                        };
+                        if concept.is_some()
+                            && concept.index() < ctx.ontology_arenas().concept_count() as usize
+                        {
+                            let tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+                            if !negated {
+                                if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                    labels[local_idx]
+                                        .insert(tin.concepts[(tag - TAG_BASE) as usize].clone());
+                                }
+                                if ctx.ontology_arenas().concept(concept).get_operator_code()
+                                    == op::CCSELF
+                                {
+                                    let role_id = ctx.ontology_arenas().concept(concept).get_role();
+                                    if role_id.is_some() {
+                                        let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+                                        if let Some(edge) = decode_role(r_tag, local_idx, local_idx) {
+                                            edges.insert(edge);
+                                        }
+                                    }
+                                }
+                            } else if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                negated_named[local_idx].insert((tag - TAG_BASE) as usize);
+                            }
+                        }
+                        des = next;
+                        walked += 1;
+                    }
+                }
+            }
+        };
+
+        let mut sat_to_local: HashMap<usize, usize> = HashMap::default();
+        let mut multi_sat_counts: HashMap<(usize, usize), usize> = HashMap::default();
+        let mut queued_sat_pairs: HashSet<(usize, usize)> = HashSet::default();
+        let mut queue: std::collections::VecDeque<(usize, super::process::SatNodeId)> =
+            std::collections::VecDeque::new();
+        for (local_idx, base_snode) in sat_expansion_roots {
+            let mut inter_subs = Vec::new();
+            let mut chain_nodes = Vec::new();
+            let snode = resolve_sat_terminal(ctx, base_snode, &mut inter_subs, &mut chain_nodes);
+            if !sat_node_is_sufficient(ctx, base_snode) || !sat_node_is_sufficient(ctx, snode) {
+                abbreviated_by_cache = true;
+                continue;
+            }
+            add_sat_labels(
+                ctx,
+                &chain_nodes,
+                &inter_subs,
+                local_idx,
+                &mut labels,
+                &mut negated_named,
+                &mut edges,
+            );
+            if queued_sat_pairs.insert((local_idx, snode.index())) {
+                queue.push_back((local_idx, snode));
+            }
+        }
+
+        while let Some((src_local, snode)) = queue.pop_front() {
+            let linked_hash = ctx
+                .process_context_mut()
+                .sat_node_ext_linked_role_successor_hash(snode, false);
+            if !linked_hash.is_some() {
+                continue;
+            }
+            let role_buckets: Vec<(RoleId, _)> = ctx
+                .process_context()
+                .linked_role_sat_succ_hash(linked_hash)
+                .get_linked_role_successor_hash()
+                .iter()
+                .map(|(&role, &data)| (role, data))
+                .collect();
+            for (role_id, bucket) in role_buckets {
+                if !role_id.is_some() {
+                    continue;
+                }
+                let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+                let mut successors: Vec<_> = ctx
+                    .process_context()
+                    .linked_role_sat_succ_data(bucket)
+                    .get_successor_node_data_map()
+                    .values()
+                    .copied()
+                    .collect();
+                successors.sort_by_key(|&succ_id| {
+                    if succ_id.is_none()
+                        || succ_id.index() >= ctx.process_context().sat_succ_data_count()
+                    {
+                        (2u8, 0usize)
+                    } else {
+                        let sd = ctx.process_context().sat_succ_data(succ_id);
+                        if sd.value_nominal_connection {
+                            (0u8, sd.value_nominal_id as usize)
+                        } else {
+                            (1u8, usize::MAX - sd.succ_indi_node.index())
+                        }
+                    }
+                });
+                for succ_id in successors {
+                    if succ_id.is_none()
+                        || succ_id.index() >= ctx.process_context().sat_succ_data_count()
+                    {
+                        continue;
+                    }
+                    let (active, succ_count, val_nom, val_nom_id, succ_snode) = {
+                        let sd = ctx.process_context().sat_succ_data(succ_id);
+                        (
+                            sd.is_active(),
+                            sd.succ_count,
+                            sd.value_nominal_connection,
+                            sd.value_nominal_id,
+                            sd.succ_indi_node,
+                        )
+                    };
+                    if !active {
+                        continue;
+                    }
+                    if val_nom {
+                        let nom_rep_id = -val_nom_id;
+                        let dst_local = if let Some(&loc) = rep_id_to_local.get(&nom_rep_id) {
+                            loc
+                        } else {
+                            let loc = contexts.len();
+                            rep_id_to_local.insert(nom_rep_id, loc);
+                            all_rep_ids.push(nom_rep_id);
+                            let mut lbl = HashSet::default();
+                            if let Some(seed) = bridged
+                                .nominal_seeds
+                                .iter()
+                                .find(|s| s.individual_tag == val_nom_id)
+                            {
+                                let c_tag = ctx
+                                    .ontology_arenas()
+                                    .concept(seed.nominal_concept)
+                                    .get_concept_tag();
+                                if c_tag >= TAG_BASE && c_tag < TAG_BASE + n_named as Cint64 {
+                                    lbl.insert(tin.concepts[(c_tag - TAG_BASE) as usize].clone());
+                                }
+                            }
+                            let ctx_name = lbl
+                                .iter()
+                                .filter(|c| c.starts_with("__nom__"))
+                                .min()
+                                .cloned()
+                                .unwrap_or_else(|| format!("__ht_node_{nom_rep_id}"));
+                            contexts.push(ctx_name);
+                            labels.push(lbl);
+                            negated_named.push(HashSet::default());
+                            loc
+                        };
+                        if let Some(edge) = decode_role(r_tag, src_local, dst_local) {
+                            edges.insert(edge);
+                        }
+                        continue;
+                    }
+                    if !succ_snode.is_some()
+                        || succ_snode.index() >= ctx.process_context().sat_node_count()
+                    {
+                        continue;
+                    }
+                    let mut inter_subs = Vec::new();
+                    let mut chain_nodes = Vec::new();
+                    let term_snode =
+                        resolve_sat_terminal(ctx, succ_snode, &mut inter_subs, &mut chain_nodes);
+                    if !sat_node_is_sufficient(ctx, succ_snode)
+                        || !sat_node_is_sufficient(ctx, term_snode)
+                    {
+                        abbreviated_by_cache = true;
+                        continue;
+                    }
+                    if let Some((probe_s, ref r_name, probe_d)) =
+                        decode_role(r_tag, src_local, usize::MAX)
+                    {
+                        let mut term_named: Vec<&str> = Vec::new();
+                        for &c_idx in &inter_subs {
+                            if c_idx < n_named {
+                                term_named.push(tin.concepts[c_idx].as_str());
+                            }
+                        }
+                        for &cn in &chain_nodes {
+                            let t_lbl = ctx
+                                .process_context()
+                                .sat_node(cn)
+                                .reapply_con_sat_label_set;
+                            if t_lbl.is_some() {
+                                let mut des = ctx
+                                    .process_context()
+                                    .reapply_con_sat_label_set(t_lbl)
+                                    .get_concept_saturation_description_linker();
+                                let mut walked = 0usize;
+                                while des.is_some()
+                                    && des.index() < ctx.process_context().con_sat_desc_count()
+                                    && walked <= ctx.process_context().con_sat_desc_count()
+                                {
+                                    let (concept, negated, next) = {
+                                        let d = ctx.process_context().con_sat_desc(des);
+                                        (
+                                            d.get_concept(),
+                                            d.get_negation(),
+                                            d.get_next_concept_desciptor(),
+                                        )
+                                    };
+                                    if !negated
+                                        && concept.is_some()
+                                        && concept.index()
+                                            < ctx.ontology_arenas().concept_count() as usize
+                                    {
+                                        let tag = ctx
+                                            .ontology_arenas()
+                                            .concept(concept)
+                                            .get_concept_tag();
+                                        if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                            term_named.push(
+                                                tin.concepts[(tag - TAG_BASE) as usize].as_str(),
+                                            );
+                                        }
+                                    }
+                                    des = next;
+                                    walked += 1;
+                                }
+                            }
+                        }
+                        let mut covering_targets: Vec<usize> =
+                            if probe_s == src_local && probe_d == usize::MAX {
+                                comp_edges
+                                    .iter()
+                                    .chain(edges.iter())
+                                    .filter_map(|(u, r, v)| {
+                                        (*u == src_local
+                                            && *v < labels.len()
+                                            && r == r_name
+                                            && term_named.iter().all(|c| labels[*v].contains(*c)))
+                                        .then_some(*v)
+                                    })
+                                    .collect()
+                            } else {
+                                comp_edges
+                                    .iter()
+                                    .chain(edges.iter())
+                                    .filter_map(|(u, r, v)| {
+                                        (*u < labels.len()
+                                            && *v == src_local
+                                            && r == r_name
+                                            && term_named.iter().all(|c| labels[*u].contains(*c)))
+                                        .then_some(*u)
+                                    })
+                                    .collect()
+                            };
+                        covering_targets.sort_unstable();
+                        covering_targets.dedup();
+                        if covering_targets.len() >= (succ_count.max(1) as usize) {
+                            if src_local < n_comp_elems {
+                                for cov_v in covering_targets {
+                                    if !comp_edges.iter().any(|(u, _, _)| *u == cov_v)
+                                        && queued_sat_pairs.insert((cov_v, term_snode.index()))
+                                    {
+                                        queue.push_back((cov_v, term_snode));
+                                    }
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                    let dst_local = if let Some(&loc) = sat_to_local.get(&succ_snode.index()) {
+                        for &c_idx in &inter_subs {
+                            if c_idx < n_named {
+                                labels[loc].insert(tin.concepts[c_idx].clone());
+                            }
+                        }
+                        loc
+                    } else {
+                        let nom_ind = ctx
+                            .process_context()
+                            .sat_node(term_snode)
+                            .get_nominal_individual();
+                        if nom_ind.is_some()
+                            && nom_ind.index() < ctx.ontology_arenas().individual_count() as usize
+                        {
+                            let ind_tag = ctx
+                                .ontology_arenas()
+                                .individual(nom_ind)
+                                .get_individual_id();
+                            let nom_rep_id = -ind_tag;
+                            if let Some(&loc) = rep_id_to_local.get(&nom_rep_id) {
+                                sat_to_local.insert(succ_snode.index(), loc);
+                                loc
+                            } else {
+                                let loc = contexts.len();
+                                rep_id_to_local.insert(nom_rep_id, loc);
+                                sat_to_local.insert(succ_snode.index(), loc);
+                                all_rep_ids.push(nom_rep_id);
+                                contexts.push(format!("__ht_node_{nom_rep_id}"));
+                                labels.push(HashSet::default());
+                                negated_named.push(HashSet::default());
+                                add_sat_labels(
+                                    ctx,
+                                    &chain_nodes,
+                                    &inter_subs,
+                                    loc,
+                                    &mut labels,
+                                    &mut negated_named,
+                                    &mut edges,
+                                );
+                                if let Some(nom) = labels[loc]
+                                    .iter()
+                                    .filter(|c| c.starts_with("__nom__"))
+                                    .min()
+                                    .cloned()
+                                {
+                                    contexts[loc] = nom;
+                                }
+                                loc
+                            }
+                        } else {
+                            let loc = contexts.len();
+                            let sat_rep_id = SAT_REP_ID_BASE + succ_snode.index() as Cint64;
+                            sat_to_local.insert(succ_snode.index(), loc);
+                            all_rep_ids.push(sat_rep_id);
+                            contexts.push(format!("__sat_node_{}", succ_snode.index()));
+                            labels.push(HashSet::default());
+                            negated_named.push(HashSet::default());
+                            add_sat_labels(
+                                ctx,
+                                &chain_nodes,
+                                &inter_subs,
+                                loc,
+                                &mut labels,
+                                &mut negated_named,
+                                &mut edges,
+                            );
+                            queue.push_back((loc, term_snode));
+                            loc
+                        }
+                    };
+                    if let Some(edge) = decode_role(r_tag, src_local, dst_local) {
+                        edges.insert(edge);
+                    }
+                    if succ_count > 1 && succ_count <= 32 && all_rep_ids[dst_local] >= SAT_REP_ID_BASE {
+                        let entry = multi_sat_counts.entry((src_local, dst_local)).or_insert(1);
+                        if (succ_count as usize) > *entry {
+                            *entry = succ_count as usize;
+                        }
+                    }
+                }
+            }
+        }
+        prune_redundant_sat_edges(&all_rep_ids, &labels, &mut edges, &mut multi_sat_counts);
+        if !multi_sat_counts.is_empty() {
+            let mut pairs: Vec<((usize, usize), usize)> = multi_sat_counts.into_iter().collect();
+            pairs.sort_unstable();
+            let snapshot: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
+            for ((src_local, dst_local), count) in pairs {
+                for copy_idx in 1..count {
+                    let clone_loc = contexts.len();
+                    all_rep_ids.push(0);
+                    contexts.push(format!("{}_card_{copy_idx}", contexts[dst_local]));
+                    let dst_lbl = labels[dst_local].clone();
+                    labels.push(dst_lbl);
+                    let dst_neg = negated_named[dst_local].clone();
+                    negated_named.push(dst_neg);
+                    for (u, r, v) in &snapshot {
+                        if *u == src_local && *v == dst_local {
+                            edges.insert((src_local, r.clone(), clone_loc));
+                        } else if *u == dst_local && *v == src_local {
+                            edges.insert((clone_loc, r.clone(), src_local));
+                        } else if *u == dst_local && *v == dst_local {
+                            edges.insert((clone_loc, r.clone(), clone_loc));
+                        } else if *u == dst_local {
+                            edges.insert((clone_loc, r.clone(), *v));
+                        } else if *v == dst_local {
+                            edges.insert((*u, r.clone(), clone_loc));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let n_elems = contexts.len();
+    if !only_root_connected || all_rep_ids.iter().any(|&id| id < 0) {
+        for entry in &tin.nominal_abox.individuals {
+            let mut all_noms = vec![format!("__nom__{}", entry.individual)];
+            for p in &entry.proxies {
+                if !all_noms.contains(p) {
+                    all_noms.push(p.clone());
+                }
+            }
+            for u in 0..n_elems {
+                if all_noms.iter().any(|n| labels[u].contains(n)) {
+                    for n in &all_noms {
+                        labels[u].insert(n.clone());
+                    }
+                }
+            }
+        }
+    }
+    if !only_root_connected || !edges.is_empty() {
+        crate::engine::close_edges_under_rbox_rows(rbox, n_elems, &mut edges).ok()?;
+    }
+
+    let mut cceq_added: Vec<HashSet<usize>> = vec![HashSet::default(); n_elems];
+    if !blocked.is_empty() {
+        let mut out_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        let mut in_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        for (u, r, v) in &edges {
+            out_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*u]
+                .push(*v);
+            in_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*v]
+                .push(*u);
+        }
+        let empty_blocked: HashMap<usize, usize> = HashMap::default();
+        if lazy_cceq_defs.len() <= 256 {
+            for &(u, b) in &blocked {
+                let mut_adj = edges
+                    .iter()
+                    .any(|(x, r, y)| *x == u && *y == b && edges.contains(&(*y, r.clone(), *x)));
+                if !mut_adj || contexts[u].starts_with("__dt__") {
+                    continue;
+                }
+                for _ in 0..lazy_cceq_defs.len() + 1 {
+                    let mut changed = false;
+                    for (c_idx, def) in lazy_cceq_defs {
+                        let c_name = &tin.concepts[*c_idx];
+                        if labels[u].contains(c_name.as_str()) || negated_named[u].contains(c_idx) {
+                            continue;
+                        }
+                        if eval_source_concept_on_component(
+                            def,
+                            u,
+                            n_elems,
+                            &labels,
+                            &edges,
+                            &out_adj,
+                            &in_adj,
+                            &empty_blocked,
+                        ) {
+                            labels[u].insert(c_name.clone());
+                            cceq_added[u].insert(*c_idx);
+                            changed = true;
+                        }
+                    }
+                    if !changed {
+                        break;
+                    }
+                }
+            }
+        }
+        blocked.retain(|&(u, b)| {
+            let mut_adj = edges
+                .iter()
+                .any(|(x, r, y)| *x == u && *y == b && edges.contains(&(*y, r.clone(), *x)));
+            if !mut_adj {
+                return true;
+            }
+            !tin.source_axioms.iter().all(|ax| {
+                if source_concept_contains_internal_datatype(&ax.left)
+                    || source_concept_contains_internal_datatype(&ax.right)
+                {
+                    return true;
+                }
+                let l = eval_source_concept_on_component(
+                    &ax.left,
+                    u,
+                    n_elems,
+                    &labels,
+                    &edges,
+                    &out_adj,
+                    &in_adj,
+                    &empty_blocked,
+                );
+                let r = eval_source_concept_on_component(
+                    &ax.right,
+                    u,
+                    n_elems,
+                    &labels,
+                    &edges,
+                    &out_adj,
+                    &in_adj,
+                    &empty_blocked,
+                );
+                match ax.kind {
+                    crate::json_io::SourceAxiomKind::SubClass => !l || r,
+                    crate::json_io::SourceAxiomKind::Equivalent => l == r,
+                    crate::json_io::SourceAxiomKind::Disjoint => !(l && r),
+                }
+            })
+        });
+    }
+
+    if !blocked.is_empty() {
+        let blocked_map: HashMap<usize, usize> = blocked.iter().copied().collect();
+        let resolve_b = |start: usize| -> usize {
+            let mut cur = start;
+            let mut hops = 0;
+            while let Some(&nxt) = blocked_map.get(&cur) {
+                if nxt == cur || hops > n_elems {
+                    break;
+                }
+                cur = nxt;
+                hops += 1;
+            }
+            cur
+        };
+        let snapshot: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
+        for &(u, _) in &blocked {
+            let b = resolve_b(u);
+            let b_labels: Vec<String> = labels[b].iter().cloned().collect();
+            for c in b_labels {
+                labels[u].insert(c);
+            }
+            for &(src, ref r, dst) in &snapshot {
+                if src == b && dst == b {
+                    edges.insert((u, r.clone(), u));
+                }
+            }
+        }
+    }
+
+    if !lazy_cceq_defs.is_empty() && lazy_cceq_defs.len() <= 256 {
+        let mut out_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        let mut in_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        for (u, r, v) in &edges {
+            out_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*u]
+                .push(*v);
+            in_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*v]
+                .push(*u);
+        }
+        let blocked_map: HashMap<usize, usize> = blocked.iter().copied().collect();
+        for _ in 0..lazy_cceq_defs.len() + 1 {
+            let mut changed = false;
+            for (c_idx, def) in lazy_cceq_defs {
+                let c_name = &tin.concepts[*c_idx];
+                for u in 0..n_elems {
+                    if contexts[u].starts_with("__dt__")
+                        || labels[u]
+                            .iter()
+                            .any(|c| c.starts_with("__dt__") || c == "__sort__data")
+                        || labels[u].contains(c_name.as_str())
+                        || negated_named[u].contains(c_idx)
+                    {
+                        continue;
+                    }
+                    if eval_source_concept_on_component(
+                        def,
+                        u,
+                        n_elems,
+                        &labels,
+                        &edges,
+                        &out_adj,
+                        &in_adj,
+                        &blocked_map,
+                    ) {
+                        labels[u].insert(c_name.clone());
+                        cceq_added[u].insert(*c_idx);
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    let root_local = root_rep_id.and_then(|id| rep_id_to_local.get(&id).copied());
+    Some(BridgeExtractedComponent {
+        rep_ids: all_rep_ids,
+        contexts,
+        labels,
+        negated_named,
+        cceq_added,
+        edges,
+        blocked,
+        external_blocked,
+        root_local,
+        abbreviated_by_cache,
+    })
+}
+
+fn extract_saturation_subject_component(
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    tin: &TInput,
+    rbox: &[Vec<String>],
+    lazy_cceq_defs: &[(usize, SourceConcept)],
+    named_index: &HashMap<ConceptId, usize>,
+    subject_idx: usize,
+    shared_sat_elems: Option<&HashMap<Cint64, usize>>,
+) -> Option<BridgeExtractedComponent> {
+    if ctx.process_context().sat_node_count() == 0 || subject_idx >= bridged.named.len() {
+        return None;
+    }
+    let named_cid = bridged.named[subject_idx];
+    let base_node =
+        super::saturation::algorithm::SaturationTaskHandleAlgorithm::s07_concept_reference_node(
+            named_cid, false, ctx,
+        );
+    if base_node.is_none() {
+        return None;
+    }
+    let n_named = tin.concepts.len();
+    let n_roles = tin.roles.len() as Cint64;
+    const ROLE_TAG_BASE: Cint64 = 100;
+    let decode_role = |r_tag: Cint64, src: usize, dst: usize| -> Option<(usize, String, usize)> {
+        if r_tag >= ROLE_TAG_BASE && r_tag < ROLE_TAG_BASE + n_roles {
+            let r_name = &tin.roles[(r_tag - ROLE_TAG_BASE) as usize];
+            if let Some(base) = r_name.strip_prefix("__inv__") {
+                Some((dst, base.to_string(), src))
+            } else {
+                Some((src, r_name.clone(), dst))
+            }
+        } else if r_tag >= ROLE_TAG_BASE + n_roles && r_tag < ROLE_TAG_BASE + 2 * n_roles {
+            let r_name = &tin.roles[(r_tag - ROLE_TAG_BASE - n_roles) as usize];
+            if let Some(base) = r_name.strip_prefix("__inv__") {
+                Some((src, base.to_string(), dst))
+            } else {
+                Some((dst, r_name.clone(), src))
+            }
+        } else {
+            None
+        }
+    };
+    let resolve_sat_terminal = |ctx: &CalculationAlgorithmContextBase,
+                                base: super::process::SatNodeId,
+                                subs: &mut Vec<usize>,
+                                chain_nodes: &mut Vec<super::process::SatNodeId>|
+     -> super::process::SatNodeId {
+        let mut cur = base;
+        let mut hops = 0usize;
+        while cur.is_some()
+            && cur.index() < ctx.process_context().sat_node_count()
+            && hops <= ctx.process_context().sat_node_count()
+        {
+            chain_nodes.push(cur);
+            let ref_link = ctx
+                .process_context()
+                .sat_node(cur)
+                .get_saturation_concept_reference_linking();
+            if ref_link.is_some() {
+                let item = ctx
+                    .process_context()
+                    .extended_con_ref_linking_data(ref_link);
+                let concept = item.get_saturation_concept();
+                if !item.get_saturation_negation() {
+                    if let Some(&idx) = named_index.get(&concept) {
+                        subs.push(idx);
+                    }
+                }
+            }
+            if !ctx.process_context().sat_node(cur).has_substitute_individual_node() {
+                break;
+            }
+            let nxt = ctx
+                .process_context()
+                .sat_node(cur)
+                .get_substitute_individual_node();
+            if nxt == cur {
+                break;
+            }
+            cur = nxt;
+            hops += 1;
+        }
+        cur
+    };
+
+    let mut root_subs = vec![subject_idx];
+    let mut root_chain_nodes = Vec::new();
+    let root_snode =
+        resolve_sat_terminal(ctx, base_node, &mut root_subs, &mut root_chain_nodes);
+    if !sat_node_is_sufficient(ctx, base_node) || !sat_node_is_sufficient(ctx, root_snode) {
+        return None;
+    }
+
+    let mut rep_ids: Vec<Cint64> = Vec::new();
+    let mut contexts: Vec<String> = Vec::new();
+    let mut labels: Vec<HashSet<String>> = Vec::new();
+    let mut negated_named: Vec<HashSet<usize>> = Vec::new();
+    let mut edges: HashSet<(usize, String, usize)> = HashSet::default();
+    let mut sat_to_local: HashMap<usize, usize> = HashMap::default();
+    let mut rep_id_to_local: HashMap<Cint64, usize> = HashMap::default();
+
+    let mut add_sat_labels = |ctx: &CalculationAlgorithmContextBase,
+                              chain_nodes: &[super::process::SatNodeId],
+                              inter_subs: &[usize],
+                              local_idx: usize,
+                              labels: &mut [HashSet<String>],
+                              negated_named: &mut [HashSet<usize>],
+                              edges: &mut HashSet<(usize, String, usize)>| {
+        for &c_idx in inter_subs {
+            if c_idx < n_named {
+                labels[local_idx].insert(tin.concepts[c_idx].clone());
+            }
+        }
+        for &snode in chain_nodes {
+            let label = ctx
+                .process_context()
+                .sat_node(snode)
+                .reapply_con_sat_label_set;
+            if label.is_some() {
+                let mut des = ctx
+                    .process_context()
+                    .reapply_con_sat_label_set(label)
+                    .get_concept_saturation_description_linker();
+                let mut walked = 0usize;
+                while des.is_some()
+                    && des.index() < ctx.process_context().con_sat_desc_count()
+                    && walked <= ctx.process_context().con_sat_desc_count()
+                {
+                    let (concept, negated, next) = {
+                        let d = ctx.process_context().con_sat_desc(des);
+                        (
+                            d.get_concept(),
+                            d.get_negation(),
+                            d.get_next_concept_desciptor(),
+                        )
+                    };
+                    if concept.is_some()
+                        && concept.index() < ctx.ontology_arenas().concept_count() as usize
+                    {
+                        let tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+                        if !negated {
+                            if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                labels[local_idx]
+                                    .insert(tin.concepts[(tag - TAG_BASE) as usize].clone());
+                            }
+                            if ctx.ontology_arenas().concept(concept).get_operator_code() == op::CCSELF
+                            {
+                                let role_id = ctx.ontology_arenas().concept(concept).get_role();
+                                if role_id.is_some() {
+                                    let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+                                    if let Some(edge) = decode_role(r_tag, local_idx, local_idx) {
+                                        edges.insert(edge);
+                                    }
+                                }
+                            }
+                        } else if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                            negated_named[local_idx].insert((tag - TAG_BASE) as usize);
+                        }
+                    }
+                    des = next;
+                    walked += 1;
+                }
+            }
+        }
+    };
+
+    let root_rep_id = SAT_REP_ID_BASE + base_node.index() as Cint64;
+    rep_ids.push(root_rep_id);
+    contexts.push(tin.concepts[subject_idx].clone());
+    labels.push(HashSet::default());
+    negated_named.push(HashSet::default());
+    sat_to_local.insert(base_node.index(), 0);
+    rep_id_to_local.insert(root_rep_id, 0);
+    add_sat_labels(
+        ctx,
+        &root_chain_nodes,
+        &root_subs,
+        0,
+        &mut labels,
+        &mut negated_named,
+        &mut edges,
+    );
+
+    let mut queue: std::collections::VecDeque<(usize, super::process::SatNodeId)> =
+        std::collections::VecDeque::new();
+    queue.push_back((0, root_snode));
+    let mut abbreviated_by_cache = false;
+    let mut multi_sat_counts: HashMap<(usize, usize), usize> = HashMap::default();
+
+    while let Some((src_local, snode)) = queue.pop_front() {
+        let linked_hash = ctx
+            .process_context_mut()
+            .sat_node_ext_linked_role_successor_hash(snode, false);
+        if !linked_hash.is_some() {
+            continue;
+        }
+        let role_buckets: Vec<(RoleId, _)> = ctx
+            .process_context()
+            .linked_role_sat_succ_hash(linked_hash)
+            .get_linked_role_successor_hash()
+            .iter()
+            .map(|(&role, &data)| (role, data))
+            .collect();
+        for (role_id, bucket) in role_buckets {
+            if !role_id.is_some() {
+                continue;
+            }
+            let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+            let mut successors: Vec<_> = ctx
+                .process_context()
+                .linked_role_sat_succ_data(bucket)
+                .get_successor_node_data_map()
+                .values()
+                .copied()
+                .collect();
+            successors.sort_by_key(|&succ_id| {
+                if succ_id.is_none()
+                    || succ_id.index() >= ctx.process_context().sat_succ_data_count()
+                {
+                    (2u8, 0usize)
+                } else {
+                    let sd = ctx.process_context().sat_succ_data(succ_id);
+                    if sd.value_nominal_connection {
+                        (0u8, sd.value_nominal_id as usize)
+                    } else {
+                        (1u8, usize::MAX - sd.succ_indi_node.index())
+                    }
+                }
+            });
+            let successors_len = successors.len();
+            for succ_id in successors {
+                if succ_id.is_none()
+                    || succ_id.index() >= ctx.process_context().sat_succ_data_count()
+                {
+                    continue;
+                }
+                let (active, succ_count, val_nom, val_nom_id, succ_snode) = {
+                    let sd = ctx.process_context().sat_succ_data(succ_id);
+                    (
+                        sd.is_active(),
+                        sd.succ_count,
+                        sd.value_nominal_connection,
+                        sd.value_nominal_id,
+                        sd.succ_indi_node,
+                    )
+                };
+                if !active {
+                    continue;
+                }
+                if val_nom {
+                    let nom_rep_id = -val_nom_id;
+                    let dst_local = if let Some(&loc) = rep_id_to_local.get(&nom_rep_id) {
+                        loc
+                    } else {
+                        let loc = contexts.len();
+                        rep_id_to_local.insert(nom_rep_id, loc);
+                        rep_ids.push(nom_rep_id);
+                        let mut lbl = HashSet::default();
+                        if let Some(seed) = bridged
+                            .nominal_seeds
+                            .iter()
+                            .find(|s| s.individual_tag == val_nom_id)
+                        {
+                            let c_tag = ctx
+                                .ontology_arenas()
+                                .concept(seed.nominal_concept)
+                                .get_concept_tag();
+                            if c_tag >= TAG_BASE && c_tag < TAG_BASE + n_named as Cint64 {
+                                lbl.insert(tin.concepts[(c_tag - TAG_BASE) as usize].clone());
+                            }
+                        }
+                        let ctx_name = lbl
+                            .iter()
+                            .filter(|c| c.starts_with("__nom__"))
+                            .min()
+                            .cloned()
+                            .unwrap_or_else(|| format!("__ht_node_{nom_rep_id}"));
+                        contexts.push(ctx_name);
+                        labels.push(lbl);
+                        negated_named.push(HashSet::default());
+                        loc
+                    };
+                    if let Some(edge) = decode_role(r_tag, src_local, dst_local) {
+                        edges.insert(edge);
+                    }
+                    continue;
+                }
+                if !succ_snode.is_some()
+                    || succ_snode.index() >= ctx.process_context().sat_node_count()
+                {
+                    continue;
+                }
+                let mut inter_subs = Vec::new();
+                let mut chain_nodes = Vec::new();
+                let term_snode =
+                    resolve_sat_terminal(ctx, succ_snode, &mut inter_subs, &mut chain_nodes);
+                if !sat_node_is_sufficient(ctx, succ_snode)
+                    || !sat_node_is_sufficient(ctx, term_snode)
+                {
+                    abbreviated_by_cache = true;
+                    continue;
+                }
+                if let Some((probe_s, ref r_name, probe_d)) =
+                    decode_role(r_tag, src_local, usize::MAX)
+                {
+                    let mut term_named: Vec<&str> = Vec::new();
+                    for &c_idx in &inter_subs {
+                        if c_idx < n_named {
+                            term_named.push(tin.concepts[c_idx].as_str());
+                        }
+                    }
+                    for &cn in &chain_nodes {
+                        let t_lbl = ctx
+                            .process_context()
+                            .sat_node(cn)
+                            .reapply_con_sat_label_set;
+                        if t_lbl.is_some() {
+                            let mut des = ctx
+                                .process_context()
+                                .reapply_con_sat_label_set(t_lbl)
+                                .get_concept_saturation_description_linker();
+                            let mut walked = 0usize;
+                            while des.is_some()
+                                && des.index() < ctx.process_context().con_sat_desc_count()
+                                && walked <= ctx.process_context().con_sat_desc_count()
+                            {
+                                let (concept, negated, next) = {
+                                    let d = ctx.process_context().con_sat_desc(des);
+                                    (
+                                        d.get_concept(),
+                                        d.get_negation(),
+                                        d.get_next_concept_desciptor(),
+                                    )
+                                };
+                                if !negated
+                                    && concept.is_some()
+                                    && concept.index()
+                                        < ctx.ontology_arenas().concept_count() as usize
+                                {
+                                    let tag = ctx
+                                        .ontology_arenas()
+                                        .concept(concept)
+                                        .get_concept_tag();
+                                    if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                        term_named
+                                            .push(tin.concepts[(tag - TAG_BASE) as usize].as_str());
+                                    }
+                                }
+                                des = next;
+                                walked += 1;
+                            }
+                        }
+                    }
+                    let mut covering_targets: Vec<usize> =
+                        if probe_s == src_local && probe_d == usize::MAX {
+                            edges
+                                .iter()
+                                .filter_map(|(u, r, v)| {
+                                    (*u == src_local
+                                        && *v < labels.len()
+                                        && r == r_name
+                                        && term_named.iter().all(|c| labels[*v].contains(*c)))
+                                    .then_some(*v)
+                                })
+                                .collect()
+                        } else {
+                            edges
+                                .iter()
+                                .filter_map(|(u, r, v)| {
+                                    (*u < labels.len()
+                                        && *v == src_local
+                                        && r == r_name
+                                        && term_named.iter().all(|c| labels[*u].contains(*c)))
+                                    .then_some(*u)
+                                })
+                                .collect()
+                        };
+                    covering_targets.sort_unstable();
+                    covering_targets.dedup();
+                    if covering_targets.len() >= (succ_count.max(1) as usize) {
+                        continue;
+                    }
+                }
+                let dst_local = if let Some(&loc) = sat_to_local.get(&succ_snode.index()) {
+                    for &c_idx in &inter_subs {
+                        if c_idx < n_named {
+                            labels[loc].insert(tin.concepts[c_idx].clone());
+                        }
+                    }
+                    loc
+                } else {
+                    let nom_ind = ctx
+                        .process_context()
+                        .sat_node(term_snode)
+                        .get_nominal_individual();
+                    if nom_ind.is_some()
+                        && nom_ind.index() < ctx.ontology_arenas().individual_count() as usize
+                    {
+                        let ind_tag = ctx
+                            .ontology_arenas()
+                            .individual(nom_ind)
+                            .get_individual_id();
+                        let nom_rep_id = -ind_tag;
+                        if let Some(&loc) = rep_id_to_local.get(&nom_rep_id) {
+                            sat_to_local.insert(succ_snode.index(), loc);
+                            loc
+                        } else {
+                            let loc = contexts.len();
+                            rep_id_to_local.insert(nom_rep_id, loc);
+                            sat_to_local.insert(succ_snode.index(), loc);
+                            rep_ids.push(nom_rep_id);
+                            contexts.push(format!("__ht_node_{nom_rep_id}"));
+                            labels.push(HashSet::default());
+                            negated_named.push(HashSet::default());
+                            add_sat_labels(
+                                ctx,
+                                &chain_nodes,
+                                &inter_subs,
+                                loc,
+                                &mut labels,
+                                &mut negated_named,
+                                &mut edges,
+                            );
+                            if let Some(nom) = labels[loc]
+                                .iter()
+                                .filter(|c| c.starts_with("__nom__"))
+                                .min()
+                                .cloned()
+                            {
+                                contexts[loc] = nom;
+                            }
+                            loc
+                        }
+                    } else {
+                        let loc = contexts.len();
+                        let sat_rep_id = SAT_REP_ID_BASE + succ_snode.index() as Cint64;
+                        sat_to_local.insert(succ_snode.index(), loc);
+                        rep_id_to_local.insert(sat_rep_id, loc);
+                        rep_ids.push(sat_rep_id);
+                        contexts.push(format!("__sat_node_{}", succ_snode.index()));
+                        labels.push(HashSet::default());
+                        negated_named.push(HashSet::default());
+                        let already_shared =
+                            shared_sat_elems.is_some_and(|m| m.contains_key(&sat_rep_id));
+                        let _ = successors_len;
+                        add_sat_labels(
+                            ctx,
+                            &chain_nodes,
+                            &inter_subs,
+                            loc,
+                            &mut labels,
+                            &mut negated_named,
+                            &mut edges,
+                        );
+                        if !already_shared
+                            || (!lazy_cceq_defs.is_empty() && lazy_cceq_defs.len() <= 256)
+                        {
+                            queue.push_back((loc, term_snode));
+                        }
+                        loc
+                    }
+                };
+                if let Some(edge) = decode_role(r_tag, src_local, dst_local) {
+                    edges.insert(edge);
+                }
+                if succ_count > 1 && succ_count <= 32 && rep_ids[dst_local] >= SAT_REP_ID_BASE {
+                    let entry = multi_sat_counts.entry((src_local, dst_local)).or_insert(1);
+                    if (succ_count as usize) > *entry {
+                        *entry = succ_count as usize;
+                    }
+                }
+            }
+        }
+    }
+
+    prune_redundant_sat_edges(&rep_ids, &labels, &mut edges, &mut multi_sat_counts);
+    if !multi_sat_counts.is_empty() {
+        let mut pairs: Vec<((usize, usize), usize)> = multi_sat_counts.into_iter().collect();
+        pairs.sort_unstable();
+        let snapshot: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
+        for ((src_local, dst_local), count) in pairs {
+            for copy_idx in 1..count {
+                let clone_loc = contexts.len();
+                rep_ids.push(0);
+                contexts.push(format!("{}_card_{copy_idx}", contexts[dst_local]));
+                let dst_lbl = labels[dst_local].clone();
+                labels.push(dst_lbl);
+                let dst_neg = negated_named[dst_local].clone();
+                negated_named.push(dst_neg);
+                for (u, r, v) in &snapshot {
+                    if *u == src_local && *v == dst_local {
+                        edges.insert((src_local, r.clone(), clone_loc));
+                    } else if *u == dst_local && *v == src_local {
+                        edges.insert((clone_loc, r.clone(), src_local));
+                    } else if *u == dst_local && *v == dst_local {
+                        edges.insert((clone_loc, r.clone(), clone_loc));
+                    } else if *u == dst_local {
+                        edges.insert((clone_loc, r.clone(), *v));
+                    } else if *v == dst_local {
+                        edges.insert((*u, r.clone(), clone_loc));
+                    }
+                }
+            }
+        }
+    }
+
+    if abbreviated_by_cache {
+        return None;
+    }
+
+    let n_elems = contexts.len();
+    if rep_ids.iter().any(|&id| id < 0) {
+        for entry in &tin.nominal_abox.individuals {
+            let mut all_noms = vec![format!("__nom__{}", entry.individual)];
+            for p in &entry.proxies {
+                if !all_noms.contains(p) {
+                    all_noms.push(p.clone());
+                }
+            }
+            for u in 0..n_elems {
+                if all_noms.iter().any(|n| labels[u].contains(n)) {
+                    for n in &all_noms {
+                        labels[u].insert(n.clone());
+                    }
+                }
+            }
+        }
+    }
+    if !edges.is_empty() && !lazy_cceq_defs.is_empty() && lazy_cceq_defs.len() <= 256 {
+        crate::engine::close_edges_under_rbox_rows(rbox, n_elems, &mut edges).ok()?;
+    }
+    let mut cceq_added: Vec<HashSet<usize>> = vec![HashSet::default(); n_elems];
+    if !lazy_cceq_defs.is_empty() && lazy_cceq_defs.len() <= 256 {
+        let mut out_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        let mut in_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        for (u, r, v) in &edges {
+            out_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*u]
+                .push(*v);
+            in_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*v]
+                .push(*u);
+        }
+        let blocked_map: HashMap<usize, usize> = HashMap::default();
+        for _ in 0..lazy_cceq_defs.len() + 1 {
+            let mut changed = false;
+            for (c_idx, def) in lazy_cceq_defs {
+                let c_name = &tin.concepts[*c_idx];
+                for u in 0..n_elems {
+                    if contexts[u].starts_with("__dt__")
+                        || labels[u]
+                            .iter()
+                            .any(|c| c.starts_with("__dt__") || c == "__sort__data")
+                        || labels[u].contains(c_name.as_str())
+                        || negated_named[u].contains(c_idx)
+                    {
+                        continue;
+                    }
+                    if eval_source_concept_on_component(
+                        def,
+                        u,
+                        n_elems,
+                        &labels,
+                        &edges,
+                        &out_adj,
+                        &in_adj,
+                        &blocked_map,
+                    ) {
+                        labels[u].insert(c_name.clone());
+                        cceq_added[u].insert(*c_idx);
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    Some(BridgeExtractedComponent {
+        rep_ids,
+        contexts,
+        labels,
+        negated_named,
+        cceq_added,
+        edges,
+        blocked: Vec::new(),
+        external_blocked: Vec::new(),
+        root_local: Some(0),
+        abbreviated_by_cache: false,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_bridge_export_model_from_live_state(
+    tin: &TInput,
+    classified: &BridgedClassification,
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    rbox: &[Vec<String>],
+    lazy_cceq_defs: &[(usize, SourceConcept)],
+    harvested_base_comp: Option<BridgeExtractedComponent>,
+    mut harvested_subject_comps: HashMap<usize, Vec<BridgeExtractedComponent>>,
+    _saturation_ran: bool,
+    probe_start_id: i64,
+    classify_elapsed: std::time::Duration,
+    mut renew_env: impl FnMut(
+        &mut CompletionTaskHandleAlgorithm,
+        &mut CalculationAlgorithmContextBase,
+        bool,
+    ) -> Option<()>,
+) -> Result<BridgeExportModel, String> {
+    if !classified.consistent {
+        return Ok(BridgeExportModel::inconsistent());
+    }
+
+    // Clear associated-expansion cache entries on saturation nodes before any
+    // fallback export probes so `cached_deterministic_expansion_concepts` (u17)
+    // and the cache-entry arm of `is_node_satisfiable_cached` stay inert while
+    // unmodified saturation nodes (`last_confirmed == last_added`) still
+    // re-confirm in O(1).
+    {
+        let sat_len = ctx.process_context().sat_node_count();
+        for i in 0..sat_len {
+            let sn = super::process::SatNodeId::new(i as Cint64);
+            ctx.process_context_mut()
+                .sat_node_mut(sn)
+                .set_cache_expansion_data(super::model::substrate::Id::NONE);
+        }
+    }
+
+    let budget_secs = std::env::var("KM_EXPORT_MODEL_BUDGET_S")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or_else(|| classify_elapsed.as_secs_f64() + 2.0);
+    let export_deadline =
+        std::time::Instant::now() + std::time::Duration::from_secs_f64(budget_secs.max(0.1));
+
+    let n_named = tin.concepts.len();
+    let mut active_class = vec![tin.queries.is_empty(); n_named];
+    for &q in &tin.queries {
+        if let Some(slot) = active_class.get_mut(q) {
+            *slot = true;
+        }
+    }
+    let is_export_subject = |s: &str| {
+        (!crate::calc::is_internal_concept(s) || s.starts_with("__km_abox_probe_"))
+            && !s.starts_with("__dt__")
+            && !s.starts_with("urn:km:")
+            && !s.starts_with("__ground_assertion_")
+            && s != "__sort__data"
+    };
+    let active_name_to_idx: HashMap<&str, usize> = (0..n_named)
+        .filter(|&c| active_class[c] && is_export_subject(&tin.concepts[c]))
+        .map(|c| (tin.concepts[c].as_str(), c))
+        .collect();
+    let unsat_set: HashSet<usize> = classified.unsatisfiable.iter().copied().collect();
+    let satisfiable_subjects: Vec<usize> = (0..n_named)
+        .filter(|&c| {
+            active_class[c] && !unsat_set.contains(&c) && is_export_subject(&tin.concepts[c])
+        })
+        .collect();
+    let mut entailed_supers: HashMap<usize, HashSet<usize>> = HashMap::default();
+    for &s in &satisfiable_subjects {
+        let mut set = HashSet::default();
+        set.insert(s);
+        entailed_supers.insert(s, set);
+    }
+    for &(sub, sup) in &classified.subsumptions {
+        if active_name_to_idx.contains_key(tin.concepts[sup].as_str()) {
+            if let Some(set) = entailed_supers.get_mut(&sub) {
+                set.insert(sup);
+            }
+        }
+    }
+
+    let mut full_closure = if n_named > 20_000 || classified.subsumptions.len() > 200_000 {
+        crate::fxhash::FxHashSet::default()
+    } else {
+        source_named_subsumer_closure_seeded(tin, &classified.subsumptions)
+    };
+    for &(sub, sup) in &classified.subsumptions {
+        if sub < n_named && sup < n_named && sub != sup {
+            full_closure.insert((sub, sup));
+        }
+    }
+    if ctx.process_context().sat_node_count() > 0 {
+        let named_index: crate::fxhash::FxHashMap<ConceptId, usize> = bridged
+            .named
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| (c, i))
+            .collect();
+        for (i, &named_cid) in bridged.named.iter().enumerate() {
+            let base_node =
+                super::saturation::algorithm::SaturationTaskHandleAlgorithm::s07_concept_reference_node(
+                    named_cid, false, ctx,
+                );
+            if base_node.is_some() {
+                let mut subs = Vec::new();
+                let _ = resolve_saturation_substitute_chain(
+                    ctx,
+                    base_node,
+                    named_cid,
+                    &named_index,
+                    &mut subs,
+                );
+                for sup in subs {
+                    if i < n_named && sup < n_named && i != sup {
+                        full_closure.insert((i, sup));
+                    }
+                }
+            }
+        }
+    }
+    let mut supers_by_sub: Vec<Vec<usize>> = vec![Vec::new(); n_named];
+    for (sub, sup) in full_closure {
+        if sub < n_named && sup < n_named && !crate::calc::is_internal_concept(&tin.concepts[sup]) {
+            supers_by_sub[sub].push(sup);
+        }
+    }
+    let concept_name_to_idx: HashMap<&str, usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.as_str(), i))
+        .collect();
+    let close_one_label = |lbl: &mut Vec<String>| {
+        let mut queue: Vec<usize> = lbl
+            .iter()
+            .filter_map(|name| concept_name_to_idx.get(name.as_str()).copied())
+            .collect();
+        let mut present: HashSet<usize> = queue.iter().copied().collect();
+        let mut added = false;
+        while let Some(sub) = queue.pop() {
+            for &sup in &supers_by_sub[sub] {
+                if present.insert(sup) {
+                    lbl.push(tin.concepts[sup].clone());
+                    queue.push(sup);
+                    added = true;
+                }
+            }
+        }
+        if added {
+            lbl.sort();
+            lbl.dedup();
+        }
+    };
+    let close_labels = |labels: &mut [Vec<String>]| {
+        for lbl in labels.iter_mut() {
+            close_one_label(lbl);
+        }
+    };
+    let closed_active_classes = |raw_set: &HashSet<String>| -> HashSet<usize> {
+        let mut queue: Vec<usize> = raw_set
+            .iter()
+            .filter_map(|name| concept_name_to_idx.get(name.as_str()).copied())
+            .collect();
+        let mut present: HashSet<usize> = queue.iter().copied().collect();
+        while let Some(sub) = queue.pop() {
+            for &sup in &supers_by_sub[sub] {
+                if present.insert(sup) {
+                    queue.push(sup);
+                }
+            }
+        }
+        present
+            .into_iter()
+            .filter(|&c| active_class[c] && is_export_subject(&tin.concepts[c]))
+            .collect()
+    };
+
+    let mut base_fallback_comp: Option<BridgeExtractedComponent> = None;
+    let mut base_comp = match harvested_base_comp {
+        Some(comp) if !comp.abbreviated_by_cache => comp,
+        other => {
+            base_fallback_comp = other;
+            renew_env(algo, ctx, false)
+                .ok_or_else(|| "bridge export failed to restore base environment".to_string())?;
+            algo.probe_budget = Some(
+                export_deadline
+                    .saturating_duration_since(std::time::Instant::now())
+                    .min(std::time::Duration::from_secs(5)),
+            );
+            let mut next_id = probe_start_id;
+            let ok = if bridged.has_native_nominals() {
+                native_nominal_consistency(algo, ctx, bridged) == Some(true)
+            } else {
+                bridged_top_satisfiable(algo, ctx, bridged, &mut next_id) == Some(true)
+            };
+            if ok {
+                extract_bridge_component(
+                    ctx,
+                    bridged,
+                    tin,
+                    rbox,
+                    lazy_cceq_defs,
+                    None,
+                    Some("⊤"),
+                    false,
+                )
+                .or(base_fallback_comp)
+                .ok_or_else(|| "failed to extract consistency completion graph".to_string())?
+            } else if let Some(fallback) = base_fallback_comp {
+                fallback
+            } else {
+                return Err("bridge consistency completion undecided".to_string());
+            }
+        }
+    };
+
+    let mut confirmed_nom_diff: Vec<(Cint64, ConceptId)> = Vec::new();
+    if bridged.has_native_nominals() && std::time::Instant::now() < export_deadline {
+        const TAG_BASE: Cint64 = 10;
+        let n_named = tin.concepts.len();
+        let mut nom_str_to_seed: HashMap<String, (Cint64, ConceptId)> = HashMap::default();
+        for seed in &bridged.nominal_seeds {
+            let c_tag = ctx
+                .ontology_arenas()
+                .concept(seed.nominal_concept)
+                .get_concept_tag();
+            if c_tag >= TAG_BASE && c_tag < TAG_BASE + n_named as Cint64 {
+                nom_str_to_seed.insert(
+                    tin.concepts[(c_tag - TAG_BASE) as usize].clone(),
+                    (seed.individual_tag, seed.nominal_concept),
+                );
+            }
+        }
+        let mut same_adj: HashMap<String, Vec<String>> = HashMap::default();
+        for entry in &tin.nominal_abox.individuals {
+            let primary = format!("__nom__{}", entry.individual);
+            for p in &entry.proxies {
+                same_adj.entry(primary.clone()).or_default().push(p.clone());
+                same_adj.entry(p.clone()).or_default().push(primary.clone());
+            }
+        }
+        for (l, r) in &tin.nominal_abox.same {
+            let nl = format!("__nom__{l}");
+            let nr = format!("__nom__{r}");
+            same_adj.entry(nl.clone()).or_default().push(nr.clone());
+            same_adj.entry(nr).or_default().push(nl);
+        }
+        let are_asserted_same = |a: &str, b: &str| -> bool {
+            if a == b {
+                return true;
+            }
+            let mut visited: HashSet<&str> = HashSet::default();
+            let mut st = vec![a];
+            while let Some(cur) = st.pop() {
+                if cur == b {
+                    return true;
+                }
+                if visited.insert(cur) {
+                    if let Some(nbrs) = same_adj.get(cur) {
+                        for nxt in nbrs {
+                            st.push(nxt.as_str());
+                        }
+                    }
+                }
+            }
+            false
+        };
+        let mut extra_diff: Vec<(Cint64, ConceptId)> = Vec::new();
+        for u in 0..base_comp.labels.len() {
+            let noms: Vec<&String> = base_comp.labels[u]
+                .iter()
+                .filter(|c| c.starts_with("__nom__") && nom_str_to_seed.contains_key(*c))
+                .collect();
+            if noms.len() > 1 {
+                for i in 0..noms.len() {
+                    for j in (i + 1)..noms.len() {
+                        if !are_asserted_same(noms[i], noms[j]) {
+                            let (t1, c1) = nom_str_to_seed[noms[i]];
+                            let (t2, c2) = nom_str_to_seed[noms[j]];
+                            if t1 != t2 && c1 != c2 {
+                                extra_diff.push((t1, c2));
+                                extra_diff.push((t2, c1));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !extra_diff.is_empty() && renew_env(algo, ctx, false).is_some() {
+            let base_tp = ctx.get_or_create_base_dependency_track_point();
+            for &(ind_tag, neg_con) in &extra_diff {
+                let mut node = algo.get_up_to_date_individual_by_id(-ind_tag, ctx);
+                if node.is_some() {
+                    algo.add_concept_to_individual(
+                        neg_con, true, &mut node, base_tp, false, true, ctx,
+                    );
+                }
+            }
+            algo.probe_budget = Some(
+                export_deadline
+                    .saturating_duration_since(std::time::Instant::now())
+                    .min(std::time::Duration::from_secs(2)),
+            );
+            if native_nominal_consistency(algo, ctx, bridged) == Some(true) {
+                if let Some(disamb_comp) = extract_bridge_component(
+                    ctx,
+                    bridged,
+                    tin,
+                    rbox,
+                    lazy_cceq_defs,
+                    None,
+                    Some("⊤"),
+                    false,
+                ) {
+                    base_comp = disamb_comp;
+                    confirmed_nom_diff = extra_diff;
+                }
+            }
+        }
+    }
+
+    let mut model = BridgeExportModel::default();
+    let mut global_nominal_elem: HashMap<Cint64, usize> = HashMap::default();
+    let mut global_nominal_by_name: HashMap<String, usize> = HashMap::default();
+    let mut global_sat_elem: HashMap<Cint64, usize> = HashMap::default();
+    let global_external_blocked: std::cell::RefCell<Vec<(usize, Cint64)>> =
+        std::cell::RefCell::new(Vec::new());
+    let global_cceq_added: std::cell::RefCell<Vec<HashSet<usize>>> =
+        std::cell::RefCell::new(Vec::new());
+    let global_negated_named: std::cell::RefCell<Vec<HashSet<usize>>> =
+        std::cell::RefCell::new(Vec::new());
+    let share_sat_nodes = !tin.inverse
+        && !rbox.iter().any(|row| {
+            matches!(
+                row.first().map(String::as_str),
+                Some("inverse" | "symmetric-role")
+            )
+        });
+    let mut global_edges: HashSet<(usize, String, usize)> = HashSet::default();
+    let mut unblocked_elems_by_subject: HashMap<usize, Vec<usize>> = HashMap::default();
+
+    let is_data_cell_label = |ctx_name: &str, lbl: &[String]| -> bool {
+        ctx_name.starts_with("__dt__")
+            || lbl
+                .iter()
+                .any(|c| c.starts_with("__dt__") || c == "__sort__data")
+    };
+
+    let append_component = |comp: BridgeExtractedComponent,
+                            only_root_connected: bool,
+                            model: &mut BridgeExportModel,
+                            global_nominal_elem: &mut HashMap<Cint64, usize>,
+                            global_nominal_by_name: &mut HashMap<String, usize>,
+                            global_sat_elem: &mut HashMap<Cint64, usize>,
+                            global_edges: &mut HashSet<(usize, String, usize)>,
+                            unblocked_elems_by_subject: &mut HashMap<usize, Vec<usize>>|
+     -> Option<usize> {
+        let keep_local: HashSet<usize> = if only_root_connected {
+            if let Some(root_local) = comp.root_local {
+                let mut adj: Vec<Vec<usize>> = vec![Vec::new(); comp.contexts.len()];
+                for &(u, _, v) in &comp.edges {
+                    adj[u].push(v);
+                    adj[v].push(u);
+                }
+                for &(u, b) in &comp.blocked {
+                    adj[u].push(b);
+                    adj[b].push(u);
+                }
+                let mut seen: HashSet<usize> = HashSet::default();
+                let mut stack = vec![root_local];
+                while let Some(u) = stack.pop() {
+                    if seen.insert(u) {
+                        if comp.rep_ids[u] >= 0 {
+                            for &nxt in &adj[u] {
+                                stack.push(nxt);
+                            }
+                        }
+                    }
+                }
+                seen
+            } else {
+                (0..comp.contexts.len()).collect()
+            }
+        } else {
+            (0..comp.contexts.len()).collect()
+        };
+        let mut local_blocked_set: HashSet<usize> = comp.blocked.iter().map(|&(u, _)| u).collect();
+        for &(u, _) in &comp.external_blocked {
+            local_blocked_set.insert(u);
+        }
+
+        let mut local_to_global: HashMap<usize, usize> = HashMap::default();
+        for u in 0..comp.contexts.len() {
+            if !keep_local.contains(&u) {
+                continue;
+            }
+            let rep_id = comp.rep_ids[u];
+            let existing_by_nom = comp.labels[u]
+                .iter()
+                .filter(|c| c.starts_with("__nom__"))
+                .find_map(|c| global_nominal_by_name.get(c).copied());
+            let existing_elem = if rep_id < 0 {
+                global_nominal_elem.get(&rep_id).copied().or(existing_by_nom)
+            } else if share_sat_nodes && rep_id >= SAT_REP_ID_BASE && Some(u) != comp.root_local {
+                global_sat_elem.get(&rep_id).copied()
+            } else {
+                existing_by_nom
+            };
+            if let Some(existing) = existing_elem {
+                local_to_global.insert(u, existing);
+                {
+                    let mut cceq_vec = global_cceq_added.borrow_mut();
+                    if let Some(slot) = cceq_vec.get_mut(existing) {
+                        for item in &comp.labels[u] {
+                            if let Some(&c_idx) = concept_name_to_idx.get(item.as_str()) {
+                                if !comp.cceq_added[u].contains(&c_idx) {
+                                    slot.remove(&c_idx);
+                                }
+                            }
+                        }
+                        for &c_idx in &comp.cceq_added[u] {
+                            if !model.labels[existing].contains(&tin.concepts[c_idx]) {
+                                slot.insert(c_idx);
+                            }
+                        }
+                    }
+                    if let Some(nslot) = global_negated_named.borrow_mut().get_mut(existing) {
+                        nslot.extend(comp.negated_named[u].iter().copied());
+                    }
+                }
+                let root_cceq_override = Some(u) == comp.root_local && {
+                    let cceq_vec = global_cceq_added.borrow();
+                    cceq_vec.get(existing).is_some_and(|slot| {
+                        comp.negated_named[u].iter().any(|c_idx| slot.contains(c_idx))
+                    })
+                };
+                if root_cceq_override {
+                    let mut cceq_vec = global_cceq_added.borrow_mut();
+                    if let Some(slot) = cceq_vec.get_mut(existing) {
+                        for &c_idx in &comp.negated_named[u] {
+                            if slot.remove(&c_idx) {
+                                let c_name = &tin.concepts[c_idx];
+                                model.labels[existing].retain(|x| x != c_name);
+                            }
+                        }
+                    }
+                }
+                if !only_root_connected
+                    || (share_sat_nodes && rep_id >= SAT_REP_ID_BASE && !lazy_cceq_defs.is_empty())
+                    || root_cceq_override
+                {
+                    let lbl = &mut model.labels[existing];
+                    let mut changed = root_cceq_override;
+                    for item in &comp.labels[u] {
+                        if !item.starts_with("__nom__") && !lbl.contains(item) {
+                            if root_cceq_override {
+                                if let Some(&c_idx) = concept_name_to_idx.get(item.as_str()) {
+                                    if comp.cceq_added[u].contains(&c_idx) {
+                                        continue;
+                                    }
+                                }
+                            }
+                            lbl.push(item.clone());
+                            changed = true;
+                        }
+                    }
+                    if changed {
+                        close_one_label(lbl);
+                        if !is_data_cell_label(&model.contexts[existing], lbl) {
+                            for item in lbl.iter() {
+                                if let Some(&s_idx) = active_name_to_idx.get(item.as_str()) {
+                                    let v = unblocked_elems_by_subject.entry(s_idx).or_default();
+                                    if !v.contains(&existing) {
+                                        v.push(existing);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                for item in &comp.labels[u] {
+                    if item.starts_with("__nom__") {
+                        global_nominal_by_name.entry(item.clone()).or_insert(existing);
+                    }
+                }
+                continue;
+            }
+            let g_idx = model.contexts.len();
+            local_to_global.insert(u, g_idx);
+            if rep_id < 0 {
+                global_nominal_elem.insert(rep_id, g_idx);
+            } else if share_sat_nodes && rep_id >= SAT_REP_ID_BASE {
+                global_sat_elem.insert(rep_id, g_idx);
+            }
+            global_cceq_added
+                .borrow_mut()
+                .push(comp.cceq_added[u].clone());
+            global_negated_named
+                .borrow_mut()
+                .push(comp.negated_named[u].clone());
+            for item in &comp.labels[u] {
+                if item.starts_with("__nom__") {
+                    global_nominal_by_name.insert(item.clone(), g_idx);
+                }
+            }
+            model.contexts.push(comp.contexts[u].clone());
+            let mut lbl: Vec<String> = comp.labels[u].iter().cloned().collect();
+            lbl.sort();
+            close_one_label(&mut lbl);
+            if !local_blocked_set.contains(&u)
+                && !is_data_cell_label(&model.contexts[g_idx], &lbl)
+            {
+                for item in &lbl {
+                    if let Some(&s_idx) = active_name_to_idx.get(item.as_str()) {
+                        unblocked_elems_by_subject
+                            .entry(s_idx)
+                            .or_default()
+                            .push(g_idx);
+                    }
+                }
+            }
+            model.labels.push(lbl);
+        }
+        for &(u, ref r, v) in &comp.edges {
+            if let (Some(&gu), Some(&gv)) = (local_to_global.get(&u), local_to_global.get(&v)) {
+                global_edges.insert((gu, r.clone(), gv));
+            }
+        }
+        for &(u, b) in &comp.blocked {
+            if let (Some(&gu), Some(&gb)) = (local_to_global.get(&u), local_to_global.get(&b)) {
+                if gu != gb && !model.blocked.contains(&(gu, gb)) {
+                    model.blocked.push((gu, gb));
+                }
+            }
+        }
+        for &(u, b_rep_id) in &comp.external_blocked {
+            if let Some(&gu) = local_to_global.get(&u) {
+                global_external_blocked.borrow_mut().push((gu, b_rep_id));
+            }
+        }
+        comp.root_local
+            .and_then(|rl| local_to_global.get(&rl).copied())
+    };
+
+    append_component(
+        base_comp,
+        false,
+        &mut model,
+        &mut global_nominal_elem,
+        &mut global_nominal_by_name,
+        &mut global_sat_elem,
+        &mut global_edges,
+        &mut unblocked_elems_by_subject,
+    );
+
+    let mut role_dom_by_name: HashMap<String, Vec<usize>> = HashMap::default();
+    let mut role_ran_by_name: HashMap<String, Vec<usize>> = HashMap::default();
+    for &(r_idx, c_idx) in &tin.role_domains {
+        if let Some(r_name) = tin.roles.get(r_idx) {
+            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
+                if let Some(base) = r_name.strip_prefix("__inv__") {
+                    role_ran_by_name.entry(base.to_string()).or_default().push(c_idx);
+                } else {
+                    role_dom_by_name.entry(r_name.clone()).or_default().push(c_idx);
+                }
+            }
+        }
+    }
+    for &(r_idx, c_idx) in &tin.role_ranges {
+        if let Some(r_name) = tin.roles.get(r_idx) {
+            if c_idx < n_named && !crate::calc::is_internal_concept(&tin.concepts[c_idx]) {
+                if let Some(base) = r_name.strip_prefix("__inv__") {
+                    role_dom_by_name.entry(base.to_string()).or_default().push(c_idx);
+                } else {
+                    role_ran_by_name.entry(r_name.clone()).or_default().push(c_idx);
+                }
+            }
+        }
+    }
+    let propagate_dom_ran =
+        |labels: &mut [Vec<String>], edges: &HashSet<(usize, String, usize)>| -> bool {
+            if role_dom_by_name.is_empty() && role_ran_by_name.is_empty() {
+                return false;
+            }
+            let mut dom_ran_added = false;
+            for (u, r_name, v) in edges {
+                if let Some(doms) = role_dom_by_name.get(r_name.as_str()) {
+                    for &c_idx in doms {
+                        let cname = &tin.concepts[c_idx];
+                        if labels[*u].binary_search(cname).is_err() {
+                            labels[*u].push(cname.clone());
+                            labels[*u].sort();
+                            dom_ran_added = true;
+                        }
+                    }
+                }
+                if let Some(rans) = role_ran_by_name.get(r_name.as_str()) {
+                    for &c_idx in rans {
+                        let cname = &tin.concepts[c_idx];
+                        if labels[*v].binary_search(cname).is_err() {
+                            labels[*v].push(cname.clone());
+                            labels[*v].sort();
+                            dom_ran_added = true;
+                        }
+                    }
+                }
+            }
+            dom_ran_added
+        };
+    let close_labels_and_edges =
+        |labels: &mut [Vec<String>],
+         edges: &mut HashSet<(usize, String, usize)>,
+         nom_by_name: &HashMap<String, usize>|
+         -> Result<(), String> {
+            let n_elems = labels.len();
+            crate::engine::close_edges_under_rbox_rows(rbox, n_elems, edges)?;
+            close_labels(labels);
+            if propagate_dom_ran(labels, edges) {
+                close_labels(labels);
+            }
+            if !nom_by_name.is_empty() {
+                fn collect_nom_existentials<'a>(
+                    c: &'a SourceConcept,
+                    out: &mut Vec<(&'a crate::frontend::syntax::Role, &'a str)>,
+                ) {
+                    match c {
+                        SourceConcept::And(ops) => {
+                            for op in ops {
+                                collect_nom_existentials(op, out);
+                            }
+                        }
+                        SourceConcept::Exists(r, filler) => {
+                            if let SourceConcept::Nominal(nom) = filler.as_ref() {
+                                out.push((r, nom.as_str()));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let mut class_nom_edges: Vec<(usize, String, bool, usize)> = Vec::new();
+                for ax in &tin.source_axioms {
+                    let mut pairs = Vec::new();
+                    match ax.kind {
+                        crate::json_io::SourceAxiomKind::SubClass => {
+                            pairs.push((&ax.left, &ax.right))
+                        }
+                        crate::json_io::SourceAxiomKind::Equivalent => {
+                            pairs.push((&ax.left, &ax.right));
+                            pairs.push((&ax.right, &ax.left));
+                        }
+                        crate::json_io::SourceAxiomKind::Disjoint => {}
+                    }
+                    for (lhs, rhs) in pairs {
+                        let SourceConcept::Name(cname) = lhs else {
+                            continue;
+                        };
+                        let Some(&c_idx) = concept_name_to_idx.get(cname.as_str()) else {
+                            continue;
+                        };
+                        let mut exs = Vec::new();
+                        collect_nom_existentials(rhs, &mut exs);
+                        for (srole, nom_name) in exs {
+                            let nom_key = format!("__nom__{nom_name}");
+                            let Some(&nom_elem) = nom_by_name
+                                .get(&nom_key)
+                                .or_else(|| nom_by_name.get(nom_name))
+                            else {
+                                continue;
+                            };
+                            if nom_elem >= n_elems {
+                                continue;
+                            }
+                            let (r_name, inv) = match srole {
+                                crate::frontend::syntax::Role::Name(r) => {
+                                    if let Some(base) = r.strip_prefix("__inv__") {
+                                        (base.to_string(), true)
+                                    } else {
+                                        (r.clone(), false)
+                                    }
+                                }
+                                crate::frontend::syntax::Role::Inverse(r) => {
+                                    if let Some(base) = r.strip_prefix("__inv__") {
+                                        (base.to_string(), false)
+                                    } else {
+                                        (r.clone(), true)
+                                    }
+                                }
+                                crate::frontend::syntax::Role::Universal => continue,
+                            };
+                            class_nom_edges.push((c_idx, r_name, inv, nom_elem));
+                        }
+                    }
+                }
+                if !class_nom_edges.is_empty() {
+                    let mut added_edge = false;
+                    for u in 0..n_elems {
+                        for &(c_idx, ref r_name, inv, nom_elem) in &class_nom_edges {
+                            if labels[u].binary_search(&tin.concepts[c_idx]).is_ok() {
+                                let edge = if inv {
+                                    (nom_elem, r_name.clone(), u)
+                                } else {
+                                    (u, r_name.clone(), nom_elem)
+                                };
+                                if edges.insert(edge) {
+                                    added_edge = true;
+                                }
+                            }
+                        }
+                    }
+                    if added_edge {
+                        crate::engine::close_edges_under_rbox_rows(rbox, n_elems, edges)?;
+                        if propagate_dom_ran(labels, edges) {
+                            close_labels(labels);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        };
+
+    {
+        let mut base_labels = model.labels.clone();
+        let mut base_edge_set = global_edges.clone();
+        if !base_labels.is_empty() {
+            close_labels_and_edges(&mut base_labels, &mut base_edge_set, &global_nominal_by_name)?;
+        }
+        let mut base_edges: Vec<(usize, String, usize)> = base_edge_set.into_iter().collect();
+        base_edges.sort();
+        model.base_labels = base_labels;
+        model.base_edges = base_edges;
+    }
+
+    let elem_active_classes = |labels: &[String]| -> HashSet<usize> {
+        labels
+            .iter()
+            .filter_map(|name| active_name_to_idx.get(name.as_str()).copied())
+            .collect()
+    };
+
+    let find_exact_elem = |s: usize,
+                           want: &HashSet<usize>,
+                           labels: &[Vec<String>],
+                           by_subj: &HashMap<usize, Vec<usize>>|
+     -> Option<usize> {
+        let cands = by_subj.get(&s)?;
+        cands
+            .iter()
+            .copied()
+            .take(32)
+            .chain(cands.iter().rev().copied().take(32))
+            .find(|&i| {
+                !labels[i].iter().any(|c| c.starts_with("__nom__"))
+                    && labels[i]
+                        .iter()
+                        .filter(|name| active_name_to_idx.contains_key(name.as_str()))
+                        .count()
+                        == want.len()
+                    && &elem_active_classes(&labels[i]) == want
+            })
+    };
+
+    let abox_only = std::env::var_os("KM_EXPORT_ABOX_ONLY").is_some();
+    let mut witnessed: HashSet<usize> = HashSet::default();
+    if abox_only {
+        witnessed.extend(satisfiable_subjects.iter().copied());
+    }
+    for &s in &satisfiable_subjects {
+        if witnessed.contains(&s) {
+            continue;
+        }
+        let want = &entailed_supers[&s];
+        if let Some(elem_idx) =
+            find_exact_elem(s, want, &model.labels, &unblocked_elems_by_subject)
+        {
+            model
+                .class_witnesses
+                .push((tin.concepts[s].clone(), elem_idx, true));
+            witnessed.insert(s);
+        }
+    }
+
+    let named_index: HashMap<ConceptId, usize> = bridged
+        .named
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| (c, i))
+        .collect();
+    // Consume harvested subject completion components and saturation-graph
+    // canonical components from the answering run before running any probe.
+    for &s in &satisfiable_subjects {
+        if witnessed.contains(&s) {
+            continue;
+        }
+        if satisfiable_subjects.len() > 2_000 && std::time::Instant::now() >= export_deadline {
+            model.partial_reason = Some(format!(
+                "export budget ({:.2}s) exceeded after {}/{} class witnesses",
+                budget_secs,
+                witnessed.len(),
+                satisfiable_subjects.len()
+            ));
+            break;
+        }
+        let want = &entailed_supers[&s];
+        if let Some( elem_idx ) =
+            find_exact_elem(s, want, &model.labels, &unblocked_elems_by_subject)
+        {
+            model
+                .class_witnesses
+                .push((tin.concepts[s].clone(), elem_idx, true));
+            witnessed.insert(s);
+            continue;
+        }
+        let exact_harvested_idx = harvested_subject_comps.get(&s).and_then(|comps| {
+            comps.iter().position(|comp| {
+                !comp.abbreviated_by_cache
+                    && comp.root_local.is_some_and(|rl| {
+                        let got = closed_active_classes(&comp.labels[rl]);
+                        &got == want
+                    })
+            })
+        });
+        if let Some(idx) = exact_harvested_idx {
+            let comp = harvested_subject_comps.get_mut(&s).unwrap().swap_remove(idx);
+            if let Some(root_elem) = append_component(
+                comp,
+                true,
+                &mut model,
+                &mut global_nominal_elem,
+                &mut global_nominal_by_name,
+                &mut global_sat_elem,
+                &mut global_edges,
+                &mut unblocked_elems_by_subject,
+            ) {
+                model
+                    .class_witnesses
+                    .push((tin.concepts[s].clone(), root_elem, true));
+                witnessed.insert(s);
+                continue;
+            }
+        }
+        if std::time::Instant::now() >= export_deadline {
+            break;
+        }
+        if let Some(sat_comp) = extract_saturation_subject_component(
+            ctx,
+            bridged,
+            tin,
+            rbox,
+            lazy_cceq_defs,
+            &named_index,
+            s,
+            share_sat_nodes.then_some(&global_sat_elem),
+        ) {
+            if let Some(rl) = sat_comp.root_local {
+                let got = closed_active_classes(&sat_comp.labels[rl]);
+                if &got == want {
+                    if let Some(root_elem) = append_component(
+                        sat_comp,
+                        true,
+                        &mut model,
+                        &mut global_nominal_elem,
+                        &mut global_nominal_by_name,
+                        &mut global_sat_elem,
+                        &mut global_edges,
+                        &mut unblocked_elems_by_subject,
+                    ) {
+                        model
+                            .class_witnesses
+                            .push((tin.concepts[s].clone(), root_elem, true));
+                        witnessed.insert(s);
+                        continue;
+                    }
+                } else {
+                    harvested_subject_comps
+                        .entry(s)
+                        .or_default()
+                        .push(sat_comp);
+                }
+            }
+        }
+    }
+
+    for &s in &satisfiable_subjects {
+        if witnessed.contains(&s) {
+            continue;
+        }
+        if satisfiable_subjects.len() > 2_000 && std::time::Instant::now() >= export_deadline {
+            model.partial_reason = Some(format!(
+                "export budget ({:.2}s) exceeded after {}/{} class witnesses",
+                budget_secs,
+                witnessed.len(),
+                satisfiable_subjects.len()
+            ));
+            break;
+        }
+        let want = &entailed_supers[&s];
+        if let Some(elem_idx) =
+            find_exact_elem(s, want, &model.labels, &unblocked_elems_by_subject)
+        {
+            model
+                .class_witnesses
+                .push((tin.concepts[s].clone(), elem_idx, true));
+            witnessed.insert(s);
+            continue;
+        }
+
+        let mut cand_elems: Vec<usize> = Vec::new();
+        let mut seed_negated: Vec<usize> = Vec::new();
+        if let Some(comps) = harvested_subject_comps.remove(&s) {
+            for comp in comps {
+                if let Some(rl) = comp.root_local {
+                    let got = closed_active_classes(&comp.labels[rl]);
+                    if !comp.abbreviated_by_cache && want.iter().all(|req| got.contains(req)) {
+                        if let Some(re) = append_component(
+                            comp,
+                            true,
+                            &mut model,
+                            &mut global_nominal_elem,
+                            &mut global_nominal_by_name,
+                            &mut global_sat_elem,
+                            &mut global_edges,
+                            &mut unblocked_elems_by_subject,
+                        ) {
+                            if !cand_elems.contains(&re) {
+                                cand_elems.push(re);
+                            }
+                        }
+                    } else if seed_negated.is_empty() {
+                        let mut sp: Vec<usize> =
+                            got.into_iter().filter(|c| !want.contains(c)).collect();
+                        sp.sort_unstable();
+                        seed_negated = sp;
+                    }
+                }
+            }
+        }
+        if let Some(existing_cands) = unblocked_elems_by_subject.get(&s) {
+            for e in existing_cands
+                .iter()
+                .copied()
+                .take(32)
+                .chain(existing_cands.iter().rev().copied().take(32))
+            {
+                let got = elem_active_classes(&model.labels[e]);
+                if want.iter().all(|req| got.contains(req)) && !cand_elems.contains(&e) {
+                    cand_elems.push(e);
+                }
+            }
+        }
+
+        let compute_unseparated = |cands: &[usize], labels: &[Vec<String>]| -> Vec<usize> {
+            let mut iter = cands.iter().copied();
+            let Some(first) = iter.next() else {
+                return Vec::new();
+            };
+            let mut inter = elem_active_classes(&labels[first]);
+            for e in iter {
+                let g = elem_active_classes(&labels[e]);
+                inter.retain(|c| g.contains(c));
+            }
+            let mut sp: Vec<usize> = inter.into_iter().filter(|c| !want.contains(c)).collect();
+            sp.sort_unstable();
+            sp
+        };
+
+        let mut unseparated = if !cand_elems.is_empty() {
+            compute_unseparated(&cand_elems, &model.labels)
+        } else {
+            seed_negated
+        };
+
+        if !cand_elems.is_empty() && unseparated.is_empty() {
+            let best_elem = cand_elems
+                .iter()
+                .copied()
+                .min_by_key(|&e| elem_active_classes(&model.labels[e]).len())
+                .unwrap();
+            let exact = &elem_active_classes(&model.labels[best_elem]) == want;
+            model
+                .class_witnesses
+                .push((tin.concepts[s].clone(), best_elem, exact));
+            witnessed.insert(s);
+            continue;
+        }
+
+        let now = std::time::Instant::now();
+        if now >= export_deadline {
+            if let Some(&best_elem) = cand_elems
+                .iter()
+                .min_by_key(|&&e| elem_active_classes(&model.labels[e]).len())
+            {
+                let exact = &elem_active_classes(&model.labels[best_elem]) == want;
+                model
+                    .class_witnesses
+                    .push((tin.concepts[s].clone(), best_elem, exact));
+                witnessed.insert(s);
+                continue;
+            }
+            if witnessed.len() < satisfiable_subjects.len() {
+                model.partial_reason = Some(format!(
+                    "export budget ({:.2}s) exceeded after {}/{} class witnesses",
+                    budget_secs,
+                    witnessed.len(),
+                    satisfiable_subjects.len()
+                ));
+            }
+            break;
+        }
+
+        let apply_confirmed_nom_diff =
+            |algo: &mut CompletionTaskHandleAlgorithm,
+             ctx: &mut CalculationAlgorithmContextBase| {
+                if !confirmed_nom_diff.is_empty() {
+                    let base_tp = ctx.get_or_create_base_dependency_track_point();
+                    for &(ind_tag, neg_con) in &confirmed_nom_diff {
+                        let mut node = algo.get_up_to_date_individual_by_id(-ind_tag, ctx);
+                        if node.is_some() {
+                            algo.add_concept_to_individual(
+                                neg_con, true, &mut node, base_tp, false, true, ctx,
+                            );
+                        }
+                    }
+                }
+            };
+
+        for _round in 0..2 {
+            let now = std::time::Instant::now();
+            if now >= export_deadline {
+                break;
+            }
+            if renew_env(algo, ctx, false).is_none() {
+                break;
+            }
+            apply_confirmed_nom_diff(algo, ctx);
+            algo.probe_budget = Some(
+                export_deadline
+                    .saturating_duration_since(now)
+                    .min(std::time::Duration::from_millis(250)),
+            );
+            let mut next_id = probe_start_id;
+            let mut seeds: Vec<(ConceptId, bool)> = Vec::with_capacity(1 + unseparated.len());
+            seeds.push((bridged.named[s], false));
+            for &c in &unseparated {
+                seeds.push((bridged.named[c], true));
+            }
+            let mut model_root = None;
+            let res =
+                bridged_unsat_rooted(algo, ctx, bridged, &mut next_id, &seeds, &mut model_root);
+            match res {
+                Some(false) => {
+                    let Some(root) = model_root else {
+                        break;
+                    };
+                    let Some(mut comp) = extract_bridge_component(
+                        ctx,
+                        bridged,
+                        tin,
+                        rbox,
+                        lazy_cceq_defs,
+                        Some(root),
+                        Some(&tin.concepts[s]),
+                        true,
+                    ) else {
+                        break;
+                    };
+                    if comp.abbreviated_by_cache
+                        && !bridged.has_native_nominals()
+                        && std::time::Instant::now() < export_deadline
+                        && renew_env(algo, ctx, true).is_some()
+                    {
+                        algo.conf_caching_blocking_from_saturation = false;
+                        algo.conf_expand_created_successors_from_saturation = false;
+                        algo.conf_sat_exp_cache_retrieval = false;
+                        algo.conf_sat_exp_cache_concept_expansion = false;
+                        algo.probe_budget = Some(
+                            export_deadline
+                                .saturating_duration_since(std::time::Instant::now())
+                                .min(std::time::Duration::from_millis(250)),
+                        );
+                        let mut retry_id = probe_start_id;
+                        let mut retry_root = None;
+                        if bridged_unsat_rooted(
+                            algo,
+                            ctx,
+                            bridged,
+                            &mut retry_id,
+                            &seeds,
+                            &mut retry_root,
+                        ) == Some(false)
+                        {
+                            if let Some(r2) = retry_root {
+                                if let Some(comp2) = extract_bridge_component(
+                                    ctx,
+                                    bridged,
+                                    tin,
+                                    rbox,
+                                    lazy_cceq_defs,
+                                    Some(r2),
+                                    Some(&tin.concepts[s]),
+                                    true,
+                                ) {
+                                    comp = comp2;
+                                }
+                            }
+                        }
+                    }
+                    if let Some(re) = append_component(
+                        comp,
+                        true,
+                        &mut model,
+                        &mut global_nominal_elem,
+                        &mut global_nominal_by_name,
+                        &mut global_sat_elem,
+                        &mut global_edges,
+                        &mut unblocked_elems_by_subject,
+                    ) {
+                        if !cand_elems.contains(&re) {
+                            cand_elems.push(re);
+                        }
+                    }
+                    let next_unsep = compute_unseparated(&cand_elems, &model.labels);
+                    if next_unsep.is_empty() || next_unsep == unseparated {
+                        unseparated = next_unsep;
+                        break;
+                    }
+                    unseparated = next_unsep;
+                }
+                Some(true) if unseparated.len() > 1 => {
+                    // Covering union `s ⊑ ⨆_{c ∈ unseparated} c`: probe single-disjunct
+                    // negations `s ⊓ ¬c` so the union of witnesses covers all disjuncts.
+                    let targets = unseparated.clone();
+                    for c in targets {
+                        if cand_elems
+                            .iter()
+                            .any(|&e| !elem_active_classes(&model.labels[e]).contains(&c))
+                        {
+                            continue;
+                        }
+                        let now = std::time::Instant::now();
+                        if now >= export_deadline || renew_env(algo, ctx, false).is_none() {
+                            break;
+                        }
+                        algo.probe_budget = Some(
+                            export_deadline
+                                .saturating_duration_since(now)
+                                .min(std::time::Duration::from_millis(250)),
+                        );
+                        let mut next_id = probe_start_id;
+                        let branch_seeds = [(bridged.named[s], false), (bridged.named[c], true)];
+                        let mut branch_root = None;
+                        if bridged_unsat_rooted(
+                            algo,
+                            ctx,
+                            bridged,
+                            &mut next_id,
+                            &branch_seeds,
+                            &mut branch_root,
+                        ) == Some(false)
+                        {
+                            if let Some(root) = branch_root {
+                                if let Some(comp) = extract_bridge_component(
+                                    ctx,
+                                    bridged,
+                                    tin,
+                                    rbox,
+                                    lazy_cceq_defs,
+                                    Some(root),
+                                    Some(&tin.concepts[s]),
+                                    true,
+                                ) {
+                                    if let Some(re) = append_component(
+                                        comp,
+                                        true,
+                                        &mut model,
+                                        &mut global_nominal_elem,
+                                        &mut global_nominal_by_name,
+                                        &mut global_sat_elem,
+                                        &mut global_edges,
+                                        &mut unblocked_elems_by_subject,
+                                    ) {
+                                        if !cand_elems.contains(&re) {
+                                            cand_elems.push(re);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+
+        if cand_elems.is_empty() {
+            if let Some(existing_cands) = unblocked_elems_by_subject.get(&s) {
+                for &e in existing_cands {
+                    let got = elem_active_classes(&model.labels[e]);
+                    if want.iter().all(|req| got.contains(req)) {
+                        cand_elems.push(e);
+                    }
+                }
+            }
+        }
+
+        let Some(&best_elem) = cand_elems
+            .iter()
+            .min_by_key(|&&e| elem_active_classes(&model.labels[e]).len())
+        else {
+            model.partial_reason = Some(format!(
+                "export witness probe budget exceeded at {} after {}/{} class witnesses",
+                tin.concepts[s],
+                witnessed.len(),
+                satisfiable_subjects.len()
+            ));
+            break;
+        };
+        let exact = &elem_active_classes(&model.labels[best_elem]) == want;
+        model
+            .class_witnesses
+            .push((tin.concepts[s].clone(), best_elem, exact));
+        witnessed.insert(s);
+    }
+
+    if model.contexts.is_empty() {
+        model.contexts.push("⊤".to_string());
+        model.labels.push(Vec::new());
+    }
+    model.blocked.sort_unstable();
+    model.blocked.dedup();
+    close_labels_and_edges(&mut model.labels, &mut global_edges, &global_nominal_by_name)?;
+
+    let data_role_set: HashSet<&str> = tin
+        .data_roles
+        .iter()
+        .filter_map(|&r| tin.roles.get(r).map(String::as_str))
+        .collect();
+    let mut is_cell_elem = vec![false; model.contexts.len()];
+    for i in 0..model.contexts.len() {
+        if is_data_cell_label(&model.contexts[i], &model.labels[i]) {
+            is_cell_elem[i] = true;
+        }
+    }
+    for (f, r, t) in &global_edges {
+        if data_role_set.contains(r.as_str()) && *t < is_cell_elem.len() {
+            is_cell_elem[*t] = true;
+        }
+        let _ = f;
+    }
+    if !data_role_set.is_empty() {
+        fn collect_dt_val_existentials<'a>(
+            c: &'a SourceConcept,
+            out: &mut Vec<(&'a str, &'a str)>,
+        ) {
+            match c {
+                SourceConcept::And(ops) => {
+                    for op in ops {
+                        collect_dt_val_existentials(op, out);
+                    }
+                }
+                SourceConcept::Exists(crate::frontend::syntax::Role::Name(r), filler) => {
+                    if let SourceConcept::Name(dt_name) = filler.as_ref() {
+                        if dt_name.starts_with("__dt__val__") {
+                            out.push((r.as_str(), dt_name.as_str()));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut class_data_edges: HashMap<String, Vec<(String, usize)>> = HashMap::default();
+        let mut dt_val_to_cell: HashMap<String, usize> = HashMap::default();
+        for t in 0..is_cell_elem.len() {
+            if is_cell_elem[t] {
+                for c in &model.labels[t] {
+                    if c.starts_with("__dt__val__") {
+                        dt_val_to_cell.entry(c.clone()).or_insert(t);
+                    }
+                }
+            }
+        }
+        for ax in &tin.source_axioms {
+            let mut pairs = Vec::new();
+            match ax.kind {
+                crate::json_io::SourceAxiomKind::SubClass => pairs.push((&ax.left, &ax.right)),
+                crate::json_io::SourceAxiomKind::Equivalent => {
+                    pairs.push((&ax.left, &ax.right));
+                    pairs.push((&ax.right, &ax.left));
+                }
+                crate::json_io::SourceAxiomKind::Disjoint => {}
+            }
+            for (lhs, rhs) in pairs {
+                let SourceConcept::Name(cname) = lhs else {
+                    continue;
+                };
+                if !concept_name_to_idx.contains_key(cname.as_str()) {
+                    continue;
+                }
+                let mut exs = Vec::new();
+                collect_dt_val_existentials(rhs, &mut exs);
+                for (r_name, dt_val) in exs {
+                    if !data_role_set.contains(r_name) {
+                        continue;
+                    }
+                    let cell_t = if let Some(&existing_t) = dt_val_to_cell.get(dt_val) {
+                        existing_t
+                    } else {
+                        let new_t = model.contexts.len();
+                        model.contexts.push(dt_val.to_string());
+                        let mut cell_lbl = vec![dt_val.to_string()];
+                        if let Some(&dt_idx) = concept_name_to_idx.get(dt_val) {
+                            for &(sub, sup) in &classified.subsumptions {
+                                if sub == dt_idx && sup < n_named && tin.concepts[sup].starts_with("__dt__") {
+                                    cell_lbl.push(tin.concepts[sup].clone());
+                                }
+                            }
+                        }
+                        cell_lbl.sort();
+                        cell_lbl.dedup();
+                        model.labels.push(cell_lbl);
+                        is_cell_elem.push(true);
+                        dt_val_to_cell.insert(dt_val.to_string(), new_t);
+                        new_t
+                    };
+                    let entry = class_data_edges.entry(cname.clone()).or_default();
+                    if !entry.iter().any(|(er, et)| er == r_name && *et == cell_t) {
+                        entry.push((r_name.to_string(), cell_t));
+                    }
+                }
+            }
+        }
+        for (f, r, t) in &global_edges {
+            if data_role_set.contains(r.as_str())
+                && *t < is_cell_elem.len()
+                && is_cell_elem[*t]
+                && model.labels[*t].iter().any(|c| c.starts_with("__dt__val__"))
+            {
+                let ctx_name = &model.contexts[*f];
+                if concept_name_to_idx.contains_key(ctx_name.as_str()) {
+                    let entry = class_data_edges.entry(ctx_name.clone()).or_default();
+                    if !entry.iter().any(|(er, et)| er == r && *et == *t) {
+                        entry.push((r.clone(), *t));
+                    }
+                }
+            }
+        }
+        if !class_data_edges.is_empty() {
+            let mut has_data_prop: HashSet<(usize, String)> = HashSet::default();
+            for (f, r, t) in &global_edges {
+                if data_role_set.contains(r.as_str()) && *t < is_cell_elem.len() && is_cell_elem[*t] {
+                    has_data_prop.insert((*f, r.clone()));
+                }
+            }
+            for u in 0..model.labels.len() {
+                if is_cell_elem[u] {
+                    continue;
+                }
+                for c_name in &model.labels[u] {
+                    if let Some(d_edges) = class_data_edges.get(c_name) {
+                        for (r, cell_t) in d_edges {
+                            if has_data_prop.insert((u, r.clone())) {
+                                global_edges.insert((u, r.clone(), *cell_t));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let ext_blocked_vec = global_external_blocked.into_inner();
+    if !ext_blocked_vec.is_empty() {
+        let mut blocked_sources: HashSet<usize> = model.blocked.iter().map(|&(u, _)| u).collect();
+        for &(gu, _) in &ext_blocked_vec {
+            blocked_sources.insert(gu);
+        }
+        let mut out_roles_by_elem: Vec<HashSet<&str>> = vec![HashSet::default(); model.labels.len()];
+        for (f, r, _) in &global_edges {
+            if *f < out_roles_by_elem.len() {
+                out_roles_by_elem[*f].insert(r.as_str());
+            }
+        }
+        let mut first_unblocked_by_ctx: HashMap<&str, usize> = HashMap::default();
+        let mut unblocked_classes: Vec<(usize, bool, usize, HashSet<usize>)> = Vec::new();
+        for u in 0..model.labels.len() {
+            if !is_cell_elem[u] && !blocked_sources.contains(&u) {
+                first_unblocked_by_ctx
+                    .entry(model.contexts[u].as_str())
+                    .or_insert(u);
+                let is_nom = model.labels[u].iter().any(|c| c.starts_with("__nom__"));
+                let out_cnt = out_roles_by_elem[u].len();
+                unblocked_classes.push((u, is_nom, out_cnt, elem_active_classes(&model.labels[u])));
+            }
+        }
+        for (gu, b_rep_id) in ext_blocked_vec {
+            if gu >= model.labels.len() || model.blocked.iter().any(|&(u, _)| u == gu) {
+                continue;
+            }
+            let want_b = elem_active_classes(&model.labels[gu]);
+            let target_ctx = if b_rep_id == 0 {
+                "⊤".to_string()
+            } else {
+                format!("__ht_node_{b_rep_id}")
+            };
+            let direct_b = first_unblocked_by_ctx
+                .get(target_ctx.as_str())
+                .copied()
+                .filter(|&gb| gb != gu && want_b.is_subset(&elem_active_classes(&model.labels[gb])));
+            let best_b = direct_b.or_else(|| {
+                unblocked_classes
+                    .iter()
+                    .filter(|(u, _, _, cls)| *u != gu && want_b.is_subset(cls))
+                    .min_by_key(|&(u, is_nom, out_cnt, ref cls)| {
+                        (is_nom, cls.len(), std::cmp::Reverse(out_cnt), u)
+                    })
+                    .map(|&(u, _, _, _)| u)
+            });
+            if let Some(gb) = best_b {
+                model.blocked.push((gu, gb));
+            }
+        }
+        model.blocked.sort_unstable();
+        model.blocked.dedup();
+    }
+
+    let cceq_added_vec = global_cceq_added.into_inner();
+    let negated_named_vec = global_negated_named.into_inner();
+    if !lazy_cceq_defs.is_empty() {
+        let n_elems = model.labels.len();
+        let mut label_sets: Vec<HashSet<String>> = model
+            .labels
+            .iter()
+            .map(|v| v.iter().cloned().collect())
+            .collect();
+        let mut out_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        let mut in_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        for (u, r, v) in &global_edges {
+            out_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*u]
+                .push(*v);
+            in_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*v]
+                .push(*u);
+        }
+        let raw_blocked: HashMap<usize, usize> = model.blocked.iter().copied().collect();
+        let mut blocked_map: HashMap<usize, usize> = HashMap::default();
+        for &(u, _) in &model.blocked {
+            let mut cur = u;
+            let mut hops = 0;
+            while let Some(&nxt) = raw_blocked.get(&cur) {
+                if nxt == cur || hops > n_elems {
+                    break;
+                }
+                cur = nxt;
+                hops += 1;
+            }
+            blocked_map.insert(u, cur);
+        }
+        let mut by_anchor: HashMap<&str, Vec<usize>> = HashMap::default();
+        let mut by_cidx: HashMap<usize, Vec<usize>> = HashMap::default();
+        let mut unanchored: Vec<usize> = Vec::new();
+        for (di, (c_idx, def)) in lazy_cceq_defs.iter().enumerate() {
+            if unsat_set.contains(c_idx) {
+                continue;
+            }
+            by_cidx.entry(*c_idx).or_default().push(di);
+            if let Some(anchor) = cceq_anchor_name(def) {
+                by_anchor.entry(anchor).or_default().push(di);
+            } else {
+                unanchored.push(di);
+            }
+        }
+        let mut any_cceq_changed = false;
+        for _ in 0..4 {
+            let mut changed = false;
+            for u in 0..n_elems {
+                if is_cell_elem[u] {
+                    continue;
+                }
+                let mut cand_dis: Vec<usize> = unanchored.clone();
+                for cls in &label_sets[u] {
+                    if let Some(dis) = by_anchor.get(cls.as_str()) {
+                        cand_dis.extend(dis.iter().copied());
+                    }
+                }
+                if let Some(added_set) = cceq_added_vec.get(u) {
+                    for &c_idx in added_set {
+                        if let Some(dis) = by_cidx.get(&c_idx) {
+                            cand_dis.extend(dis.iter().copied());
+                        }
+                    }
+                }
+                cand_dis.sort_unstable();
+                cand_dis.dedup();
+                for di in cand_dis {
+                    let (ref c_idx, ref def) = lazy_cceq_defs[di];
+                    let c_name = &tin.concepts[*c_idx];
+                    if label_sets[u].contains(c_name.as_str()) {
+                        if model.contexts[u] == *c_name
+                            || !cceq_added_vec.get(u).is_some_and(|s| s.contains(c_idx))
+                        {
+                            continue;
+                        }
+                        let holds = eval_source_concept_on_component(
+                            def,
+                            u,
+                            n_elems,
+                            &label_sets,
+                            &global_edges,
+                            &out_adj,
+                            &in_adj,
+                            &blocked_map,
+                        );
+                        if !holds {
+                            let entailed_by_other = label_sets[u].iter().any(|other| {
+                                other != c_name
+                                    && concept_name_to_idx
+                                        .get(other.as_str())
+                                        .is_some_and(|&oc| {
+                                            oc != *c_idx && supers_by_sub[oc].contains(c_idx)
+                                        })
+                            });
+                            if !entailed_by_other {
+                                label_sets[u].remove(c_name.as_str());
+                                changed = true;
+                                any_cceq_changed = true;
+                            }
+                        }
+                    } else {
+                        let _ = &negated_named_vec;
+                        let holds = eval_source_concept_on_component(
+                            def,
+                            u,
+                            n_elems,
+                            &label_sets,
+                            &global_edges,
+                            &out_adj,
+                            &in_adj,
+                            &blocked_map,
+                        );
+                        if holds {
+                            label_sets[u].insert(c_name.clone());
+                            for &sup in &supers_by_sub[*c_idx] {
+                                label_sets[u].insert(tin.concepts[sup].clone());
+                            }
+                            changed = true;
+                            any_cceq_changed = true;
+                        }
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        if any_cceq_changed {
+            for (u, set) in label_sets.into_iter().enumerate() {
+                let mut v: Vec<String> = set.into_iter().collect();
+                v.sort();
+                model.labels[u] = v;
+            }
+            close_labels(&mut model.labels);
+        }
+    }
+
+    if !model.blocked.is_empty() {
+        let n_elems = model.labels.len();
+        let raw_blocked: HashMap<usize, usize> = model.blocked.iter().copied().collect();
+        for &(u, _) in &model.blocked {
+            let mut b = u;
+            let mut hops = 0;
+            while let Some(&nxt) = raw_blocked.get(&b) {
+                if nxt == b || hops > n_elems {
+                    break;
+                }
+                b = nxt;
+                hops += 1;
+            }
+            if b != u {
+                let b_labels = model.labels[b].clone();
+                let u_lbl = &mut model.labels[u];
+                let mut added = false;
+                for item in b_labels {
+                    if !item.starts_with("__nom__") && u_lbl.binary_search(&item).is_err() {
+                        u_lbl.push(item);
+                        u_lbl.sort();
+                        added = true;
+                    }
+                }
+                if added {
+                    u_lbl.dedup();
+                }
+            }
+        }
+    }
+
+    // Revalidate all class witnesses against the final closed labels: drop any
+    // witness whose element merged into a nominal on an incompatible branch,
+    // update `exact` to reflect any labels added by domain/range closure, and
+    // emit covering witnesses for any covering-union class whose single witness
+    // is not exact.
+    let elem_active_vec: Vec<HashSet<usize>> = model
+        .labels
+        .iter()
+        .map(|lbl| elem_active_classes(lbl))
+        .collect();
+    let mut final_elems_by_subject: HashMap<usize, Vec<usize>> = HashMap::default();
+    for (u, lbl) in model.labels.iter().enumerate() {
+        if is_cell_elem[u] {
+            continue;
+        }
+        for name in lbl {
+            if let Some(&s_idx) = active_name_to_idx.get(name.as_str()) {
+                final_elems_by_subject.entry(s_idx).or_default().push(u);
+            }
+        }
+    }
+    let mut primary_witnesses = Vec::with_capacity(model.class_witnesses.len());
+    let mut primary_set: HashSet<usize> = HashSet::default();
+    let drained_witnesses: Vec<_> = model.class_witnesses.drain(..).collect();
+    for &(ref cname, elem_idx, _) in &drained_witnesses {
+        let Some(&s) = active_name_to_idx.get(cname.as_str()) else {
+            continue;
+        };
+        let want = &entailed_supers[&s];
+        let self_exact = !is_cell_elem.get(elem_idx).copied().unwrap_or(true)
+            && elem_active_vec.get(elem_idx).is_some_and(|g| g == want);
+        let exact_alt = if self_exact {
+            Some(elem_idx)
+        } else {
+            final_elems_by_subject.get(&s).and_then(|cands| {
+                cands
+                    .iter()
+                    .copied()
+                    .take(32)
+                    .chain(cands.iter().rev().copied().take(32))
+                    .find(|&i| &elem_active_vec[i] == want)
+            })
+        };
+        if let Some(ex_i) = exact_alt {
+            primary_set.insert(ex_i);
+        } else if let Some(got) = elem_active_vec.get(elem_idx) {
+            if !is_cell_elem.get(elem_idx).copied().unwrap_or(true)
+                && want.iter().all(|req| got.contains(req))
+            {
+                primary_set.insert(elem_idx);
+            }
+        }
+    }
+    for (cname, elem_idx, _) in drained_witnesses {
+        let Some(&s) = active_name_to_idx.get(cname.as_str()) else {
+            continue;
+        };
+        let want = &entailed_supers[&s];
+        let self_exact = !is_cell_elem.get(elem_idx).copied().unwrap_or(true)
+            && elem_active_vec.get(elem_idx).is_some_and(|g| g == want);
+        let exact_alt = if self_exact {
+            Some(elem_idx)
+        } else {
+            final_elems_by_subject.get(&s).and_then(|cands| {
+                cands
+                    .iter()
+                    .copied()
+                    .take(32)
+                    .chain(cands.iter().rev().copied().take(32))
+                    .find(|&i| &elem_active_vec[i] == want)
+            })
+        };
+        let chosen_idx = if let Some(ex_i) = exact_alt {
+            Some(ex_i)
+        } else {
+            let from_cands = final_elems_by_subject.get(&s).and_then(|cands| {
+                cands
+                    .iter()
+                    .copied()
+                    .take(32)
+                    .chain(cands.iter().rev().copied().take(32))
+                    .filter(|&i| {
+                        let g = &elem_active_vec[i];
+                        want.iter().all(|req| g.contains(req))
+                    })
+                    .min_by_key(|&i| {
+                        (
+                            !primary_set.contains(&i),
+                            elem_active_vec[i].len(),
+                            i != elem_idx,
+                            i,
+                        )
+                    })
+            });
+            from_cands.or_else(|| {
+                let got = elem_active_vec.get(elem_idx)?;
+                (!is_cell_elem.get(elem_idx).copied().unwrap_or(true)
+                    && want.iter().all(|req| got.contains(req)))
+                .then_some(elem_idx)
+            })
+        };
+        if let Some(primary_idx) = chosen_idx {
+            primary_set.insert(primary_idx);
+            primary_witnesses.push((cname, s, primary_idx));
+        } else if model.partial_reason.is_none() {
+            model.partial_reason = Some(format!(
+                "class {} requires an alternative nominal branch",
+                cname
+            ));
+        }
+    }
+    let mut valid_witnesses = Vec::with_capacity(primary_witnesses.len());
+    for (cname, s, primary_idx) in primary_witnesses {
+        let want = &entailed_supers[&s];
+        let mut inter = elem_active_vec[primary_idx].clone();
+        let exact = &inter == want;
+        valid_witnesses.push((cname.clone(), primary_idx, exact));
+        if !exact {
+            if let Some(cands) = final_elems_by_subject.get(&s) {
+                let mut used = vec![primary_idx];
+                while &inter != want {
+                    let next_cov = cands
+                        .iter()
+                        .copied()
+                        .take(32)
+                        .chain(cands.iter().rev().copied().take(32))
+                        .filter(|i| !used.contains(i))
+                        .filter_map(|i| {
+                            let g = &elem_active_vec[i];
+                            if !want.iter().all(|req| g.contains(req)) {
+                                return None;
+                            }
+                            let elim = inter
+                                .iter()
+                                .filter(|c| !want.contains(c) && !g.contains(c))
+                                .count();
+                            if elim == 0 {
+                                return None;
+                            }
+                            Some((i, elim, g.len()))
+                        })
+                        .min_by_key(|&(i, elim, glen)| {
+                            (
+                                !primary_set.contains(&i),
+                                std::cmp::Reverse(elim),
+                                glen,
+                                i,
+                            )
+                        })
+                        .map(|(i, _, _)| i);
+                    let Some(cov_idx) = next_cov else {
+                        break;
+                    };
+                    let g = &elem_active_vec[cov_idx];
+                    inter.retain(|c| g.contains(c));
+                    used.push(cov_idx);
+                    valid_witnesses.push((cname.clone(), cov_idx, false));
+                }
+            }
+        }
+    }
+    // Prune unreachable orphan elements (e.g. candidate components superseded by fallback probes).
+    let n_elems = model.contexts.len();
+    if n_elems > 0 {
+        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n_elems];
+        for &(s, _, t) in &global_edges {
+            if s < n_elems && t < n_elems {
+                adj[s].push(t);
+            }
+        }
+        for &(u, v) in &model.blocked {
+            if u < n_elems && v < n_elems {
+                adj[u].push(v);
+            }
+        }
+        let mut keep = vec![false; n_elems];
+        let mut queue = std::collections::VecDeque::new();
+        for u in 0..n_elems {
+            if model.contexts[u].starts_with("__nom__")
+                || model.labels[u].iter().any(|c| c.starts_with("__nom__"))
+            {
+                keep[u] = true;
+                queue.push_back(u);
+            }
+        }
+        for &(_, idx, _) in &valid_witnesses {
+            if idx < n_elems && !keep[idx] {
+                keep[idx] = true;
+                queue.push_back(idx);
+            }
+        }
+        if queue.is_empty() {
+            keep[0] = true;
+            queue.push_back(0);
+        }
+        while let Some(u) = queue.pop_front() {
+            for &v in &adj[u] {
+                if !keep[v] {
+                    keep[v] = true;
+                    queue.push_back(v);
+                }
+            }
+        }
+        if keep.iter().any(|&k| !k) {
+            let mut remap = vec![usize::MAX; n_elems];
+            let mut new_contexts = Vec::new();
+            let mut new_labels = Vec::new();
+            for u in 0..n_elems {
+                if keep[u] {
+                    remap[u] = new_contexts.len();
+                    new_contexts.push(std::mem::take(&mut model.contexts[u]));
+                    new_labels.push(std::mem::take(&mut model.labels[u]));
+                }
+            }
+            model.contexts = new_contexts;
+            model.labels = new_labels;
+            global_edges = global_edges
+                .into_iter()
+                .filter_map(|(s, r, t)| {
+                    let ns = remap.get(s).copied().unwrap_or(usize::MAX);
+                    let nt = remap.get(t).copied().unwrap_or(usize::MAX);
+                    (ns != usize::MAX && nt != usize::MAX).then_some((ns, r, nt))
+                })
+                .collect();
+            model.blocked = model
+                .blocked
+                .iter()
+                .filter_map(|&(u, v)| {
+                    let nu = remap.get(u).copied().unwrap_or(usize::MAX);
+                    let nv = remap.get(v).copied().unwrap_or(usize::MAX);
+                    (nu != usize::MAX && nv != usize::MAX && nu != nv).then_some((nu, nv))
+                })
+                .collect();
+            valid_witnesses = valid_witnesses
+                .into_iter()
+                .filter_map(|(cname, idx, exact)| {
+                    let nidx = remap.get(idx).copied().unwrap_or(usize::MAX);
+                    (nidx != usize::MAX).then_some((cname, nidx, exact))
+                })
+                .collect();
+        }
+    }
+
+    model.class_witnesses = valid_witnesses;
+
+    let mut sorted_edges: Vec<(usize, String, usize)> = global_edges.into_iter().collect();
+    sorted_edges.sort();
+    model.edges = sorted_edges;
+
+    Ok(model)
+}
+
+pub(crate) fn bridge_model(
+    tin: &TInput,
+    rbox: &[Vec<String>],
+) -> Result<BridgeExportModel, String> {
+    set_bridge_export_rbox_override(rbox.to_vec());
+    let prev = std::env::var_os("KM_EXPORT_MODEL_ACTIVE");
+    std::env::set_var("KM_EXPORT_MODEL_ACTIVE", "1");
+    let classified = bridged_classify(tin);
+    if prev.is_none() {
+        std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+    }
+    let classified = classified.ok_or_else(|| "bridge deferred classification".to_string())?;
+    if !classified.consistent {
+        let _ = take_last_bridge_export_model();
+        return Ok(BridgeExportModel::inconsistent());
+    }
+    take_last_bridge_export_model()
+        .unwrap_or_else(|| Err("bridge did not produce an export model".to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -18301,6 +24578,7 @@ mod tests {
 
     #[test]
     fn bridge_model_positive_tags_reads_cow_additional_alias_with_local_shadowing() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut previous = super::super::process::satellites::ReapplyConceptLabelSet::new(INVALID);
         for tag in 2000..2050 {
@@ -18392,6 +24670,7 @@ mod tests {
 
     #[test]
     fn query_root_reservation_preserves_retained_witnesses() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut witnesses = Vec::new();
         for id in [1000, 1001] {
@@ -18416,6 +24695,7 @@ mod tests {
 
     #[test]
     fn saturation_outcome_fingerprint_is_stable_and_semantically_sensitive() {
+        let _test_env = crate::test_env::read();
         let baseline = SaturationOutcome {
             sat_verdict: vec![Some(false), None, Some(true)],
             certain_subsumers: vec![Some(vec![1, 2]), None, None],
@@ -18584,6 +24864,7 @@ mod tests {
     /// value implying `H` is itself disjoint from `G` by an input clause.
     #[test]
     fn value_helper_disjoint_from_a_folded_sort_needs_every_value_disjoint() {
+        let _test_env = crate::test_env::read();
         let concept = |c: usize| HAtom::Concept { neg: false, c, t: 0 };
         let clause = |body: Vec<HAtom>, head: Vec<HAtom>| HtClause { body, head };
         // 0, 1: values; 2, 3: digit helpers of one position; 4: profile; 5: G.
@@ -18684,6 +24965,7 @@ mod tests {
 
     #[test]
     fn parallel_subject_partition_matches_single_worker() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let tin = TInput {
@@ -18710,6 +24992,7 @@ mod tests {
 
     #[test]
     fn semantic_number_flag_selects_native_abox_profile_without_card_defs() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut meta = native_nominal_meta(
@@ -18755,6 +25038,7 @@ mod tests {
 
     #[test]
     fn non_number_conditional_full_profile_is_opt_in_and_bounded() {
+        let _test_env = crate::test_env::read();
         let mut tin = cached_native_role_input();
         tin.number = false;
         assert!(!native_conditional_full_abox_profile(&tin, true, false));
@@ -18767,6 +25051,7 @@ mod tests {
 
     #[test]
     fn conditional_full_nominal_filler_preserves_asserted_type_subsumption() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let tin = TInput {
             concepts: vec!["A".into(), "B".into(), "C".into(), "__nom__a".into()],
@@ -18792,6 +25077,7 @@ mod tests {
 
     #[test]
     fn conditional_full_profile_rejects_konclude_threshold_sized_abox() {
+        let _test_env = crate::test_env::read();
         let mut tin = cached_native_role_input();
         // 1,000 concepts: 9,999 individuals satisfy the 10,000-individual
         // suggestion; 10,000 individuals give a ratio of 10, which satisfies
@@ -18809,6 +25095,7 @@ mod tests {
 
     #[test]
     fn konclude_full_completion_graph_decision_matches_its_conditions() {
+        let _test_env = crate::test_env::read();
         // suggestion by size, unless excluded by ratio
         assert!(konclude_full_completion_graph_suggested(9_999, 1_000));
         assert!(!konclude_full_completion_graph_suggested(9_999, 100));
@@ -18823,6 +25110,7 @@ mod tests {
 
     #[test]
     fn independent_component_abox_profile_rejects_every_coupling_fence() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut clean = cached_native_role_input();
@@ -18893,6 +25181,7 @@ mod tests {
 
     #[test]
     fn independent_abox_representatives_canonicalize_assertion_sets() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (_algo, _ctx, mut bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         let first = bridged.nominal_seeds[0].clone();
@@ -19120,6 +25409,7 @@ mod tests {
 
     #[test]
     fn source_mode_retains_exact_unit_bottom_certificates() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         // The source side channel activates native source reconstruction but
@@ -19152,6 +25442,7 @@ mod tests {
 
     #[test]
     fn source_mode_does_not_promote_conjunctive_bottom_to_unit_bottom() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let tin = TInput {
@@ -19182,6 +25473,7 @@ mod tests {
 
     #[test]
     fn non_source_unit_bottom_keeps_the_legacy_encoder_path() {
+        let _test_env = crate::test_env::read();
         let tin = TInput {
             concepts: vec!["A".into()],
             queries: vec![0],
@@ -19206,6 +25498,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_retains_relation_and_mixed_clauses() {
+        let _test_env = crate::test_env::read();
         let tin = exact_atomic_datatype_input();
         assert!(exact_atomic_datatype_bridge_fragment(&tin, true));
 
@@ -19221,6 +25514,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_local_universal_requires_the_identical_global_range() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let mut tin = exact_atomic_datatype_input();
         let baseline = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
@@ -19248,6 +25542,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_disjunction_collects_every_branch_without_weakening_guards() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let mut tin = exact_atomic_datatype_input();
         let branch = |name: &str| C::Exists(R::Name("integer_value".into()),
@@ -19271,6 +25566,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_subroles_close_types_and_preserve_guards() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let mut tin = exact_atomic_datatype_input();
         let parent = tin.roles.len(); tin.roles.push("data_parent".into());
@@ -19299,6 +25595,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_boolean_cover_counts_values_not_literal_names() {
+        let _test_env = crate::test_env::read();
         let mut tin = exact_atomic_datatype_input();
         let alias = tin.concepts.len();
         tin.concepts.push("__dt__val__\"true\"^^<http://www.w3.org/2001/XMLSchema#boolean>".into());
@@ -19329,6 +25626,7 @@ mod tests {
 
     #[test]
     fn datatype_relation_index_matches_clause_scans() {
+        let _test_env = crate::test_env::read();
         let mut input = exact_atomic_datatype_input();
         input.clauses.push(HtClause {
             body: vec![HAtom::Concept { neg: false, c: 0, t: 0 }],
@@ -19354,6 +25652,7 @@ mod tests {
 
     #[test]
     fn full_symbolic_source_bounds_execute_with_float_data() {
+        let _test_env = crate::test_env::read();
         let frontend = crate::frontend::ofn_to_symbolic_frontend(r#"
             Prefix(:=<http://x#>) Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
             Ontology(
@@ -19382,6 +25681,7 @@ mod tests {
 
     #[test]
     fn functional_float_value_has_exact_bridge_relation_evidence() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(r#"Prefix(:=<http://x#>)
             Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
             Ontology(
@@ -19409,6 +25709,7 @@ mod tests {
 
     #[test]
     fn functional_float_values_execute_exactly() {
+        let _test_env = crate::test_env::read();
         for (left, right, unsatisfiable) in [
             ("1.0", "1.0", false),
             ("1.0", "2.0", true),
@@ -19449,6 +25750,7 @@ mod tests {
 
     #[test]
     fn nested_object_fillers_retain_atomic_data_role_checks() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let filler = C::And([
             C::Exists(R::Name("object_role".into()), Box::new(C::Name("A".into()))),
@@ -19468,6 +25770,7 @@ mod tests {
 
     #[test]
     fn exact_numeric_tower_cardinality_fragment_is_certified() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             r#"Prefix(:=<http://x#>)
                Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
@@ -19521,6 +25824,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_checks_blank_data_node_axioms() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         // A forced label that the isolated element cannot satisfy (it needs a
@@ -19609,6 +25913,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_accepts_complex_object_domains() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let domain_left = C::Exists(R::Name("bool_value".into()), Box::new(C::Top));
@@ -19638,6 +25943,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_accepts_only_safe_data_cardinalities() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let safe_bound = C::AtMost(1, R::Name("integer_value".into()), Box::new(C::Top));
@@ -19701,6 +26007,7 @@ mod tests {
 
     #[test]
     fn data_domain_zero_cardinality_forces_empty_property() {
+        let _test_env = crate::test_env::read();
         let source = r#"Prefix(:=<http://example.org/>)
             Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>) Ontology(
             Declaration(Class(:A)) Declaration(Class(:B)) Declaration(DataProperty(:value))
@@ -19748,6 +26055,7 @@ mod tests {
     /// blank data node; without them it admits the input.
     #[test]
     fn data_roles_without_datatypes_enter_the_datatype_gate() {
+        let _test_env = crate::test_env::write();
         let source = r#"Prefix(:=<http://x#>)
             Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
             Ontology(Declaration(DataProperty(:u)) Declaration(NamedIndividual(:a))
@@ -19785,6 +26093,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_decimal_cells_decide_or_defer() {
+        let _test_env = crate::test_env::write();
         // Only 0 is a non-negative integer that is not positive: two distinct
         // successors are impossible. The bridge must not report A satisfiable.
         let gap = r#"Declaration(Class(<http://x#A>))
@@ -19826,6 +26135,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_union_range_needs_its_member_cover() {
+        let _test_env = crate::test_env::read();
         let ontology = r#"Declaration(Class(<http://x#X>)) Declaration(Class(<http://x#Y>))
             Declaration(Class(<http://x#W>)) Declaration(Class(<http://x#Z>))
             EquivalentClasses(<http://x#X> DataSomeValuesFrom(<http://x#p> xsd:integer))
@@ -19845,6 +26155,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_local_forall_without_global_range() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∀p.integer with p functional: an integer value excludes a double
         // and a boolean value; a decimal-family existential stays possible.
         let (input, evidence, result) = tbox_extension_classify(r#"
@@ -19865,6 +26176,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_datatype_definitions_are_inlined() {
+        let _test_env = crate::test_env::read();
         let ontology = r#"Declaration(Datatype(<http://x#Small>))
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) Declaration(Class(<http://x#C>))
             Declaration(Class(<http://x#W>))
@@ -19884,6 +26196,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_disjoint_data_roles() {
+        let _test_env = crate::test_env::read();
         let ontology = r#"Declaration(DataProperty(<http://x#q>))
             Declaration(Class(<http://x#Same>)) Declaration(Class(<http://x#Other>)) Declaration(Class(<http://x#Zero>))
             Declaration(Class(<http://x#Free>))
@@ -19907,6 +26220,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_any_uri_is_disjoint_from_string() {
+        let _test_env = crate::test_env::read();
         let (input, evidence, result) = tbox_extension_classify(r#"
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#U>)) Declaration(Class(<http://x#S>))
             SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:anyURI))
@@ -19927,6 +26241,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_double_values_use_owl_identity() {
+        let _test_env = crate::test_env::read();
         let axioms = |a: &str, b: &str| format!(r#"
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) FunctionalDataProperty(<http://x#p>)
             SubClassOf(<http://x#A> DataHasValue(<http://x#p> "{a}"^^xsd:double))
@@ -19952,6 +26267,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_double_facets_and_signed_zero() {
+        let _test_env = crate::test_env::read();
         let pos = r#"DatatypeRestriction(xsd:double xsd:minExclusive "0.0"^^xsd:double)"#;
         let nonneg = r#"DatatypeRestriction(xsd:double xsd:minInclusive "0.0"^^xsd:double)"#;
         let (input, evidence, result) = tbox_extension_classify(&format!(r#"
@@ -19997,6 +26313,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_literal_is_head_only() {
+        let _test_env = crate::test_env::read();
         let (input, evidence, result) = tbox_extension_classify(r#"
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>))
             SubClassOf(<http://x#A> DataAllValuesFrom(<http://x#p> rdfs:Literal))
@@ -20028,6 +26345,7 @@ mod tests {
 
     #[test]
     fn finite_datatype_cover_controls_cardinality_and_missing_evidence_defers() {
+        let _test_env = crate::test_env::read();
         for (values, unsat) in [("\"red\"^^xsd:string", true),
             ("\"red\"^^xsd:string \"blue\"^^xsd:string", false)] {
             let source = format!(r#"Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
@@ -20060,6 +26378,7 @@ mod tests {
 
     #[test]
     fn atomic_data_restrictions_in_object_property_ranges_preserve_role_separation() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let mut input = exact_atomic_datatype_input();
         let restriction = C::Exists(R::Name("integer_value".into()),
@@ -20075,6 +26394,7 @@ mod tests {
 
     #[test]
     fn singleton_value_identity_rejects_distinct_successors() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let value = "__dt__val__\"red\"^^xsd:string";
         for (cardinality, unsat) in [(2, true), (1, false)] {
@@ -20100,6 +26420,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_recognises_boolean_two_value_range() {
+        let _test_env = crate::test_env::read();
         let mut tin = exact_atomic_datatype_input();
         tin.concepts[2] = "__dt__c__DataOneOf(\"false\"^^xsd:boolean \"true\"^^xsd:boolean)".into();
         assert!(
@@ -20110,6 +26431,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_accepts_bare_datetime_range() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut tin = exact_atomic_datatype_input();
@@ -20149,6 +26471,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_requires_relation_evidence() {
+        let _test_env = crate::test_env::read();
         let mut tin = exact_atomic_datatype_input();
         tin.clauses
             .retain(|clause| !datatype_singleton_clause(clause, 3));
@@ -20193,6 +26516,7 @@ mod tests {
 
     #[test]
     fn datatype_boolean_min_three_defers_outside_the_atomic_fragment() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut tin = exact_atomic_datatype_input();
@@ -20213,6 +26537,7 @@ mod tests {
 
     #[test]
     fn opaque_or_complex_datatype_defers_the_route() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         for datatype in [
@@ -20239,6 +26564,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_is_an_exact_positive_certificate() {
+        let _test_env = crate::test_env::read();
         let tin = empty_role_model_input();
         let (_algo, _ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(bridged.has_native_nominals());
@@ -20247,6 +26573,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_checks_every_source_axiom_kind() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let base = empty_role_model_input();
@@ -20272,6 +26599,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_checks_assertions_and_inequalities() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let base = empty_role_model_input();
@@ -20297,6 +26625,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_rejects_edge_forcing_and_top_roles() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let base = empty_role_model_input();
@@ -20345,6 +26674,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_rejects_fixed_datatype_roots() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let base = empty_role_model_input();
@@ -20383,6 +26713,7 @@ mod tests {
 
     #[test]
     fn native_same_individual_preserves_equality_clashes_and_role_assertions() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         for (saturation, cache) in [(false, false), (true, true)] {
             let mut tin = TInput {
@@ -20431,6 +26762,7 @@ mod tests {
 
     #[test]
     fn native_nominals_merge_without_una_and_clash_with_explicit_different() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let mut tin = TInput {
@@ -20531,6 +26863,7 @@ mod tests {
     /// no saturation arena at all, so the gate must refuse.
     #[test]
     fn native_saturation_coupling_gate_refuses_without_a_saturation_wave() {
+        let _test_env = crate::test_env::read();
         let tin = native_saturation_coupling_input();
         let (_algo, ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(bridged.has_native_nominals());
@@ -20544,6 +26877,7 @@ mod tests {
     /// `build_native_abox_saturation_seeds` installs no concept linkings.
     #[test]
     fn native_saturation_coupling_gate_opens_on_the_concept_wave_only() {
+        let _test_env = crate::test_env::read();
         let tin = native_saturation_coupling_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         build_saturation_seeds(&mut ctx, &bridged);
@@ -20591,6 +26925,7 @@ mod tests {
     /// cache-independent re-confirmation and no cross-probe expansion replay.
     #[test]
     fn native_saturation_coupling_installs_an_empty_expansion_cache_handler() {
+        let _test_env = crate::test_env::read();
         let tin = native_saturation_coupling_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         build_saturation_seeds(&mut ctx, &bridged);
@@ -20639,6 +26974,7 @@ mod tests {
     /// unrelated successor.
     #[test]
     fn native_saturation_coupling_gate_refuses_an_abox_representation_node() {
+        let _test_env = crate::test_env::read();
         let tin = native_saturation_coupling_input();
         let (_algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         build_saturation_seeds(&mut ctx, &bridged);
@@ -20654,6 +26990,7 @@ mod tests {
 
     #[test]
     fn native_different_individuals_are_negative_nominal_assertions() {
+        let _test_env = crate::test_env::read();
         let tin = TInput {
             concepts: vec!["__nom__a".into(), "__nom__b".into()],
             source_axioms: vec![source_subclass(
@@ -20691,6 +27028,7 @@ mod tests {
 
     #[test]
     fn native_representative_scheduler_selects_seven_incomplete_entries() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::json_io::{NominalAboxMeta, NominalIndividualMeta};
         use crate::orchestrate::cb_to_ht::CardDefJson;
@@ -20784,6 +27122,7 @@ mod tests {
 
     #[test]
     fn positive_and_negative_singletons_drive_exact_taxonomy() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let tin = TInput {
@@ -20822,6 +27161,7 @@ mod tests {
 
     #[test]
     fn native_abox_consistency_is_global_and_incomplete_metadata_defers() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let mut tin = TInput {
@@ -20855,6 +27195,7 @@ mod tests {
 
     #[test]
     fn unsupported_abox_metadata_without_proxy_entries_defers() {
+        let _test_env = crate::test_env::read();
         let tin = TInput {
             concepts: vec!["A".into()],
             queries: vec![0],
@@ -20873,6 +27214,7 @@ mod tests {
 
     #[test]
     fn native_nominal_inverse_fence_is_complete_or_defer() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let tin = TInput {
@@ -20904,6 +27246,7 @@ mod tests {
 
     #[test]
     fn production_verifies_disjunctive_domain_subsumption_with_pair_probe() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
 
@@ -20948,6 +27291,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_metadata_is_fail_closed() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
         use crate::json_io::NominalRoleAssertionMeta;
 
@@ -21062,6 +27406,7 @@ mod tests {
 
     #[test]
     fn native_abox_representative_cache_carries_and_replays_full_labels() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -21290,6 +27635,7 @@ mod tests {
 
     #[test]
     fn conditional_full_class_probe_restores_all_root_consistency_base() {
+        let _test_env = crate::test_env::read();
         for share_replay in [false, true] {
             conditional_full_class_probe_case(share_replay);
         }
@@ -21529,6 +27875,7 @@ mod tests {
     /// what defeated cheap ABox reuse on the 9540 conditional-full profile.
     #[test]
     fn retained_base_reset_rolls_back_every_leftover_alternative_epoch() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let mut mixed = cached_native_role_input();
@@ -21653,6 +28000,7 @@ mod tests {
 
     #[test]
     fn native_representative_batch_replays_incoming_assertion_vector() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -21732,6 +28080,7 @@ mod tests {
 
     #[test]
     fn native_abox_named_assertion_resolve_copy_discharges_satisfied_disjunction() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         // Konclude does not seed a named individual's raw assertions directly
@@ -21795,6 +28144,7 @@ mod tests {
 
     #[test]
     fn native_abox_representative_cache_records_cardinality_and_indirect_nominals() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let meta = native_nominal_meta(
@@ -21842,6 +28192,7 @@ mod tests {
 
     #[test]
     fn native_abox_association_status_matches_konclude_writer_predicate() {
+        let _test_env = crate::test_env::read();
         use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as F;
 
         let completed = F::INDSATFLAGCOMPLETED;
@@ -21879,6 +28230,7 @@ mod tests {
 
     #[test]
     fn native_precomputation_phase_order_is_strict() {
+        let _test_env = crate::test_env::read();
         let mut phase = NativePrecomputationPhase::Start;
         assert!(advance_native_precomputation_phase(
             &mut phase,
@@ -21918,6 +28270,7 @@ mod tests {
 
     #[test]
     fn native_representative_coordination_requires_clean_quiescence() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -21983,6 +28336,7 @@ mod tests {
 
     #[test]
     fn native_representative_writeback_rejects_stale_batch_atomically() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -22053,9 +28407,10 @@ mod tests {
 
     #[test]
     fn native_abox_representative_reuse_gate_has_every_backend_conjunct() {
+        let _test_env = crate::test_env::read();
         let mut entry = NativeAboxRepresentativeEntry {
             individual_tag: 1,
-            concept_values: Some(Vec::new()),
+            concept_values: Some(std::sync::Arc::new(Vec::new())),
             completely_saturated: true,
             completely_handled: true,
             completely_propagated: true,
@@ -22106,13 +28461,14 @@ mod tests {
     /// predicate above, so this pins the four reads separately.
     #[test]
     fn association_reusable_elements_read_the_four_nondeterministic_slots() {
+        let _test_env = crate::test_env::read();
         let base = NativeAboxRepresentativeEntry {
             individual_tag: 1,
-            concept_values: Some(vec![NativeAboxConceptValue {
+            concept_values: Some(std::sync::Arc::new(vec![NativeAboxConceptValue {
                 concept: ConceptId::new(0),
                 negated: false,
                 deterministic: true,
-            }]),
+            }])),
             completely_handled: true,
             ..Default::default()
         };
@@ -22123,15 +28479,17 @@ mod tests {
         assert!(!base.has_nondeterministic_neighbour_roles());
 
         let mut nondeterministic_concept = base.clone();
-        nondeterministic_concept
-            .concept_values
-            .as_mut()
-            .expect("concept values")
-            .push(NativeAboxConceptValue {
-                concept: ConceptId::new(1),
-                negated: false,
-                deterministic: false,
-            });
+        std::sync::Arc::make_mut(
+            nondeterministic_concept
+                .concept_values
+                .as_mut()
+                .expect("concept values"),
+        )
+        .push(NativeAboxConceptValue {
+            concept: ConceptId::new(1),
+            negated: false,
+            deterministic: false,
+        });
         assert!(nondeterministic_concept.has_reusable_elements());
 
         // The 86-of-198 slot in the Stage-2 trace: a neighbour-role value the
@@ -22213,6 +28571,7 @@ mod tests {
     /// a branch alternative, never as base facts.
     #[test]
     fn replay_record_carries_nondeterministic_values_but_the_replay_list_drops_them() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -22253,7 +28612,9 @@ mod tests {
                 .entries
                 .get_mut(&seed.individual_tag)
                 .expect("nominal association");
-            let values = entry.concept_values.as_mut().expect("concept values");
+            let values = std::sync::Arc::make_mut(
+                entry.concept_values.as_mut().expect("concept values"),
+            );
             assert!(!values.is_empty(), "no published concept value to flip");
             let flipped = values[0];
             assert!(flipped.deterministic);
@@ -22291,6 +28652,7 @@ mod tests {
 
     #[test]
     fn incomplete_native_neighbour_stays_blocked_with_both_linkers_retained() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22330,6 +28692,7 @@ mod tests {
 
     #[test]
     fn native_critical_concept_unblocks_only_the_influenced_neighbour() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22384,6 +28747,7 @@ mod tests {
 
     #[test]
     fn native_cardinality_criticality_releases_neighbour_only_block() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22499,6 +28863,7 @@ mod tests {
     /// changes is only WHEN the route declines.
     #[test]
     fn raw_assertion_replay_runs_only_when_selective_cache_expansion_declines() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22600,6 +28965,7 @@ mod tests {
     /// ABox with all named edges installed and no blocking left to re-establish.
     #[test]
     fn asserted_edge_survives_nondeterministic_cache_marking() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22685,6 +29051,7 @@ mod tests {
     /// The node keeps its association block and its other neighbours stay cached.
     #[test]
     fn derived_nondeterministic_cached_neighbour_is_skipped_without_losing_the_node_cache() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22789,6 +29156,7 @@ mod tests {
     /// cache-backed root route this change touches.
     #[test]
     fn minimized_9540_nominal_class_pair_stays_satisfiable() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut meta = native_nominal_meta(
@@ -22967,6 +29335,7 @@ mod tests {
 
     #[test]
     fn bridge_candidate_marker_is_built_for_a_partially_triggerable_definition() {
+        let _test_env = crate::test_env::read();
         let tin = bridge_candidate_marker_input();
         let (_algo, ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         let def = 2usize;
@@ -23001,6 +29370,7 @@ mod tests {
 
     #[test]
     fn bridge_candidate_marker_refutation_preserves_the_taxonomy() {
+        let _test_env = crate::test_env::read();
         let tin = bridge_candidate_marker_input();
         let (ww, def, sub, red_sub, red, either, wine) = (0, 2, 3, 4, 5, 6, 7);
         let (def2, x, y, z) = (9, 10, 11, 12);
@@ -23026,6 +29396,7 @@ mod tests {
 
     #[test]
     fn source_closure_derives_definition_containment_transitively_without_the_converse() {
+        let _test_env = crate::test_env::read();
         let tin = definition_containment_input();
         let closure = source_named_subsumer_closure(&tin);
         let (a, upper, lower, chain) = (0usize, 4usize, 5usize, 6usize);
@@ -23055,6 +29426,7 @@ mod tests {
 
     #[test]
     fn hierarchy_countermodels_order_specific_classes_first_and_propagate_upward() {
+        let _test_env = crate::test_env::read();
         let known = HashSet::from_iter([(0usize, 1usize), (0, 2), (1, 2), (3, 2)]);
         let mut subjects = vec![2, 1, 3, 0, 4];
         hierarchy_countermodel_subject_order(&mut subjects, &known);
@@ -23075,6 +29447,7 @@ mod tests {
 
     #[test]
     fn source_post_closure_uses_semantic_pairs_to_discharge_a_definition() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let tin = TInput {
@@ -23114,6 +29487,7 @@ mod tests {
 
     #[test]
     fn definition_containment_subsumers_reach_the_classification_output() {
+        let _test_env = crate::test_env::read();
         let tin = definition_containment_input();
         let (a, upper, lower, chain) = (0usize, 4usize, 5usize, 6usize);
         let entailed = [
@@ -23168,6 +29542,7 @@ mod tests {
 
     #[test]
     fn native_abox_replay_blocks_then_invalidates_on_new_concept() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -23289,6 +29664,7 @@ mod tests {
 
     #[test]
     fn successful_completion_writeback_is_transactional_and_enables_next_replay() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -23461,6 +29837,7 @@ mod tests {
 
     #[test]
     fn selective_writeback_preserves_untouched_neighbour_labels_and_versions() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -23535,6 +29912,7 @@ mod tests {
 
     #[test]
     fn sparse_writeback_ignores_unselected_tag_zero_alias_but_rejects_selected_mismatch() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -23668,6 +30046,7 @@ mod tests {
 
     #[test]
     fn native_abox_positive_role_assertion_is_exact_existential() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::{Concept as C, Role as R};
         use crate::json_io::NominalRoleAssertionMeta;
         use crate::orchestrate::cb_to_ht::CardDefJson;
@@ -23765,6 +30144,7 @@ mod tests {
 
     #[test]
     fn native_direct_role_assertion_follows_multihop_target_merge() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -23852,6 +30232,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_handshake_does_not_propagate_late_peer_status() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let mut meta = native_nominal_meta(
@@ -23905,6 +30286,7 @@ mod tests {
 
     #[test]
     fn native_abox_negative_role_assertion_is_exact_universal() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         use crate::json_io::NominalRoleAssertionMeta;
 
@@ -23946,6 +30328,7 @@ mod tests {
 
     #[test]
     fn native_abox_same_positive_and_negative_role_fact_clashes() {
+        let _test_env = crate::test_env::read();
         let mut meta = native_nominal_meta(
             vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
             vec![],
@@ -23964,6 +30347,7 @@ mod tests {
 
     #[test]
     fn native_abox_negative_role_fact_alone_has_empty_role_model() {
+        let _test_env = crate::test_env::read();
         let mut meta = native_nominal_meta(
             vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
             vec![],
@@ -23983,6 +30367,7 @@ mod tests {
 
     #[test]
     fn native_abox_positive_self_edge_is_not_dropped() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut meta = native_nominal_meta(
@@ -24008,6 +30393,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_inverse_roles() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         use crate::json_io::NominalRoleAssertionMeta;
 
@@ -24049,6 +30435,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_role_supers() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
         use crate::json_io::NominalRoleAssertionMeta;
 
@@ -24089,6 +30476,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_domain_and_range() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let make = |domain: bool| {
@@ -24142,6 +30530,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_role_chains() {
+        let _test_env = crate::test_env::read();
         let mut meta = native_nominal_meta(
             vec![
                 ("a", "__nom__a", vec![]),
@@ -24166,6 +30555,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_transitivity() {
+        let _test_env = crate::test_env::read();
         let mut meta = native_nominal_meta(
             vec![
                 ("a", "__nom__a", vec![]),
@@ -24190,6 +30580,7 @@ mod tests {
 
     #[test]
     fn native_abox_nondeterministic_atmost_merge_completes_without_direct_blocking() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut meta = native_nominal_meta(
@@ -24305,6 +30696,7 @@ mod tests {
 
     #[test]
     fn native_abox_inferred_live_successor_is_serialized_separately_from_assertion_journal() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let meta = native_nominal_meta(
@@ -24368,6 +30760,7 @@ mod tests {
 
     #[test]
     fn native_abox_atmost_respects_different_and_no_una() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let make = |different: bool, reverse: bool| {
@@ -24434,6 +30827,7 @@ mod tests {
 
     #[test]
     fn inverse_negative_existential_mirrors_defer_before_bridge_search() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept, Role};
 
         let mirror_name = Concept::Name("N".into());
@@ -24538,6 +30932,7 @@ mod tests {
 
     #[test]
     fn saturation_extractor_reports_only_valid_intermediate_substitute_concepts() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24605,6 +31000,7 @@ mod tests {
 
     #[test]
     fn binary_absorber_combines_triggers_like_konclude() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24652,6 +31048,7 @@ mod tests {
 
     #[test]
     fn nominal_absorption_trigger_is_asserted_on_named_individual() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24713,6 +31110,7 @@ mod tests {
 
     #[test]
     fn existential_trigger_uses_inverse_implall_propagation() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24749,6 +31147,7 @@ mod tests {
 
     #[test]
     fn full_gci_keeps_named_condition_on_final_implication() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24802,6 +31201,7 @@ mod tests {
 
     #[test]
     fn full_or_trigger_uses_konclude_rounded_average_complexity() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24824,6 +31224,7 @@ mod tests {
 
     #[test]
     fn ore_3215_common_condition_does_not_host_reverse_definitions() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24853,6 +31254,7 @@ mod tests {
 
     #[test]
     fn branch_trigger_preprocess_installs_role_domain_marker() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24874,6 +31276,7 @@ mod tests {
 
     #[test]
     fn higher_cardinality_uses_partial_not_full_trigger() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24910,6 +31313,7 @@ mod tests {
 
     #[test]
     fn common_disjunct_preprocess_materializes_replacement_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24944,6 +31348,7 @@ mod tests {
 
     #[test]
     fn common_disjunct_preprocess_reuses_nested_disjunction_cache_exactly() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -25101,6 +31506,7 @@ mod tests {
 
     #[test]
     fn incremental_blank_witness_search_matches_full_reevaluation() {
+        let _test_env = crate::test_env::read();
         use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
         let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
         let mut next = move |bound: u64| {
@@ -25148,6 +31554,7 @@ mod tests {
 
     #[test]
     fn production_subject_subset_matches_full_taxonomy_projection() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             "Prefix(:=<http://example.org/>)\n\
              Ontology(\n\
@@ -25189,6 +31596,7 @@ mod tests {
 
     #[test]
     fn reflexivity_global_self_encoding_preserves_root_and_successor_consequences() {
+        let _test_env = crate::test_env::read();
       for (use_saturation, use_satcache) in [(false, false), (true, false), (true, true)] {
         let mut tin = TInput {
             concepts: vec!["A".into(), "B".into(), "C".into()],
@@ -25219,6 +31627,7 @@ mod tests {
 
     #[test]
     fn saturation_self_rule_decides_reflexive_terminology() {
+        let _test_env = crate::test_env::read();
         // docs/HYBRID-CB-HT.md section 20: the saturation SELF rule installs
         // a self-connected backward link, so the pass no longer refuses a
         // SELF terminology and decides its classes itself.
@@ -25249,6 +31658,7 @@ mod tests {
 
     #[test]
     fn production_rbox_compiles_symmetric_role_as_self_inverse() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             "Prefix(:=<http://example.org/>)\n\
              Ontology(\n\
@@ -25262,6 +31672,7 @@ mod tests {
 
     #[test]
     fn production_rbox_marks_functional_role_for_successor_extension() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             "Prefix(:=<http://example.org/>)\n\
              Ontology(\n\
@@ -25275,6 +31686,7 @@ mod tests {
 
     #[test]
     fn saturation_construction_ports_special_reference_and_exist_flags() {
+        let _test_env = crate::test_env::read();
         use super::super::model::concept_process::SATURATION_SUBSTITUTE_MODE;
 
         let env = bridge_ofn(
@@ -25430,6 +31842,7 @@ mod tests {
 
     #[test]
     fn ddb_preserves_satisfiable_disjoint_cardinality_partition() {
+        let _test_env = crate::test_env::read();
         // Four r-successors can consist of three C nodes and one D node.
         // B is the disjoint union of C, D and E; no E node is required.
         let tin: TInput = serde_json::from_str(include_str!(
@@ -25456,6 +31869,7 @@ mod tests {
 
     #[test]
     fn equivalent_wine_definitions_preserve_nominal_universal_subsumption() {
+        let _test_env = crate::test_env::read();
         let mut env = bridge_ofn(include_str!("../../tests/fixtures/nominal_wine_absorption.ofn"));
         if let Some(path) = std::env::var_os("KM_WINE_PROBE_TIN") {
             env.tin = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
@@ -25489,6 +31903,7 @@ mod tests {
 
     #[test]
     fn bridge_subsumption_chain() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -25504,6 +31919,7 @@ mod tests {
 
     #[test]
     fn source_absorber_registers_unabsorbed_equivalent_non_candidate() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:H)) Declaration(Class(:M)) Declaration(Class(:C))\n\
@@ -25562,6 +31978,7 @@ mod tests {
 
     #[test]
     fn terminal_separator_individual_retains_native_abox_coverage() {
+        let _test_env = crate::test_env::write();
         let ofn = format!("{PREFIX} Declaration(Class(:A)) Declaration(Class(:B)) \
             Declaration(NamedIndividual(<http://example.org/individual/>)) \
             ClassAssertion(:A <http://example.org/individual/>) SubClassOf(:A :B))");
@@ -25578,6 +31995,7 @@ mod tests {
 
     #[test]
     fn unfinished_saturation_seeds_cannot_publish_a_taxonomy() {
+        let _test_env = crate::test_env::read();
         let ofn = format!("{PREFIX} Declaration(Class(:A)) Declaration(Class(:B)) \
             Declaration(Class(:C)) SubClassOf(:A :B) SubClassOf(:B :C))");
         let env = bridge_ofn(&ofn);
@@ -25594,6 +32012,7 @@ mod tests {
 
     #[test]
     fn source_tbox_retains_rbox_domain_for_existential_saturation() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |cc: usize, t: usize| HAtom::Concept {
             neg: false,
@@ -25698,6 +32117,7 @@ mod tests {
     /// remain consumable.
     #[test]
     fn saturation_label_certification_gates_unconditional_edges() {
+        let _test_env = crate::test_env::read();
         let outcome = SaturationOutcome {
             sat_verdict: vec![None, Some(false), Some(false), Some(true)],
             certain_subsumers: vec![None, Some(vec![2]), None, None],
@@ -25719,6 +32139,7 @@ mod tests {
 
     #[test]
     fn source_tbox_propagates_complex_role_domain_back_through_chain() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |cc: usize, t: usize| HAtom::Concept {
             neg: false,
@@ -25795,6 +32216,7 @@ mod tests {
 
     #[test]
     fn bridge_materializes_transitive_role_for_automata_preprocessing() {
+        let _test_env = crate::test_env::read();
         let mut tin = TInput {
             concepts: vec!["A".to_string()],
             roles: vec!["r".to_string()],
@@ -25829,6 +32251,7 @@ mod tests {
 
     #[test]
     fn structural_markers_are_not_classification_or_saturation_items() {
+        let _test_env = crate::test_env::read();
         let tin = TInput {
             concepts: vec!["A".to_string(), "Q_1".to_string()],
             queries: vec![0],
@@ -25875,6 +32298,7 @@ mod tests {
 
     #[test]
     fn production_role_automata_solves_mini7914_unsat() {
+        let _test_env = crate::test_env::read();
         let mut env = bridge_ofn(include_str!(
             "../../../tests/completeness-gaps/mini7914_unsat.ofn"
         ));
@@ -25909,6 +32333,7 @@ mod tests {
 
     #[test]
     fn production_inverse_chain_automata_solves_7914_recognition_core() {
+        let _test_env = crate::test_env::read();
         let mut env = bridge_ofn(include_str!(
             "../../../tests/completeness-gaps/mini7914_chain_recognition.ofn"
         ));
@@ -25955,6 +32380,7 @@ mod tests {
 
     #[test]
     fn production_read_off_populates_persistent_kpset_messages() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B))\n\
@@ -25991,6 +32417,7 @@ mod tests {
 
     #[test]
     fn production_read_off_keeps_open_or_disjuncts_nondeterministic() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -26049,6 +32476,7 @@ mod tests {
 
     #[test]
     fn production_read_off_populates_other_node_possible_subsumptions() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -26100,6 +32528,7 @@ mod tests {
     /// label that genuinely contains it).
     #[test]
     fn unsat_cache_warm_probes_keep_verdicts() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:X)) Declaration(Class(:Y))\n\
@@ -26177,6 +32606,7 @@ mod tests {
 
     #[test]
     fn probe_reset_reuses_process_capacity_and_matches_a_fresh_probe() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             "Prefix(:=<http://example.org/>)\n\
              Ontology(Declaration(Class(:A)) Declaration(Class(:B))\n\
@@ -26253,6 +32683,7 @@ mod tests {
     #[test]
     #[ignore]
     fn covering_atmost_cross_merge_sat() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:E))\n\
@@ -26297,6 +32728,7 @@ mod tests {
     /// regression proof.
     #[test]
     fn unrestored_advance_leftover_no_root_cancel() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:AlternativePath)) Declaration(Class(:Path))\n\
@@ -26326,6 +32758,7 @@ mod tests {
 
     #[test]
     fn bridge_disjunction_by_cases() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊔ C, B ⊑ D, C ⊑ D ⇒ A ⊑ D — exercises the OR rule + the
         // sound same-node backtrack through the BRIDGED encoding.
         let ofn = format!(
@@ -26343,6 +32776,7 @@ mod tests {
 
     #[test]
     fn bridge_disjunction_open_branch() {
+        let _test_env = crate::test_env::read();
         // Drop C ⊑ D: the C branch stays open ⇒ A ⊑ D must NOT hold (the
         // negative control that pinned the chronological-backtrack bug).
         let ofn = format!(
@@ -26383,6 +32817,7 @@ mod tests {
 
     #[test]
     fn bridge_exists_forall_clash() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃R.B, A ⊑ ∀R.C, B ⊓ C ⊑ ⊥(via D/¬D)  ⇒ A unsatisfiable ⇒ A ⊑ E
         // for the probe; simpler direct check: A ⊑ ∃R.B and ∀R.¬B ⇒ A ⊓ that
         // ∀ is unsat. Encode as: A ⊑ ∃R.B, F ⊑ ∀R.C with B ⊓ C contradictory.
@@ -26433,6 +32868,7 @@ mod tests {
 
     #[test]
     fn bridge_role_hierarchy_forall() {
+        let _test_env = crate::test_env::read();
         // R ⊑ S: A ⊑ ∃R.D, A ⊑ ∀S.C, D ⊑ ¬C — the ∀S restriction must reach
         // the R-successor via the hierarchy ⇒ A unsatisfiable. The bridged
         // counterpart of the `role_hierarchy_forall` selftest, driven from
@@ -26461,6 +32897,7 @@ mod tests {
     /// The 9635 shape adds exact cardinality; test both.
     #[test]
     fn bridge_domain_via_forced_successor() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:D)) Declaration(Class(:T))\n\
@@ -26498,6 +32935,7 @@ mod tests {
     /// model: pairwise=false while readoff_has=true).
     #[test]
     fn bridge_domain_survives_datatype_singletons() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:D)) Declaration(Class(:I))\n\
@@ -26570,6 +33008,7 @@ mod tests {
 
     #[test]
     fn bridge_exists_recognition_inverse() {
+        let _test_env = crate::test_env::read();
         // ∃R.B ⊑ Q (the definer-recognition / absorption shape, frontend-
         // clausified to `B(y) ∧ R(x,y) → Q(x)`, bridged as `B ⊑ ∀R⁻.Q`):
         // A ⊑ ∃R.B and Q ⊑ E ⊢ A ⊑ E — the Q lands on A through the
@@ -26604,6 +33043,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_scale_probe() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let n_probes: usize = std::env::var("KM_BRIDGE_PROBES")
             .ok()
@@ -26683,6 +33123,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_correctness_sample() {
+        let _test_env = crate::test_env::read();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
         let n_probes: usize = std::env::var("KM_BRIDGE_PROBES")
@@ -26796,6 +33237,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_probe_pair() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let pair = std::env::var("KM_BRIDGE_PAIR").expect("set KM_BRIDGE_PAIR=Sub,Sup");
         let (sub, sup) = pair.split_once(',').expect("Sub,Sup");
@@ -27072,6 +33514,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_classify_full() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
         let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
@@ -27312,6 +33755,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_classify_prod() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
         let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
@@ -27423,6 +33867,7 @@ mod tests {
     /// no defer) and that a singleton-free sibling Y stays satisfiable.
     #[test]
     fn singleton_concept_merge_value_identity_unsat() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, c: usize, t: usize| HAtom::Concept { neg, c, t };
         // concepts: 0=X 1=V 2=A 3=VA1 4=VA2 5=Y
@@ -27501,6 +33946,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_coverage_report() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let text = std::fs::read_to_string(&path).expect("readable ontology");
         let fr = crate::frontend::ofn_to_clauses(&text).expect("in fragment");
@@ -27555,6 +34001,7 @@ mod tests {
 
     #[test]
     fn saturation_answers_simple_taxonomy() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // A ⊑ B, B ⊑ C — the pure-Horn case saturation must fully answer.
@@ -27591,6 +34038,7 @@ mod tests {
 
     #[test]
     fn saturation_existential_applies_role_domain_before_certifying() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |cc: usize, t: usize| HAtom::Concept {
             neg: false,
@@ -27638,6 +34086,7 @@ mod tests {
 
     #[test]
     fn saturation_detects_unsat_concept() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // A ⊑ B and A ⊓ B ⊑ ⊥ — the deterministic clash must surface as
@@ -27667,6 +34116,7 @@ mod tests {
 
     #[test]
     fn probe_oracle_alone_detects_unsat_concept() {
+        let _test_env = crate::test_env::write();
         // DIAGNOSTIC twin of `saturation_detects_unsat_concept` WITHOUT the
         // saturation pre-pass: isolates whether the probe path alone answers
         // the tiny A ⊑ B, A ⊓ B ⊑ ⊥ input (checks the oracle, not saturation).
@@ -27697,6 +34147,7 @@ mod tests {
 
     #[test]
     fn saturation_defers_disjunction_subjects() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // A ⊑ B ⊔ C — branching: the non-branching saturation must NOT claim
@@ -27732,6 +34183,7 @@ mod tests {
 
     #[test]
     fn saturation_never_sat_certain_on_forall_exists_clash() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // A ⊑ ∃r.B and A ⊑ ∀r.¬B ⇒ A unsatisfiable. The cheap saturation
@@ -27786,6 +34238,7 @@ mod tests {
     /// deferred EVERY critical ≤n).
     #[test]
     fn saturation_answers_atmost_within_bound() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         let tin = TInput {
@@ -27828,6 +34281,7 @@ mod tests {
     /// SAT-certain with the precise qualified counting.
     #[test]
     fn saturation_atmost_qualified_counting_sat() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         let ex = |r: usize, cc: usize| HAtom::Exist {
@@ -27876,6 +34330,7 @@ mod tests {
     /// brings the residual cardinality back to the bound ⇒ SAT-certain.
     #[test]
     fn saturation_atmost_merging_discount_sat() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         let ex = |r: usize, cc: usize| HAtom::Exist {
@@ -27932,6 +34387,7 @@ mod tests {
     /// claim SAT-certain (label-merging-problematic must veto the discount).
     #[test]
     fn saturation_atmost_disjoint_successors_not_sat_certain() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         let ex = |r: usize, cc: usize| HAtom::Exist {
@@ -27995,6 +34451,7 @@ mod tests {
     /// distinct-successor block already exceeds the allowance).
     #[test]
     fn saturation_atleast_over_atmost_not_sat_certain() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let tin = TInput {
             concepts: vec!["A".into(), "B".into()],
@@ -28050,6 +34507,7 @@ mod tests {
     /// reference linkings survive the reset).
     #[test]
     fn satcache_expansion_and_blocking_fire_in_probe() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B))\n\
@@ -28125,6 +34583,7 @@ mod tests {
 
     #[test]
     fn satcache_successful_root_writes_and_preserves_associated_expansion() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -28180,6 +34639,7 @@ mod tests {
     /// clash arm — and agree with the plain (uncoupled) probe.
     #[test]
     fn satcache_clash_replay_probe_unsat() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -28223,6 +34683,7 @@ mod tests {
     /// disjunction forces a probe residue (the coupling actually runs).
     #[test]
     fn satcache_classification_matches_plain() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))\n\
@@ -28262,6 +34723,7 @@ mod tests {
     /// poison-defer noise in either arm.
     #[test]
     fn satcache_absorption_terminates_exists_cycle() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:X)) Declaration(Class(:Y))\n\
@@ -28300,6 +34762,7 @@ mod tests {
     /// must match the oracle exactly; unknowns are free.
     #[test]
     fn saturation_certainties_agree_with_probe_classification() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // 0=A 1=B 2=C 3=D 4=E; r
@@ -28424,6 +34887,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_asymmetric_clause_shape() {
+        let _test_env = crate::test_env::read();
         let role = |r, s, t| HAtom::Role { r, s, t };
         let clause = |body: Vec<HAtom>| HtClause { body, head: vec![] };
         assert_eq!(asymmetric_role_clause(&clause(vec![role(3, 0, 1), role(3, 1, 0)])), Some(3));
@@ -28438,6 +34902,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_asymmetry_excludes_self_loops() {
+        let _test_env = crate::test_env::read();
         // Asymmetry implies irreflexivity: F ⊑ ∃t.Self with t ⊑ r forces r(x,x).
         let (result, names) = classify(&ontology(
             "AsymmetricObjectProperty(:r) SubObjectPropertyOf(:t :r) \
@@ -28450,6 +34915,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_symmetric_and_asymmetric_role_is_empty() {
+        let _test_env = crate::test_env::read();
         let (result, names) = classify(&ontology(
             "AsymmetricObjectProperty(:r) SymmetricObjectProperty(:r) \
              SubClassOf(:A ObjectSomeValuesFrom(:r :B)) SubClassOf(:C ObjectAllValuesFrom(:r :D))"));
@@ -28461,6 +34927,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_inverse_hierarchy_forces_empty_role() {
+        let _test_env = crate::test_env::read();
         // s ⊑ r, r ⊑ t, t ≡ s⁻: s(x,y) gives s(y,x), so Asymmetric(s) empties s and r.
         let (result, names) = classify(&ontology(
             "AsymmetricObjectProperty(:s) SubObjectPropertyOf(:s :r) SubObjectPropertyOf(:r :t) \
@@ -28473,6 +34940,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_functional_merge_into_predecessor_clashes() {
+        let _test_env = crate::test_env::read();
         // x r y, y r z, q ⊒ r, q ⊒ r⁻ functional: z merges into x, so r(y,x)
         // and r(x,y) violate asymmetry. B alone (no predecessor) is fine.
         let (result, names) = classify(&ontology(
@@ -28487,6 +34955,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_reflexive_and_irreflexive_role_is_inconsistent() {
+        let _test_env = crate::test_env::read();
         // A reflexivity fact forces the role nonempty, so the irreflexivity
         // axiom must not be dropped as redundant.
         // The ontology is inconsistent: the bridge must not publish a
@@ -28504,6 +34973,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_irreflexive_self_loop_from_merge_into_predecessor() {
+        let _test_env = crate::test_env::read();
         // C ⊑ ∃s⁻.H, H ⊑ ∃u.Self, s,u ⊑ t functional: the s-predecessor y
         // has t(y,y) and t(y,x), so x merges into y and s(y,y) violates
         // Irreflexive(s). C is unsatisfiable.
@@ -28521,6 +34991,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_two_reflexive_roles_reach_universal_restriction() {
+        let _test_env = crate::test_env::read();
         // The self link of `t` must not hide the self link of the transitive
         // super-role `s` from the universal restriction (first-link scan).
         let (result, names) = classify(&ontology(
@@ -28565,6 +35036,7 @@ mod bridge_equivalent_non_candidate_tests {
     /// list invalidates the subsumption before it is tested.
     #[test]
     fn bridge_equivalent_non_candidate_definition_is_tested() {
+        let _test_env = crate::test_env::read();
         for (axioms, sub, sup) in [
             ("EquivalentClasses(:B ObjectAllValuesFrom(ObjectInverseOf(:s) ObjectSomeValuesFrom(:s :H)))", "H", "B"),
             ("SubObjectPropertyOf(:s :u) EquivalentClasses(:B ObjectAllValuesFrom(ObjectInverseOf(:s) ObjectSomeValuesFrom(:u :H)))", "H", "B"),
@@ -28581,5 +35053,538 @@ mod bridge_equivalent_non_candidate_tests {
                     "{axioms}: C has no subsumer");
             }
         }
+    }
+
+    #[test]
+    fn bridge_data_complement_unguarded_equivalence_is_admitted() {
+        let _test_env = crate::test_env::write();
+        for nominals in [false, true] {
+            let nominal_axiom = if nominals {
+                "Declaration(NamedIndividual(:y1998))\nSubClassOf(ObjectOneOf(:y1998) :Vintage)\n"
+            } else {
+                ""
+            };
+            let text = format!(
+                "Prefix(:=<http://example.org/dc#>)\n\
+                Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n\
+                Ontology(\n\
+                  Declaration(Class(:Wine))\n\
+                  Declaration(Class(:Vintage))\n\
+                  Declaration(Class(:Q))\n\
+                  Declaration(DataProperty(:yearValue))\n\
+                  {nominal_axiom}\
+                  DataPropertyDomain(:yearValue :Vintage)\n\
+                  DataPropertyRange(:yearValue xsd:positiveInteger)\n\
+                  EquivalentClasses(:Q DataSomeValuesFrom(:yearValue DataComplementOf(xsd:string)))\n\
+                )"
+            );
+            let _nom = if nominals {
+                crate::test_env::EnvVar::set("KM_NOMINALS", "1")
+            } else {
+                crate::test_env::EnvVar::remove("KM_NOMINALS")
+            };
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+            let fr = crate::frontend::ofn_to_clauses(&text);
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+            let fr = fr.expect("in fragment");
+            let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+            let projected = if nominals {
+                crate::orchestrate::race::native_nominal_bridge_clauses(
+                    &fr.clauses,
+                    &fr.nominal_abox,
+                    &fr.definers,
+                    true,
+                    false,
+                )
+            } else {
+                std::borrow::Cow::Borrowed(fr.clauses.as_slice())
+            };
+            let mut tin = crate::orchestrate::cb_to_ht::convert(
+                &projected,
+                Some(&fr.rbox),
+                &named,
+                &fr.cardinalities,
+                &fr.definers,
+                &fr.source_axioms,
+                true,
+                &fr.rules,
+                false,
+            );
+            tin.data_roles = fr
+                .data_roles
+                .iter()
+                .filter_map(|name| tin.roles.iter().position(|r| r == name))
+                .collect();
+            if nominals {
+                tin.nominal_abox = fr.nominal_abox;
+            }
+            assert!(
+                datatype_bridge_route_exact(&tin, true),
+                "unguarded data complement must be admitted (nominals={nominals})"
+            );
+            let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+                .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+            assert!(res.consistent);
+            assert!(
+                res.subsumptions
+                    .contains(&(id(&tin.concepts, "Q"), id(&tin.concepts, "Vintage"))),
+                "Q ⊑ Vintage must hold (nominals={nominals})"
+            );
+        }
+    }
+
+    #[test]
+    fn bridge_data_property_probe_values_are_admitted() {
+        let _test_env = crate::test_env::write();
+        let base = "Prefix(:=<http://example.org/>)\n\
+            Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n\
+            Ontology(\n\
+              Declaration(Class(:Unit))\n\
+              Declaration(Class(:ShiftedUnit))\n\
+              Declaration(DataProperty(:hasDeltaH))\n\
+              Declaration(DataProperty(:isShiftedBy))\n\
+              SubClassOf(:ShiftedUnit :Unit)\n\
+              SubDataPropertyOf(:isShiftedBy :hasDeltaH)\n\
+              DataPropertyRange(:hasDeltaH xsd:decimal)\n\
+              DataPropertyRange(:isShiftedBy xsd:decimal)\n\
+              SubClassOf(:ShiftedUnit DataSomeValuesFrom(:isShiftedBy xsd:decimal))\n\
+            )";
+        let props = vec![":hasDeltaH".to_string(), ":isShiftedBy".to_string()];
+        let (ext, _) = crate::orchestrate::data_properties::extension(base, &props);
+        let extended = base.strip_suffix(')').unwrap().to_string() + "\n" + &ext + ")";
+        let _nom = crate::test_env::EnvVar::set("KM_NOMINALS", "1");
+        let _unk = crate::test_env::EnvVar::set("KM_UNKNOWN_DATATYPES", "free");
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(&extended);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let mut tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        tin.data_roles = fr
+            .data_roles
+            .iter()
+            .filter_map(|name| tin.roles.iter().position(|r| r == name))
+            .collect();
+        assert!(
+            datatype_bridge_route_exact(&tin, true),
+            "data-property probe value must be admitted by datatype_bridge_route_exact"
+        );
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+        assert!(res.consistent);
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "some1"), id(&tin.concepts, "some0"))),
+            "isShiftedBy probe must be subsumed by hasDeltaH probe"
+        );
+    }
+
+    #[test]
+    fn bridge_negated_nominal_with_sort_relativized_reflexivity_is_admitted() {
+        let _test_env = crate::test_env::write();
+        let text = "Prefix(:=<http://example.org/red#>)\n\
+            Ontology(\n\
+              Declaration(Class(:Animal))\n\
+              Declaration(Class(:Person))\n\
+              Declaration(Class(:Q))\n\
+              Declaration(ObjectProperty(:knows))\n\
+              Declaration(ObjectProperty(:likes))\n\
+              Declaration(ObjectProperty(:dislikes))\n\
+              Declaration(NamedIndividual(:bob))\n\
+              ReflexiveObjectProperty(:knows)\n\
+              DisjointObjectProperties(:dislikes :likes)\n\
+              DisjointClasses(:Animal :Person)\n\
+              ClassAssertion(:Person :bob)\n\
+              EquivalentClasses(:Q ObjectComplementOf(ObjectOneOf(:bob)))\n\
+            )";
+        let _nom = crate::test_env::EnvVar::set("KM_NOMINALS", "1");
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let projected = crate::orchestrate::race::native_nominal_bridge_clauses(
+            &fr.clauses,
+            &fr.nominal_abox,
+            &fr.definers,
+            true,
+            false,
+        );
+        let mut tin = crate::orchestrate::cb_to_ht::convert(
+            &projected,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        tin.nominal_abox = fr.nominal_abox;
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+        assert!(res.consistent);
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "Animal"), id(&tin.concepts, "Q"))),
+            "Animal ⊑ ¬{{bob}} must hold since bob : Person and Animal ⊓ Person ⊑ ⊥"
+        );
+    }
+
+    #[test]
+    fn cceq_absorption_truncates_failed_conjunct_triggers_and_extracts_partial_triggers() {
+        let _test_env = crate::test_env::write();
+        // Def is defined as A ⊓ (B ⊔ C), where A is triggerable and (B ⊔ C) is not.
+        // Full absorption of Def must fail and truncate the partial trigger list
+        // (leaving no stale A trigger in full_triggers), while partial absorption
+        // of Def ⊑ Target must traverse op::CCEQ to extract A as the guard trigger
+        // and derive Sub ⊑ Target when Sub ⊑ A and Sub ⊑ B.
+        let text = "Prefix(:=<http://example.org/cceq#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(Class(:B))\n\
+              Declaration(Class(:C))\n\
+              Declaration(Class(:Def))\n\
+              Declaration(Class(:Sub))\n\
+              Declaration(Class(:Target))\n\
+              EquivalentClasses(:Def ObjectIntersectionOf(:A ObjectUnionOf(:B :C)))\n\
+              SubClassOf(:Def :Target)\n\
+              SubClassOf(:Sub :A)\n\
+              SubClassOf(:Sub :B)\n\
+            )";
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .expect("classify CCEQ partial-absorption ontology");
+        assert!(res.consistent);
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "Sub"), id(&tin.concepts, "Def"))),
+            "Sub ⊑ A and Sub ⊑ B must entail Sub ⊑ Def"
+        );
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "Sub"), id(&tin.concepts, "Target"))),
+            "Sub ⊑ Def and Def ⊑ Target must entail Sub ⊑ Target"
+        );
+        assert!(
+            !res.subsumptions
+                .contains(&(id(&tin.concepts, "A"), id(&tin.concepts, "Def"))),
+            "truncated full trigger must not turn A alone into a full trigger for Def"
+        );
+    }
+
+    #[test]
+    fn native_nominal_saturation_outcome_requires_zero_unguarded_top_gcis() {
+        let _test_env = crate::test_env::write();
+        let _nom = crate::test_env::EnvVar::set("KM_NOMINALS", "1");
+        // Case 1: unguarded_top_gcis == 0. Pure TBox classes PureSub ⊑ ∃r.PureMid
+        // and ∃r.PureMid ⊑ PureSup are certified by precomputation saturation,
+        // while NominalTouch ⊑ ∃r.{a} is marked nominal-connected and verified
+        // through the native ABox (where a : PureMid).
+        let guarded = "Prefix(:=<http://example.org/nomsat#>)\n\
+            Ontology(\n\
+              Declaration(Class(:PureSub))\n\
+              Declaration(Class(:PureMid))\n\
+              Declaration(Class(:PureSup))\n\
+              Declaration(Class(:NominalTouch))\n\
+              Declaration(ObjectProperty(:r))\n\
+              Declaration(NamedIndividual(:a))\n\
+              ClassAssertion(:PureMid :a)\n\
+              SubClassOf(:PureSub ObjectSomeValuesFrom(:r :PureMid))\n\
+              SubClassOf(ObjectSomeValuesFrom(:r :PureMid) :PureSup)\n\
+              SubClassOf(:NominalTouch ObjectHasValue(:r :a))\n\
+            )";
+        // Case 2: unguarded_top_gcis > 0 via owl:Thing ⊑ {a} with a : ForcedByTop.
+        // Here a nominal-free saturation label for PureSub would miss ForcedByTop
+        // if saturation were trusted; the unguarded_top_gcis == 0 gate withholds
+        // saturation certification so completion derives PureSub ⊑ ForcedByTop.
+        let unguarded = "Prefix(:=<http://example.org/nomsat#>)\n\
+            Ontology(\n\
+              Declaration(Class(:PureSub))\n\
+              Declaration(Class(:ForcedByTop))\n\
+              Declaration(NamedIndividual(:a))\n\
+              ClassAssertion(:ForcedByTop :a)\n\
+              SubClassOf(owl:Thing ObjectOneOf(:a))\n\
+            )";
+        for (text, sub_name, sup_name) in [
+            (guarded, "PureSub", "PureSup"),
+            (guarded, "NominalTouch", "PureSup"),
+            (unguarded, "PureSub", "ForcedByTop"),
+        ] {
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+            let fr = crate::frontend::ofn_to_clauses(text);
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+            let fr = fr.expect("in fragment");
+            let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+            let projected = crate::orchestrate::race::native_nominal_bridge_clauses(
+                &fr.clauses,
+                &fr.nominal_abox,
+                &fr.definers,
+                true,
+                false,
+            );
+            let mut tin = crate::orchestrate::cb_to_ht::convert(
+                &projected,
+                Some(&fr.rbox),
+                &named,
+                &fr.cardinalities,
+                &fr.definers,
+                &fr.source_axioms,
+                true,
+                &fr.rules,
+                false,
+            );
+            tin.nominal_abox = fr.nominal_abox;
+            let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+                .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+            assert!(res.consistent);
+            assert!(
+                res.subsumptions
+                    .contains(&(id(&tin.concepts, sub_name), id(&tin.concepts, sup_name))),
+                "{sub_name} ⊑ {sup_name} must be derived"
+            );
+        }
+    }
+
+    #[test]
+    fn cct_nominal_forwards_to_dependent_abox_representative_nodes() {
+        let _test_env = crate::test_env::write();
+        let _nom = crate::test_env::EnvVar::set("KM_NOMINALS", "1");
+        let _full = crate::test_env::EnvVar::set("KM_HT_NATIVE_FULL", "1");
+        let _ddb = crate::test_env::EnvVar::set("KM_HT_DDB", "1");
+        // Both :a and :b are asserted instances of :Holder, where :Holder ⊑ {:a}.
+        // The unattached ABox template node for :Holder queues CCT_NOMINAL and
+        // forwards it to the dependent representative nodes for :a and :b.
+        // Representative :a is sufficient (its nominal matches {:a}), while
+        // representative :b is marked insufficient so completion runs and merges
+        // :b = :a, entailing :ProbeB ⊑ :TagA.
+        let text = "Prefix(:=<http://example.org/cctnom#>)\n\
+            Ontology(\n\
+              Declaration(Class(:Holder))\n\
+              Declaration(Class(:TagA))\n\
+              Declaration(Class(:ProbeB))\n\
+              Declaration(NamedIndividual(:a))\n\
+              Declaration(NamedIndividual(:b))\n\
+              ClassAssertion(:Holder :a)\n\
+              ClassAssertion(:TagA :a)\n\
+              ClassAssertion(:Holder :b)\n\
+              SubClassOf(:Holder ObjectOneOf(:a))\n\
+              EquivalentClasses(:ProbeB ObjectOneOf(:b))\n\
+            )";
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let projected = crate::orchestrate::race::native_nominal_bridge_clauses(
+            &fr.clauses,
+            &fr.nominal_abox,
+            &fr.definers,
+            true,
+            false,
+        );
+        let mut tin = crate::orchestrate::cb_to_ht::convert(
+            &projected,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        tin.nominal_abox = fr.nominal_abox;
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+        assert!(res.consistent);
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "ProbeB"), id(&tin.concepts, "TagA"))),
+            "CCT_NOMINAL insufficiency on :b must merge :b = :a and entail ProbeB ⊑ TagA"
+        );
+    }
+
+    /// `<=1 r` for a functional role is a domain concept of `r`, not a TOP
+    /// GCI. It must still reach every node with an `r`-edge however the edge is
+    /// stored: through a sub-role, a two-level hierarchy with an equivalent
+    /// role, an inverse stored from the other end, and a symmetric role. Each
+    /// case forces two successors to merge, which entails `X <= E`.
+    #[test]
+    fn functional_role_domain_encoding_merges_successors_through_every_edge_kind() {
+        let _test_env = crate::test_env::write();
+        let cases = [
+            "SubObjectPropertyOf(:s :r)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(:s :B) ObjectSomeValuesFrom(:s :C)))",
+            "SubObjectPropertyOf(:s :r)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(:s :B) ObjectSomeValuesFrom(:r :C)))",
+            "SubObjectPropertyOf(:u :s)\nSubObjectPropertyOf(:s :q)\nEquivalentObjectProperties(:q :r)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(:u :B) ObjectSomeValuesFrom(:q :C)))",
+            "InverseObjectProperties(:r :ri)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(ObjectInverseOf(:ri) :B) ObjectSomeValuesFrom(:r :C)))",
+            "SymmetricObjectProperty(:r)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(ObjectInverseOf(:r) :B) ObjectSomeValuesFrom(:r :C)))",
+        ];
+        for (index, case) in cases.iter().enumerate() {
+            let text = format!(
+                "Prefix(:=<http://example.org/func#>)\nOntology(\n\
+                 Declaration(Class(:X))\nDeclaration(Class(:B))\nDeclaration(Class(:C))\n\
+                 Declaration(Class(:D))\nDeclaration(Class(:E))\n\
+                 FunctionalObjectProperty(:r)\n{case}\n\
+                 SubClassOf(ObjectIntersectionOf(:B :C) :D)\n\
+                 EquivalentClasses(:E ObjectSomeValuesFrom(:r :D))\n)"
+            );
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+            let fr = crate::frontend::ofn_to_clauses(&text);
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+            let fr = fr.expect("in fragment");
+            let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+            let tin = crate::orchestrate::cb_to_ht::convert(
+                &fr.clauses,
+                Some(&fr.rbox),
+                &named,
+                &fr.cardinalities,
+                &fr.definers,
+                &fr.source_axioms,
+                true,
+                &fr.rules,
+                false,
+            );
+            let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+                .unwrap_or_else(|| panic!("case {index}: {:?}", take_bridge_defer_reason()));
+            assert!(res.consistent, "case {index}");
+            assert!(
+                res.subsumptions.contains(&(id(&tin.concepts, "X"), id(&tin.concepts, "E"))),
+                "case {index}: the functional role must merge the two successors, so X <= E"
+            );
+        }
+    }
+
+    #[test]
+    fn redundant_equivalence_conjunct_subclass_axiom_preserves_full_absorption_and_non_triggerable_guard() {
+        let _test_env = crate::test_env::write();
+        // :Def ≡ :A ⊓ :B accompanied by redundant SubClassOf(:Def :A), and
+        // :Complex ≡ :A ⊓ ∃:r.:B accompanied by redundant SubClassOf(:Complex :A).
+        let text = "Prefix(:=<http://example.org/redeq#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(Class(:B))\n\
+              Declaration(Class(:Def))\n\
+              Declaration(Class(:Complex))\n\
+              Declaration(Class(:Sub1))\n\
+              Declaration(Class(:Sub2))\n\
+              Declaration(Class(:Target1))\n\
+              Declaration(Class(:Target2))\n\
+              Declaration(ObjectProperty(:r))\n\
+              EquivalentClasses(:Def ObjectIntersectionOf(:A :B))\n\
+              SubClassOf(:Def :A)\n\
+              SubClassOf(:Def :Target1)\n\
+              SubClassOf(:Sub1 :A)\n\
+              SubClassOf(:Sub1 :B)\n\
+              EquivalentClasses(:Complex ObjectIntersectionOf(:A ObjectSomeValuesFrom(:r :B)))\n\
+              SubClassOf(:Complex :A)\n\
+              SubClassOf(:Complex :Target2)\n\
+              SubClassOf(:Sub2 :A)\n\
+              SubClassOf(:Sub2 ObjectSomeValuesFrom(:r :B))\n\
+            )";
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+        assert!(res.consistent);
+        for (sub_name, sup_name) in [
+            ("Sub1", "Def"),
+            ("Sub1", "Target1"),
+            ("Sub2", "Complex"),
+            ("Sub2", "Target2"),
+        ] {
+            assert!(
+                res.subsumptions
+                    .contains(&(id(&tin.concepts, sub_name), id(&tin.concepts, sup_name))),
+                "{sub_name} ⊑ {sup_name} must be derived"
+            );
+        }
+    }
+
+    #[test]
+    fn source_named_subsumer_closure_compact_rows_match_transitive_closure() {
+        let _test_env = crate::test_env::read();
+        let text = "Prefix(:=<http://example.org/sclose#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(Class(:B))\n\
+              Declaration(Class(:C))\n\
+              Declaration(Class(:D))\n\
+              SubClassOf(:B :C)\n\
+              EquivalentClasses(:C :D)\n\
+            )";
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        let a = id(&tin.concepts, "A");
+        let b = id(&tin.concepts, "B");
+        let c = id(&tin.concepts, "C");
+        let d = id(&tin.concepts, "D");
+        let (rows, _) =
+            source_named_subsumer_closure_seeded_rows_with_initial_len(&tin, &[(a, b)]);
+        for sup in [b as u32, c as u32, d as u32] {
+            assert!(rows[a].contains(&sup), "A must reach {sup}");
+        }
+        assert!(rows[c].contains(&(d as u32)), "C must reach D");
+        assert!(rows[d].contains(&(c as u32)), "D must reach C");
+        assert!(!rows[c].contains(&(a as u32)));
     }
 }

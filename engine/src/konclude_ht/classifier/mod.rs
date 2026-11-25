@@ -7056,6 +7056,7 @@ mod tests {
 
     #[test]
     fn kpset_saturation_order_is_root_first() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let named: Vec<ConceptId> = (0..3)
             .map(|tag| {
@@ -7085,6 +7086,7 @@ mod tests {
 
     #[test]
     fn kpset_saturation_order_uses_touched_candidate_before_arbitrary_remaining() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let named: Vec<ConceptId> = (0..3)
             .map(|tag| {
@@ -7116,6 +7118,7 @@ mod tests {
 
     #[test]
     fn kpset_satisfiable_phase_barrier_prunes_parent_candidate_absent_from_child() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let mut top = Concept::new();
         top.set_concept_tag(1)
@@ -7184,6 +7187,7 @@ mod tests {
 
     #[test]
     fn certain_subsumer_reads_recorded_deterministic_subsumer_set() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         // Konclude reserves concept tag 1 for ⊤.
         let mut top = Concept::new();
@@ -7245,6 +7249,7 @@ mod tests {
     /// and the KPSet predecessor ORDER keeps consuming both.
     #[test]
     fn uncertified_saturation_labels_are_scheduling_only_never_trusted_subsumers() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let mut top = Concept::new();
         top.set_concept_tag(1)
@@ -7294,6 +7299,7 @@ mod tests {
 
     #[test]
     fn subclass_satisfiable_testing_item_carries_marker_facet() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let marker = ctx
             .alloc_individual_dependence_tracking_marker(IndividualDependenceTrackingMarker::new());
@@ -7311,6 +7317,7 @@ mod tests {
 
     #[test]
     fn subclass_classifier_sets_job_individual_dependence_adapter_when_collector_exists() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let collector = ctx.alloc_individual_dependence_tracking_collector(
             IndividualDependenceTrackingCollector::new(),
@@ -7345,6 +7352,7 @@ mod tests {
 
     #[test]
     fn subclass_classifier_leaves_job_without_adapter_when_collector_missing() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let marker = ctx
             .alloc_individual_dependence_tracking_marker(IndividualDependenceTrackingMarker::new());
@@ -7367,6 +7375,7 @@ mod tests {
 
     #[test]
     fn kpset_class_testing_item_carries_marker_facet() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let marker = ctx
             .alloc_individual_dependence_tracking_marker(IndividualDependenceTrackingMarker::new());
@@ -7384,6 +7393,7 @@ mod tests {
 
     #[test]
     fn kpset_class_classifier_sets_job_individual_dependence_adapter_for_next_sat_item() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let collector = ctx.alloc_individual_dependence_tracking_collector(
             IndividualDependenceTrackingCollector::new(),
@@ -7418,6 +7428,7 @@ mod tests {
 
     #[test]
     fn kpset_class_classifier_sets_job_individual_dependence_adapter_for_subsumed_item() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let collector = ctx.alloc_individual_dependence_tracking_collector(
             IndividualDependenceTrackingCollector::new(),
@@ -7452,6 +7463,7 @@ mod tests {
 
     #[test]
     fn kpset_class_classifier_leaves_job_without_adapter_when_collector_missing() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let marker = ctx
             .alloc_individual_dependence_tracking_marker(IndividualDependenceTrackingMarker::new());
@@ -7474,6 +7486,7 @@ mod tests {
 
     #[test]
     fn kpset_role_classifier_sets_observer_only_job_individual_dependence_adapter_for_sat_item() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let collector = ctx.alloc_individual_dependence_tracking_collector(
             IndividualDependenceTrackingCollector::new(),
@@ -7503,6 +7516,7 @@ mod tests {
     #[test]
     fn kpset_role_classifier_sets_observer_only_job_individual_dependence_adapter_for_subsumption_item(
     ) {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let collector = ctx.alloc_individual_dependence_tracking_collector(
             IndividualDependenceTrackingCollector::new(),
@@ -7531,6 +7545,7 @@ mod tests {
 
     #[test]
     fn kpset_role_classifier_leaves_job_without_adapter_when_collector_missing() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let ont_item = OptimizedKPSetRoleOntologyClassificationItem::new();
         let mut job = SatisfiableCalculationJob::new();
@@ -7548,6 +7563,7 @@ mod tests {
 
     #[test]
     fn kpset_class_possible_subsumption_data_tracks_known_unknown_and_update_state() {
+        let _test_env = crate::test_env::read();
         let item = OptimizedKPSetClassTestingItemId::new(3);
         let other_item = OptimizedKPSetClassTestingItemId::new(5);
         let mut data = OptimizedKPSetClassPossibleSubsumptionData::new(item);
@@ -7573,6 +7589,7 @@ mod tests {
 
     #[test]
     fn kpset_role_possible_subsumption_data_tracks_known_unknown_and_update_state() {
+        let _test_env = crate::test_env::read();
         let item = OptimizedKPSetRoleTestingItemId::new(7);
         let other_item = OptimizedKPSetRoleTestingItemId::new(11);
         let mut data = OptimizedKPSetRolePossibleSubsumptionData::new(item);
@@ -7598,6 +7615,7 @@ mod tests {
 
     #[test]
     fn kpset_class_possible_subsumption_map_tracks_count_update_and_sorted_iterator() {
+        let _test_env = crate::test_env::read();
         let mut map = OptimizedKPSetClassPossibleSubsumptionMap::new();
         map.set_remaining_possible_subsumption_count(2)
             .inc_remaining_possible_subsumption_count(3)
@@ -7651,6 +7669,7 @@ mod tests {
 
     #[test]
     fn kpset_role_possible_subsumption_map_tracks_count_update_and_sorted_iterator() {
+        let _test_env = crate::test_env::read();
         let mut map = OptimizedKPSetRolePossibleSubsumptionMap::new();
         map.set_remaining_possible_subsumption_count(1)
             .inc_remaining_possible_subsumption_count(2)
@@ -7699,6 +7718,7 @@ mod tests {
 
     #[test]
     fn class_pseudo_model_deterministic_flags_match_konclude_defaults() {
+        let _test_env = crate::test_env::read();
         let mut flag = ClassificationClassPseudoModelDeterministicFlag::new();
         assert!(!flag.is_deterministic());
         assert!(flag.is_non_deterministic());
@@ -7716,6 +7736,7 @@ mod tests {
 
     #[test]
     fn class_pseudo_model_role_data_tracks_bounds_and_subsumer_test() {
+        let _test_env = crate::test_env::read();
         let mut subsumer = ClassificationClassPseudoModelRoleData::new();
         let mut subsumed = ClassificationClassPseudoModelRoleData::new();
 
@@ -7745,6 +7766,7 @@ mod tests {
 
     #[test]
     fn class_pseudo_model_hash_creates_copies_and_ordered_maps() {
+        let _test_env = crate::test_env::read();
         let mut hash = ClassificationClassPseudoModelHash::new();
         assert_eq!(hash.get_count(), 0);
         assert!(hash.get_pseudo_model_data(0).is_none());
@@ -7817,6 +7839,7 @@ mod tests {
 
     #[test]
     fn class_pseudo_model_precheck_prunes_missing_deterministic_subsumer_concept() {
+        let _test_env = crate::test_env::read();
         let mut subsumed_hash = ClassificationClassPseudoModelHash::new();
         subsumed_hash
             .get_pseudo_model_data_mut(0, true)
@@ -7855,6 +7878,7 @@ mod tests {
 
     #[test]
     fn class_pseudo_model_precheck_allows_missing_nondeterministic_subsumer_concept() {
+        let _test_env = crate::test_env::read();
         let mut subsumed_hash = ClassificationClassPseudoModelHash::new();
         subsumed_hash
             .get_pseudo_model_data_mut(0, true)
@@ -7893,6 +7917,7 @@ mod tests {
 
     #[test]
     fn class_pseudo_model_precheck_recurses_over_role_successor_models() {
+        let _test_env = crate::test_env::read();
         let role = RoleId::new(7);
         let mut subsumed_hash = ClassificationClassPseudoModelHash::new();
         {
@@ -7958,6 +7983,7 @@ mod tests {
 
     #[test]
     fn class_pseudo_model_precheck_is_inconclusive_without_initialized_models() {
+        let _test_env = crate::test_env::read();
         let subsumed_item = OptimizedKPSetClassTestingItem::new();
         let mut subsumer_hash = ClassificationClassPseudoModelHash::new();
         subsumer_hash
@@ -7979,6 +8005,7 @@ mod tests {
 
     #[test]
     fn kpset_class_ontology_item_get_or_create_resolves_eqcand_and_tracks_queues() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let base_concept = concepts.push(Concept::new());
         let mut eqcand = Concept::new();
@@ -8044,6 +8071,7 @@ mod tests {
 
     #[test]
     fn classification_pseudo_model_identifier_message_tracks_type_and_payload() {
+        let _test_env = crate::test_env::read();
         let concept = ConceptId::new(41);
         let mut hash = ClassificationClassPseudoModelHash::new();
         hash.get_pseudo_model_data_mut(0, true)
@@ -8067,6 +8095,7 @@ mod tests {
 
     #[test]
     fn classification_class_subsumption_message_tracks_type_and_payload() {
+        let _test_env = crate::test_env::read();
         let subsumed = ConceptId::new(11);
         let subsumer_1 = ConceptId::new(13);
         let subsumer_2 = ConceptId::new(17);
@@ -8089,6 +8118,7 @@ mod tests {
 
     #[test]
     fn classification_initialize_possible_subsumption_data_tracks_validity() {
+        let _test_env = crate::test_env::read();
         let concept = ConceptId::new(19);
         let mut data = ClassificationInitializePossibleClassSubsumptionData::new(concept);
         assert_eq!(data.get_possible_subsumer_concept(), concept);
@@ -8104,6 +8134,7 @@ mod tests {
 
     #[test]
     fn classification_initialize_possible_class_subsumption_message_tracks_lists_and_eq_flag() {
+        let _test_env = crate::test_env::read();
         let subsumed = ConceptId::new(29);
         let poss = ClassificationInitializePossibleClassSubsumptionData::new(ConceptId::new(31));
         let mut message = ClassificationInitializePossibleClassSubsumptionMessageData::new();
@@ -8135,6 +8166,7 @@ mod tests {
 
     #[test]
     fn classification_update_possible_class_subsumption_message_tracks_type_and_subsumed() {
+        let _test_env = crate::test_env::read();
         let subsumed = ConceptId::new(41);
         let mut message = ClassificationUpdatePossibleClassSubsumptionMessageData::new();
         message.init_classification_possible_subsumption_message_data(subsumed);
@@ -8148,6 +8180,7 @@ mod tests {
 
     #[test]
     fn classification_message_data_linker_preserves_konclude_append_order() {
+        let _test_env = crate::test_env::read();
         let mut tail = ClassificationMessageDataLinker::new();
         tail.prepend_message(ClassificationMessageDataPayload::Header(
             ClassificationMessageData::new(ClassificationMessageDataType::TellClassSubsumption),
@@ -8177,6 +8210,7 @@ mod tests {
 
     #[test]
     fn classification_message_data_observer_records_delivered_linker() {
+        let _test_env = crate::test_env::read();
         let linker = ClassificationMessageDataLinker::from_message(
             ClassificationMessageDataPayload::Header(ClassificationMessageData::new(
                 ClassificationMessageDataType::TellClassSubsumption,
@@ -8197,6 +8231,7 @@ mod tests {
 
     #[test]
     fn classification_message_delivery_uses_adapter_ontology_and_memory_pool() {
+        let _test_env = crate::test_env::read();
         let linker = ClassificationMessageDataLinker::from_message(
             ClassificationMessageDataPayload::Header(ClassificationMessageData::new(
                 ClassificationMessageDataType::TellClassSubsumption,
@@ -8229,6 +8264,7 @@ mod tests {
 
     #[test]
     fn classification_message_delivery_skips_null_observer_and_empty_linker() {
+        let _test_env = crate::test_env::read();
         let adapter_without_observer =
             SatisfiableTaskClassificationMessageAdapter::new_with_handles(
                 ConceptId::new(7),
@@ -8288,6 +8324,7 @@ mod tests {
 
     #[test]
     fn classification_message_delivery_resolves_registered_observer_handle() {
+        let _test_env = crate::test_env::read();
         let linker = ClassificationMessageDataLinker::from_message(
             ClassificationMessageDataPayload::Header(ClassificationMessageData::new(
                 ClassificationMessageDataType::TellClassSubsumption,
@@ -8325,6 +8362,7 @@ mod tests {
 
     #[test]
     fn classification_message_delivery_rejects_missing_registered_observer_handle() {
+        let _test_env = crate::test_env::read();
         let linker = ClassificationMessageDataLinker::from_message(
             ClassificationMessageDataPayload::Header(ClassificationMessageData::new(
                 ClassificationMessageDataType::TellClassSubsumption,
@@ -8377,6 +8415,7 @@ mod tests {
 
     #[test]
     fn classification_reference_linking_live_item_requires_more_information() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let mut concept_process_datas = Arena::new();
         let mut concept_reference_linking_datas = Arena::new();
@@ -8405,6 +8444,7 @@ mod tests {
 
     #[test]
     fn classification_reference_linking_uses_invalidated_adapter_hash_fallback() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let mut concept_process_datas = Arena::new();
         let concept_reference_linking_datas = Arena::new();
@@ -8440,6 +8480,7 @@ mod tests {
 
     #[test]
     fn classification_reference_linking_rejects_completed_or_missing_items() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let mut concept_process_datas = Arena::new();
         let mut concept_reference_linking_datas = Arena::new();
@@ -8479,6 +8520,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_processes_pseudo_model_identifier_message() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let concept = concepts.push(Concept::new());
         let mut ont_item = OptimizedKPSetClassOntologyClassificationItem::new();
@@ -8510,6 +8552,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_pseudo_model_message_without_item_is_unconsumed() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let concept = concepts.push(Concept::new());
         let mut ont_item = OptimizedKPSetClassOntologyClassificationItem::new();
@@ -8533,6 +8576,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_processes_pseudo_model_message_linker() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let concept = concepts.push(Concept::new());
         let mut ont_item = OptimizedKPSetClassOntologyClassificationItem::new();
@@ -8569,6 +8613,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_registers_calculation_work_items() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let sat_concept = concepts.push(Concept::new());
         let subsumed_concept = concepts.push(Concept::new());
@@ -8608,6 +8653,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_registers_satisfiable_job_message_adapter() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let sat_concept = concepts.push(Concept::new());
         let ref_concept = concepts.push(Concept::new());
@@ -8652,6 +8698,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_registers_subsumption_job_message_adapter() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let subsumer_concept = concepts.push(Concept::new());
@@ -8709,6 +8756,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_registers_calculation_work_items() {
+        let _test_env = crate::test_env::read();
         let sat_role = RoleId::new(311);
         let subsumed_role = RoleId::new(313);
         let subsumer_role = RoleId::new(317);
@@ -8751,6 +8799,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_registers_satisfiable_job_role_marked_adapter() {
+        let _test_env = crate::test_env::read();
         let sat_role = RoleId::new(421);
         let mut ont_item = OptimizedKPSetRoleOntologyClassificationItem::new();
         let sat_item = ont_item.get_role_satisfiable_test_item(sat_role, true);
@@ -8793,6 +8842,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_registers_satisfiable_job_with_generator_assertions() {
+        let _test_env = crate::test_env::read();
         let sat_role = RoleId::new(431);
         let bottom_role = RoleId::new(433);
         let mut ont_item = OptimizedKPSetRoleOntologyClassificationItem::new();
@@ -8862,6 +8912,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_selects_top_data_range_for_data_role_setup() {
+        let _test_env = crate::test_env::read();
         let sat_role = RoleId::new(441);
         let mut ont_item = OptimizedKPSetRoleOntologyClassificationItem::new();
         ont_item.set_data_roles_classification(true);
@@ -8903,6 +8954,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_registers_subsumption_job_with_generator_assertions() {
+        let _test_env = crate::test_env::read();
         let subsumed_role = RoleId::new(451);
         let poss_subsumer_role = RoleId::new(453);
         let bottom_role = RoleId::new(455);
@@ -8972,6 +9024,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_interprets_satisfiable_result_and_schedules_successors() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let tested_concept = concepts.push(Concept::new());
         let subsumer_concept = concepts.push(Concept::new());
@@ -9040,6 +9093,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_interprets_unsatisfiable_result_marks_successors() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let tested_concept = concepts.push(Concept::new());
         let subsumer_concept = concepts.push(Concept::new());
@@ -9089,6 +9143,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_interprets_satisfiable_result_and_schedules_successors() {
+        let _test_env = crate::test_env::read();
         let tested_role = RoleId::new(101);
         let subsumer_role = RoleId::new(103);
         let ready_successor_role = RoleId::new(107);
@@ -9148,6 +9203,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_interprets_unsatisfiable_result_marks_successors() {
+        let _test_env = crate::test_env::read();
         let tested_role = RoleId::new(151);
         let subsumer_role = RoleId::new(157);
         let successor_role = RoleId::new(163);
@@ -9187,6 +9243,7 @@ mod tests {
 
     #[test]
     fn classifier_computation_items_and_callback_event_expose_konclude_fields() {
+        let _test_env = crate::test_env::read();
         let sat_job = 17;
         let class_sat =
             ClassClassificationComputationItem::new_satisfiable(sat_job, ConceptId::new(101));
@@ -9232,6 +9289,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_routes_satisfiable_callback_event() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let tested_concept = concepts.push(Concept::new());
         let mut ont_item = OptimizedKPSetClassOntologyClassificationItem::new();
@@ -9262,6 +9320,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_routes_error_callback_to_taxonomy_failure() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let tested_concept = concepts.push(Concept::new());
         let mut ont_item = OptimizedKPSetClassOntologyClassificationItem::new();
@@ -9292,6 +9351,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_interprets_true_subsumption_result() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let subsumer_concept = concepts.push(Concept::new());
@@ -9363,6 +9423,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_interprets_false_subsumption_result() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let subsumer_concept = concepts.push(Concept::new());
@@ -9435,6 +9496,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_routes_subsumption_callback_event() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let subsumer_concept = concepts.push(Concept::new());
@@ -9491,6 +9553,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_routes_satisfiable_callback_event() {
+        let _test_env = crate::test_env::read();
         let tested_role = RoleId::new(181);
         let mut ont_item = OptimizedKPSetRoleOntologyClassificationItem::new();
         let tested_item = ont_item.get_role_satisfiable_test_item(tested_role, true);
@@ -9515,6 +9578,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_routes_error_callback_to_hierarchy_failure() {
+        let _test_env = crate::test_env::read();
         let tested_role = RoleId::new(191);
         let mut ont_item = OptimizedKPSetRoleOntologyClassificationItem::new();
         ont_item.get_role_satisfiable_test_item(tested_role, true);
@@ -9540,6 +9604,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_interprets_true_subsumption_result() {
+        let _test_env = crate::test_env::read();
         let subsumed_role = RoleId::new(211);
         let subsumer_role = RoleId::new(223);
         let mut ont_item = OptimizedKPSetRoleOntologyClassificationItem::new();
@@ -9605,6 +9670,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_interprets_false_subsumption_result() {
+        let _test_env = crate::test_env::read();
         let subsumed_role = RoleId::new(227);
         let subsumer_role = RoleId::new(229);
         let mut ont_item = OptimizedKPSetRoleOntologyClassificationItem::new();
@@ -9671,6 +9737,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_routes_subsumption_callback_event() {
+        let _test_env = crate::test_env::read();
         let subsumed_role = RoleId::new(233);
         let subsumer_role = RoleId::new(239);
         let mut ont_item = OptimizedKPSetRoleOntologyClassificationItem::new();
@@ -9724,6 +9791,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_processes_class_subsumption_message_linker() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let subsumer_concept = concepts.push(Concept::new());
@@ -9777,6 +9845,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_propagates_down_subsumption_recursively() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let root_concept = concepts.push(Concept::new());
         let child_concept = concepts.push(Concept::new());
@@ -9818,6 +9887,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_prunes_confirmed_possible_subsumption_downward() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let root_concept = concepts.push(Concept::new());
         let child_concept = concepts.push(Concept::new());
@@ -9880,6 +9950,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_prunes_invalid_possible_subsumption_upward() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let parent_concept = concepts.push(Concept::new());
         let middle_concept = concepts.push(Concept::new());
@@ -9944,6 +10015,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_prunes_equivalent_candidate_downward() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let root_concept = concepts.push(Concept::new());
         let child_concept = concepts.push(Concept::new());
@@ -10012,6 +10084,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_init_prunes_ancestor_map_missing_new_candidate() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let parent_concept = concepts.push(Concept::new());
         let subsumed_concept = concepts.push(Concept::new());
@@ -10086,6 +10159,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_init_prunes_descendant_missing_new_candidate() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let child_concept = concepts.push(Concept::new());
@@ -10158,6 +10232,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_initializes_possible_class_subsumption_map_from_valid_entries() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let valid_concept = concepts.push(Concept::new());
@@ -10223,6 +10298,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_initialization_skips_eq_candidates_and_uses_non_candidate_set() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let mut eq_candidate_concept_data = Concept::new();
@@ -10281,6 +10357,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_empty_initialization_invalidates_unknown_possible_entries() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let poss_concept = concepts.push(Concept::new());
@@ -10332,6 +10409,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_existing_initialization_invalidates_stale_non_eq_entries() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let retained_concept = concepts.push(Concept::new());
@@ -10404,6 +10482,7 @@ mod tests {
 
     #[test]
     fn kpset_class_thread_dispatches_all_typed_class_messages() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let subsumed_concept = concepts.push(Concept::new());
         let subsumer_concept = concepts.push(Concept::new());
@@ -10487,6 +10566,7 @@ mod tests {
 
     #[test]
     fn kpset_role_ontology_item_get_or_create_and_tracks_queues() {
+        let _test_env = crate::test_env::read();
         let role = RoleId::new(31);
         let mut item = OptimizedKPSetRoleOntologyClassificationItem::new();
 
@@ -10542,6 +10622,7 @@ mod tests {
 
     #[test]
     fn kpset_class_ontology_item_tracks_counters_and_phase_flags() {
+        let _test_env = crate::test_env::read();
         let mut item = OptimizedKPSetClassOntologyClassificationItem::new();
         assert!(item.has_all_satisfiable_tests_completed());
         assert!(!item.has_remaining_satisfiable_tests());
@@ -10590,6 +10671,7 @@ mod tests {
 
     #[test]
     fn kpset_role_ontology_item_tracks_counters_and_phase_flags() {
+        let _test_env = crate::test_env::read();
         let mut item = OptimizedKPSetRoleOntologyClassificationItem::new();
         assert!(item.has_all_satisfiable_tests_completed());
         assert!(!item.has_remaining_satisfiable_tests());
@@ -10638,6 +10720,7 @@ mod tests {
 
     #[test]
     fn kpset_class_testing_item_tracks_passive_classification_state() {
+        let _test_env = crate::test_env::read();
         let marker = IndividualDependenceTrackingMarkerId::new(71);
         let mut item = OptimizedKPSetClassTestingItem::new();
         item.init_kpset_class_testing_item(ConceptId::new(73), marker);
@@ -10708,6 +10791,7 @@ mod tests {
 
     #[test]
     fn kpset_class_testing_item_exposes_embedded_pseudo_model_without_reinit_clear() {
+        let _test_env = crate::test_env::read();
         let marker = IndividualDependenceTrackingMarkerId::new(91);
         let mut item = OptimizedKPSetClassTestingItem::new();
         let mut hash = ClassificationClassPseudoModelHash::new();
@@ -10732,6 +10816,7 @@ mod tests {
 
     #[test]
     fn kpset_role_testing_item_tracks_passive_classification_state() {
+        let _test_env = crate::test_env::read();
         let mut item = OptimizedKPSetRoleTestingItem::new();
         item.init_satisfiable_testing_item(RoleId::new(79));
         let other = OptimizedKPSetRoleTestingItemId::new(3);
@@ -10797,6 +10882,7 @@ mod tests {
 
     #[test]
     fn kpset_role_ontology_item_tracks_temporary_role_classification_storage() {
+        let _test_env = crate::test_env::read();
         let mut item = OptimizedKPSetRoleOntologyClassificationItem::new();
         let marker_concept = ConceptId::new(91);
         let role_item = OptimizedKPSetRoleTestingItemId::new(5);
@@ -10857,6 +10943,7 @@ mod tests {
 
     #[test]
     fn kpset_role_thread_creates_temporary_role_classification_ontology_payload() {
+        let _test_env = crate::test_env::read();
         let role_a = RoleId::new(11);
         let role_b = RoleId::new(13);
         let bottom_role = RoleId::new(17);
@@ -10951,6 +11038,7 @@ mod tests {
 
     #[test]
     fn kpset_class_testing_item_sorts_subsuming_items_by_descending_subsumer_count() {
+        let _test_env = crate::test_env::read();
         let mut items = vec![
             OptimizedKPSetClassTestingItem::new(),
             OptimizedKPSetClassTestingItem::new(),
@@ -10976,6 +11064,7 @@ mod tests {
 
     #[test]
     fn kpset_role_testing_item_sorts_subsuming_items_by_descending_subsumer_count() {
+        let _test_env = crate::test_env::read();
         let mut items = vec![
             OptimizedKPSetRoleTestingItem::new(),
             OptimizedKPSetRoleTestingItem::new(),
@@ -11002,6 +11091,7 @@ mod tests {
 
     #[test]
     fn kpset_class_tell_concept_supsumption_adds_live_reference_linking_item() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let mut concept_process_datas = Arena::new();
         let mut concept_reference_linking_datas = Arena::new();
@@ -11035,6 +11125,7 @@ mod tests {
 
     #[test]
     fn kpset_class_tell_concept_supsumption_uses_invalidated_fallback_hash() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let mut concept_process_datas = Arena::new();
         let concept_reference_linking_datas = Arena::new();
@@ -11066,6 +11157,7 @@ mod tests {
 
     #[test]
     fn kpset_role_tell_concept_supsumption_adds_live_reference_linking_item() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let mut concept_process_datas = Arena::new();
         let mut concept_reference_linking_datas = Arena::new();
@@ -11098,6 +11190,7 @@ mod tests {
 
     #[test]
     fn kpset_tell_concept_supsumption_skips_top_subsumer_concept() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let mut concept_process_datas = Arena::new();
         let mut concept_reference_linking_datas = Arena::new();

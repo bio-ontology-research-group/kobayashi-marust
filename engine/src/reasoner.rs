@@ -46,6 +46,10 @@ pub struct Reasoner {
     /// emission must observe one complete engine, so this mode uses the exact
     /// sequential schedule and retains that engine until serialization.
     certificate_engine: Option<Box<Engine>>,
+    /// Present only when `KM_EXPORT_MODEL_ACTIVE` is set: context-graph shards
+    /// extracted directly from the answering run's saturated `Engine` workers.
+    export_shards: Vec<Result<crate::engine::CbExportShard, String>>,
+    export_mutual_unit_groups: Vec<(String, Vec<String>)>,
 }
 
 #[derive(Clone)]
@@ -86,6 +90,18 @@ pub(crate) fn cb_production_input(input: &[JClause]) -> CbProductionInput {
         clauses,
         dropped: builder.dropped,
     }
+}
+
+pub(crate) fn load_clauses_for_cb_model(
+    input: &[JClause],
+) -> Result<(Sig, Vec<OntologyClause>, usize), String> {
+    let mut builder = Builder::new();
+    let clauses = builder.clauses(input);
+    if builder.dropped > 0 {
+        return Err(format!("cb-horn builder dropped {} clause(s)", builder.dropped));
+    }
+    let nf = builder.fn_id.len();
+    Ok((builder.sig, clauses, nf))
 }
 
 /// Number of individuals from which the data-sort marker is ordered last
@@ -681,6 +697,8 @@ impl Reasoner {
             incomplete: false,
             num_ctx: 0,
             certificate_engine: None,
+            export_shards: Vec::new(),
+            export_mutual_unit_groups: Vec::new(),
         }
     }
 
@@ -1218,6 +1236,21 @@ impl Reasoner {
                 mutual_unit_groups.len()
             );
         }
+        let retain_export_model = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+        if retain_export_model {
+            self.export_mutual_unit_groups = mutual_unit_groups
+                .iter()
+                .map(|&(rep, ref members)| {
+                    (
+                        self.sig0.concept_names[rep as usize].clone(),
+                        members
+                            .iter()
+                            .map(|&m| self.sig0.concept_names[m as usize].clone())
+                            .collect(),
+                    )
+                })
+                .collect();
+        }
         let retain_certificate_engine = std::env::var_os("KM_CB_LIVE_STATE").is_some()
             || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some();
         let nominal_static = std::env::var_os("KM_NOMINALS").is_some()
@@ -1252,6 +1285,9 @@ impl Reasoner {
             // run may stop at a global refutation (the answer is fixed).
             e.set_stop_on_global_refutation(!retain_certificate_engine);
             e.run_for(&queries);
+            if retain_export_model {
+                self.export_shards.push(e.extract_cb_export_shard(0));
+            }
             let (subs, inc, incomplete, n) = (
                 e.subsumptions(),
                 e.inconsistent(),
@@ -1295,9 +1331,16 @@ impl Reasoner {
                 .ok()
                 .and_then(|value| value.parse::<usize>().ok())
                 .filter(|&value| value > 0);
-            let partials: Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)> = chunks
+            let partials: Vec<(
+                Vec<(String, Vec<String>)>,
+                bool,
+                bool,
+                usize,
+                Option<Result<crate::engine::CbExportShard, String>>,
+            )> = chunks
                 .par_iter()
-                .map(|chunk| {
+                .enumerate()
+                .map(|(shard_idx, chunk)| {
                     let mut e = Engine::from_prepared(&prepared);
                     e.set_stop_on_global_refutation(true);
                     if let Some(batch) = query_batch {
@@ -1307,16 +1350,21 @@ impl Reasoner {
                     } else {
                         e.run_for(chunk);
                     }
+                    let export_shard = retain_export_model.then(|| e.extract_cb_export_shard(shard_idx));
                     (
                         e.subsumptions(),
                         e.inconsistent(),
                         e.incomplete(),
                         e.num_contexts(),
+                        export_shard,
                     )
                 })
                 .collect();
-            for (subs, inc, incomplete, n) in partials {
+            for (subs, inc, incomplete, n, export_shard) in partials {
                 self.absorb(subs, inc, incomplete, n);
+                if let Some(shard) = export_shard {
+                    self.export_shards.push(shard);
+                }
             }
             self.expand_mutual_unit_aliases(&mutual_unit_groups);
             self.complete_inconsistent_rows(&requested_queries);
@@ -1356,11 +1404,20 @@ impl Reasoner {
             .clamp(1, 1024);
         let prepared_ref: &PreparedOntology = &prepared;
         let queries_ref: &[Iri] = &queries;
-        let partials: std::sync::Mutex<Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)>> =
-            std::sync::Mutex::new(Vec::with_capacity(threads));
+        let partials: std::sync::Mutex<
+            Vec<(
+                Vec<(String, Vec<String>)>,
+                bool,
+                bool,
+                usize,
+                Option<Result<crate::engine::CbExportShard, String>>,
+            )>,
+        > = std::sync::Mutex::new(Vec::with_capacity(threads));
+        let cursor_ref = &cursor;
+        let partials_ref = &partials;
         rayon::scope(|s| {
-            for _ in 0..threads {
-                s.spawn(|_| {
+            for shard_idx in 0..threads {
+                s.spawn(move |_| {
                     let mut engine = Engine::from_prepared(prepared_ref);
                     engine.set_stop_on_global_refutation(true);
                     let mut did_any = false;
@@ -1370,14 +1427,14 @@ impl Reasoner {
                             // the inconsistent answer is already fixed.
                             break;
                         }
-                        let seen = cursor.load(Ordering::Relaxed);
+                        let seen = cursor_ref.load(Ordering::Relaxed);
                         if seen >= n {
                             break;
                         }
                         // Guided self-scheduling: grab ~1/(2·threads) of what is
                         // left, clamped to the configured resource envelope.
                         let grab = ((n - seen) / (2 * threads)).clamp(1, guided_grab_max);
-                        let start = cursor.fetch_add(grab, Ordering::Relaxed);
+                        let start = cursor_ref.fetch_add(grab, Ordering::Relaxed);
                         if start >= n {
                             break;
                         }
@@ -1386,22 +1443,66 @@ impl Reasoner {
                         did_any = true;
                     }
                     if did_any {
+                        let export_shard =
+                            retain_export_model.then(|| engine.extract_cb_export_shard(shard_idx));
                         let part = (
                             engine.subsumptions(),
                             engine.inconsistent(),
                             engine.incomplete(),
                             engine.num_contexts(),
+                            export_shard,
                         );
-                        partials.lock().unwrap().push(part);
+                        partials_ref.lock().unwrap().push(part);
                     }
                 });
             }
         });
-        for (subs, inc, incomplete, n) in partials.into_inner().unwrap() {
+        for (subs, inc, incomplete, n, export_shard) in partials.into_inner().unwrap() {
             self.absorb(subs, inc, incomplete, n);
+            if let Some(shard) = export_shard {
+                self.export_shards.push(shard);
+            }
         }
         self.expand_mutual_unit_aliases(&mutual_unit_groups);
         self.complete_inconsistent_rows(&requested_queries);
+    }
+
+    pub(crate) fn export_cb_model(
+        &self,
+        input: &crate::json_io::JInput,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<crate::engine::CbExportModel, String> {
+        if self.incomplete {
+            return Err("cb-horn saturation truncated by message cap".to_string());
+        }
+        if self.dropped > 0 {
+            return Err(format!("cb-horn builder dropped {} clause(s)", self.dropped));
+        }
+        if self.inconsistent {
+            return Ok(crate::engine::CbExportModel {
+                contexts: Vec::new(),
+                labels: Vec::new(),
+                edges: Vec::new(),
+                inconsistent: true,
+                partial_reason: None,
+            });
+        }
+        if self.export_shards.is_empty() {
+            return Err("cb-horn answering run did not retain context shards".to_string());
+        }
+        let mut ok_shards = Vec::with_capacity(self.export_shards.len());
+        for shard in &self.export_shards {
+            match shard {
+                Ok(s) => ok_shards.push(s.clone()),
+                Err(e) => return Err(e.clone()),
+            }
+        }
+        crate::engine::build_cb_export_model_from_shards(
+            &ok_shards,
+            &self.export_mutual_unit_groups,
+            input,
+            deadline,
+        )
     }
 
     /// Give every requested query the row `owl:Nothing` when the run proved
@@ -1584,6 +1685,7 @@ mod tests {
 
     #[test]
     fn ground_concept_body_becomes_a_central_guard() {
+        let _test_env = crate::test_env::read();
         // D(a) -> ⊥   ==>   D(x) ∧ x≈a -> ⊥   (x ≉ a in the head)
         let GroundBody::Guard(guarded) = ground_concept_body(&cl(vec![c("D", ind("a"))], vec![]))
             else { panic!("expected a guard") };
@@ -1618,6 +1720,7 @@ mod tests {
 
     #[test]
     fn normalized_variables_use_the_calculus_reserved_namespace() {
+        let _test_env = crate::test_env::read();
         let mut builder = Builder::new();
         let mut variables = HashMap::new();
         assert_eq!(builder.term(&vn("x"), &mut variables), Some(X));
@@ -1629,6 +1732,7 @@ mod tests {
 
     #[test]
     fn one_shot_saturation_releases_converted_input_after_preparation() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
             cl(vec![c("B", vx())], vec![c("C", vx())]),
@@ -1649,6 +1753,7 @@ mod tests {
 
     #[test]
     fn concept_hierarchy() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B, B ⊑ C  ⟹  A ⊑ B, A ⊑ C
         let rr = run(vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
@@ -1660,6 +1765,7 @@ mod tests {
 
     #[test]
     fn private_query_prefix_filter_retains_predicates_as_conclusions() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("urn:km:private:P", vx())]),
             cl(vec![c("urn:km:private:P", vx())], vec![c("B", vx())]),
@@ -1689,6 +1795,7 @@ mod tests {
 
     #[test]
     fn private_query_prefix_filter_can_retain_selected_roots() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![cl(vec![c("urn:km:private:P", vx())], vec![c("B", vx())])];
         let reasoner = Reasoner::new(&clauses);
         let prepared = reasoner.prepare();
@@ -1702,6 +1809,7 @@ mod tests {
 
     #[test]
     fn mutual_unit_queries_share_one_representative_and_restore_rows() {
+        let _test_env = crate::test_env::read();
         // A ≡ B, B ≡ C and C ⊑ D. The unit SCC forms one equivalence group.
         // Classification runs one root for the
         // group, then restores the exact non-reflexive row for every alias.
@@ -1736,6 +1844,7 @@ mod tests {
 
     #[test]
     fn cyclic_unit_paths_collapse_without_direct_opposite_edges() {
+        let _test_env = crate::test_env::read();
         // No edge has its direct opposite, but A -> B -> C -> A proves all
         // three concepts equivalent. The SCC scheduler must see that proof.
         let clauses = vec![
@@ -1768,6 +1877,7 @@ mod tests {
 
     #[test]
     fn one_way_unit_implications_do_not_collapse_queries() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
             cl(vec![c("B", vx())], vec![c("C", vx())]),
@@ -1781,6 +1891,7 @@ mod tests {
 
     #[test]
     fn repeated_run_for_batches_match_one_shot_fixpoint() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![r("R", vx(), fx("f"))]),
             cl(vec![c("A", vx())], vec![c("B", fx("f"))]),
@@ -1809,6 +1920,7 @@ mod tests {
 
     #[test]
     fn disjointness_unsat() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B, A ⊑ C, B ⊓ C ⊑ ⊥  ⟹  A unsatisfiable
         let rr = run(vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
@@ -1820,6 +1932,7 @@ mod tests {
 
     #[test]
     fn direct_bottom_class_reported_unsat() {
+        let _test_env = crate::test_env::read();
         let rr = run(vec![
             cl(vec![c("C", vx())], vec![]),
             cl(vec![c("D", vx())], vec![c("C", vx())]),
@@ -1834,6 +1947,7 @@ mod tests {
 
     #[test]
     fn user_class_named_nothing_is_not_bottom() {
+        let _test_env = crate::test_env::read();
         let rr = run(vec![
             cl(vec![c("A", vx())], vec![c("Nothing", vx())]),
             cl(vec![c("B", vx())], vec![c("A", vx())]),
@@ -1847,6 +1961,7 @@ mod tests {
 
     #[test]
     fn disjunction_no_spurious_subsumption() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊔ C must NOT yield A ⊑ B or A ⊑ C (this was the soundness bug).
         let rr = run(vec![cl(
             vec![c("A", vx())],
@@ -1859,6 +1974,7 @@ mod tests {
 
     #[test]
     fn existential_subsumption() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃R.B, B ⊑ C, ∃R.C ⊑ D  ⟹  A ⊑ D  (exercises Succ + Pred).
         let rr = run(vec![
             cl(vec![c("A", vx())], vec![r("R", vx(), fx("f"))]),
@@ -1878,6 +1994,7 @@ mod tests {
 
     #[test]
     fn take_subsumptions_moves_the_final_map_once() {
+        let _test_env = crate::test_env::read();
         // The moving accessor must return exactly the map the cloning accessor
         // returns (end-of-run extraction paths use it to avoid doubling the
         // answer at peak RSS), and it can only be taken once.
@@ -1913,6 +2030,7 @@ mod tests {
     /// residue readout must recover it in both modes.
     #[test]
     fn root_ordered_recovers_trapped_named_unit() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("X", vx()), c("B", vx())]),
             cl(vec![c("X", vx())], vec![c("B", vx())]),
@@ -1940,6 +2058,7 @@ mod tests {
     /// directly and the unit surfaces without repair. Result must be identical.
     #[test]
     fn root_ordered_trap_other_interning_order() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("B", vx()), c("X", vx())]),
             cl(vec![c("X", vx())], vec![c("B", vx())]),
@@ -1956,6 +2075,7 @@ mod tests {
     /// (C maximal-unresolvable in ⊤ → X ∨ C) and both must be recovered.
     #[test]
     fn root_ordered_recovers_chained_trapped_units() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("X", vx()), c("B", vx())]),
             cl(vec![c("X", vx())], vec![c("B", vx())]),
@@ -1974,6 +2094,7 @@ mod tests {
     /// entailed must fail their refutation).
     #[test]
     fn root_ordered_no_spurious_subsumption() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![cl(vec![c("A", vx())], vec![c("B", vx()), c("C", vx())])];
         for mode in [1u8, 2u8] {
             let rr = run_root_ordered(clauses.clone(), mode);
@@ -1988,6 +2109,7 @@ mod tests {
     /// inconsistency, in both modes.
     #[test]
     fn root_ordered_exclusive_global_disjunction() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![], vec![c("P", vx()), c("N", vx())]),
             cl(vec![c("P", vx()), c("N", vx())], vec![]),
@@ -2005,6 +2127,7 @@ mod tests {
     /// Unsat query under the ordered regime: the ⊥ readout is order-robust.
     #[test]
     fn root_ordered_unsat_query() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
             cl(vec![c("A", vx())], vec![c("C", vx())]),
@@ -2024,6 +2147,7 @@ mod tests {
     /// of the order).
     #[test]
     fn root_ordered_disjunction_over_successor() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![r("R", vx(), fx("f"))]),
             cl(vec![c("A", vx())], vec![c("Q", fx("f"))]),
@@ -2051,6 +2175,7 @@ mod tests {
     /// default engine's subsumption map.
     #[test]
     fn root_ordered_matches_default_engine() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("X", vx()), c("B", vx())]),
             cl(vec![c("X", vx())], vec![c("B", vx())]),
@@ -2084,6 +2209,7 @@ mod tests {
 
     #[test]
     fn factor_number_restriction_clash() {
+        let _test_env = crate::test_env::read();
         // Three pairwise-distinct witnesses f,g,h (head inequalities, encoded as
         // body equalities) together with the ≤2 conclusion "at least two of the
         // three coincide" (a head disjunction of equalities) is unsatisfiable.
@@ -2113,6 +2239,7 @@ mod tests {
 
     #[test]
     fn min_cardinality_recognition() {
+        let _test_env = crate::test_env::read();
         // P ⊑ ∃r.J1, P ⊑ ∃r.J2, J1 ⊑ J, J2 ⊑ J, J1 ⊓ J2 ⊑ ⊥, ≥2 r.J ⊑ G
         // (recognition clause: r(x,y1) ∧ J(y1) ∧ r(x,y2) ∧ J(y2) → G(x) ∨ y1≈y2)
         // ⟹ P ⊑ G: the merged-witness disjunct dies via disjointness.
@@ -2144,6 +2271,7 @@ mod tests {
 
     #[test]
     fn min_cardinality_recognition_three_witnesses() {
+        let _test_env = crate::test_env::read();
         // Same as min_cardinality_recognition but with three pairwise-disjoint
         // witnesses and a ≥3 recognition clause (3 equality disjuncts in the
         // head).  Pins the central-strategy fact-core fix: refuting the
@@ -2191,6 +2319,7 @@ mod tests {
 
     #[test]
     fn role_hierarchy_and_domain() {
+        let _test_env = crate::test_env::read();
         // R ⊑ S, ∃S.⊤ ⊑ A, and B ⊑ ∃R.⊤  ⟹  B ⊑ A
         let rr = run(vec![
             cl(vec![r("R", vx(), vn("y"))], vec![r("S", vx(), vn("y"))]),
@@ -2206,6 +2335,7 @@ mod tests {
 
     #[test]
     fn incomplete_worker_state_is_sticky() {
+        let _test_env = crate::test_env::read();
         let mut rr = Reasoner::new(&[]);
         assert!(!rr.incomplete());
         rr.absorb(Vec::new(), false, true, 0);

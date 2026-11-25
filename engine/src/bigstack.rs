@@ -192,6 +192,91 @@ fn main_stack_extent(soft_limit: usize) -> Option<(usize, usize)> {
     Some((top, usable))
 }
 
+/// The main-thread stack the `km tableau` worker asks [`ensure_main_stack`]
+/// for: `KM_TAB_STACK_MB` (default 2048 MiB), at least [`DEEP_STACK`].
+pub fn tableau_worker_stack_bytes() -> usize {
+    let stack_mb = std::env::var("KM_TAB_STACK_MB")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(2048);
+    (stack_mb << 20).max(DEEP_STACK)
+}
+
+/// The `RLIMIT_STACK` that [`ensure_main_stack`]`(bytes)` installs before it
+/// re-executes the process, or `None` when it would not raise the limit (the
+/// soft limit already suffices, or the hard limit forbids the raise).
+/// Computed in the parent, so that a spawned worker can start with this limit
+/// and skip its own re-execution.
+#[cfg(target_os = "linux")]
+pub fn child_stack_rlimit(bytes: usize) -> Option<libc::rlimit> {
+    let want = bytes.saturating_add(2 * HEADROOM);
+    let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    if unsafe { libc::getrlimit(libc::RLIMIT_STACK, &mut limit) } != 0 {
+        return None;
+    }
+    let soft = if limit.rlim_cur == libc::RLIM_INFINITY { usize::MAX } else { limit.rlim_cur as usize };
+    let hard_allows = limit.rlim_max == libc::RLIM_INFINITY || limit.rlim_max as usize >= want;
+    if !hard_allows || soft >= want {
+        return None;
+    }
+    Some(libc::rlimit { rlim_cur: want as libc::rlim_t, rlim_max: limit.rlim_max })
+}
+
+/// Prepare a worker `command` so that the child starts with what two extra
+/// programs gave it before: the `nice` increment of a `nice -n N` wrapper,
+/// and (for a worker that calls [`ensure_main_stack`]`(bytes)` first thing,
+/// `deep_stack = Some(bytes)`) the larger `RLIMIT_STACK` that the worker's
+/// own re-execution installs. Both are set in the forked child just before
+/// `exec`, so the kernel lays out the worker's image with the stack gap the
+/// re-execution would have produced and `ensure_main_stack` returns at once.
+/// The worker's code, input, final limit and niceness are unchanged; one or
+/// two `execve` calls of the whole binary are saved. When the parent cannot
+/// compute the limit, the worker re-executes itself as before. Call it on a
+/// command that has only its program and arguments set: the measurement
+/// switch `KM_NO_WORKER_PREEXEC=1` rebuilds it as `nice -n N program args`.
+#[cfg(unix)]
+pub fn prepare_worker_command(command: &mut std::process::Command, deep_stack: Option<usize>, nice: Option<i32>) {
+    use std::os::unix::process::CommandExt as _;
+    #[cfg(target_os = "linux")]
+    let limit = deep_stack.and_then(child_stack_rlimit);
+    #[cfg(not(target_os = "linux"))]
+    let limit: Option<libc::rlimit> = {
+        let _ = deep_stack;
+        None
+    };
+    if limit.is_none() && nice.is_none() {
+        return;
+    }
+    // Measurement switch: the `nice` program and the worker's re-execution
+    // as before.
+    if std::env::var_os("KM_NO_WORKER_PREEXEC").is_some_and(|v| !v.is_empty() && v != "0") {
+        if let Some(increment) = nice {
+            let program = command.get_program().to_os_string();
+            let args: Vec<std::ffi::OsString> = command.get_args().map(|a| a.to_os_string()).collect();
+            let mut wrapped = std::process::Command::new("nice");
+            wrapped.arg("-n").arg(increment.to_string()).arg(program).args(args);
+            *command = wrapped;
+        }
+        return;
+    }
+    // Only async-signal-safe system calls run between fork and exec. As with
+    // `nice(1)`, a failed priority change does not stop the program.
+    unsafe {
+        command.pre_exec(move || {
+            if let Some(increment) = nice {
+                let _ = libc::nice(increment);
+            }
+            if let Some(limit) = limit {
+                let _ = libc::setrlimit(libc::RLIMIT_STACK, &limit);
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(unix))]
+pub fn prepare_worker_command(_command: &mut std::process::Command, _deep_stack: Option<usize>, _nice: Option<i32>) {}
+
 /// Give this process's main thread at least `bytes` (+ headroom) of stack
 /// that the kernel commits page by page as it grows, and record it so that
 /// [`run`] executes deep work inline on the main thread.
@@ -254,6 +339,7 @@ mod tests {
 
     #[test]
     fn spawned_thread_records_its_budget_and_nested_requests_run_inline() {
+        let _test_env = crate::test_env::write();
         let outer = std::thread::current().id();
         let (inner_thread, nested_thread, budget) = run("bigstack-test", 64 << 20, || {
             let here = std::thread::current().id();
@@ -270,6 +356,7 @@ mod tests {
 
     #[test]
     fn deep_recursion_uses_the_requested_stack() {
+        let _test_env = crate::test_env::write();
         fn depth(n: usize) -> usize {
             let pad = std::hint::black_box([0u8; 1024]);
             if n == 0 { pad[0] as usize } else { 1 + depth(n - 1) + pad[0] as usize }
@@ -280,6 +367,7 @@ mod tests {
 
     #[test]
     fn pool_spawn_runs_the_work_and_reports_a_failure() {
+        let _test_env = crate::test_env::write();
         let results: Vec<usize> = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..4)
                 .map(|i| spawn_scoped_retrying(8 << 20, scope, move || i * 2).unwrap())
@@ -294,8 +382,55 @@ mod tests {
 
     #[test]
     fn spawn_failure_reports_the_reason() {
+        let _test_env = crate::test_env::write();
         // An absurd request fails on every host; the error must name it.
         let error = run("bigstack-absurd", usize::MAX >> 2, || ()).unwrap_err();
         assert!(error.contains("bigstack-absurd") && error.contains("MiB stack"), "{error}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn prepared_worker_starts_with_the_reexec_limit_and_the_nice_increment() {
+        let _test_env = crate::test_env::write();
+        let bytes = tableau_worker_stack_bytes();
+        let expected = child_stack_rlimit(bytes);
+        let mut current = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_STACK, &mut current) }, 0);
+        let parent_nice = unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) };
+        let mut command = std::process::Command::new("/bin/sh");
+        command.arg("-c").arg("ulimit -S -s; cut -d' ' -f19 /proc/self/stat");
+        prepare_worker_command(&mut command, Some(bytes), Some(3));
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        let mut lines = text.lines();
+        let soft = lines.next().unwrap().trim().to_string();
+        let child_nice: i32 = lines.next().unwrap().trim().parse().unwrap();
+        // The same limit `ensure_main_stack` installs before re-executing,
+        // or the inherited one when it would not raise it.
+        let want = expected.map_or(current.rlim_cur, |limit| limit.rlim_cur);
+        if want == libc::RLIM_INFINITY {
+            assert_eq!(soft, "unlimited");
+        } else {
+            assert_eq!(soft, (want / 1024).to_string());
+        }
+        assert_eq!(child_nice, (parent_nice + 3).min(19));
+        // The parent keeps its own limit and niceness.
+        let mut after = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_STACK, &mut after) }, 0);
+        assert_eq!(after.rlim_cur, current.rlim_cur);
+        assert_eq!(unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) }, parent_nice);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn raised_limit_gives_the_worker_its_stack_without_reexecution() {
+        let _test_env = crate::test_env::write();
+        // `ensure_main_stack` re-executes only when the soft limit is below
+        // the request plus headroom; the prepared limit is exactly that.
+        let bytes = tableau_worker_stack_bytes();
+        if let Some(limit) = child_stack_rlimit(bytes) {
+            assert!(limit.rlim_cur as usize >= bytes.saturating_add(2 * HEADROOM));
+        }
     }
 }

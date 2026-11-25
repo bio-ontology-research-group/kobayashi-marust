@@ -629,11 +629,13 @@ mod tests {
 
     #[test]
     fn exact_one_rule_witness_certifies_inconsistency() {
+        let _test_env = crate::test_env::read();
         assert!(inconsistent(&format!("Ontology({RULE_CLASH})")));
     }
 
     #[test]
     fn exact_one_rule_witness_fails_closed_when_any_essential_part_is_absent() {
+        let _test_env = crate::test_env::read();
         let controls = [
             RULE_CLASH.replace(
                 "ObjectExactCardinality(1 <r>)",
@@ -658,6 +660,7 @@ mod tests {
 
     #[test]
     fn empty_data_relation_certifies_rule_but_assertion_revokes_it() {
+        let _test_env = crate::test_env::read();
         let rule = "DLSafeRule(Body(DataPropertyAtom(<p> Variable(<x>) Variable(<v>))) Head(ClassAtom(<C> Variable(<x>))))";
         assert_eq!(certified(&format!("Ontology({rule})")), 1);
         assert_eq!(
@@ -670,6 +673,7 @@ mod tests {
 
     #[test]
     fn legacy_type_join_requires_a_subsuming_same_individual_rule() {
+        let _test_env = crate::test_env::read();
         let meta = "DLSafeRule(Body(ObjectPropertyAtom(<left> Variable(<t>) Variable(<e1>)) ObjectPropertyAtom(<right> Variable(<l>) Variable(<e2>)) BuiltInAtom(<http://swrl.stanford.edu/ontologies/built-ins/3.3/abox.owl#hasClass> Variable(<e1>) Variable(<h1>)) BuiltInAtom(<http://swrl.stanford.edu/ontologies/built-ins/3.3/abox.owl#hasClass> Variable(<e2>) Variable(<h2>)) BuiltInAtom(<http://swrl.stanford.edu/ontologies/built-ins/3.3/tbox.owl#isSubClassOf> Variable(<h1>) Variable(<h2>))) Head(ObjectPropertyAtom(<out> Variable(<t>) <answer>)))";
         let ordinary = "DLSafeRule(Body(ObjectPropertyAtom(<left> Variable(<t>) Variable(<e>)) ObjectPropertyAtom(<right> Variable(<l>) Variable(<e>))) Head(ObjectPropertyAtom(<out> Variable(<t>) <answer>)))";
         let shared = "ClassAssertion(<A> <section>) ClassAssertion(<B> <section>) SubClassOf(<A> <B>) ObjectPropertyAssertion(<left> <task> <section>) ObjectPropertyAssertion(<right> <auth> <section>)";
@@ -693,6 +697,7 @@ mod query_projection_tests {
 
     #[test]
     fn mixed_query_head_preserves_logical_conclusions_and_body() {
+        let _test_env = crate::test_env::read();
         let source = "Ontology(DLSafeRule(Body(ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>)) ObjectPropertyAtom(<r> Variable(<y>) Variable(<z>))) Head(BuiltInAtom(<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#select> Variable(<x>)) ObjectPropertyAtom(<r> Variable(<x>) Variable(<z>)))))";
         let ontology = parse::parse_axioms(&mut IriRegistry::new(), source).unwrap();
         let rules: Vec<_> = ontology.rules().collect();
@@ -710,6 +715,7 @@ mod query_projection_tests {
 
     #[test]
     fn sqwrl_projection_requires_an_entire_observer_head() {
+        let _test_env = crate::test_env::read();
         const SELECT: &str = "<http://sqwrl.stanford.edu/ontologies/built-ins/3.4/sqwrl.owl#select>";
         let count = |head: &str| {
             let text = format!("Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head({head})))");

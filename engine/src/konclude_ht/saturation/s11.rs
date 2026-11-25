@@ -300,6 +300,7 @@ mod tests {
 
     #[test]
     fn add_influenced_nominal_records_first_influence_once() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -318,6 +319,7 @@ mod tests {
 
     #[test]
     fn nominal_dependent_node_is_marked_insufficient_when_nominal_already_influenced() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let dependent = ctx
@@ -337,6 +339,7 @@ mod tests {
 
     #[test]
     fn influenced_nominal_marks_previously_registered_dependent_nodes() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let first = ctx
@@ -376,6 +379,7 @@ mod tests {
 
     #[test]
     fn successor_link_data_linker_create_release_reuses_intrusive_free_list() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -417,6 +421,7 @@ mod tests {
 
     #[test]
     fn role_process_linker_free_list_preserves_intrusive_lifo_order() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let first = ctx
@@ -446,6 +451,7 @@ mod tests {
 
     #[test]
     fn s11_implication_reapply_insert_triggered_prepends_chain_once_per_tag() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
         let trigger = {
@@ -531,6 +537,7 @@ mod tests {
 
     #[test]
     fn s11_update_implication_reapply_advances_trigger_and_executes_final_operand() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -624,6 +631,7 @@ mod tests {
 
     #[test]
     fn s11_insert_concept_replays_matching_implication_reapply_chain() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -701,6 +709,7 @@ mod tests {
 
     #[test]
     fn s11_insert_concept_detects_opposite_polarity_clash() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -759,6 +768,7 @@ mod tests {
 
     #[test]
     fn s11_force_insert_skips_duplicate_descriptor_but_not_opposite_clash() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_force_all_concept_insertion = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -811,6 +821,7 @@ mod tests {
 
     #[test]
     fn s11_modified_update_linkers_prepend_on_label_set() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -856,6 +867,7 @@ mod tests {
 
     #[test]
     fn s11_process_modified_update_linker_enqueues_disjunct_extraction_once() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -903,6 +915,7 @@ mod tests {
 
     #[test]
     fn s11_direct_not_dependent_status_flags_fan_out_to_backward_sources() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -945,6 +958,7 @@ mod tests {
 
     #[test]
     fn s11_indirect_status_flags_fan_out_to_backward_sources() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -990,6 +1004,7 @@ mod tests {
 
     #[test]
     fn s11_successor_connected_nominal_fan_out_to_backward_sources_once() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1021,6 +1036,7 @@ mod tests {
 
     #[test]
     fn s11_successor_connected_nominal_abox_gate_skips_source_fan_out() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1072,6 +1088,7 @@ mod tests {
 
     #[test]
     fn s11_max_cardinality_candidates_fan_out_to_backward_sources() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 

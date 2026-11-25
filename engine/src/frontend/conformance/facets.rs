@@ -263,6 +263,7 @@ mod tests {
 
     #[test]
     fn unknown_facets_and_patterns_on_facetless_datatypes_are_rejected() {
+        let _test_env = crate::test_env::read();
         for base in ["owl:real", "owl:rational", "rdf:XMLLiteral", "rdfs:Literal"] {
             let input = format!(r#"Ontology(DataPropertyRange(:p DatatypeRestriction({base} xsd:pattern "a")))"#);
             assert!(check_source(&input).unwrap_err().contains("not defined"), "{input}");
@@ -279,6 +280,7 @@ mod tests {
 
     #[test]
     fn unvalidated_facet_extensions_are_explicit_refusals_not_invalid_verdicts() {
+        let _test_env = crate::test_env::read();
         for facet in ["totalDigits", "fractionDigits", "whiteSpace", "enumeration", "explicitTimezone"] {
             let input = format!(r#"Ontology(DataPropertyRange(:p DatatypeRestriction(xsd:decimal xsd:{facet} "2"^^xsd:integer)))"#);
             let error = check_source(&input).unwrap_err();
@@ -289,6 +291,7 @@ mod tests {
 
     #[test]
     fn pattern_values_must_be_strings_including_plain_literal_string_values() {
+        let _test_env = crate::test_env::read();
         for value in [r#""[a-z]+""#, r#""[a-z]+@"^^rdf:PlainLiteral"#,
             r#""abc"^^xsd:token"#, r#""a{999999999999999999999999999999999999}""#,
             r#""[a-z-[aeiou]]+""#, r#""\\i\\c*""#] {
@@ -303,6 +306,7 @@ mod tests {
 
     #[test]
     fn language_ranges_use_basic_range_syntax_and_string_values() {
+        let _test_env = crate::test_env::read();
         for value in [r#""*""#, r#""en-GB""#, r#""a-0""#, r#""en-a""#,
             r#""en@"^^rdf:PlainLiteral"#, r#"" en "^^xsd:token"#, r#""en"^^xsd:language"#] {
             check_source(&format!("Ontology(DataPropertyRange(:p DatatypeRestriction(rdf:PlainLiteral rdf:langRange {value})))")).unwrap();
@@ -320,6 +324,7 @@ Ontology(DLSafeRule(Body(DataRangeAtom(DatatypeRestriction(r:PlainLiteral r:lang
 
     #[test]
     fn length_facets_require_nonnegative_integer_values_without_numeric_limits() {
+        let _test_env = crate::test_env::read();
         for facet in ["length", "minLength", "maxLength"] {
             for value in [r#""-1"^^xsd:integer"#, r#""1.5"^^xsd:decimal"#,
                 r#""1/3"^^owl:rational"#, r#""1"^^xsd:float"#, r#""1""#,
@@ -341,6 +346,7 @@ Ontology(DLSafeRule(Body(DataRangeAtom(DatatypeRestriction(r:PlainLiteral r:lang
 
     #[test]
     fn arbitrary_precision_divisibility_matches_small_integer_oracle() {
+        let _test_env = crate::test_env::read();
         for numerator in 0..250 {
             for denominator in 1..50 {
                 assert_eq!(super::divisible(&numerator.to_string(), &denominator.to_string()),
@@ -354,6 +360,7 @@ Ontology(DLSafeRule(Body(DataRangeAtom(DatatypeRestriction(r:PlainLiteral r:lang
 
     #[test]
     fn bound_values_belong_to_the_derived_base_by_value() {
+        let _test_env = crate::test_env::read();
         for (base, value, valid) in [
             ("xsd:byte", r#""128"^^xsd:integer"#, false),
             ("xsd:byte", r#""-128.0"^^xsd:decimal"#, true),
@@ -385,6 +392,7 @@ Ontology(DLSafeRule(Body(DataRangeAtom(DatatypeRestriction(r:PlainLiteral r:lang
 
     #[test]
     fn arbitrary_precision_quotients_match_small_integer_oracle() {
+        let _test_env = crate::test_env::read();
         for numerator in 0..250 {
             for denominator in 1..50 {
                 let (quotient, exact) = super::division(&numerator.to_string(), &denominator.to_string()).unwrap();
@@ -396,6 +404,7 @@ Ontology(DLSafeRule(Body(DataRangeAtom(DatatypeRestriction(r:PlainLiteral r:lang
 
     #[test]
     fn bounds_reject_unordered_and_disjoint_value_spaces() {
+        let _test_env = crate::test_env::read();
         for (base, value) in [
             ("xsd:integer", r#""text"^^xsd:string"#),
             ("xsd:decimal", r#""1"^^xsd:double"#),
@@ -412,6 +421,7 @@ Ontology(DLSafeRule(Body(DataRangeAtom(DatatypeRestriction(r:PlainLiteral r:lang
 
     #[test]
     fn bounds_preserve_arbitrary_precision_and_prefix_aliases() {
+        let _test_env = crate::test_env::read();
         for (base, value) in [
             ("xsd:integer", r#""999999999999999999999999999999999999"^^xsd:integer"#),
             ("owl:real", r#""1/3"^^owl:rational"#),
@@ -425,6 +435,7 @@ Ontology(DataPropertyRange(:p DatatypeRestriction(t:integer t:minInclusive "1"^^
 
     #[test]
     fn rule_ranges_receive_bound_validation_without_rejecting_other_facets() {
+        let _test_env = crate::test_env::read();
         let rule = r#"Ontology(DLSafeRule(Body(DataRangeAtom(DatatypeRestriction(xsd:integer xsd:minInclusive "text") Variable(:x))) Head(ClassAtom(:A :a))))"#;
         assert!(check_source(rule).unwrap_err().contains("bound facet"));
         check_source(r#"Ontology(DataPropertyRange(:p DatatypeRestriction(xsd:string xsd:pattern "[a-z]+" xsd:minLength "1"^^xsd:integer)))"#).unwrap();

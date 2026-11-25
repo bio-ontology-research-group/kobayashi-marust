@@ -268,6 +268,7 @@ mod swrl_numeric_tests {
     }
     #[test]
     fn arithmetic_output_binds_exact_values_and_defers_invalid_operands() {
+        let _test_env = crate::test_env::read();
         let output = |op: &str, args: &[&str]| super::swrl_numeric_output(
             &format!("http://www.w3.org/2003/11/swrlb#{op}"), args);
         let a = "\"0.1\"^^xsd:decimal";
@@ -285,6 +286,7 @@ mod swrl_numeric_tests {
     }
     #[test]
     fn ieee_graph_subtraction_preserves_width_and_numeric_comparison() {
+        let _test_env = crate::test_env::read();
         let a = "\"102.92\"^^xsd:float";
         let b = "\"100.89\"^^xsd:float";
         let result = super::swrl_numeric_output("http://www.w3.org/2003/11/swrlb#subtract", &[a, b]).unwrap();
@@ -304,6 +306,7 @@ mod swrl_numeric_tests {
 
     #[test]
     fn decimal_arithmetic_and_result_position_are_exact() {
+        let _test_env = crate::test_env::read();
         assert_eq!(relation("add", &["\"0.3\"^^xsd:decimal", "\"0.1\"^^xsd:decimal", "\"0.2\"^^xsd:decimal"]), Some(true));
         assert_eq!(relation("subtract", &["\"-2\"^^xsd:integer", "\"1\"^^xsd:integer", "\"3\"^^xsd:integer"]), Some(true));
         assert_eq!(relation("subtract", &["\"2\"^^xsd:integer", "\"1\"^^xsd:integer", "\"3\"^^xsd:integer"]), Some(false));
@@ -312,6 +315,7 @@ mod swrl_numeric_tests {
     }
     #[test]
     fn unsupported_or_invalid_values_are_obligations_not_false() {
+        let _test_env = crate::test_env::read();
         assert_eq!(relation("add", &["\"1\"^^xsd:integer"]), None);
         assert_eq!(relation("equal", &["\"1.1\"^^xsd:integer", "\"1.1\"^^xsd:decimal"]), None);
         assert_eq!(relation("equal", &["\"--1\"^^xsd:integer", "\"-1\"^^xsd:integer"]), None);
@@ -321,6 +325,7 @@ mod swrl_numeric_tests {
     }
     #[test]
     fn integer_derived_literals_validate_their_value_bounds() {
+        let _test_env = crate::test_env::read();
         assert_eq!(relation("greaterThan", &["\"18\"^^xsd:int", "\"17\"^^xsd:long"]), Some(true));
         assert_eq!(relation("equal", &["\"255\"^^xsd:unsignedByte", "\"255\"^^xsd:integer"]), Some(true));
         assert_eq!(relation("equal", &["\"256\"^^xsd:unsignedByte", "\"256\"^^xsd:integer"]), None);
@@ -412,6 +417,15 @@ fn builtin_datatype_key(name: &str) -> Option<&str> {
         .strip_prefix("xsd:")
         .or_else(|| raw.strip_prefix(XSD_NS));
     if let Some(local) = xsd_local {
+        // W7: under `--unknown-datatypes=free` the XSD datatypes outside the
+        // OWL 2 datatype map are fresh datatypes like any user IRI: no
+        // partition, no lexical space, opaque literals.
+        if matches!(local, "date" | "time" | "gYear" | "gMonth" | "gDay" | "gYearMonth"
+            | "gMonthDay" | "duration")
+            && super::conformance::unknown_datatypes_free()
+        {
+            return None;
+        }
         return matches!(
             local,
             "decimal"
@@ -2499,20 +2513,40 @@ pub(crate) fn bridge_tbox_finite_values(name: &str) -> Option<Vec<String>> {
 /// Bridge-TBox variant of [`bridge_exact_finite_cover`].
 pub(crate) fn bridge_tbox_finite_cover(range: &str, head: &[&str]) -> bool {
     let Some(values) = bridge_tbox_finite_values(range) else { return false };
-    values.iter().all(|value| head.iter().any(|other|
-        bridge_exact_value_equal(value, other) == Some(true)))
-        && head.iter().all(|value| values.iter().any(|other|
-            bridge_exact_value_equal(value, other) == Some(true)))
+    let mut parsed_values = Vec::with_capacity(values.len());
+    for value in &values {
+        let Some(parsed) = ParsedBridgeValue::of(value) else { return false };
+        parsed_values.push(parsed);
+    }
+    let mut parsed_head = Vec::with_capacity(head.len());
+    for value in head {
+        let Some(parsed) = ParsedBridgeValue::of(value) else { return false };
+        parsed_head.push(parsed);
+    }
+    parsed_values.iter().all(|value| parsed_head.iter().any(|other|
+        value.equal(other) == Some(true)))
+        && parsed_head.iter().all(|value| parsed_values.iter().any(|other|
+            value.equal(other) == Some(true)))
 }
 
 /// Compare a finite range with a proposed value-concept cover extensionally.
 /// Lexical aliases can repeat a value, but cannot omit or add a value.
 pub(crate) fn bridge_exact_finite_cover(range: &str, head: &[&str]) -> bool {
     let Some(values) = bridge_exact_finite_values(range) else { return false };
-    values.iter().all(|value| head.iter().any(|other|
-        bridge_exact_value_equal(value, other) == Some(true)))
-        && head.iter().all(|value| values.iter().any(|other|
-            bridge_exact_value_equal(value, other) == Some(true)))
+    let mut parsed_values = Vec::with_capacity(values.len());
+    for value in &values {
+        let Some(parsed) = ParsedBridgeValue::of(value) else { return false };
+        parsed_values.push(parsed);
+    }
+    let mut parsed_head = Vec::with_capacity(head.len());
+    for value in head {
+        let Some(parsed) = ParsedBridgeValue::of(value) else { return false };
+        parsed_head.push(parsed);
+    }
+    parsed_values.iter().all(|value| parsed_head.iter().any(|other|
+        value.equal(other) == Some(true)))
+        && parsed_head.iter().all(|value| parsed_values.iter().any(|other|
+            value.equal(other) == Some(true)))
 }
 
 /// `true` when `range` is an IEEE range of the bridge map and the IEEE
@@ -2614,9 +2648,24 @@ fn exact_decimal_lexical(literal: &str) -> bool {
 ///   `NaN` (OWL 2 section 4.2, XSD 1.1 section 3.3.4).
 /// * `rdfs:Literal`, the top data range ("any set of data values that
 ///   contains the union of the value spaces of all datatypes").
+/// `true` for the fresh opaque literal `"v"^^<http://km.invalid/dataproperties[N]#free>`
+/// added by `orchestrate::data_properties::extension` for `--data-properties`.
+pub(crate) fn is_data_property_probe_value(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix("__dt__val__\"v\"^^<http://km.invalid/dataproperties") else {
+        return false;
+    };
+    let Some(digits) = rest.strip_suffix("#free>") else {
+        return false;
+    };
+    digits.bytes().all(|byte| byte.is_ascii_digit())
+}
+
 pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
     if is_value_aux_name(name) {
         return None;
+    }
+    if is_data_property_probe_value(name) {
+        return Some("dataproperty_probe");
     }
     if let Some(family) = bridge_exact_atomic_family(name) {
         return Some(family);
@@ -2627,6 +2676,7 @@ pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
         return match (value, datatype.as_deref().and_then(builtin_datatype_key)) {
             (Val::Float64(_), Some("double")) => Some("double"),
             (Val::Uri(_), Some("anyURI")) => Some("anyURI"),
+            (Val::Xml(_), Some("XMLLiteral")) => Some("XMLLiteral"),
             // xsd:decimal values are exact rationals; the decimal lexical space
             // has no exponent (XSD 1.1 decimalLexicalRep), so require it.
             (Val::Num(_), Some("decimal")) if exact_decimal_lexical(literal) => Some("decimal"),
@@ -2637,10 +2687,10 @@ pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
         return match parse_complex(text) {
             DRange::Float(range) if range.part == Partition::Float32 => Some("float"),
             DRange::Float(range) if range.part == Partition::Float64 => Some("double"),
-            // Facet intervals over the decimal tower (decimal or an integer
-            // datatype base). Their realizability is certified by
+            // Facet intervals over the numeric tower (real, rational, decimal
+            // or an integer datatype base). Their realizability is certified by
             // `bridge_decimal_cells_realizable`.
-            DRange::Num(range) if !matches!(range.base_kind, "real" | "rational") => Some("decimal"),
+            DRange::Num(_) => Some("decimal"),
             // A union of named datatypes from the exact map. Its semantics
             // reaches the bridge through the member inclusions and the union
             // cover clause, both checked by the bridge.
@@ -2668,10 +2718,15 @@ pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
         DRange::Named(datatype) if datatype.kind == "anyURI" => Some("anyURI"),
         DRange::Named(datatype) if datatype.kind == "XMLLiteral" => Some("XMLLiteral"),
         DRange::Named(datatype) if datatype.kind == "double" => Some("double"),
-        // Every bounded/unbounded integer datatype of the map (`long`, `short`,
-        // `unsignedInt`, `negativeInteger`, ...): an integral interval, decided
-        // by `bridge_decimal_cells_realizable` like the narrow members.
-        DRange::Named(datatype) if datatype.part == Partition::Numeric && datatype.integral => Some("decimal"),
+        // Every bounded/unbounded numeric-tower datatype of the map (`real`,
+        // `rational`, `long`, `short`, `unsignedInt`, `negativeInteger`, ...):
+        // decided by `bridge_decimal_cells_realizable`.
+        DRange::Named(datatype)
+            if datatype.part == Partition::Numeric
+                && (datatype.integral || matches!(datatype.kind, "real" | "rational")) =>
+        {
+            Some("decimal")
+        }
         _ => None,
     }
 }
@@ -2738,30 +2793,46 @@ fn bridge_ieee_interval(name: &str) -> Option<FloatRange> {
     }
 }
 
-/// An admitted decimal-tower range as an interval of the decimal value
-/// space, optionally restricted to integers.
+/// An admitted numeric-tower range as an interval of the real/rational/decimal
+/// value space, with its tower level (`0` = integer, `1` = decimal,
+/// `2` = rational, `3` = real).
 #[derive(Clone, Debug)]
 struct DecimalInterval {
     integral: bool,
+    level: u8,
     lo: Option<(Rat, bool)>,
     hi: Option<(Rat, bool)>,
 }
 
 impl DecimalInterval {
     fn of(name: &str) -> Option<Self> {
+        let tower_level = |integral: bool, kind: &str| -> u8 {
+            if integral {
+                0
+            } else {
+                match kind {
+                    "decimal" => 1,
+                    "rational" => 2,
+                    "real" => 3,
+                    _ => 1,
+                }
+            }
+        };
         match bridge_exact_atomic_range(name)? {
             DRange::Named(datatype)
                 if datatype.part == Partition::Numeric
-                    && !matches!(datatype.kind, "float" | "double" | "real" | "rational") =>
+                    && !matches!(datatype.kind, "float" | "double") =>
             {
                 Some(Self {
                     integral: datatype.integral,
+                    level: tower_level(datatype.integral, datatype.kind),
                     lo: datatype.min.map(|bound| (Rat::from_int(bound), true)),
                     hi: datatype.max.map(|bound| (Rat::from_int(bound), true)),
                 })
             }
-            DRange::Num(range) if !matches!(range.base_kind, "real" | "rational") => Some(Self {
+            DRange::Num(range) => Some(Self {
                 integral: range.integral,
+                level: tower_level(range.integral, range.base_kind),
                 lo: range.min,
                 hi: range.max,
             }),
@@ -3016,8 +3087,6 @@ pub(crate) fn bridge_decimal_cells_realizable(
     }
     let sensitive = body_sensitive.iter().enumerate()
         .fold(0u32, |mask, (index, &flag)| if flag { mask | (1 << index) } else { mask });
-    let integral_mask = intervals.iter().enumerate()
-        .fold(0u32, |mask, (index, range)| if range.integral { mask | (1 << index) } else { mask });
     for set in 1u32..(1u32 << k) {
         let member = |index: usize| set & (1 << index) != 0;
         let closed = (0..k).all(|i| !member(i) || (0..k).all(|j| member(j) || !inclusion(i, j)));
@@ -3032,7 +3101,12 @@ pub(crate) fn bridge_decimal_cells_realizable(
         if covers.iter().any(|(body, heads)| member(*body) && !heads.iter().any(|&h| member(h))) {
             continue;
         }
-        let integers_only = set & integral_mask != 0;
+        let min_level = (0..k)
+            .filter(|&i| member(i))
+            .map(|i| intervals[i].level)
+            .min()
+            .unwrap_or(3);
+        let integers_only = min_level == 0;
         let excluded = sensitive & !set;
         let mut available: u128 = 0;
         for cell in &cells {
@@ -3045,8 +3119,10 @@ pub(crate) fn bridge_decimal_cells_realizable(
                     if integers_only && !value.is_integer() {
                         continue;
                     }
-                    // A non-integral excluded range removes the point; an
-                    // integral one only when the point is an integer.
+                    // Every `Rat` endpoint in `pts` is a terminating decimal
+                    // (or integer when `value.is_integer()`), so a non-integral
+                    // excluded range (`level >= 1`) removes any point, and an
+                    // integral one (`level == 0`) removes integer points.
                     let removed = (0..k).any(|j| blocking & (1 << j) != 0
                         && (!intervals[j].integral || value.is_integer()));
                     if removed || values.iter().any(|literal| literal == value) {
@@ -3055,13 +3131,19 @@ pub(crate) fn bridge_decimal_cells_realizable(
                     available = available.saturating_add(1);
                 }
                 None => {
-                    let removed_all = (0..k).any(|j| blocking & (1 << j) != 0
-                        && (!intervals[j].integral || integers_only));
+                    // An excluded range removes the entire open interval only if
+                    // its tower level is at least `min_level` (e.g. excluding
+                    // `xsd:decimal` (`level 1`) leaves infinitely many
+                    // non-decimal rationals (`level 2`) and irrationals
+                    // (`level 3`) in any open interval).
+                    let removed_all = (0..k).any(|j| {
+                        blocking & (1 << j) != 0 && intervals[j].level >= min_level
+                    });
                     if removed_all {
                         continue;
                     }
                     if !integers_only {
-                        // Infinitely many non-integer decimals remain; integral
+                        // Infinitely many values at `min_level` remain; lower-level
                         // exclusions and finitely many literals cannot exhaust them.
                         available = u128::MAX;
                         continue;
@@ -3283,6 +3365,109 @@ pub(crate) fn bridge_ieee_cells_by_atoms(
     Some(true)
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct ParsedBridgeAtomic {
+    pub family: &'static str,
+    range: Option<DRange>,
+    pub is_ieee_range: bool,
+    pub is_decimal_range: bool,
+    pub is_facet_range: bool,
+    pub has_tbox_finite_values: bool,
+    pub complement_operand_family: Option<&'static str>,
+}
+
+impl ParsedBridgeAtomic {
+    pub(crate) fn of(name: &str) -> Option<Self> {
+        let family = bridge_tbox_atomic_family(name)?;
+        let range = bridge_exact_atomic_range(name);
+        let is_val = name.starts_with("__dt__val__");
+        let is_complex = name.starts_with("__dt__c__");
+        let is_ieee_range = !is_val
+            && matches!(family, "float" | "double")
+            && match range.as_ref() {
+                Some(DRange::Float(_)) => true,
+                Some(DRange::Named(datatype)) => {
+                    matches!(datatype.part, Partition::Float32 | Partition::Float64)
+                }
+                _ => false,
+            };
+        let is_decimal_range = !is_val
+            && family == "decimal"
+            && match range.as_ref() {
+                Some(DRange::Num(_)) => true,
+                Some(DRange::Named(datatype)) => {
+                    datatype.part == Partition::Numeric
+                        && !matches!(datatype.kind, "float" | "double")
+                }
+                _ => false,
+            };
+        let is_facet_range =
+            is_complex && matches!(range.as_ref(), Some(DRange::Float(_) | DRange::Num(_)));
+        let has_tbox_finite_values =
+            is_complex && (family == "finite" || bridge_tbox_finite_values(name).is_some());
+        let complement_operand_family = bridge_exact_complement_operand(name)
+            .and_then(|operand| bridge_tbox_atomic_family(&operand));
+        Some(Self {
+            family,
+            range,
+            is_ieee_range,
+            is_decimal_range,
+            is_facet_range,
+            has_tbox_finite_values,
+            complement_operand_family,
+        })
+    }
+
+    pub(crate) fn subsumed(&self, sup: &Self) -> Option<bool> {
+        range_subsumed(self.range.as_ref()?, sup.range.as_ref()?)
+    }
+
+    pub(crate) fn disjoint(&self, right: &Self) -> Option<bool> {
+        range_disjoint(self.range.as_ref()?, right.range.as_ref()?)
+    }
+}
+
+struct ParsedBridgeValue {
+    raw: Val,
+    is_extended: bool,
+    exact_ok: bool,
+}
+
+impl ParsedBridgeValue {
+    fn of(name: &str) -> Option<Self> {
+        if !bridge_tbox_atomic_name(name) {
+            return None;
+        }
+        let literal = name.strip_prefix("__dt__val__")?;
+        let (value, datatype) = parse_literal(literal)?;
+        let is_extended = matches!(
+            value,
+            Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_) | Val::Xml(_)
+        );
+        let builtin = datatype.as_deref().and_then(builtin_datatype_key);
+        let exact_ok = match (&value, builtin) {
+            (Val::Bool(_), Some("boolean")) => true,
+            (Val::Num(number), Some("integer")) if number.is_integer() => true,
+            (Val::Str(_, None), Some("string")) => true,
+            (Val::Str(_, None), None) if datatype.is_none() => true,
+            _ => false,
+        };
+        Some(Self {
+            raw: value,
+            is_extended,
+            exact_ok,
+        })
+    }
+
+    fn equal(&self, other: &Self) -> Option<bool> {
+        if self.is_extended || other.is_extended || (self.exact_ok && other.exact_ok) {
+            val_eq(&self.raw, &other.raw)
+        } else {
+            None
+        }
+    }
+}
+
 fn bridge_exact_atomic_range(name: &str) -> Option<DRange> {
     match classify_name(name)? {
         DtEntry::Range(_, range) => Some(range),
@@ -3366,8 +3551,8 @@ pub(crate) fn bridge_exact_value_equal(left: &str, right: &str) -> Option<bool> 
     // IEEE values compare by identity of the parsed binary32/binary64 datum
     // (OWL 2 section 4.2: +0 and -0 are distinct data values, NaN is one
     // value identical to itself); the two widths are disjoint value spaces.
-    if matches!(left_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_))
-        || matches!(right_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_)) {
+    if matches!(left_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_) | Val::Xml(_))
+        || matches!(right_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_) | Val::Xml(_)) {
         return val_eq(&left_value, &right_value);
     }
     exact_literal_value_equal(left, right)
@@ -3456,6 +3641,7 @@ mod finite_literal_realization_tests {
     use super::*;
     #[test]
     fn concrete_profiles_preserve_rounding_signed_zero_and_range_membership() {
+        let _test_env = crate::test_env::read();
         let names = vec!["__dt__val__\"16777217\"^^xsd:float".into(),
             "__dt__val__\"0\"^^xsd:float".into(), "__dt__val__\"-0\"^^xsd:float".into(),
             "__dt__float".into(), "__dt__double".into(), "__dt__string".into()];
@@ -3466,6 +3652,7 @@ mod finite_literal_realization_tests {
     }
     #[test]
     fn opaque_values_and_unknown_ranges_do_not_produce_evidence() {
+        let _test_env = crate::test_env::read();
         assert!(finite_literal_datatype_truth("\"NULL\"^^rdfs:Literal", &[]).is_none());
         assert!(finite_literal_datatype_truth("\"x\"^^xsd:string", &["__dt__unknown".into()]).is_none());
         assert!(finite_literal_datatype_truth("\"x\"^^xsd:string", &["__dt__val__\"x\"^^rdfs:Literal".into()]).is_none());
@@ -3814,7 +4001,7 @@ fn integral_difference(
 /// forms have the same models over the source vocabulary (docs/DATATYPES.md,
 /// "Exact data values without a literal cap"), so the limit is a performance
 /// knob only; at or below it the output is the pairwise form unchanged.
-const PAIRWISE_VALUE_LIMIT: usize = 1024;
+const PAIRWISE_VALUE_LIMIT: usize = 128;
 
 /// The finite cover of a range, as glued literals: the members of a
 /// `DataOneOf`, or an enumerated finite range of at most `cap` values.
@@ -3892,7 +4079,7 @@ pub(crate) fn bridge_value_identity_key(name: &str) -> Option<String> {
     let (value, datatype) = parse_literal(literal)?;
     let builtin = datatype.as_deref().and_then(builtin_datatype_key);
     let decided = match (&value, builtin) {
-        (Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_), _) => true,
+        (Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_) | Val::Xml(_), _) => true,
         (Val::Bool(_), Some("boolean")) => true,
         (Val::Str(_, None), Some("string" | "normalizedString" | "token" | "language" | "Name" | "NCName" | "NMTOKEN")) => true,
         (Val::Str(_, None), None) => datatype.is_none(),
@@ -4430,6 +4617,7 @@ pub fn datatype_relation_clauses_with(
 mod tests {
     #[test]
     fn complement_ranges_get_their_excluded_middle() {
+        let _test_env = crate::test_env::read();
         use super::*;
         let names = |list: &[&str]| list.iter().map(|n| n.to_string()).collect::<BTreeSet<String>>();
         let not_int = "__dt__c__DataComplementOf(xsd:integer)";
@@ -4472,6 +4660,7 @@ mod tests {
 
     #[test]
     fn ieee_facet_ranges_preserve_discrete_bounds_and_partitions() {
+        let _test_env = crate::test_env::read();
         for kind in ["float", "double"] {
             let range = |facet: &str, value: &str| parse_complex(&format!(
                 "DatatypeRestriction(xsd:{kind} xsd:{facet} \"{value}\"^^xsd:{kind})"));
@@ -4515,6 +4704,7 @@ mod tests {
 
     #[test]
     fn relation_decidability_rejects_unknowns_and_accepts_concrete_values() {
+        let _test_env = crate::test_env::read();
         let names = ["__dt__string", "__dt__float",
             "__dt__val__\"label\"^^xsd:string", "__dt__val__\"1.0\"^^xsd:float",
             "__dt__val__\"2.0\"^^xsd:float"].into_iter().map(str::to_owned).collect();
@@ -4528,6 +4718,7 @@ mod tests {
 
     #[test]
     fn complement_membership_negates_only_decided_value_relations() {
+        let _test_env = crate::test_env::read();
         let value = parse_literal("\"list error\"").unwrap().0;
         let excluded = parse_complex("DataComplementOf(DataOneOf(\"list error\"))");
         assert_eq!(val_in_range(&value, &excluded), Some(false));
@@ -4543,6 +4734,7 @@ mod tests {
 
     #[test]
     fn ieee_literal_identity_preserves_width_rounding_and_signed_zero() {
+        let _test_env = crate::test_env::read();
         let value = |token: &str| parse_literal(token).unwrap().0;
         assert_eq!(val_eq(&value("\"16777216\"^^xsd:float"),
             &value("\"16777217\"^^xsd:float")), Some(true));
@@ -4610,6 +4802,7 @@ mod tests {
 
     #[test]
     fn linear_form_decides_every_pair_like_the_pairwise_form() {
+        let _test_env = crate::test_env::read();
         let (values, ranges, all) = linear_vocabulary(1200);
         let linear = datatype_relation_clauses(&all, 8);
         assert!(linear.iter().any(|c| format!("{c:?}").contains("__dt__aux__digit__")), "linear form expected");
@@ -4645,6 +4838,7 @@ mod tests {
 
     #[test]
     fn small_vocabularies_keep_the_pairwise_form() {
+        let _test_env = crate::test_env::read();
         let (_, _, all) = linear_vocabulary(20);
         let clauses = datatype_relation_clauses(&all, 8);
         assert!(!clauses.iter().any(|c| format!("{c:?}").contains("__dt__aux__")));
@@ -4652,6 +4846,7 @@ mod tests {
 
     #[test]
     fn singleton_elision_keeps_undecided_values() {
+        let _test_env = crate::test_env::read();
         let ns = names(&["__dt__val__\"1\"^^xsd:integer", "__dt__val__\"x\"^^ex:opaque", "__dt__xsd:integer"]);
         let kept = datatype_relation_clauses_with(&ns, 8, None, false);
         let elided = datatype_relation_clauses_with(&ns, 8, None, true);
@@ -4670,6 +4865,7 @@ mod tests {
 
     #[test]
     fn derived_string_literals_are_string_values() {
+        let _test_env = crate::test_env::read();
         let value = |text: &str| match classify_name(text) { Some(DtEntry::Value(_, v)) => v, _ => panic!("{text}") };
         let plain = value("__dt__val__\"abc\"");
         assert_eq!(val_eq(&plain, &value("__dt__val__\"abc\"^^xsd:token")), Some(true));
@@ -4690,6 +4886,7 @@ mod tests {
 
     #[test]
     fn exhaustible_ranges_need_covers() {
+        let _test_env = crate::test_env::read();
         let range = "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer xsd:maxInclusive \"9\"^^xsd:integer)";
         let mut ns: Vec<String> = (1..=9).map(|i| format!("__dt__val__\"{i}\"^^xsd:integer")).collect();
         ns.push(range.to_string());
@@ -4705,6 +4902,7 @@ mod tests {
 
     #[test]
     fn finite_range_sizes_and_covers() {
+        let _test_env = crate::test_env::read();
         let range = |text: &str| match classify_name(text) { Some(DtEntry::Range(_, r)) => r, _ => panic!("{text}") };
         assert_eq!(range_size(&range("__dt__xsd:unsignedByte")), Some(256));
         assert_eq!(range_size(&range("__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer xsd:maxInclusive \"9\"^^xsd:integer)")), Some(9));
@@ -4745,6 +4943,7 @@ mod tests {
 
     #[test]
     fn value_membership_and_tower() {
+        let _test_env = crate::test_env::read();
         let ns = names(&[
             "__dt__val__\"5\"^^xsd:int",
             "__dt__xsd:integer",
@@ -4778,6 +4977,7 @@ mod tests {
 
     #[test]
     fn distinct_values_clash_equal_values_merge() {
+        let _test_env = crate::test_env::read();
         let ns = names(&[
             "__dt__val__\"1\"^^xsd:int",
             "__dt__val__\"1.0\"^^xsd:decimal",
@@ -4801,6 +5001,7 @@ mod tests {
 
     #[test]
     fn lossy_lexical_families_do_not_emit_false_value_disjointness() {
+        let _test_env = crate::test_env::read();
         // xsd:token collapses runs of whitespace, so these denote the same
         // string value despite different lexical forms.
         let token = "__dt__val__\"a  b\"^^xsd:token";
@@ -4823,6 +5024,7 @@ mod tests {
 
     #[test]
     fn exact_bridge_value_oracle_keeps_only_proven_equalities() {
+        let _test_env = crate::test_env::read();
         let value = |literal: &str| format!("__dt__val__{literal}");
         assert_eq!(
             bridge_exact_value_equal(
@@ -4872,6 +5074,7 @@ mod tests {
 
     #[test]
     fn builtin_datatypes_require_the_exact_standard_namespace() {
+        let _test_env = crate::test_env::read();
         const XSD_BOOLEAN: &str = "<http://www.w3.org/2001/XMLSchema#boolean>";
         const CUSTOM_BOOLEAN: &str = "<http://example.org/types#boolean>";
         const RDFS_LITERAL: &str = "<http://www.w3.org/2000/01/rdf-schema#Literal>";
@@ -4900,6 +5103,7 @@ mod tests {
 
     #[test]
     fn plain_literal_is_not_data_top() {
+        let _test_env = crate::test_env::read();
         assert!(matches!(range_of_named("rdfs:Literal"), DRange::Top));
         assert!(matches!(
             range_of_named("rdf:PlainLiteral"),
@@ -4926,6 +5130,7 @@ mod tests {
 
     #[test]
     fn custom_builtin_suffixes_never_enter_the_exact_value_or_bridge_oracle() {
+        let _test_env = crate::test_env::read();
         assert_eq!(
             exact_literal_value_equal("\"1\"^^ex:boolean", "\"true\"^^ex:boolean"),
             None
@@ -4957,6 +5162,7 @@ mod tests {
 
     #[test]
     fn opaque_values_are_not_declared_outside_numeric_restrictions() {
+        let _test_env = crate::test_env::read();
         let numeric =
             "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"0\"^^xsd:integer)";
         for value in [
@@ -4983,6 +5189,7 @@ mod tests {
 
     #[test]
     fn explicit_finite_cover_is_not_truncated_by_interval_enumeration_cap() {
+        let _test_env = crate::test_env::read();
         let literals: Vec<_> = (0..17).map(|i| format!("\"v{i}\"^^xsd:string")).collect();
         let range = format!("__dt__c__DataOneOf({})", literals.join(" "));
         let clauses = datatype_relation_clauses(&[range.clone()].into_iter().collect(), 8);
@@ -4998,6 +5205,7 @@ mod tests {
 
     #[test]
     fn boolean_cover_enables_counting() {
+        let _test_env = crate::test_env::read();
         let ns = names(&["__dt__xsd:boolean"]);
         let cls = datatype_relation_clauses(&ns, 8);
         // cover: boolean(x) -> val_true(x) | val_false(x), plus the clash
@@ -5015,6 +5223,7 @@ mod tests {
 
     #[test]
     fn interval_subsumption_and_disjointness() {
+        let _test_env = crate::test_env::read();
         let ns = names(&[
             "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer xsd:maxInclusive \"3\"^^xsd:integer)",
             "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"5\"^^xsd:integer xsd:maxInclusive \"9\"^^xsd:integer)",
@@ -5041,6 +5250,7 @@ mod tests {
 
     #[test]
     fn unknown_emits_nothing_wrong() {
+        let _test_env = crate::test_env::read();
         // a pattern-restricted range stays opaque: no relations with string
         let ns = names(&[
             "__dt__c__DatatypeRestriction(xsd:string xsd:pattern \"[a-z]+\")",
@@ -5056,6 +5266,7 @@ mod tests {
 
     #[test]
     fn integer_and_ieee_float_do_not_get_false_inclusions() {
+        let _test_env = crate::test_env::read();
         let ns = names(&[
             "__dt__integer",
             "__dt__float",
@@ -5084,6 +5295,7 @@ mod tests {
 
     #[test]
     fn lossy_named_datatype_shapes_do_not_imply_identity() {
+        let _test_env = crate::test_env::read();
         for pair in [
             ["__dt__date", "__dt__time"],
             ["__dt__hexBinary", "__dt__base64Binary"],
@@ -5099,6 +5311,7 @@ mod tests {
 
     #[test]
     fn string_chain_inclusions_are_one_way() {
+        let _test_env = crate::test_env::read();
         // XSD 1.1: every language tag is an NCName, hence a Name; the
         // converse fails (`a:b`).
         let cls = datatype_relation_clauses(&names(&["__dt__language", "__dt__Name"]), 8);
@@ -5110,6 +5323,7 @@ mod tests {
 
     #[test]
     fn rational_interval_is_not_mistaken_for_decimal_interval() {
+        let _test_env = crate::test_env::read();
         let restricted = "__dt__c__DatatypeRestriction(owl:rational xsd:minInclusive \"0\"^^xsd:integer xsd:maxInclusive \"1\"^^xsd:integer)";
         let cls = datatype_relation_clauses(&names(&[restricted, "__dt__decimal"]), 8);
         assert!(
@@ -5125,6 +5339,7 @@ mod tests {
 
     #[test]
     fn bridge_finite_cover_checks_exact_values_and_aliases() {
+        let _test_env = crate::test_env::read();
         let range = "__dt__c__DataOneOf(\"1\"^^xsd:int \"2\"^^xsd:int)";
         let one = "__dt__val__\"01\"^^xsd:positiveInteger";
         let two = "__dt__val__\"2\"^^xsd:integer";
@@ -5139,6 +5354,7 @@ mod tests {
 
     #[test]
     fn bridge_integer_literals_preserve_value_identity_and_declared_bounds() {
+        let _test_env = crate::test_env::read();
         let integer = "__dt__val__\"1\"^^xsd:integer";
         for datatype in ["integer", "int", "nonNegativeInteger", "positiveInteger"] {
             let literal = format!("__dt__val__\"+01\"^^xsd:{datatype}");
@@ -5160,6 +5376,7 @@ mod tests {
 
     #[test]
     fn bridge_integral_decimal_literals_preserve_integer_value_identity() {
+        let _test_env = crate::test_env::read();
         for value in -16..=16 {
             let decimal = format!("__dt__val__\"{value}.000\"^^xsd:decimal");
             let integer = format!("__dt__val__\"{value}\"^^xsd:integer");
@@ -5188,6 +5405,7 @@ mod tests {
 
     #[test]
     fn bridge_plain_string_literal_is_the_xsd_string_abbreviation() {
+        let _test_env = crate::test_env::read();
         let plain = "__dt__val__\"makesStmtsAbout\"";
         let typed = "__dt__val__\"makesStmtsAbout\"^^xsd:string";
         assert!(bridge_exact_atomic_name(plain));
@@ -5200,6 +5418,7 @@ mod tests {
 
     #[test]
     fn bridge_datetime_literals_preserve_owl_value_identity() {
+        let _test_env = crate::test_env::read();
         let value = |text: &str| format!("__dt__val__\"{text}\"^^xsd:dateTime");
         let midnight = value("2000-03-01T00:00:00Z");
         let alias = value("2000-02-29T24:00:00.000+00:00");
@@ -5221,6 +5440,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_map_and_cells() {
+        let _test_env = crate::test_env::read();
         let double = |text: &str| format!("__dt__val__\"{text}\"^^xsd:double");
         for name in ["__dt__anyURI", "__dt__double", "__dt__Literal", &double("1.0E-17"), &double("NaN"),
             "__dt__c__DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double xsd:maxInclusive \"1.0\"^^xsd:double)"] {
@@ -5280,6 +5500,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_integral_difference_covers() {
+        let _test_env = crate::test_env::read();
         let cover = |names: &[&str]| {
             let set: BTreeSet<String> = names.iter().map(|n| n.to_string()).collect();
             datatype_relation_clauses(&set, 8).into_iter()
@@ -5310,6 +5531,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_union_relations() {
+        let _test_env = crate::test_env::read();
         let union = "__dt__c__DataUnionOf(xsd:decimal xsd:float xsd:integer xsd:long)";
         assert_eq!(union_member_names(union).unwrap(),
             vec!["__dt__decimal", "__dt__float", "__dt__integer", "__dt__long"]);
@@ -5333,6 +5555,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_uri_xml_and_decimal_values() {
+        let _test_env = crate::test_env::read();
         let uri = |text: &str| format!("__dt__val__\"{text}\"^^xsd:anyURI");
         assert_eq!(bridge_tbox_atomic_family(&uri("http://x/a")), Some("anyURI"));
         assert_eq!(bridge_exact_value_equal(&uri("http://x/a"), &uri(" http://x/a ")), Some(true), "whiteSpace=collapse");
@@ -5348,6 +5571,15 @@ mod tests {
             assert_eq!(bridge_exact_atomic_disjoint("__dt__XMLLiteral", other), Some(true), "{other}");
         }
         assert_eq!(bridge_exact_atomic_subsumed("__dt__XMLLiteral", "__dt__Literal"), Some(true));
+        assert_eq!(bridge_tbox_atomic_family("__dt__val__\"be\"^^rdf:XMLLiteral"), Some("XMLLiteral"));
+        assert!(bridge_value_identity_key("__dt__val__\"be\"^^rdf:XMLLiteral").is_some());
+        assert_eq!(
+            bridge_exact_value_equal(
+                "__dt__val__\"be\"^^rdf:XMLLiteral",
+                "__dt__val__\"for\"^^rdf:XMLLiteral"
+            ),
+            Some(false)
+        );
         assert!(!bridge_tbox_atomic_name("__dt__val__\"<a/>\"^^rdf:XMLLiteral"), "XML values stay opaque");
         let dec = |text: &str| format!("__dt__val__\"{text}\"^^xsd:decimal");
         assert_eq!(bridge_tbox_atomic_family(&dec("1.50")), Some("decimal"));
@@ -5361,6 +5593,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_facet_intersections() {
+        let _test_env = crate::test_env::read();
         let both = "__dt__c__DataIntersectionOf(DatatypeRestriction(xsd:double xsd:maxInclusive \"1000.0\"^^xsd:double) DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double))";
         let single = "__dt__c__DatatypeRestriction(xsd:double xsd:minInclusive \"0.0\"^^xsd:double xsd:maxInclusive \"1000.0\"^^xsd:double)";
         assert_eq!(bridge_tbox_atomic_family(both), Some("double"));
@@ -5377,6 +5610,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_double_enumerations() {
+        let _test_env = crate::test_env::read();
         let one = "__dt__c__DataOneOf(\"1.0\"^^xsd:double)";
         assert_eq!(bridge_tbox_atomic_family(one), Some("finite"));
         assert!(bridge_exact_finite_values(one).is_none(), "the narrow projection map is unchanged");
@@ -5389,6 +5623,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_decimal_cell_counts() {
+        let _test_env = crate::test_env::read();
         let names = ["__dt__integer", "__dt__nonNegativeInteger", "__dt__positiveInteger", "__dt__decimal"];
         let a: Vec<String> = names.iter().map(|n| n.to_string()).collect();
         let b = a.clone();
@@ -5416,6 +5651,7 @@ mod tests {
 
     #[test]
     fn bridge_atomic_gate_matches_the_exact_10621_fragment() {
+        let _test_env = crate::test_env::read();
         for supported in [
             "__dt__boolean",
             "__dt__dateTime",
@@ -5479,6 +5715,7 @@ mod xml_literal_tests {
 
     #[test]
     fn canonical_xml_literals_are_values_by_lexical_identity() {
+        let _test_env = crate::test_env::read();
         let value = |text: &str| parse_literal(text).unwrap().0;
         assert_eq!(value("\"wèi le\"^^rdf:XMLLiteral"), Val::Xml("wèi le".into()));
         assert_eq!(val_eq(&value("\"<b>x</b>\"^^rdf:XMLLiteral"), &value("\"<b>x</b>\"^^rdf:XMLLiteral")), Some(true));
@@ -5494,6 +5731,7 @@ mod xml_literal_tests {
 
     #[test]
     fn canonical_form_fragment() {
+        let _test_env = crate::test_env::read();
         for text in ["", "be", "a &amp; b &lt; c &gt; d", "\n <i>g<sub>n</sub>\n </i>\n", "x&#xD;y"] {
             assert_eq!(xml_canonical_text(text), Some(true), "{text}");
         }
@@ -5521,6 +5759,7 @@ mod ieee_cells_by_atoms_tests {
 
     #[test]
     fn cells_of_two_overlapping_float_ranges_decide_every_label() {
+        let _test_env = crate::test_env::read();
         // (-INF, 2) and [1, +INF) cut into [-INF, 1), [1, 2), [2, +INF].
         let left = "__dt__c__DatatypeRestriction(xsd:float xsd:maxExclusive \"2.0\"^^xsd:float)";
         let right = "__dt__c__DatatypeRestriction(xsd:float xsd:minInclusive \"1.0\"^^xsd:float)";
@@ -5539,6 +5778,7 @@ mod ieee_cells_by_atoms_tests {
 
     #[test]
     fn a_small_cell_exhausted_by_literals_fails() {
+        let _test_env = crate::test_env::read();
         // [1, 1] holds one value; with that value a literal it has none left.
         let point = "__dt__c__DatatypeRestriction(xsd:float xsd:minInclusive \"1.0\"^^xsd:float xsd:maxInclusive \"1.0\"^^xsd:float)";
         let names = [point];
@@ -5560,6 +5800,7 @@ mod decimal_cell_cover_tests {
 
     #[test]
     fn closed_interval_is_covered_by_its_open_gap_and_endpoints() {
+        let _test_env = crate::test_env::read();
         let heads = [OPEN4903, "__dt__val__\"-150\"^^xsd:integer", "__dt__val__\"-250\"^^xsd:integer"];
         assert!(cover(R4903, &heads));
         // Each missing endpoint or the gap leaves a value uncovered.
@@ -5570,6 +5811,7 @@ mod decimal_cell_cover_tests {
 
     #[test]
     fn unbounded_range_is_covered_by_its_cells() {
+        let _test_env = crate::test_env::read();
         let heads = [
             "__dt__val__\"0\"^^xsd:integer",
             "__dt__val__\"3\"^^xsd:integer",
@@ -5586,6 +5828,7 @@ mod decimal_cell_cover_tests {
 
     #[test]
     fn integer_band_does_not_cover_the_decimals_of_a_gap() {
+        let _test_env = crate::test_env::read();
         // (0, 3) as integers is {1, 2}; the non-integer decimals stay uncovered.
         let range = "__dt__c__DatatypeRestriction(xsd:decimal xsd:minExclusive \"0\"^^xsd:decimal xsd:maxExclusive \"3\"^^xsd:decimal)";
         let ints = "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer xsd:maxInclusive \"2\"^^xsd:integer)";
@@ -5602,6 +5845,7 @@ mod decimal_cell_cover_tests {
 
     #[test]
     fn rational_and_real_ranges_are_refused() {
+        let _test_env = crate::test_env::read();
         assert!(!cover("__dt__real", &["__dt__decimal"]));
         assert!(cover("__dt__positiveInteger", &["__dt__decimal"]));
         assert!(!cover("__dt__decimal", &["__dt__integer"]));

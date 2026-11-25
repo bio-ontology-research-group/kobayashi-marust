@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/kb-neg>
+DataPropertyAssertion(:p :a "5"^^xsd:integer)
+NegativeDataPropertyAssertion(:p :a "5"^^xsd:int)
+)

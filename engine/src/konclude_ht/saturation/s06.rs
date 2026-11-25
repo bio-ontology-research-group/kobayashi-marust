@@ -140,7 +140,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let linked_succ_hash = calc_alg_context
             .process_context_mut()
             .sat_node_ext_linked_role_successor_hash(*indi_proc_sat_node, false);
-        if linked_succ_hash.is_some() {
+        let backward_prop_hash = calc_alg_context
+            .process_context_mut()
+            .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, false);
+        if linked_succ_hash.is_some() && backward_prop_hash.is_some() {
             let mut role_succ_pairs: Vec<_> = calc_alg_context
                 .process_context()
                 .linked_role_sat_succ_hash(linked_succ_hash)
@@ -153,35 +156,30 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     super::algorithm::successor_iteration_key(0x0601, role.index() as u64)
                 });
             }
-            let backward_prop_hash = calc_alg_context
-                .process_context_mut()
-                .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, false);
-            if backward_prop_hash.is_some() {
-                for (role, succ_data) in role_succ_pairs {
-                    let back_prop_data = calc_alg_context
-                        .process_context()
-                        .role_backward_sat_prop_hash(backward_prop_hash)
-                        .get_role_backward_propagation_data_hash()
-                        .get(&role)
-                        .cloned();
-                    if let Some(back_prop_data) = back_prop_data {
-                        if back_prop_data.reapply_linker.is_some() {
-                            if let Some(data) = calc_alg_context
-                                .process_context_mut()
-                                .role_backward_sat_prop_hash_mut(backward_prop_hash)
-                                .get_role_backward_propagation_data_hash_mut()
-                                .get_mut(&role)
-                            {
-                                data.role_all_concepts_processing_queued = false;
-                            }
-                            self.update_successor_role_all_concepts_extensions_for_succ_data(
-                                indi_proc_sat_node,
-                                role,
-                                succ_data,
-                                back_prop_data,
-                                calc_alg_context,
-                            );
+            for (role, succ_data) in role_succ_pairs {
+                let back_prop_data = calc_alg_context
+                    .process_context()
+                    .role_backward_sat_prop_hash(backward_prop_hash)
+                    .get_role_backward_propagation_data_hash()
+                    .get(&role)
+                    .cloned();
+                if let Some(back_prop_data) = back_prop_data {
+                    if back_prop_data.reapply_linker.is_some() {
+                        if let Some(data) = calc_alg_context
+                            .process_context_mut()
+                            .role_backward_sat_prop_hash_mut(backward_prop_hash)
+                            .get_role_backward_propagation_data_hash_mut()
+                            .get_mut(&role)
+                        {
+                            data.role_all_concepts_processing_queued = false;
                         }
+                        self.update_successor_role_all_concepts_extensions_for_succ_data(
+                            indi_proc_sat_node,
+                            role,
+                            succ_data,
+                            back_prop_data,
+                            calc_alg_context,
+                        );
                     }
                 }
             }
@@ -253,7 +251,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 (
                     link_ref.value_nominal_connection,
                     link_ref.succ_indi_node,
-                    link_ref.creation_role_linker.clone(),
+                    calc_alg_context.process_context().creation_roles(link_ref.creation_role_linker),
                     link_ref.succ_count,
                     link_ref.next_link,
                 )
@@ -701,27 +699,49 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .process_context()
                 .linked_role_sat_succ_hash(linked_succ_hash)
                 .get_linked_role_successor_data(role);
-            if succ_data.is_some()
-                && calc_alg_context
+            if succ_data.is_some() {
+                let mut queuing_required = calc_alg_context
                     .process_context()
                     .linked_role_sat_succ_data(succ_data)
-                    .role_functional_concepts_queuing_required
-            {
-                let succ_count = {
-                    let succ_data_ref = calc_alg_context
+                    .role_functional_concepts_queuing_required;
+                if !queuing_required {
+                    let functional_ext = calc_alg_context
                         .process_context_mut()
-                        .linked_role_sat_succ_data_mut(succ_data);
-                    succ_data_ref.role_functional_concepts_processing_queued = false;
-                    succ_data_ref.get_successor_count()
-                };
-                if succ_count > 1 {
-                    updated |= self
-                        .update_successor_role_functional_concepts_extensions_for_succ_data(
-                            indi_proc_sat_node,
-                            role,
-                            succ_data,
-                            calc_alg_context,
-                        );
+                        .sat_node_functional_concepts_extension_data(*indi_proc_sat_node, false);
+                    if functional_ext.is_some() {
+                        let func_linker = calc_alg_context
+                            .process_context()
+                            .sat_indi_node_functional_concept_ext_data(functional_ext)
+                            .functional_succ_queuing_role_process_linker;
+                        if calc_alg_context
+                            .process_context_mut()
+                            .copying_initializing_role_linker_contains(func_linker, role)
+                        {
+                            queuing_required = true;
+                            calc_alg_context
+                                .process_context_mut()
+                                .linked_role_sat_succ_data_mut(succ_data)
+                                .role_functional_concepts_queuing_required = true;
+                        }
+                    }
+                }
+                if queuing_required {
+                    let succ_count = {
+                        let succ_data_ref = calc_alg_context
+                            .process_context_mut()
+                            .linked_role_sat_succ_data_mut(succ_data);
+                        succ_data_ref.role_functional_concepts_processing_queued = false;
+                        succ_data_ref.get_successor_count()
+                    };
+                    if succ_count > 1 {
+                        updated |= self
+                            .update_successor_role_functional_concepts_extensions_for_succ_data(
+                                indi_proc_sat_node,
+                                role,
+                                succ_data,
+                                calc_alg_context,
+                            );
+                    }
                 }
             }
         }
@@ -896,6 +916,28 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         merging_succ_data_linker,
                         calc_alg_context,
                     );
+                    // The extension map holds one polarity per concept tag. Two
+                    // merged successors with `C` and `¬C` (neither in the copy
+                    // base) kept only one of them, so the resolved node lost the
+                    // clash: for `A ⊑ ∃s.B ⊓ ∃s.C ⊓ ∃r.A`, `B ⊓ C ⊑ ⊥`,
+                    // `s ⊑ r`, functional `r`, the base `A` was extended with
+                    // `¬B, C` only and `A` came out satisfiable. The saturation
+                    // cannot express this merge; the node is insufficient, so
+                    // the completion graph decides it.
+                    if con_ext_map.is_some()
+                        && calc_alg_context
+                            .process_context()
+                            .sat_concept_extension_map(con_ext_map)
+                            .polarity_conflict
+                    {
+                        self.update_direct_adding_individual_status_flags(
+                            *indi_proc_sat_node,
+                            super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                            calc_alg_context,
+                        );
+                        self.set_insufficient_node_occured(calc_alg_context);
+                        copy_indi_proc_sat_node = SatNodeId::NONE;
+                    }
                     if copy_indi_proc_sat_node.is_some() {
                         let succ_ext = calc_alg_context
                             .process_context_mut()
@@ -935,7 +977,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     linked_succ_data_ref.value_nominal_connection,
                                     linked_succ_data_ref.succ_count,
                                     linked_succ_data_ref.succ_indi_node,
-                                    linked_succ_data_ref.creation_role_linker.clone(),
+                                    calc_alg_context.process_context().creation_roles(linked_succ_data_ref.creation_role_linker),
                                 )
                             };
                             if active_count >= 1 && !value_nominal_connection {
@@ -1194,21 +1236,50 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let mut updated = false;
         let backward_prop_hash = calc_alg_context
             .process_context_mut()
-            .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, true);
+            .sat_node_role_backward_propagation_hash(*indi_proc_sat_node, false);
         if backward_prop_hash.is_some() {
-            let (queuing_required, back_prop_link_linker) = {
-                let back_prop_data = calc_alg_context
+            let (mut queuing_required, back_prop_link_linker) = {
+                if let Some(back_prop_data) = calc_alg_context
                     .process_context_mut()
                     .role_backward_sat_prop_hash_mut(backward_prop_hash)
                     .get_role_backward_propagation_data_hash_mut()
-                    .entry(role)
-                    .or_default();
-                let queuing_required = back_prop_data.role_predecessor_merging_queuing_required;
-                if queuing_required {
-                    back_prop_data.role_predecessor_merging_processing_queued = false;
+                    .get_mut(&role)
+                {
+                    let queuing_required = back_prop_data.role_predecessor_merging_queuing_required;
+                    if queuing_required {
+                        back_prop_data.role_predecessor_merging_processing_queued = false;
+                    }
+                    (queuing_required, back_prop_data.link_linker)
+                } else {
+                    (false, BackwardSaturationPropagationLinkId::NONE)
                 }
-                (queuing_required, back_prop_data.link_linker)
             };
+            if !queuing_required && back_prop_link_linker.is_some() {
+                let functional_ext = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_functional_concepts_extension_data(*indi_proc_sat_node, false);
+                if functional_ext.is_some() {
+                    let copy_init_linker = calc_alg_context
+                        .process_context()
+                        .sat_indi_node_functional_concept_ext_data(functional_ext)
+                        .copying_initializing_role_process_linker;
+                    if calc_alg_context
+                        .process_context_mut()
+                        .copying_initializing_role_linker_contains(copy_init_linker, role)
+                    {
+                        queuing_required = true;
+                        if let Some(back_prop_data) = calc_alg_context
+                            .process_context_mut()
+                            .role_backward_sat_prop_hash_mut(backward_prop_hash)
+                            .get_role_backward_propagation_data_hash_mut()
+                            .get_mut(&role)
+                        {
+                            back_prop_data.role_predecessor_merging_queuing_required = true;
+                            back_prop_data.role_predecessor_merging_processing_queued = false;
+                        }
+                    }
+                }
+            }
             if queuing_required && back_prop_link_linker.is_some() {
                 let linked_succ_hash = calc_alg_context
                     .process_context_mut()
@@ -1287,7 +1358,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         .sat_succ_data(active_linked_succ);
                     (
                         active_ref.succ_indi_node,
-                        active_ref.creation_role_linker.clone(),
+                        calc_alg_context.process_context().creation_roles(active_ref.creation_role_linker),
                     )
                 };
                 if succ_indi_node.is_some() {
@@ -1428,6 +1499,45 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             }
         }
 
+        if !calc_alg_context
+            .process_context()
+            .role_backward_sat_prop_hash(resolved_indi_back_prop_hash)
+            .role_back_prop_data_hash
+            .get(&role)
+            .is_some_and(|d| d.role_predecessor_merging_queuing_required)
+        {
+            let succ_ext_data = calc_alg_context
+                .process_context_mut()
+                .sat_node_ext_successor_extension_data(dest_indi_proc_sat_node, false);
+            if succ_ext_data.is_some() {
+                let functional_ext = calc_alg_context
+                    .process_context_mut()
+                    .sat_successor_extension_functional_concepts_extension_data(
+                        succ_ext_data,
+                        false,
+                    );
+                if functional_ext.is_some() {
+                    let copy_init_linker = calc_alg_context
+                        .process_context()
+                        .sat_indi_node_functional_concept_ext_data(functional_ext)
+                        .copying_initializing_role_process_linker;
+                    if calc_alg_context
+                        .process_context_mut()
+                        .copying_initializing_role_linker_contains(copy_init_linker, role)
+                    {
+                        if let Some(data) = calc_alg_context
+                            .process_context_mut()
+                            .role_backward_sat_prop_hash_mut(resolved_indi_back_prop_hash)
+                            .role_back_prop_data_hash
+                            .get_mut(&role)
+                        {
+                            data.role_predecessor_merging_queuing_required = true;
+                        }
+                    }
+                }
+            }
+        }
+
         let queue_predecessor_merging = calc_alg_context
             .process_context_mut()
             .role_backward_saturation_propagation_hash_queue_predecessor_merging(
@@ -1466,13 +1576,28 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         calc_alg_context,
                     ) {
                         let old_head = predecessor_role_linker;
-                        let mut role_process_linker = RoleSaturationProcessLinker::new();
-                        role_process_linker
-                            .init_role_process_linker(role)
-                            .set_next(old_head);
-                        let role_process_linker = calc_alg_context
-                            .process_context_mut()
-                            .alloc_role_sat_proc_linker(role_process_linker);
+                        let reused = calc_alg_context
+                            .processing_data_box_mut()
+                            .take_remaining_role_saturation_process_linker();
+                        let role_process_linker = if reused.is_some() {
+                            let linker = super::satellites::RoleSaturationProcessLinkerId::new(
+                                reused.raw,
+                            );
+                            calc_alg_context
+                                .process_context_mut()
+                                .role_sat_proc_linker_mut(linker)
+                                .init_role_process_linker(role)
+                                .set_next(old_head);
+                            linker
+                        } else {
+                            let mut role_process_linker = RoleSaturationProcessLinker::new();
+                            role_process_linker
+                                .init_role_process_linker(role)
+                                .set_next(old_head);
+                            calc_alg_context
+                                .process_context_mut()
+                                .alloc_role_sat_proc_linker(role_process_linker)
+                        };
                         calc_alg_context
                             .process_context_mut()
                             .sat_indi_node_functional_concept_ext_data_mut(functional_ext)
@@ -1638,6 +1763,7 @@ mod tests {
 
     #[test]
     fn s06_install_functionality_extension_creates_backward_prop_requirement() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 601);
@@ -1667,6 +1793,7 @@ mod tests {
 
     #[test]
     fn s06_install_functionality_extension_updates_existing_linked_successor_bucket() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 611);
@@ -1705,6 +1832,7 @@ mod tests {
 
     #[test]
     fn s06_install_functionality_extension_is_idempotent() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 621);
@@ -1728,6 +1856,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_extensions_without_linked_hash_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 631);
@@ -1742,6 +1871,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_extensions_without_role_bucket_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 641);
@@ -1758,6 +1888,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_extensions_clears_processing_flag_for_single_successor() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 651);
@@ -1791,6 +1922,7 @@ mod tests {
 
     #[test]
     fn s06_update_qualified_functional_extensions_without_linked_hash_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 652);
@@ -1807,6 +1939,7 @@ mod tests {
 
     #[test]
     fn s06_update_qualified_functional_extensions_without_role_bucket_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 656);
@@ -1825,6 +1958,7 @@ mod tests {
 
     #[test]
     fn s06_update_qualified_functional_extensions_ignores_single_successor() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 660);
@@ -1856,6 +1990,7 @@ mod tests {
 
     #[test]
     fn s06_update_qualified_functional_extensions_delegates_multi_successor_boundary() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 664);
@@ -1887,6 +2022,7 @@ mod tests {
 
     #[test]
     fn s06_update_all_worker_adds_required_cardinality_and_all_operands() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let base_role = role(&mut ctx, 654);
@@ -1911,13 +2047,12 @@ mod tests {
         {
             let succ_ref = ctx.process_context_mut().sat_succ_data_mut(succ);
             succ_ref.succ_indi_node = succ_node;
-            succ_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: creation_role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ, super::super::super::model::substrate::NegLink {
+                target: creation_role,
+                negated: false,
+            });
         ctx.process_context_mut()
             .linked_role_sat_succ_data_mut(succ_data)
             .set_last_successor_link_data(succ);
@@ -1986,6 +2121,7 @@ mod tests {
 
     #[test]
     fn s06_update_all_dispatcher_clears_role_processing_flags() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 659);
@@ -2012,13 +2148,12 @@ mod tests {
         {
             let succ_ref = ctx.process_context_mut().sat_succ_data_mut(succ);
             succ_ref.succ_indi_node = succ_node;
-            succ_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ, super::super::super::model::substrate::NegLink {
+                target: role,
+                negated: false,
+            });
         {
             let succ_data_ref = ctx
                 .process_context_mut()
@@ -2068,6 +2203,7 @@ mod tests {
 
     #[test]
     fn s06_update_all_extensions_rewires_positive_super_role() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 663);
@@ -2146,6 +2282,7 @@ mod tests {
 
     #[test]
     fn s06_update_all_extensions_installs_backward_link_for_negated_super_role() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role_id = role(&mut ctx, 667);
@@ -2215,6 +2352,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_ignores_only_value_nominal_successors() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 661);
@@ -2250,6 +2388,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_stops_when_max_cardinality_exceeds_one() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 671);
@@ -2279,6 +2418,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_obeys_last_examined_cursor() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 681);
@@ -2319,6 +2459,7 @@ mod tests {
 
     #[test]
     fn s06_install_backward_propagation_link_prepends_and_deduplicates_head_source() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 685);
@@ -2378,6 +2519,7 @@ mod tests {
 
     #[test]
     fn s06_install_backward_propagation_link_queues_functional_predecessor_role() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 688);
@@ -2431,6 +2573,7 @@ mod tests {
 
     #[test]
     fn s06_install_backward_propagation_link_replays_reapply_descriptor_operands() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 692);
@@ -2491,6 +2634,7 @@ mod tests {
 
     #[test]
     fn s06_update_predecessor_functional_clears_processing_flag_and_dispatches_to_boundary() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 711);
@@ -2556,6 +2700,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_builds_and_releases_merge_linker_head() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 691);
@@ -2592,23 +2737,21 @@ mod tests {
             let succ_a_ref = ctx.process_context_mut().sat_succ_data_mut(succ_a);
             succ_a_ref.set_next(succ_b);
             succ_a_ref.succ_indi_node = succ_node_a;
-            succ_a_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ_a, super::super::super::model::substrate::NegLink {
+                target: role,
+                negated: false,
+            });
         {
             let succ_b_ref = ctx.process_context_mut().sat_succ_data_mut(succ_b);
             succ_b_ref.succ_indi_node = succ_node_b;
-            succ_b_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ_b, super::super::super::model::substrate::NegLink {
+                target: role,
+                negated: false,
+            });
         {
             let succ_data_ref = ctx
                 .process_context_mut()
@@ -2676,6 +2819,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_installs_backward_link_for_negated_creation_super_role() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role_id = role(&mut ctx, 701);
@@ -2714,23 +2858,21 @@ mod tests {
             let succ_a_ref = ctx.process_context_mut().sat_succ_data_mut(succ_a);
             succ_a_ref.set_next(succ_b);
             succ_a_ref.succ_indi_node = succ_node_a;
-            succ_a_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: creation_role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ_a, super::super::super::model::substrate::NegLink {
+                target: creation_role,
+                negated: false,
+            });
         {
             let succ_b_ref = ctx.process_context_mut().sat_succ_data_mut(succ_b);
             succ_b_ref.succ_indi_node = succ_node_b;
-            succ_b_ref
-                .creation_role_linker
-                .push(super::super::super::model::substrate::NegLink {
-                    target: creation_role,
-                    negated: false,
-                });
         }
+        ctx.process_context_mut()
+            .sat_succ_push_creation_role(succ_b, super::super::super::model::substrate::NegLink {
+                target: creation_role,
+                negated: false,
+            });
         {
             let succ_data_ref = ctx
                 .process_context_mut()

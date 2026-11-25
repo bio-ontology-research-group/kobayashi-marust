@@ -1,0 +1,12 @@
+Prefix(:=<http://ex.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex.org/n>
+Declaration(Class(:A))
+Declaration(Class(:C))
+Declaration(Class(:D))
+Declaration(ObjectProperty(:s5))
+SubClassOf(:C ObjectOneOf(:a1 :a3))
+SubClassOf(:A ObjectMinCardinality(2 :s5 :C))
+ClassAssertion(ObjectIntersectionOf(:A :D) :a0)
+)

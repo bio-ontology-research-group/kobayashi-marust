@@ -1,0 +1,7 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/rules-safe>
+ClassAssertion(:A :a)
+SubClassOf(:A ObjectSomeValuesFrom(:r :C))
+DisjointClasses(:B :C)
+DLSafeRule(Body(ClassAtom(:A Variable(<urn:swrl#x>)) ObjectPropertyAtom(:r Variable(<urn:swrl#x>) Variable(<urn:swrl#y>))) Head(ClassAtom(:B Variable(<urn:swrl#y>))))
+)

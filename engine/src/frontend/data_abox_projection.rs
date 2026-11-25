@@ -107,13 +107,25 @@ pub fn project(text: &str) -> Result<String, String> {
         }
     }
     if assertions.is_empty() || assertions.len() > 256 { return Err("projection assertion bound".into()); }
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    let mut projected_export_values: Vec<(String, String, String)> = Vec::new();
     let mut generated = BTreeSet::new();
     let mut values: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     for (property, owner, literal) in assertions {
+        if export_active {
+            generated.insert(format!("ClassAssertion(<http://www.w3.org/2002/07/owl#Thing> {owner})"));
+        }
         let mut pending = vec![property];
         let mut seen = BTreeSet::new();
         while let Some(property) = pending.pop() {
             if !seen.insert(property.clone()) { continue; }
+            if export_active {
+                projected_export_values.push((
+                    owner.trim_start_matches('<').trim_end_matches('>').to_string(),
+                    property.trim_start_matches('<').trim_end_matches('>').to_string(),
+                    literal.clone(),
+                ));
+            }
             if let Some(parents) = supers.get(&property) { pending.extend(parents.iter().cloned()); }
             for domain in domains.get(&property).into_iter().flatten() {
                 generated.insert(format!("ClassAssertion({domain} {owner})"));
@@ -128,11 +140,23 @@ pub fn project(text: &str) -> Result<String, String> {
             }
         }
     }
+    if export_active && !projected_export_values.is_empty() {
+        projected_export_values.sort();
+        projected_export_values.dedup();
+        crate::orchestrate::model_export::record_projected_data_assertions(projected_export_values);
+    }
     for group in values.values() {
         for (i, (a, left)) in group.iter().enumerate() {
             for (b, right) in &group[i+1..] {
                 match datatypes::bridge_exact_value_equal(&format!("__dt__val__{left}"), &format!("__dt__val__{right}")) {
                     Some(true) => {},
+                    // Two different values of a functional property on one
+                    // owner are a contradiction. `DifferentIndividuals(a a)`
+                    // would say so, but operands form a set, so the frontend
+                    // reads it as vacuous (docs/V1.7.0-LENIENT-INPUT.md 2.7).
+                    Some(false) if a == b => {
+                        generated.insert(format!("ClassAssertion(<http://www.w3.org/2002/07/owl#Nothing> {a})"));
+                    }
                     Some(false) => { let (a,b) = if a <= b { (a,b) } else { (b,a) };
                         generated.insert(format!("DifferentIndividuals({a} {b})")); },
                     None => return Err("undecided functional value equality".into()),
@@ -149,6 +173,7 @@ mod tests {
     use super::*;
     #[test]
     fn inherited_domains_and_functional_owner_inequalities() {
+        let _test_env = crate::test_env::read();
         let result = project(r#"Ontology(
             SubDataPropertyOf(<urn:p> <urn:q>) SubDataPropertyOf(<urn:q> <urn:p>)
             FunctionalDataProperty(<urn:q>) DataPropertyDomain(<urn:q> <urn:C>)
@@ -164,6 +189,7 @@ mod tests {
     }
     #[test]
     fn inherited_assertions_do_not_duplicate_retained_source_facts() {
+        let _test_env = crate::test_env::read();
         let result = project(r#"Ontology(
             ClassAssertion(Annotation(<urn:note> "retained") <urn:C> <urn:a>)
             DifferentIndividuals(<urn:b> <urn:a>)
@@ -175,13 +201,28 @@ mod tests {
         assert!(result.contains("Annotation(<urn:note> \"retained\")"));
     }
     #[test]
+    fn two_values_of_a_functional_property_on_one_owner_contradict() {
+        let _test_env = crate::test_env::read();
+        // ore_ont_3205 through the Protégé plugin: ¬p(b, "x") is entailed
+        // because b already has another value of the functional p.
+        let result = project(r#"Ontology(FunctionalDataProperty(<urn:p>)
+            DataPropertyAssertion(<urn:p> <urn:a> "first"^^xsd:string)
+            DataPropertyAssertion(<urn:p> <urn:b> "second"^^xsd:string)
+            DataPropertyAssertion(<urn:p> <urn:b> "x"))"#).unwrap();
+        assert!(result.contains("ClassAssertion(<http://www.w3.org/2002/07/owl#Nothing> <urn:b>)"), "{result}");
+        assert!(!result.contains("DifferentIndividuals(<urn:b> <urn:b>)"), "{result}");
+        assert!(result.contains("DifferentIndividuals(<urn:a> <urn:b>)"), "{result}");
+    }
+    #[test]
     fn range_violation_is_retained_as_contradiction() {
+        let _test_env = crate::test_env::read();
         let result = project(r#"Ontology(DataPropertyRange(<urn:p> DataOneOf("red"^^xsd:string))
             DataPropertyAssertion(<urn:p> <urn:a> "blue"^^xsd:string))"#).unwrap();
         assert!(result.contains("ClassAssertion(<http://www.w3.org/2002/07/owl#Nothing> <urn:a>)"));
     }
     #[test]
     fn coupled_or_unknown_data_semantics_defer() {
+        let _test_env = crate::test_env::read();
         let assertion = r#"DataPropertyAssertion(<urn:p> <urn:a> "1"^^xsd:int)"#;
         for axiom in ["SubClassOf(<urn:C> DataMinCardinality(1 <urn:p>))",
             "HasKey(<urn:C> () (<urn:p>))", "Import(<urn:other>)",

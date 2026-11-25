@@ -5,8 +5,13 @@ the **Reasoner** menu as **Kobayashi-MaRust** and supplies the inferred named
 class hierarchy, equivalence classes, unsatisfiable classes, and ontology
 consistency.
 
-The plugin is a TBox classifier. Property hierarchy, property assertion, and
-individual realization queries are not currently exposed through the OWL API.
+The plugin answers class and individual queries; see
+[What the reasoner answers](#what-the-reasoner-answers). The object property
+hierarchy, inverses, domains and ranges are answered. Class expression
+queries (DL Query), disjoint classes and properties, property values,
+different individuals and most `isEntailed` checks are answered by
+reduction to a km run on an extended copy of the ontology; see
+[Queries answered by reduction](#queries-answered-by-reduction).
 The bundle also contains an OWL Explanation API
 `ExplanationGenerator` and `ExplanationGeneratorFactory` (OWL Explanation
 2.0.1 in the Protégé 5 jar, 5.0.1 in the Protégé 6 jar). It returns verified,
@@ -45,6 +50,252 @@ for Protégé 6, HPPC-RT.
 The embedded OWL Explanation and telemetry JARs remain intact with their
 upstream LGPL 3 license metadata; Gson and HPPC-RT are Apache-2.0; KM's own
 code remains BSD-3-Clause.
+
+## What the reasoner answers
+
+| OWL API call | Answer |
+| --- | --- |
+| `isConsistent`, `isSatisfiable`, `getUnsatisfiableClasses` | for named classes |
+| `getTopClassNode`, `getBottomClassNode`, `getSuperClasses`, `getSubClasses`, `getEquivalentClasses` | the inferred named-class hierarchy, with HermiT's conventions for `owl:Thing` and `owl:Nothing` (below) |
+| `getSuperClasses`, `getSubClasses`, `getEquivalentClasses`, `isSatisfiable`, `getInstances` with a class expression | by reduction (below), with HermiT's shapes: an expression equivalent to no named class has an empty equivalence node; an unsatisfiable one sits where `owl:Nothing` does |
+| `getDisjointClasses(CE)` | every class `D` with `D ⊓ CE` unsatisfiable, and the bottom node, for named classes and class expressions (reduction) |
+| `getTypes(ind, direct)` | the named classes the individual belongs to, as class nodes, with `owl:Thing` as HermiT reports it; `direct` keeps the most specific nodes |
+| `getInstances(C, direct)` | for a named class `C`: the individuals that are instances of `C` (direct: those whose most specific types include `C` or a class equivalent to it), one node per individual under the default `BY_NAME` policy and one node per same-individual group under `BY_SAME_AS`; an anonymous class expression throws |
+| `getSameIndividuals(ind)` | the entailed equalities (`SameIndividual`, functional and inverse-functional roles, cardinality, nominals, any other entailment) |
+| `getSubObjectProperties`, `getSuperObjectProperties` (direct or not), `getEquivalentObjectProperties`, `getInverseObjectProperties`, `getTopObjectPropertyNode`, `getBottomObjectPropertyNode` | the inferred object property hierarchy, for named properties and `ObjectInverseOf` expressions. Equivalent expressions share a node as in HermiT (`r` and an equivalent `s⁻` in one node; empty properties in the bottom node, universal ones in the top node). |
+| `getObjectPropertyDomains`, `getObjectPropertyRanges` (direct or not) | the entailed named domains and ranges of a property or an inverse expression; an empty property has every class, direct answer `owl:Nothing` |
+| `getDisjointObjectProperties(p)` | for `owl:topObjectProperty` and universal properties (the bottom node), `owl:bottomObjectProperty` and empty properties (every node) and properties outside the signature (the bottom node); for other properties by reduction |
+| `getObjectPropertyValues(a, p)` | the named individuals `b` of the signature with `p(a, b)` entailed, for named and inverse properties (reduction) |
+| `getDataPropertyValues(a, p)` | the literals of the ontology whose value is an entailed `p`-value of `a`, for ontologies whose data ranges cannot pin a value that no literal of the ontology writes (reduction; see below) |
+| `getDifferentIndividuals(a)` | the named individuals entailed to differ from `a` (reduction) |
+| `getSubDataProperties`, `getSuperDataProperties`, `getEquivalentDataProperties`, `getTopDataPropertyNode`, `getBottomDataPropertyNode`, `getDataPropertyDomains`, `getDisjointDataProperties` | inside the syntactic data-property fragment ([`DataPropertyModel`](src/main/java/org/bioontology/kobayashimarust/protege/DataPropertyModel.java)), computed in Java from the ontology's data-property axioms and the class hierarchy; outside the syntactic fragment, computed via `km classify --lines --data-properties` (or `DataSomeValuesFrom(p, rdfs:Literal)` and pairwise conjunction probes when `konclude_ht` is needed). |
+| `isEntailed` | declarations and annotation axioms (always true, as in HermiT); axioms of the ontology (true, also with anonymous individuals); every logical axiom type except `HasKey`, `DLSafeRule` and `DatatypeDefinition` (table below); other axioms with anonymous individuals throw |
+| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `DATA_PROPERTY_HIERARCHY`, `CLASS_ASSERTIONS`, `OBJECT_PROPERTY_ASSERTIONS` and `SAME_INDIVIDUAL`, matching HermiT. |
+
+Classification costs the same as before. The individual queries use
+`km classify --realize` ([`docs/REALIZATION.md`](../docs/REALIZATION.md)). The
+plugin runs it once, on the first individual query or when Protégé asks to
+precompute `CLASS_ASSERTIONS` or `SAME_INDIVIDUAL`, on the ontology revision
+the class hierarchy was built from. It caches the answer and drops it when the
+ontology changes and the reasoner flushes, so the next individual query runs
+KM again. The incremental session cannot realize, so each realization is a
+separate one-shot `km classify --realize` run; it takes about as long as a
+full classification of the ontology with one extra class per individual. An
+ontology with no named individuals needs no extra run. A realization that KM
+declines (a dropped clause or an approximate answer) raises a reasoner error.
+
+The object property queries use `km classify --properties`
+([`docs/PROPERTIES.md`](../docs/PROPERTIES.md)) in the same way: one one-shot
+run per ontology revision, made on the first property query (including the
+property axioms of `isEntailed`) or when Protégé asks to precompute
+`OBJECT_PROPERTY_HIERARCHY`, cached, dropped on flush, and refused with a
+reasoner error when KM declines. Class and individual queries never start it.
+An ontology with no object property needs no run. The run can cost much more
+than a plain classification (docs/PROPERTIES.md, "Cost"). Protégé's default
+preferences show inferred object property information (unsatisfiable, super,
+equivalent and inverse properties), and Protégé maps these to
+`OBJECT_PROPERTY_HIERARCHY` when you start the reasoner, so with the default
+preferences "Start reasoner" should make this run (read from Protégé's
+preference mapping, not yet seen in a running Protégé). Turn those displays off in
+"Configure reasoner" or mark `OBJECT_PROPERTY_HIERARCHY` as disallowed to skip
+it.
+
+Behaviour as HermiT (Protégé integration):
+
+- The constructor does no native work. The first query or
+  `precomputeInferences` classifies the ontology as it is then. A run that
+  fails (KM refuses the ontology, or the process fails) is remembered for that
+  version of the ontology: later calls rethrow the stored exception without a
+  new KM run, until the ontology changes or `flush()` runs. The same holds for
+  a failed realization or property run. An interrupt or a time out is not
+  remembered; the next call starts a new run (or joins a batch run that a time
+  out left going, see "Time outs, interrupts and batch runs" below).
+- Queries on an inconsistent ontology throw `InconsistentOntologyException`,
+  which Protégé catches to open its inconsistency explanation. Only
+  `isConsistent` does not throw. `getTopClassNode`, `getBottomClassNode`,
+  `getUnsatisfiableClasses` and the top and bottom property nodes throw as
+  well: HermiT 1.4.3.456 does (parity baseline, ontology `ore_ont_5014`).
+  `getInstances` throws only when the ontology has individuals.
+- Native work reports to the progress monitor of the reasoner configuration
+  (started, busy, stopped), ends with `TimeOutException` after `getTimeOut()`
+  milliseconds, and ends with `ReasonerInterruptedException` when `interrupt()`
+  is called (the one exception Protégé catches). `interrupt()` while idle
+  stops only the batch runs that a time out left going (below).
+- A named class or object property outside the signature sits between Top and
+  Bottom (HermiT's default `FreshEntityPolicy.ALLOW`).
+- `isEntailed(Set)` ignores annotation and declaration axioms.
+- `isPrecomputed` is true only for the types the plugin holds now.
+- A query the plugin cannot answer soundly and completely throws; it never
+  returns an empty or partial answer. The exception is
+  `UnsupportedOperationException` (for `isEntailed`:
+  `UnsupportedEntailmentTypeException`, and `isEntailmentCheckingSupported`
+  agrees with it; for `isSatisfiable` of an expression:
+  `ClassExpressionNotInProfileException`). The list is under "Queries that
+  throw".
+- `owl:Nothing` and `owl:Thing` follow HermiT's hierarchy: the bottom node
+  holds `owl:Nothing` and the unsatisfiable classes and is a strict subclass
+  of every other node. A leaf class has the bottom node as its only direct
+  subclass, `getSubClasses(owl:Thing, true)` lists it only when no other class
+  exists, and `getSuperClasses(owl:Nothing, false)` is every other class
+  (direct: the leaves). Data and object property hierarchies use the same
+  shape with the top and bottom properties.
+- `getTimeOut`, `getIndividualNodeSetPolicy` and `getFreshEntityPolicy` return
+  what the configuration says (as HermiT does with an `OWLReasonerConfiguration`;
+  `Long.MAX_VALUE` when none was set).
+
+Differences from HermiT:
+
+- The individual node set policy of the configuration decides the nodes of
+  `getInstances`: `BY_NAME` (the default, as in HermiT) gives one node per
+  individual, `BY_SAME_AS` one node per same-individual group.
+  `getSameIndividuals` always returns the whole group, as HermiT does.
+- A class declared equivalent to `owl:Thing` is a type of every individual,
+  but KM's class hierarchy does not yet put it in the node of `owl:Thing`, so
+  the node shapes (and the `direct` answers for such individuals) differ.
+- HermiT keeps `ObjectInverseOf(r)` out of its property hierarchy when the
+  ontology uses no inverse role, and answers such a query with a node of its
+  own between top and bottom. The plugin does the same, deciding "uses an
+  inverse role" from the axioms in the way HermiT's normalisation does
+  (`ObjectInverseOf`, inverse, inverse functional, symmetric and asymmetric
+  properties); a case where the two disagree gives one more or one fewer
+  inverse expression in the nodes.
+- `getObjectPropertyDomains` and `getObjectPropertyRanges` of
+  `owl:bottomObjectProperty`: HermiT answers `owl:Thing` (direct) and nothing
+  (not direct); KM answers every class (direct: `owl:Nothing`), as for any empty
+  property.
+- `isEntailed` for property axioms is answered from the semantics. HermiT looks
+  an inverse expression up in its hierarchy, so without inverse roles in the
+  ontology it fails (null pointer) or answers false for such an axiom, even for
+  an empty property; KM answers true. For a property outside the signature, KM
+  finds only the trivial entailments; HermiT also finds `p ⊑ p⁻` when every
+  model of the ontology has one individual.
+- `getDataPropertyDomains(owl:bottomDataProperty)`: HermiT answers
+  `owl:Thing`; the bottom property has no pair, so every class is a domain
+  (direct: `owl:Nothing`) and KM answers that, as for the bottom object
+  property.
+- `getDisjointObjectProperties` and `getDisjointDataProperties` of an empty
+  property other than the bottom property: HermiT leaves out the top property,
+  which is disjoint with an empty property. KM lists every node, as HermiT
+  does for the bottom property itself.
+- `getDataPropertyValues`: HermiT returns the asserted values of the property
+  and its sub-properties only. KM returns every literal of the ontology whose
+  value is entailed, which includes values from `DataHasValue` in class
+  axioms and literals that denote the same value in another way (`"5"` and
+  `"5.0"^^xsd:decimal`).
+
+## Queries answered by reduction
+
+Every query below is an entailment question about the ontology `O`. The
+plugin adds fresh axioms over fresh names (IRIs under
+`urn:kobayashi-marust:fresh:<uuid>:`, checked against the signature) to a
+copy of the committed revision, runs `km classify --lines` (with
+`--realize` when instances are read) on it, reads the rows of the fresh
+names, and drops every fresh name from the answer. There are two kinds of
+extension:
+
+- **Definitions** `Q ≡ CE` for a fresh class `Q`. They are conservative:
+  every model of `O` becomes a model of the extension by setting `Q` to the
+  extension of `CE`, so the answers for the names of `O` do not change and
+  `Q`'s rows answer `CE`. Several definitions go into one run where one query
+  needs them.
+- **Refutations**: `O ⊨ α` iff `O ∪ {¬α}` is inconsistent, with `¬α` written
+  as positive assertions about fresh individuals (the witnesses of a
+  violation). These are not conservative by design; the run only reports
+  consistency.
+- **Witness entailments**: `O ∪ A ⊨ C(x)` for positive assertions `A` about
+  fresh individuals, read from a realization with a fresh `V ≡ C`; an
+  inconsistent `O ∪ A` entails everything.
+
+| Query or axiom | Extension | Read-out | Why exact |
+|---|---|---|---|
+| super, sub, equivalent classes, satisfiability of `CE` | `Q ≡ CE` (or `Q ⊑ CE` for satisfiability) | rows of `Q`; `UNSAT Q`; `TOP Q` | definition |
+| instances of `CE` | `Q ≡ CE`, realized | `TYPE a Q`; direct: no type strictly below `Q` | definition |
+| `getDisjointClasses(CE)` | `Q ⊑ CE` and `X_r ⊑ C_r ⊓ Q` per class node `r` | `UNSAT X_r`, and the bottom node | `C_r ⊓ CE ⊑ ⊥` iff `X_r` is unsatisfiable |
+| `getDifferentIndividuals(a)` | `X_b ⊑ {a} ⊓ {b}` per individual `b` | `UNSAT X_b`, or inconsistent | `{a} ⊓ {b}` is empty in a model iff `a ≠ b` there |
+| `getObjectPropertyValues(a, r)` | `km classify --lines --values` or `V_b ≡ ∃r.{b}` per individual `b`, realized | `VALUE r a b` or `TYPE a V_b`; `r⁻` reads the rows backwards | `r(a,b)` iff `a ∈ ∃r.{b}` |
+| `getDataPropertyValues(a, p)` | `V_l ≡ ∃p.{l}` per candidate literal `l` of `O`, realized | `TYPE a V_l` | definition; completeness of the candidates below |
+| `getDisjointObjectProperties(r)` | `X_s ≡ ∃r.{y} ⊓ ∃s.{y}` per node `s`, one fresh individual `y` | `UNSAT X_s` | a pair in `r ∩ s` gives `y` its second element; satisfiability is decided per class, so one `y` serves all |
+| `getDataPropertyDomains(p)` outside the syntactic fragment | `--data-properties` or `Q ≡ ∃p.rdfs:Literal` | `DATADOMAIN` rows or named superclasses of `Q` | definition |
+| `SubClassOf(C D)` | `Q ⊑ C ⊓ ¬D` | `UNSAT Q` | definition |
+| `EquivalentClasses`, `DisjointClasses`, `DisjointUnion` | pairwise `C ⊓ ¬D`, `C ⊓ D` | all unsatisfiable | definition |
+| `ClassAssertion(C a)` with an expression | `Q ≡ C`, realized | `TYPE a Q` | definition |
+| `ObjectPropertyAssertion(r a b)` | the value query of `r` | `b` among the values | definition |
+| `NegativeObjectPropertyAssertion(r a b)` | `ObjectPropertyAssertion(r a b)` | inconsistent | refutation |
+| `DataPropertyAssertion(p a l)` | `V ≡ ∃p.{l}`, realized | `TYPE a V` | definition |
+| `NegativeDataPropertyAssertion(p a l)` | `DataPropertyAssertion(p a l)` | inconsistent | refutation |
+| `DifferentIndividuals(a b ...)` | `SameIndividual(a b)` per pair | inconsistent | refutation |
+| `SubObjectPropertyOf(ObjectPropertyChain(r1 ... rn) s)` | `r1(x0,x1) ... rn(xn-1,xn)`, `¬s(x0,xn)` (or `Q ⊑ ∃r1.(...∃rn.A) ⊓ ¬∃s.A` for fresh `A`) | inconsistent (or `UNSAT Q`) | refutation |
+| `TransitiveObjectProperty(r)` | the chain `r r ⊑ r` | as above | as above |
+| `DisjointObjectProperties(r s ...)` | `r(x,y)`, `s(x,y)` per pair (or `pf ⊑ r, pf ⊑ s, Q ⊑ ∃pf.⊤`) | inconsistent (or `UNSAT Q`) | refutation |
+| `ObjectPropertyDomain(r C)`, `ObjectPropertyRange(r C)` with an expression | `Q ⊑ ∃r.⊤ ⊓ ¬C`, `Q ⊑ ∃r.¬C` | `UNSAT Q` | definition |
+| `FunctionalObjectProperty(r)`, `InverseFunctionalObjectProperty(r)` | `r(x,y1)`, `r(x,y2)`, `y1 ≠ y2` (or `pf ⊑ r, Q ⊑ ≥2 pf.⊤` on a TBox; `r⁻` for the inverse) | inconsistent (or `UNSAT Q`) | refutation |
+| `AsymmetricObjectProperty(r)` | `r(x,y)`, `r(y,x)` (or `DisjointObjectProperties(r, r⁻)`) | inconsistent | `x = y` covers a loop |
+| `ReflexiveObjectProperty(r)` | `¬r(x,x)` for a fresh `x` (or `Q ⊑ ¬∃r.Self` for simple `r`) | inconsistent (or `UNSAT Q`) | refutation |
+| `IrreflexiveObjectProperty(r)` | `r(x,x)` (or `pf ⊑ r, Q ⊑ ∃pf.Self` on a TBox) | inconsistent (or `UNSAT Q`) | refutation |
+| `DataPropertyDomain(p C)`, `DataPropertyRange(p D)`, `FunctionalDataProperty(p)` | `Q ⊑ ∃p.rdfs:Literal ⊓ ¬C`, witness check + `Q ⊑ ∃p.¬D`, `Q ⊑ ≥2 p.rdfs:Literal` | `UNSAT Q` | definition |
+
+`SubClassOf` between named classes, `ClassAssertion` of a named class,
+`SameIndividual`, `SubObjectPropertyOf`, `EquivalentObjectProperties`,
+`InverseObjectProperties`, `SymmetricObjectProperty`, and domains and ranges
+with a named class are read from the held hierarchies, without a run. The
+universal and empty object and data properties are decided from their fixed
+meaning (for example `FunctionalObjectProperty(owl:topObjectProperty)` holds
+iff every model has one element, decided as `UNSAT ¬{x}`).
+
+**Data property values.** Infinitely many literals denote each value, so the
+answer is the set of candidate literals whose value is entailed: the literals
+occurring in the ontology, plus `true` and `false` when `xsd:boolean` is used
+and the integers of every interval of at most 256 values that the integer
+datatypes in use cut out (so `0` is found for `xsd:nonNegativeInteger ⊓
+xsd:nonPositiveInteger`). It is complete when no other value can be entailed.
+That fails for data ranges with few elements that the candidates do not
+cover, such as a facet restriction `xsd:integer[> 4, < 6]`, which holds one
+value. The plugin answers only when the ontology's data
+ranges use `rdfs:Literal`, `xsd:string`, `rdf:PlainLiteral`,
+`rdf:langString`, `xsd:integer`, `xsd:decimal`, `xsd:double`, `xsd:float`,
+`xsd:anyURI`, `xsd:dateTime`, the bounded and sign-restricted integer types
+(`xsd:int`, `xsd:positiveInteger` and the like, as long as every interval
+their bounds cut out of the integers is unbounded, covered by literals of the
+ontology, larger than the data restrictions can count, or at most 256 long)
+and `xsd:boolean` (also inside `DataOneOf`,
+`DataIntersectionOf`, `DataUnionOf` and `DataComplementOf`), with no facet,
+datatype definition, rule or axiom on `owl:topDataProperty`, and throws
+otherwise. The argument (in `DataValues.java`): values that no admitted
+datatype and no candidate tell apart form classes larger than the number of
+candidates plus the restriction numbers; a model can be cut down to finitely many data values per
+element without changing any class membership; swapping an unwritten value
+for an unused equivalent one then gives a model in which it is not a value.
+
+Each run answers one query (or one batch: every value of one property, every
+candidate of one disjointness query) and is cached for the ontology revision,
+like the realization. The cache is dropped when the ontology changes; a
+refused run is remembered until the ontology changes or `flush()` runs. A run
+that km declines (a dropped clause, an approximate answer, an error, a time
+out) makes the query throw: the plugin never answers without the run. The
+runs honour the reasoner time out and `interrupt()`, and their temporary
+files go to `java.io.tmpdir` and are deleted afterwards.
+Property values are computed one property per run (one run over 12
+properties took km 54 s on the test ontology, against about 0.4 s per
+property alone).
+
+## Queries that throw
+
+These calls throw `UnsupportedOperationException` (or, for `isEntailed`,
+`UnsupportedEntailmentTypeException`, matching
+`isEntailmentCheckingSupported`):
+
+- `getDataPropertyValues` outside the fragment described above.
+- `isEntailed` of `HasKey`, `DLSafeRule` and `DatatypeDefinition` axioms, of a
+  `DataPropertyRange` of `owl:topDataProperty` whose complement has no built-in
+  witness literal, and of axioms with anonymous individuals that are not in the
+  ontology.
+- A class expression that is not OWL 2 DL next to the ontology, such as a
+  cardinality restriction on a transitive property: km rejects the extended
+  ontology, so every query on that expression throws.
+- Any reduction that km declines or does not finish within the time out.
+
+`precomputeInferences` ignores a type it does not compute, as the OWL API
+specifies.
 
 ## Install in Protégé
 
@@ -154,8 +405,8 @@ The tests need a `km` executable: pass `-Dkm.bin`, or build `km` under the
 checkout-local `.work/target`. The jars are:
 
 ```text
-protege/target/protege5/kobayashi-marust-protege5-1.6.5.jar
-protege/target/protege6/kobayashi-marust-protege6-1.6.5.jar
+protege/target/protege5/kobayashi-marust-protege5-1.7.0.jar
+protege/target/protege6/kobayashi-marust-protege6-1.7.0.jar
 ```
 
 A developer build bundles no `km`. To bundle executables, lay them out as
@@ -230,6 +481,62 @@ classification.
 Incremental-session and explanation cancellation, timeout, and disposal stop
 the complete native process tree and wait for route workers to exit. They do
 not leave an orphaned worker consuming memory after the OWLAPI call returns.
+Every km process the plugin starts is registered until it exits: a JVM that
+exits normally or on SIGTERM/SIGINT terminates every registered tree from a
+shutdown hook. The plugin exports the JVM's pid as `KM_SUPERVISOR_PID`, so the
+workers of a `km incremental-source` session (for example its `km engine`)
+exit within 100 ms when the JVM is gone, also after a SIGKILL, which runs no
+hook. A one-shot `km classify` or `km explain` replaces that variable with its
+own pid for its workers; after a SIGKILL of the JVM such a process runs to the
+end of its own run (bounded by `km.timeout.seconds`) before it exits.
+
+### Temporary files
+
+The plugin writes its temporary files to `java.io.tmpdir` and names them
+`kmarust-<JVM pid>-<what>-<n>` (`.ofn` input, `.log` output). A query deletes
+its files when it ends, on every path: normal end, time out, interrupt and
+dispose. `interrupt()` and `dispose()` return only after the runs they stop
+have deleted their files (they wait for that at most 10 s, which a run whose
+process is already killed never needs). A batch run that outlived its call
+after a time out keeps its files until it ends or is stopped. The incremental
+session keeps one log file (`kmarust-<pid>-incremental-<n>.log`) for as long
+as the session lives; `dispose()` deletes it, and so does an interrupt or
+time out that stops the session. A JVM shutdown (normal exit, SIGTERM, SIGINT) deletes the files
+that are still registered, after stopping the km processes; the first query
+of a JVM deletes the files of JVMs that no longer run (a JVM killed with
+SIGKILL runs no hook). The km processes get `TMPDIR` set to the same
+directory, so km's own run directories land there too.
+
+### Time outs, interrupts and batch runs
+
+Three answers come from one long native run each, computed once per committed
+revision and then read by many calls: the data property values of all named
+individuals (`getDataPropertyValues`), the object property values of all named
+individuals (`getObjectPropertyValues` after
+`precomputeInferences(OBJECT_PROPERTY_ASSERTIONS)`), and the realization
+(`getTypes`, `getInstances`, `getSameIndividuals`). The plugin treats the two
+ways of ending a call differently for these batch runs:
+
+- **The configured time out** (`OWLReasonerConfiguration.getTimeOut()`) ends
+  the call with `TimeOutException`, but the batch run goes on in the
+  background, owned by the reasoner. The next call that needs it waits for it
+  (under its own time out) and is answered from it as soon as it finishes; it
+  is not started again. So an input whose batch takes 50 s answers from the
+  third call on under a 20 s time out, instead of never. If such a run fails,
+  the failure is not remembered (as for a stopped run); the next call starts a
+  new run.
+- **`interrupt()`** stops all native work of the reasoner at once, the batch
+  runs included, like HermiT's interrupt. It discards a running batch, so a
+  client that interrupts every slow call, instead of setting a time out, does
+  not benefit: every call starts the batch again.
+- `dispose()`, `flush()` with changes, and every new committed revision also
+  stop all batch runs: a batch run only answers the revision it started on.
+
+Protégé itself configures its reasoners without a time out
+(`SimpleConfiguration(progressMonitor)`, so `getTimeOut()` is
+`Long.MAX_VALUE`) and ends a slow call only through `interrupt()` (the "Stop
+reasoner" button). In Protégé a batch run therefore either finishes or is
+discarded by the user's stop.
 A declined buffered transaction leaves the last committed hierarchy queryable.
 After the caller removes or corrects the unsupported change, the next
 `flush()` starts a clean native session and commits the complete current
@@ -243,7 +550,12 @@ The headless OWL API tests cover:
 - the bundled kinship ontology;
 - inclusion of the loaded imports closure; and
 - rejection of unresolved imports;
-- distinct classes that share the same local-name fragment.
+- distinct classes that share the same local-name fragment;
+- individual queries (`IndividualsTest`): types, instances, same individuals,
+  entailment, lazy realization and its invalidation after a change; and
+- the same queries compared with HermiT on a small ABox, a nominal and
+  cardinality ontology, and the W3C wine and food ontologies
+  (`HermitDifferentialTest`; HermiT is a test-scope dependency).
 
 The explanation tests cover exhaustive and bounded multiple EL
 justifications, named unsatisfiability, CB inverse-role inference, rules/HT
@@ -270,11 +582,11 @@ Protégé 6 distribution before releasing:
 ```sh
 protege/run-installation-smoke.sh \
   /absolute/path/to/Protege-5.6.9 \
-  "$PWD/protege/target/protege5/kobayashi-marust-protege5-1.6.5.jar"
+  "$PWD/protege/target/protege5/kobayashi-marust-protege5-1.7.0.jar"
 
 protege/run-installation-smoke.sh \
   /absolute/path/to/Protege-6.0.0-alpha-1 \
-  "$PWD/protege/target/protege6/kobayashi-marust-protege6-1.6.5.jar"
+  "$PWD/protege/target/protege6/kobayashi-marust-protege6-1.7.0.jar"
 ```
 
 Without a third argument the jar must bundle `km` for the running platform:

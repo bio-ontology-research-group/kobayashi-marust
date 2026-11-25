@@ -5,6 +5,8 @@
 //!   `km classify --realize[=all|direct] ...`  also report the entailed types
 //!                                      (`TYPE a C`) and equalities (`SAME a b`)
 //!                                      of named individuals; see docs/REALIZATION.md
+//!   `km classify --properties ...`     also report the inferred object property
+//!                                      hierarchy, domains and ranges; see docs/PROPERTIES.md
 //!   `km explain <ont.ofn> ...`          one source-axiom justification
 //!   `km ofn|elc|engine|tableau`        the worker reasoners
 //!   `km incremental`                   stateful exact EL++/CB/direct-HT session
@@ -26,6 +28,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use kobayashi_marust::orchestrate::{self, Config, OrchestrateError};
 
 fn main() {
+    // E4: before any allocation of note and before any worker starts.
+    kobayashi_marust::mem::disable_transparent_huge_pages();
     #[cfg(feature = "sample-profiler")]
     kobayashi_marust::sample_prof::install();
     // Before any route bundle rewrites KM_THREADS (`routing::apply_environment`).
@@ -61,7 +65,7 @@ fn main() {
         // Phase-2 byte-identity gate vs engine/py/cb_to_ht.py)
         Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
-            eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--route ROUTE] [--format FORMAT] <ontology>");
+            eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--top] [--route ROUTE] [--format FORMAT] [--iris source|full] <ontology>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> subclass <SUB> <SUPER>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> unsatisfiable <CLASS>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> inconsistent");
@@ -81,6 +85,8 @@ fn explain_cmd(rest: &[String]) {
     // Workers watch this pid and exit when the supervisor is gone
     // (`cli::die_with_supervisor`). Set before any thread is spawned.
     std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());
+    // E11: one run directory for every temporary file, removed on exit.
+    kobayashi_marust::orchestrate::tmpfile::install_supervisor_run_dir();
     use kobayashi_marust::orchestrate::explain::{self, ExplainError, Options, Query};
 
     let usage = || {
@@ -490,27 +496,65 @@ fn cb_to_ht_cmd() {
 }
 
 fn classify_help() {
-    println!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--route ROUTE] [--format FORMAT] <ontology>");
+    println!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--top] [--route ROUTE] [--format FORMAT] [--iris source|full] <ontology>");
     println!();
     println!("  --lines             tab-separated line output (default: JSON)");
     println!("  --json-edges        JSON whose subsumptions are graph edges (take their transitive closure)");
     println!("  --realize[=all]     also report every entailed named type of each named individual");
     println!("  --realize=direct    also report only the most specific entailed named types");
+    println!("  --properties        also report the inferred object property hierarchy, domains and ranges");
+    println!("  --export-model FILE after the answer, write a model of the ontology to FILE (JSON lines, docs/MODEL-EXPORT.md)");
+    println!("  --export-model-budget SECONDS");
+    println!("                      wall-clock budget for post-classify model verification/witness probes");
+    println!("                      (default: 1x classify_time + 2 s); writes status=\"partial\" when exceeded");
+    println!("  --values            also report every entailed object property assertion between named individuals");
+    println!("  --different         also report every entailed pair of different named individuals");
+    println!("  --data-properties   also report the data property hierarchy, empty data properties,");
+    println!("                      domains and disjoint data properties (docs/PROPERTIES.md)");
+    println!("  --top               also report the named classes equivalent to owl:Thing");
     println!("  --route ROUTE       force a reasoning route (see `km routes --help`); a forced");
     println!("                      route that cannot represent the input exits 3 unless");
     println!("                      KM_ALLOW_APPROXIMATE=1, which publishes an APPROXIMATE answer");
     println!("  --format FORMAT     auto, functional, owlxml, rdfxml or turtle");
+    println!("  --iris source|full  entity names in every output: source (default) as the input spells them");
+    println!("                      (ex:A stays ex:A); full: every name as its full IRI, expanded with the");
+    println!("                      input's Prefix declarations, for every input syntax (env KM_IRIS;");
+    println!("                      docs/INPUT-FORMATS.md, \"Entity names in output\")");
+    println!("  --unknown-datatypes=strict|free");
+    println!("                      strict (default): reject a datatype outside the OWL 2 datatype map;");
+    println!("                      free: read it as a fresh datatype and its literals as opaque values");
+    println!("                      (see docs/DATATYPES.md, \"Unknown datatypes\")");
+    println!("  --lenient           accept inputs OWL API and HermiT load in Protege by a source-level");
+    println!("                      rewrite to valid OWL 2 DL (see docs/V1.7.0-LENIENT-INPUT.md)");
     println!();
     println!("line output (--lines):");
     println!("  CONSISTENT 0|1      ontology consistency");
     println!("  DROPPED N           clauses outside the handled fragment (N > 0: incomplete answer)");
     println!("  APPROXIMATE<TAB>R   (forced route, KM_ALLOW_APPROXIMATE=1) the answer is approximate: R");
+    println!("  LENIENT<TAB>W       (--lenient) source rewrite applied before the certified pipeline: W");
     println!("  SUB<TAB>C<TAB>D     C is subsumed by D");
     println!("  UNSAT<TAB>C         C is unsatisfiable");
     println!("  TYPE<TAB>a<TAB>C    (--realize) O entails C(a); owl:Thing is never listed");
     println!("  SAME<TAB>a<TAB>b    (--realize) O entails a = b, once per pair with a < b");
-    println!("With --realize the JSON object carries the same rows under \"types\" and \"same\".");
-    println!("An inconsistent ontology reports CONSISTENT 0 and no TYPE or SAME rows.");
+    println!("  TOP<TAB>C           (--top) C is equivalent to owl:Thing");
+    println!("  SUBPROP<TAB>r<TAB>f (--properties) O entails r SubPropertyOf f; r named and not empty,");
+    println!("                      f named or ObjectInverseOf(s); owl:topObjectProperty is never listed");
+    println!("  TOPPROP<TAB>r       (--properties) r is equivalent to owl:topObjectProperty");
+    println!("  BOTPROP<TAB>r       (--properties) r is equivalent to owl:bottomObjectProperty;");
+    println!("                      an empty property has no SUBPROP, DOMAIN or RANGE rows");
+    println!("  DOMAIN<TAB>r<TAB>C  (--properties) O entails ObjectPropertyDomain(r C); owl:Thing is never listed");
+    println!("  RANGE<TAB>r<TAB>C   (--properties) O entails ObjectPropertyRange(r C); owl:Thing is never listed");
+    println!("  VALUE<TAB>r<TAB>a<TAB>b (--values) O entails r(a, b), r a named object property");
+    println!("  DIFFERENT<TAB>a<TAB>b (--different) O entails a != b, once per pair with a < b");
+    println!("  SUBDATAPROP<TAB>p<TAB>q (--data-properties) O entails p SubDataPropertyOf q; p not empty");
+    println!("  BOTDATAPROP<TAB>p   (--data-properties) data property p is empty");
+    println!("  DATADOMAIN<TAB>p<TAB>C (--data-properties) O entails DataPropertyDomain(p C)");
+    println!("  DISJOINTDATAPROP<TAB>p<TAB>q (--data-properties) O entails DisjointDataProperties(p q)");
+    println!("  NODATADISJOINT      (--data-properties) over 64 data properties: no DISJOINTDATAPROP rows computed");
+    println!("With --realize the JSON object carries the same rows under \"types\" and \"same\";");
+    println!("with --properties under \"subproperties\", \"topproperties\", \"bottomproperties\",");
+    println!("\"domains\" and \"ranges\" (see docs/PROPERTIES.md); with --top under \"top\".");
+    println!("An inconsistent ontology reports CONSISTENT 0 and no TOP, TYPE, SAME or property rows.");
 }
 
 fn classify_cmd(rest: &[String]) {
@@ -522,17 +566,52 @@ fn classify_cmd(rest: &[String]) {
     // Workers watch this pid and exit when the supervisor is gone
     // (`cli::die_with_supervisor`). Set before any thread is spawned.
     std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());
+    // E11: one run directory for every temporary file, removed on exit.
+    kobayashi_marust::orchestrate::tmpfile::install_supervisor_run_dir();
     let mut lines = false;
     let mut graph_edges = std::env::var("KM_JSON_GRAPH_EDGES").is_ok_and(|v| v == "1");
     let mut route: Option<&str> = None;
     let mut ontology: Option<&str> = None;
     let mut realize: Option<orchestrate::realize::TypeMode> = None;
+    let mut properties = false;
+    let mut data_properties = false;
+    let mut values = false;
+    let mut different = false;
+    let mut top = false;
+    let mut export_model: Option<String> = None;
+    let mut export_model_budget: Option<f64> = None;
+    let mut iris = match orchestrate::output_names::IriMode::from_env() {
+        Ok(mode) => mode,
+        Err(error) => {
+            eprintln!("KM_IRIS: {error}");
+            exit(2);
+        }
+    };
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
             "-h" | "--help" => {
                 classify_help();
                 exit(0);
+            }
+            "--iris" | "--iris=source" | "--iris=full" => {
+                let value = if rest[index] == "--iris" {
+                    index += 1;
+                    rest.get(index).map(String::as_str).unwrap_or("")
+                } else {
+                    rest[index].trim_start_matches("--iris=")
+                };
+                iris = match orchestrate::output_names::IriMode::parse(value) {
+                    Ok(mode) => mode,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        exit(2);
+                    }
+                };
+            }
+            value if value.starts_with("--iris=") => {
+                eprintln!("--iris takes source or full, got {:?}", value.trim_start_matches("--iris="));
+                exit(2);
             }
             "--lines" => lines = true,
             "--realize" | "--realize=all" => realize = Some(orchestrate::realize::TypeMode::All),
@@ -541,7 +620,47 @@ fn classify_cmd(rest: &[String]) {
                 eprintln!("--realize takes all or direct, got {:?}", value.trim_start_matches("--realize="));
                 exit(2);
             }
+            "--properties" => properties = true,
+            "--data-properties" => data_properties = true,
+            "--values" => values = true,
+            "--different" => different = true,
+            "--top" => top = true,
             "--json-edges" => graph_edges = true,
+            "--export-model" => {
+                index += 1;
+                export_model = rest.get(index).cloned();
+                if export_model.is_none() {
+                    eprintln!("--export-model requires a file name");
+                    exit(2);
+                }
+            }
+            value if value.starts_with("--export-model=") => {
+                export_model = Some(value.trim_start_matches("--export-model=").to_string());
+            }
+            "--export-model-budget" => {
+                index += 1;
+                let Some(val) = rest.get(index) else {
+                    eprintln!("--export-model-budget requires a positive number of seconds");
+                    exit(2);
+                };
+                match val.parse::<f64>() {
+                    Ok(secs) if secs.is_finite() && secs > 0.0 => export_model_budget = Some(secs),
+                    _ => {
+                        eprintln!("--export-model-budget requires a positive number of seconds, got {val:?}");
+                        exit(2);
+                    }
+                }
+            }
+            value if value.starts_with("--export-model-budget=") => {
+                let raw = value.trim_start_matches("--export-model-budget=");
+                match raw.parse::<f64>() {
+                    Ok(secs) if secs.is_finite() && secs > 0.0 => export_model_budget = Some(secs),
+                    _ => {
+                        eprintln!("--export-model-budget requires a positive number of seconds, got {raw:?}");
+                        exit(2);
+                    }
+                }
+            }
             "--route" => {
                 index += 1;
                 route = rest.get(index).map(String::as_str);
@@ -564,6 +683,20 @@ fn classify_cmd(rest: &[String]) {
             value if value.starts_with("--format=") => {
                 std::env::set_var("KM_INPUT_FORMAT", value.trim_start_matches("--format="));
             }
+            // W7: datatypes outside the OWL 2 datatype map (see
+            // `frontend::conformance::unknown_datatypes_free`).
+            "--unknown-datatypes=strict" => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
+            "--unknown-datatypes=free" => std::env::set_var("KM_UNKNOWN_DATATYPES", "free"),
+            "--lenient" | "--lenient=true" | "--lenient=1" => std::env::set_var("KM_LENIENT", "1"),
+            "--lenient=false" | "--lenient=0" => std::env::remove_var("KM_LENIENT"),
+            value if value.starts_with("--lenient=") => {
+                eprintln!("--lenient takes true or false, got {value:?}");
+                exit(2);
+            }
+            value if value.starts_with("--unknown-datatypes") => {
+                eprintln!("--unknown-datatypes takes strict or free, got {value:?}");
+                exit(2);
+            }
             value if value.starts_with('-') => {
                 eprintln!("unknown classify option: {value}");
                 exit(2);
@@ -581,8 +714,23 @@ fn classify_cmd(rest: &[String]) {
         exit(2);
     }
     let Some(ontology) = ontology else {
-        eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--route ROUTE] [--format FORMAT] <ontology>");
+        eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--top] [--route ROUTE] [--format FORMAT] [--iris source|full] <ontology>");
         exit(2);
+    };
+    // `--iris full`: every printed entity name as its full IRI
+    // (`orchestrate::output_names`, docs/INPUT-FORMATS.md, "Entity names in output"). Read before
+    // classification so a malformed prefix header fails at once.
+    let full_iris = match iris {
+        orchestrate::output_names::IriMode::Source => None,
+        orchestrate::output_names::IriMode::Full => {
+            match orchestrate::output_names::FullIris::for_input(Path::new(ontology)) {
+                Ok(names) => Some(names),
+                Err(error) => {
+                    eprintln!("{error}");
+                    exit(error.exit_code());
+                }
+            }
+        }
     };
     if let Some(requested) = route {
         if let Err(error) = requested.parse::<kobayashi_marust::routing::Route>() {
@@ -623,28 +771,62 @@ fn classify_cmd(rest: &[String]) {
         }
     };
     let cfg = Config::from_env();
-    if let Some(mode) = realize {
+    if export_model.is_some() {
+        orchestrate::model_export::begin_session(export_model_budget);
+    }
+    // `--export-model FILE`: after the answer is written, the model of the
+    // same clause stream (docs/MODEL-EXPORT.md). Never runs otherwise.
+    let export = |cfg: &Config| {
+        if let Some(file) = &export_model {
+            match orchestrate::model_export::finish_and_write(
+                cfg,
+                Path::new(ontology),
+                Path::new(file),
+            ) {
+                Ok(status) => eprintln!("{status}"),
+                Err(error) => {
+                    eprintln!("model export failed: {error}");
+                    exit(1);
+                }
+            }
+        }
+    };
+    if realize.is_some() || properties || top || data_properties || values || different {
         if graph_edges {
-            eprintln!("--realize cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
+            eprintln!("--realize, --properties and --top cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
             exit(2);
         }
-        let realized = orchestrate::realize::realize(&cfg, Path::new(ontology), mode);
+        let realized = orchestrate::realize::classify_extended(
+            &cfg,
+            Path::new(ontology),
+            realize,
+            properties,
+            top,
+            data_properties,
+            values,
+            different,
+        );
         lean_gate(lean_run);
         match realized {
-            Ok(res) => {
+            Ok(mut res) => {
+                if let Some(names) = &full_iris {
+                    names.extended(&mut res);
+                }
                 use std::io::{BufWriter, Write};
                 let stdout = std::io::stdout();
                 let mut w = BufWriter::new(stdout.lock());
                 if lines {
                     let _ = writeln!(w, "{}", res.to_lines());
                 } else {
-                    if let Err(error) = res.write_json(&mut w) {
+                    if let Err(error) = res.write_json(&mut w, realize.is_some()) {
                         eprintln!("classification serialise error: {error}");
                         exit(1);
                     }
                     let _ = w.write_all(b"\n");
                 }
                 let _ = w.flush();
+                drop(w);
+                export(&cfg);
                 return;
             }
             Err(OrchestrateError::OutOfFragment(e)) => {
@@ -661,10 +843,13 @@ fn classify_cmd(rest: &[String]) {
         let classified = orchestrate::classify_json(&cfg, Path::new(ontology));
         lean_gate(lean_run);
         match classified {
-            Ok(res) => {
+            Ok(mut res) => {
                 frontend_gate(res.frontend_check_gate(Path::new(ontology)));
                 if std::env::var_os("KM_TIMING").is_some() {
                     eprintln!("KM_TIMING mark: classify_json returned");
+                }
+                if let Some(names) = &full_iris {
+                    names.json(&mut res);
                 }
                 use std::io::{BufWriter, Write};
                 let stdout = std::io::stdout();
@@ -683,6 +868,8 @@ fn classify_cmd(rest: &[String]) {
                 if std::env::var_os("KM_TIMING").is_some() {
                     eprintln!("KM_TIMING mark: output written");
                 }
+                drop(w);
+                export(&cfg);
                 return;
             }
             Err(OrchestrateError::OutOfFragment(e)) => {
@@ -698,8 +885,11 @@ fn classify_cmd(rest: &[String]) {
     let classified = orchestrate::classify(&cfg, Path::new(ontology));
     lean_gate(lean_run);
     match classified {
-        Ok(res) => {
+        Ok(mut res) => {
             frontend_gate(res.frontend_check_gate(Path::new(ontology)));
+            if let Some(names) = &full_iris {
+                names.classification(&mut res);
+            }
             use std::io::{BufWriter, Write};
             let stdout = std::io::stdout();
             // serde emits many small writes. Buffer them so direct streaming
@@ -708,6 +898,8 @@ fn classify_cmd(rest: &[String]) {
             let mut w = BufWriter::new(stdout.lock());
             let _ = writeln!(w, "{}", res.to_lines());
             let _ = w.flush();
+            drop(w);
+            export(&cfg);
         }
         // honest decline: outside the supported fragment (datatypes)
         Err(OrchestrateError::OutOfFragment(e)) => {

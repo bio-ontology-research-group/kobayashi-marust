@@ -136,6 +136,11 @@ pub fn validate_handwritten(source: &str) -> Result<(), String> {
     validate_iri_cached_impl(source, true)
 }
 
+/// Whether `iri` (`<...>`) is a valid RFC 3987 FullIRI token.
+pub fn full_iri_valid(iri: &str) -> bool {
+    full_iri_accepted(iri, true)
+}
+
 fn full_iri_accepted(iri: &str, ascii_fast_path: bool) -> bool {
     (ascii_fast_path && ascii_http_iri(iri)) || {
         let checked = FunctionalSyntax::parse(Rule::FullIRI, iri);

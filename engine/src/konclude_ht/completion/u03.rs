@@ -1920,6 +1920,7 @@ mod branch_learning_tests {
 
     #[test]
     fn cache_oriented_order_is_cold_stable_then_prefers_satisfiable_operand() {
+        let _test_env = crate::test_env::read();
         let mut algorithm = CompletionTaskHandleAlgorithm::new();
         algorithm.conf_cache_oriented_or_ordering = true;
         let disjunction = ConceptId::new(7);
@@ -1967,6 +1968,7 @@ mod branch_learning_tests {
 
     #[test]
     fn cache_oriented_order_uses_equal_depth_expansion_bonus() {
+        let _test_env = crate::test_env::read();
         let mut algorithm = CompletionTaskHandleAlgorithm::new();
         algorithm.conf_cache_oriented_or_ordering = true;
         let disjunction = ConceptId::new(9);

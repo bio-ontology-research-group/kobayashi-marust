@@ -1,0 +1,5 @@
+# ../sroiq/reflexive-sat.ofn on the chain route: a with its reflexive loop; every name but bottom (3).
+# (../sroiq/reflexive-sat.hint lists bottom instead of top; sroiq-c2a rejects it and finds the model by search.)
+blocks 1
+ty 0 0 1 2 4 5 6 7
+lab 0 0 +0 -0

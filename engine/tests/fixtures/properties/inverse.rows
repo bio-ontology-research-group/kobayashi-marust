@@ -1,0 +1,17 @@
+# HermiT 1.4.3 through the OWL API, rows in the convention of docs/PROPERTIES.md
+DOMAIN	urn:t#componentOf	urn:t#Part
+DOMAIN	urn:t#hasComponent	urn:t#Whole
+DOMAIN	urn:t#hasPart	urn:t#Whole
+DOMAIN	urn:t#partOf	urn:t#Part
+RANGE	urn:t#componentOf	urn:t#Whole
+RANGE	urn:t#hasComponent	urn:t#Part
+RANGE	urn:t#hasPart	urn:t#Part
+RANGE	urn:t#partOf	urn:t#Whole
+SUBPROP	urn:t#componentOf	ObjectInverseOf(urn:t#hasComponent)
+SUBPROP	urn:t#componentOf	ObjectInverseOf(urn:t#hasPart)
+SUBPROP	urn:t#componentOf	urn:t#partOf
+SUBPROP	urn:t#hasComponent	ObjectInverseOf(urn:t#componentOf)
+SUBPROP	urn:t#hasComponent	ObjectInverseOf(urn:t#partOf)
+SUBPROP	urn:t#hasComponent	urn:t#hasPart
+SUBPROP	urn:t#hasPart	ObjectInverseOf(urn:t#partOf)
+SUBPROP	urn:t#partOf	ObjectInverseOf(urn:t#hasPart)

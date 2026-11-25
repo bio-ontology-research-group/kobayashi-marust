@@ -293,6 +293,7 @@ mod tests {
     }
     #[test]
     fn projection_rejects_unexpanded_named_entity_aliases() {
+        let _test_env = crate::test_env::read();
         for source in [
             "Ontology(SubClassOf(owl:A <http://www.w3.org/2002/07/owl#A>))",
             "Ontology(DifferentIndividuals(owl:a <http://www.w3.org/2002/07/owl#a>))",
@@ -303,6 +304,7 @@ mod tests {
 
     #[test]
     fn class_projection_retains_boolean_theory_and_all_query_classes() {
+        let _test_env = crate::test_env::read();
         let source = scan(r#"Ontology(
             SubClassOf(ObjectUnionOf(<A> <B>) ObjectComplementOf(<C>))
             ClassAssertion(<OnlyAssertion> <a>)
@@ -326,6 +328,7 @@ mod tests {
 
     #[test]
     fn class_projection_declines_non_boolean_sources() {
+        let _test_env = crate::test_env::read();
         for source in [
             "Ontology(SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>)))",
             "Ontology(SubClassOf(<A> ObjectOneOf(<a>)))",
@@ -336,6 +339,7 @@ mod tests {
 
     #[test]
     fn graph_source_is_restriction_closed_and_every_concrete_rule_has_a_plan() {
+        let _test_env = crate::test_env::read();
         let source = include_str!("../../tests/fixtures/graph_data_rules.ofn");
         let scan = scan(source);
         assert!(scan.certified());
@@ -351,6 +355,7 @@ mod tests {
     }
     #[test]
     fn rejects_value_generators_unknown_axioms_and_redefined_prefixes() {
+        let _test_env = crate::test_env::read();
         for axiom in [
             "SubClassOf(<A> DataSomeValuesFrom(<p> xsd:integer))",
             "SubClassOf(<A> DataHasValue(<p> \"1\"^^xsd:int))",
@@ -366,6 +371,7 @@ mod tests {
     }
     #[test]
     fn graph_source_allows_an_edge_free_class_witness() {
+        let _test_env = crate::test_env::read();
         let source = include_str!("../../tests/fixtures/graph_data_rules.ofn");
         assert!(scan(source).fresh_class_witness_candidate());
         // Grounding remains admitted, but these source axioms couple class
@@ -391,6 +397,7 @@ mod tests {
     }
     #[test]
     fn property_sorts_retain_full_source_names_and_rule_uses() {
+        let _test_env = crate::test_env::read();
         let graph = scan(include_str!("../../tests/fixtures/graph_data_rules.ofn"));
         let kinds = graph.property_kinds().unwrap();
         assert_eq!(kinds.object.len(), 20);

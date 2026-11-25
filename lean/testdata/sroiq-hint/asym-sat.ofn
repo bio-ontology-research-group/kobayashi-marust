@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/asym-sat>
+AsymmetricObjectProperty(:r)
+ObjectPropertyAssertion(:r :a :b)
+)

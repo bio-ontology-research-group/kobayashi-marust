@@ -90,7 +90,9 @@ structure SourceProductionClosed
   rSucc : (succOf decoded).rsuccEnabled = true →
     ∀ context ∈ (liveOf decoded).contexts,
       ∀ offer ∈ CBSourceSuccClosure.sourceRSuccOffers
-          (succOf decoded).reachConcepts (hyperOf decoded).order context,
+          (CBSourceSuccClosure.liveDemandView (liveOf decoded))
+          (succOf decoded).reachConcepts (succOf decoded).groundedConcepts
+          (hyperOf decoded).order context,
         CBSourceSuccClosure.edgeDelivered (liveOf decoded)
             context.contextIndex.val offer.edge.targetIndex offer.edge.label
             offer.pushed = true ∧
@@ -130,7 +132,8 @@ theorem DecodedSourceRootPredClosureDocument.production_closed
       ((succOf decoded).direct_closed context hcontext) offer hoffer
   · intro henabled context hcontext offer hoffer
     exact rSuccClosedB_sound (liveOf decoded) (succOf decoded).rsuccEnabled
-      (succOf decoded).reachConcepts (hyperOf decoded).order context
+      (succOf decoded).reachConcepts (succOf decoded).groundedConcepts
+      (hyperOf decoded).order context
       ((succOf decoded).rsucc_closed context hcontext) henabled offer hoffer
   · intro context hcontext candidate hcandidate
     exact sourceEqClosedB_sound (hyperOf decoded).order context

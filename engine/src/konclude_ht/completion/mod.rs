@@ -193,6 +193,12 @@ pub(crate) fn sat578_guard_fired() {
         });
     }
 }
+/// `KM_CLASH_SET_COMPARE=<file>`, read once: the report file of the clash
+/// explanation compare mode (`u08::clash_set_compare`).
+pub(crate) fn clash_set_compare_path() -> Option<&'static std::ffi::OsStr> {
+    static PATH: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
+    PATH.get_or_init(|| std::env::var_os("KM_CLASH_SET_COMPARE")).as_deref()
+}
 cached_completion_flag!(no_b6_collision_guard, "KM_HT_NO_B6_COLLISION_GUARD");
 cached_completion_flag!(no_b4a_nominal_guard, "KM_HT_NO_B4A_NOMINAL_GUARD");
 /// `KM_HT_NO_B6_COLLISION_GUARD=1`: B6 keeps a successor in `C` c-blocked
@@ -286,6 +292,7 @@ mod cached_gate_test {
     /// path at every gate the rule bodies now consult.
     #[test]
     fn cached_gates_are_off_without_the_environment() {
+        let _test_env = crate::test_env::read();
         assert!(!super::bridge_progress_enabled());
         assert!(!super::bridge_search_log_enabled());
         assert!(!super::bridge_dump_clash_enabled());

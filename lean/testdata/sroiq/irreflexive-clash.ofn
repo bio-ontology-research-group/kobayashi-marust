@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/irreflexive-clash>
+IrreflexiveObjectProperty(:r)
+ObjectPropertyAssertion(:r :a :a)
+)

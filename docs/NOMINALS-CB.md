@@ -2058,3 +2058,238 @@ bound (`data_role_uses_are_safe_cardinality_only`), so `automatic`,
 `certified_nominals`, and `nominals` all answer through the CB nominal engine in
 0.21-0.25 s, and all 16 tests in `top_nominal_data_successors` pass with every
 route required to answer as HermiT.
+
+## 13. Labels of an individual offered to its successors (2026-11-22)
+
+Found by the v1.7.0 differential campaign (case new_1002_65). For
+`a : ∃t.C`, `∃t⁻.K ⊑ E` (or `∃t⁻.{a} ⊑ E`), `K(a)` and `E ⊓ C ⊑ ⊥` the
+ontology is inconsistent, and the nominal CB routes answered consistent in
+every release. The successor `f(a)` needs `K`, or `{a}`, at its predecessor
+`a`. An ordinary predecessor offers its central labels `B(x)` to its
+successors as `B(y)` hypotheses (r-Succ, `rsucc_reach`); the ground context
+held the labels of `a` on the constant `a` and offered none of them.
+
+The repair: the ground context puts its maximal labels `B(o)` into the r-Succ
+pool and offers each over the grounded edges `f(o)` of `o` only, where
+`forwards` maps `B(o)` to `B(y)` (`rsucc_offered_over`). Only concepts in
+`Sig::grounded_label` are offered: a concept that some source clause reads
+on a neighbour `v` that a role atom of the same body joins to the centre
+along an edge that can lead from a successor to its predecessor
+(`grounded_label_concepts`: a Skolem head `S(x, f(x))` gives an edge from
+predecessor to successor, `S(f(x), x)` the other way, a role clause
+`R(x,y) → R'(x,y)` keeps the direction, `R(x,y) → R'(y,x)` turns it, any
+other role head counts both ways). A label nothing reads is an inert
+hypothesis, so leaving it out changes no derivation that uses one.
+
+Lean: `CBRSuccClosure.isGroundedLabel`, `offeredOver`, `edgeReachPredicates`
+and `rSuccOffers`, and `CBSourceSuccClosure.sourceEdgeReachPredicates` and
+`sourceRSuccOffers`, take the concept list `groundedConcepts`, which the
+wires carry as the optional field `grounded_label_concepts`.
+`forwardPredicate_grounded_label` shows that the offer of `B(o)` over `f(o)`
+pushes `B(y)`; the payload is a tautological hypothesis (`rSuccOffer_valid`),
+so soundness is unchanged, and the r-Succ closure checks now require the
+engine to deliver the new offers.
+
+Cost: on the nominal CB pool inputs the answers are unchanged and the time
+and memory level. The synthetic fixture `nominal_cb_slow/fx12.ofn` now runs
+past the nominal CB limit on the forced `nominals` route: the offer of the
+nominal label `{a}` to the successors of `a` interacts with the root-edge
+offers of section 12 (`KM_NO_ROOT_REACH=1` restores 0.2 s). The route fails
+closed there; the automatic route answers through the bridge.
+
+### 13.1 Labels of individuals over every successor edge (2026-11-23)
+
+The grounded offers above cover a successor `f(o)` of the ground context.
+They miss a label `B(o)` that a non-ground context derives under its own
+hypotheses and that another element reads: for `E ⊑ ∃p.{h}`, `∃p⁻.E ⊑ Q`,
+`E ⊑ ∃s.Z`, `Z ⊑ ∃p.{h}`, `Z ⊓ ∃p.Q ⊑ W` the query context of `E` learns
+`Q(h)` (the ground context holds `E(y) → Q(h)`), but its successor `Z` never
+does, and the nominal CB routes missed `E ⊑ ∃s.W`. The universal role, which
+becomes a hub individual, shows the same miss (the TBox route sweep cases).
+The r-Succ rule of arXiv:1805.01396 puts `B(o)` into `Su^r` for every edge.
+
+KM now does the same, by default: every context puts its maximal labels on
+individuals into the r-Succ pool and offers them over every successor edge;
+over an edge whose parent is not `o` the offer keeps the constant
+(`CBRSuccClosure.forwardPredicate_individual_label`). The offered concepts
+are those a source clause reads on a variable that a role atom of the same
+body touches, the centre included (`grounded_label_concepts`). When only
+these offers turn r-Succ on, central labels stay out of the pool and the
+root-edge offers (`Sig::rsucc_labels_only`).
+
+Redundancy: a label that the ground context holds as the unconditional fact
+`→ B(o)` goes over the grounded edges `f(o)` only (`rsucc_reach_unit`,
+`CBRSuccClosure.skipsGroundUnit`). Its readers get it through the root edges
+into the ground context, as with the offers off. Without the cut,
+ore_ont_4775 offered 21.6 million ABox labels (76 s, 9 GB); with it 0.4 s.
+
+Switches: KM_RSUCC_INDIVIDUAL_LABELS=0 (off), `auto` (on for the broad shape
+of `individual_label_shape` only), `all` (every concept, diagnostic);
+KM_RSUCC_KEEP_GROUND_UNITS=1 disables the cut;
+KM_RSUCC_INDIVIDUAL_LABELS_CENTRAL=1 keeps the central offers in labels-only
+mode.
+
+### 13.2 Open: disjunctive labels of individuals in successors (follow-up)
+
+The offers of 13.1 hand a successor every maximal label `B(o)`, including
+labels that hold only in some branches. Two inputs run long because of that:
+
+- `tests/fixtures/nominal_inert_sorts/m2058.ofn`, forced `certified_nominals`:
+  1.0 s with the offers off, past 120 s with them on (the automatic route
+  answers in 0.03 s either way). Offering one concept at a time on the CB
+  input isolates Q_13 and Q_15, the data at-most definers `≤1 v` and `≤2 v`
+  of the sort disjunction `⊤ → Q_13 ∨ Q_14 ∨ __data__`. Their labels on
+  individuals are conditional, so the ground-unit cut keeps them, and a
+  successor reads Q_13 legitimately (`Q_13(y) ∧ s(x,y) → Q_12(x)`). The
+  context count stays at 16; the time goes into saturating successors that
+  carry the data at-most of an individual under each hypothesis set.
+- `mixed20004_0031` (TBox sweep), forced `nominals` and
+  `certified_card_proxy_abox`: the offered conditional labels include the
+  `__forall__` markers of the transitive role and the hub proxy; each new
+  hypothesis set adds conditional clauses and the run grows without hitting
+  the message cap. The automatic route answers through `certified_nominals`.
+
+Four more fixtures run long on forced routes with the offers on; the same
+one-concept-at-a-time check on their CB inputs gives:
+
+- `top_nominal_data/m2197.ofn`, forced `nominals` (0.2 s off, past 120 s
+  on): Q_13 (`→ C ∨ D` definer) and the class D, read by the qualified
+  at-most `≥3 t.D` clause; every other offered concept alone is fast.
+- `nominal_seq_order/cut_r129_pushback.ofn`, forced `nominals` (0.13 s off;
+  on, past the worker cap and then a failing exit): the nominal proxy
+  `__nom__b` offered as a label of other individuals, from the disjunction
+  `Q_2 → __nom__b ∨ __nom__d`. Not a data definer.
+- `nominal_seq_order/merge_r1646.ofn`, forced `nominals` (1.5 s off, past
+  120 s on): Q_3 (`∀r.{c, b}`), E (`E ⊑ {b, a}`) and `__nom__a`, each alone;
+  C alone is fast. Labels conditional on nominal disjunctions.
+- The universal-role hub with data values
+  (`universal_role_and_top_data_range`): slow on three forced routes in
+  v1.7.0's first candidate for another reason, fixed in 13.3.
+
+In every case the automatic route answers exactly and fast, and the tests
+hold those forced routes to exact-or-silent only.
+
+All fail closed. A fix needs a redundancy for disjunctive labels on
+individuals in successors, for instance applying an individual's at-most
+only in the ground context (Nom) and not offering the definers whose only
+readers are at-most clauses at the centre, with its Lean statement in
+`CBRSuccClosure.skipsGroundUnit`'s style.
+
+### 13.3 Root edges carry central labels only (2026-11-23)
+
+Section 12 offers the central labels `B(x)` of a context over its root edges
+to the ground context; `offer_root_reach` read them from the r-Succ reach
+set. Since 13.1 that set also holds the labels `B(o')` of individuals, and the
+first v1.7.0 candidate (caf9c171) sent those over root edges as well. The
+Lean closure never asks for them (`CBRSuccClosure.isGroundedLabel` is false
+on an edge labelled by a constant), and they flood the ground context with
+hypotheses: on the universal-role hub with data values the forced `nominals`
+route took about 55 s instead of 0.7 s, and the sampled fuzz cases on which
+the automatic route went silent ran past 120 s with no label offered at all
+(`inv_3049_62`: 0.16 s once the individual labels left the pool). The
+root-edge offer now takes central labels only, as before 13.1;
+KM_ROOT_REACH_INDIVIDUALS=1 restores the old behaviour for A/B.
+
+## 14. Offers of individual labels wait for demand (2026-11-24)
+
+The every-edge offers of 13.1 hand a label `B(o)` to every successor, and a
+successor that relays it hands it on. On inputs whose successors share
+empty-core ⊤ contexts the offers multiply. Two examples:
+
+- the plugin's data-value batch on `ore_ont_13584`: 1.7 s with the offers
+  off, 51 s with them on;
+- about 60 ORE inputs lose plugin calls in the Protégé parity run.
+
+KM now holds an offer of a label of an individual back until its target needs
+it. `KM_RSUCC_DEMAND=0` sends every offer at once, as before.
+
+### 14.1 The need
+
+A context needs `(B, o)` when one of its clauses, in body or head, has one of
+these:
+
+- a role literal `r(x, o)`, where an ontology clause joins `r(x, y)` to a body
+  atom `B(y)` (`Sig::label_readers`, Lean `labelReaders`), or `r(o, x)`, where
+  one joins `r(y, x)` to `B(y)`;
+- an equation with `o` on either side. This releases every label of `o`.
+
+A context also needs `(B, o)` when one of its successors needs it. KM passes
+the need to every predecessor, and to the source of each new edge.
+
+Some offers never wait:
+
+- concepts read on a constant, or on a variable that no central role atom
+  binds (`Sig::label_always`, `labelAlways`);
+- offers to the nominal ground context;
+- every offer after a retained insertion. The insertion's clauses have no
+  reader analysis, so demand ends there and the deferred offers go out.
+
+A release can happen while messages are applied. The message loop used to
+swap its batch and `self.msgs` on the assumption that nothing is queued
+during application. Without demand that still holds: only `propagate_inner`,
+`subscribe_merge_individuals` and `offer_root_reach` enqueue, and they run
+after application. Demand's releases are now kept.
+
+### 14.2 Why a held-back label is not missed
+
+A held-back hypothesis `B(o) → B(o)` at a target `T` could take part only in
+these steps (Lean `CBRSuccDemand`):
+
+- **Hyper.** Outside the ground context the central variable maps to itself.
+  So a body atom `B(v)` meets `B(o)` only for a neighbour `v`, through a
+  central role atom `r(x, v)` or `r(v, x)`. Hyper then needs a provider of
+  `r(x, o)` or `r(o, x)` among `T`'s clauses, which registers the need
+  (`central_hyper_read_registers`). Unbound and constant readers are always
+  offered.
+- **Eq.** KM rewrites whole arguments, so rewriting `B(o)` needs an equation
+  whose rewritten side is `o`. An equation on `o` registers every label of `o`
+  (`eq_rewrite_read_registers`). An equation `f(x) = o` is such an equation
+  once it reaches `T`, whether from a successor's Pred conclusion or from a
+  local step. Before that, `B(o)` and `B(f(x))` are different literals.
+- **Relay and Pred.** `T` offers `B(o)` on, and a successor's Pred conclusion
+  carries `B(o)` back, only along an edge whose pushed set holds `B(o)`. A
+  successor that needs the label makes `T` need it, so while `T` is held back
+  no successor needs it (`deferred_successors_outside`).
+
+KM releases an offer as soon as any of these steps becomes possible, and
+saturation is monotone. So the fixpoint is the one with every offer sent.
+
+The closures owe only the offers that are not deferred:
+`CBRSuccClosure.rSuccOffers` and `CBSourceSuccClosure.sourceRSuccOffers`
+filter by `DemandView.deferred`. That filter recomputes the readers from the
+source ontology and the need closure from the terminal successor edges, and
+checks that the closure is backward closed. The wire field `rsucc_demand`
+(absent: off) turns the filter on.
+
+The Lean Hyper closure enumerates every substitution, `x ↦ o` included. KM
+grounds `x` only in the ground context. The demand argument is stated for
+the central substitutions that KM's Hyper uses outside it.
+
+### 14.3 Measurements
+
+- `dv13584_batch`: 51 s -> 2.0 s, same output.
+- `f9001_90`: 1.50 s -> 1.45 s, and `x9416_0075` 169 s -> 182 s. Their
+  readers are real (at-most clauses over the relayed definers), so demand does
+  not help there.
+
+### 14.4 Nominal labels: where the remaining cost is
+
+On the f9001 family and on `x9416_0075` the remaining cost comes from labels
+of nominal concepts on individuals, `__nom__a(o)`, which mean `o = a`. Demand
+does not help there, because `∃r.{a}` reads them through `r(x, o)`.
+
+Example: an empty-core successor in the plugin's `getObjectPropertyValues`
+probe on `f9001_36`.
+- It collects about 80,000 clauses whose bodies combine such labels on
+  several individuals.
+- It takes more than 120 s, against 1.2 s with the offers off.
+
+A prototype sent the labels of nominal concepts over the grounded edges only.
+- It brought the probe to 1.2 s and `x9416_0075` to 36 s.
+- It left the acceptance set and the fixture scan unchanged.
+- It is incomplete. In `tests/fixtures/nominal_label_relay`, the `E` context
+  learns `o = a` as the label `__nom__a(o)` under its own core, and its
+  successor needs it.
+- The test `nominal_label_relay` holds every route to `E ⊑ ∃t.W`. A cheaper
+  route for these labels has to carry `o = a` to that successor in another
+  form.

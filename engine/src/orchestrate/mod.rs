@@ -16,17 +16,24 @@ pub mod engine_run;
 pub mod explain;
 pub mod features;
 mod flat_nf1;
+mod finite_cover;
 pub mod frontend_check;
 pub mod frontend_run;
 pub(crate) mod inert_sorts;
 pub mod input;
 pub mod mirror;
+pub mod model_export;
 mod abox_quotient;
 mod positive_abox_quotient;
 mod symbolic_source;
 mod data_source;
 pub(crate) mod public_subjects;
 pub mod race;
+pub mod properties;
+pub mod data_properties;
+pub mod abox_rows;
+pub mod output_names;
+mod attempt_budget;
 pub mod realize;
 pub mod tmpfile;
 
@@ -74,6 +81,53 @@ pub(crate) fn undeclared_coverage(out: &EngineOut, declared: &[String]) -> Optio
 
 fn is_bottom(s: &str) -> bool {
     s == "owl:Nothing" || s == "http://www.w3.org/2002/07/owl#Nothing" || s == "\u{22A5}"
+}
+
+pub(crate) fn inconsistent_unsatisfiable_classes_from_text(
+    text: &str,
+) -> Result<Vec<String>, OrchestrateError> {
+    let canonical = crate::frontend::builtin_aliases::canonicalize(text)
+        .map_err(OrchestrateError::from_conformance)?;
+    let mut builder = crate::frontend::profile::SourceProfileBuilder::new();
+    crate::frontend::parse::for_each_ontology_child(&canonical, |node| {
+        builder.observe(&node);
+        Ok(())
+    })
+    .map_err(|e| OrchestrateError::OutOfFragment(e.0))?;
+    let mut out = std::collections::BTreeSet::new();
+    for raw in builder.class_names() {
+        let raw = raw.trim();
+        if raw.is_empty()
+            || raw.starts_with("_:")
+            || matches!(
+                raw,
+                "owl:Thing"
+                    | "owl:Nothing"
+                    | "<http://www.w3.org/2002/07/owl#Thing>"
+                    | "<http://www.w3.org/2002/07/owl#Nothing>"
+                    | "\u{22a4}"
+                    | "\u{22a5}"
+            )
+        {
+            continue;
+        }
+        let iri = raw
+            .strip_prefix('<')
+            .and_then(|s| s.strip_suffix('>'))
+            .unwrap_or(raw);
+        if !iri.is_empty() && !iri.starts_with("_:") {
+            out.insert(crate::frontend::lenient::unescape_iri(iri).into_owned());
+        }
+    }
+    Ok(out.into_iter().collect())
+}
+
+pub(crate) fn inconsistent_unsatisfiable_classes(
+    ont: &Path,
+) -> Result<Vec<String>, OrchestrateError> {
+    let prepared = input::prepare_for_reasoning(ont)?;
+    let text = std::fs::read_to_string(prepared.path())?;
+    inconsistent_unsatisfiable_classes_from_text(&text)
 }
 
 /// Flatten full-IRI rows into the same lexicographic order as sorting all
@@ -385,6 +439,10 @@ pub struct EngineOut {
     /// coverage guard cannot check it (docs/ROUTING.md).
     #[serde(skip)]
     pub pair_form: bool,
+    #[serde(skip)]
+    pub worker_model_path: Option<std::path::PathBuf>,
+    #[serde(skip)]
+    pub worker_model_payload: Option<Arc<model_export::WorkerModelPayload>>,
 }
 
 /// The final classification, serialised exactly like `owl_classify`'s output.
@@ -418,6 +476,7 @@ pub(crate) fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, Orc
 }
 
 pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError> {
+    let worker_model_path = model_export::worker_model_sidecar_if_exists(path);
     let mut reader = BufReader::new(File::open(path)?);
     if crate::json_io::is_elc_output_binary(reader.fill_buf()?) {
         let mut bytes = Vec::new();
@@ -431,9 +490,20 @@ pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError>
             compact_subsumptions: Some(compact),
             unresolved: Vec::new(),
             pair_form: false,
+            worker_model_path,
+            worker_model_payload: None,
         });
     }
-    Ok(serde_json::from_reader(reader)?)
+    // Read the whole worker document, then parse the slice: serde_json's
+    // streaming reader parses byte by byte through `IoRead` and took 1.5 s of
+    // the 2.2 s output mapping on ore_ont_11085 (a 1.6 GB answer). The bytes
+    // and the parsed value are the same either way.
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes)?;
+    let mut out: EngineOut = serde_json::from_slice(&bytes)?;
+    drop(bytes);
+    out.worker_model_path = worker_model_path;
+    Ok(out)
 }
 
 /// The CB stack chosen by the production flags. Mirrors `owl_classify`'s
@@ -790,14 +860,22 @@ fn run_atomic_elc(
             Some(res) if !res.unresolved.is_empty() => Err(OrchestrateError::OutOfFragment(
                 "EL completeness certificate left an unresolved residue".into(),
             )),
-            Some(res) => Ok(EngineOut {
-                subsumptions: res.subsumptions,
-                compact_subsumptions: res.compact,
-                inconsistent: res.inconsistent,
-                dropped: 0,
-                unresolved: Vec::new(),
-                pair_form: false,
-            }),
+            Some(mut res) => {
+                let worker_model_payload = res
+                    .exported_model
+                    .take()
+                    .map(|m| Arc::new(model_export::WorkerModelPayload::El(m)));
+                Ok(EngineOut {
+                    subsumptions: res.subsumptions,
+                    compact_subsumptions: res.compact,
+                    inconsistent: res.inconsistent,
+                    dropped: 0,
+                    unresolved: Vec::new(),
+                    pair_form: false,
+                    worker_model_path: None,
+                    worker_model_payload,
+                })
+            }
         };
     }
     let (program, prefix) = cfg.elc_cmd();
@@ -936,20 +1014,19 @@ fn run_budgeted_bridge_attempt(
     named: &HashSet<String>,
     cached_input: &mut Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
-    if let Some(input) = cached_input.take() {
-        // The typed in-process handoff skipped the clause file. Serialize the
-        // identical frontend value exactly as the uncached frontend would.
-        let mut w = std::io::BufWriter::new(File::create(clauses_path)?);
-        serde_json::to_writer(&mut w, &input)?;
-        w.flush()?;
-    }
     let deadline = bridge_attempt_deadline().unwrap_or_else(std::time::Instant::now);
     if deadline <= std::time::Instant::now() {
         return Err(OrchestrateError::OutOfFragment(
             "speculative native bridge attempt exhausted its budget".into(),
         ));
     }
-    match race::run_ht_only_until(cfg, clauses_path, named, deadline)? {
+    match race::run_ht_only_until_with_input(
+        cfg,
+        clauses_path,
+        named,
+        deadline,
+        cached_input.take(),
+    )? {
         Some(out) => Ok(Some(out)),
         None => Err(OrchestrateError::OutOfFragment(
             "speculative native bridge attempt deferred or exceeded its budget".into(),
@@ -959,6 +1036,23 @@ fn run_budgeted_bridge_attempt(
 
 fn reference_force_enabled() -> bool {
     std::env::var("KM_REFERENCE_FORCE").as_deref() == Ok("1")
+}
+
+/// Whether the automatic schedule runs the bounded bridge-first attempts on
+/// `route` (see `classify_with_evidence_inner`). Those attempts carry
+/// data-property assertions themselves and re-run the full frontend when
+/// they decline, so only then may the frontend skip its `DataHasValue`
+/// conversion pass. A forced route never runs them: skipping the conversion
+/// there leaves the assertions uncarried and the route declines.
+pub(crate) fn bounded_bridge_first_scheduled(
+    automatic_requested: bool,
+    route: crate::routing::Route,
+    profile: &crate::frontend::profile::OntologyProfile,
+) -> bool {
+    automatic_requested
+        && !reference_force_enabled()
+        && !profile.atomic_class_abox_candidate
+        && crate::routing::bounded_bridge_first_candidate(route, profile)
 }
 
 /// Dispatch an isolated top-level mechanism. `None` means the explicitly
@@ -1013,12 +1107,15 @@ fn run_atomic_mechanism(
             run_budgeted_bridge_attempt(cfg, clauses_path, named, cached_input)
         }
         Mechanism::Ht => {
-            if matches!(
+            let is_manual_bridge = selected_route == crate::routing::Route::Manual
+                && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge");
+            if (matches!(
                 selected_route,
                 crate::routing::Route::HtShoq
                     | crate::routing::Route::HtGeneral
                     | crate::routing::Route::HtBridge
-            ) && std::env::var_os("KM_NO_INPROC_HT").is_none()
+            ) || is_manual_bridge)
+                && std::env::var_os("KM_NO_INPROC_HT").is_none()
                 && cached_input.is_some()
             {
                 let input = cached_input
@@ -1030,7 +1127,7 @@ fn run_atomic_mechanism(
                     })?;
                 if selected_route == crate::routing::Route::HtShoq {
                     race::run_ht_shoq_in_process(cfg, input, named).map(Some)
-                } else if selected_route == crate::routing::Route::HtBridge {
+                } else if selected_route == crate::routing::Route::HtBridge || is_manual_bridge {
                     race::run_ht_bridge_in_process(input, named).map(Some)
                 } else {
                     race::run_ht_general_in_process(input, named).map(Some)
@@ -1189,6 +1286,7 @@ fn try_inproc_engine(
     clauses_path: &Path,
     budget: std::time::Duration,
     ht_first_probe: Option<&dyn Fn() -> Option<race::HtFirstProbe>>,
+    cb_only_ok: bool,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
     use crate::json_io::JInput;
     let buf = std::fs::read(clauses_path)?;
@@ -1199,7 +1297,7 @@ fn try_inproc_engine(
     if !input.rules.is_empty() {
         return Ok(None); // rule ontologies need the HT-rules route
     }
-    let clauses = input.clauses;
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     // Worker sends `None` (decline) fast if the clause set carries an INTERNAL
     // DEFINER DISJUNCTION — the signature of the CB memory-blowup family
     // (ore_ont_9635: 45 GB). Only NON-blowup onts saturate here, so a worker
@@ -1217,12 +1315,18 @@ fn try_inproc_engine(
         .stack_size(256 << 20)
         .spawn(move || {
             use crate::reasoner::Reasoner;
+            let t0 = std::time::Instant::now();
             crate::engine::set_thread_cancel_flag(worker_cancel.clone());
-            let mut r = Reasoner::new(&clauses);
+            let mut r = Reasoner::new(&input.clauses);
             // The String-owning `JClause` block is fully interned into the
             // Reasoner; free it before saturation rather than holding it (it
             // is several times the raw JSON size) across the peak.
-            drop(clauses);
+            let export_input = if export_active {
+                Some(input)
+            } else {
+                drop(input);
+                None
+            };
             if r.has_internal_definer_disjunction() {
                 let _ = tx.send(None); // blow-up-prone ⇒ decline, use forked path
                 return;
@@ -1232,7 +1336,19 @@ fn try_inproc_engine(
                 // The supervisor stopped waiting; skip output assembly.
                 return;
             }
-            let out = inproc_engine_out(&mut r);
+            let classify_secs = t0.elapsed().as_secs_f64();
+            let mut out = inproc_engine_out(&mut r);
+            if let (Some(ref mut out), Some(ref input)) = (&mut out, &export_input) {
+                let budget_secs = std::env::var("KM_EXPORT_MODEL_BUDGET_S")
+                    .ok()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(classify_secs + 2.0);
+                let deadline = std::time::Instant::now()
+                    + std::time::Duration::from_secs_f64(budget_secs.max(0.1));
+                let model_res = r.export_cb_model(input, Some(deadline));
+                out.worker_model_payload =
+                    Some(Arc::new(model_export::WorkerModelPayload::Cb(model_res)));
+            }
             // Contexts, arenas, and indexes are dead once the answer is out.
             drop(r);
             let _ = tx.send(out);
@@ -1281,27 +1397,45 @@ fn try_inproc_engine(
     } else {
         None
     };
-    if timing && probe.is_some() {
-        eprintln!(
-            "KM_TIMING in-process engine: HT-first probe started @ {:.2}s",
-            started.elapsed().as_secs_f64()
-        );
+    if probe.is_some() {
+        stop_inproc("yielded to HT-first probe");
+        if timing {
+            eprintln!(
+                "KM_TIMING in-process engine: HT-first probe started @ {:.2}s",
+                started.elapsed().as_secs_f64()
+            );
+        }
+    } else if !cb_only_ok {
+        stop_inproc("no HT-first probe on large/nominal route");
+        return Ok(None);
     }
+    let export_ext_deadline = deadline + budget + std::time::Duration::from_secs(3);
     loop {
         let now = std::time::Instant::now();
-        if now >= deadline {
+        let active_deadline =
+            if export_active && probe.as_ref().is_some_and(|p| p.bridge_answered()) {
+                export_ext_deadline
+            } else {
+                deadline
+            };
+        if now >= active_deadline {
             drop(probe);
             stop_inproc(&format!("overran its {:.1}s budget", budget.as_secs_f64()));
             return Ok(None);
         }
         let wait = if probe.is_some() {
-            std::time::Duration::from_millis(2).min(deadline - now)
+            std::time::Duration::from_millis(2).min(active_deadline - now)
         } else {
-            deadline - now
+            active_deadline - now
         };
         match rx.recv_timeout(wait) {
             Ok(out) => return Ok(out), // the probe (if any) is killed on drop
-            Err(RecvTimeoutError::Disconnected) => return Ok(None),
+            Err(RecvTimeoutError::Disconnected) => {
+                if probe.is_none() {
+                    return Ok(None);
+                }
+                std::thread::sleep(wait);
+            }
             Err(RecvTimeoutError::Timeout) => {}
         }
         if let Some(p) = probe.as_mut() {
@@ -1351,6 +1485,8 @@ fn inproc_engine_out(r: &mut crate::reasoner::Reasoner) -> Option<EngineOut> {
         dropped: r.dropped_unsupported(),
         unresolved: Vec::new(),
         pair_form: false,
+        worker_model_path: None,
+        worker_model_payload: None,
     })
 }
 
@@ -1368,7 +1504,11 @@ fn try_inproc_elc(
     };
     match crate::elcomplete::classify(input.clauses) {
         None => Ok(None), // not EL ⇒ exit-3 equivalent, fall through
-        Some(res) => {
+        Some(mut res) => {
+            let worker_model_payload = res
+                .exported_model
+                .take()
+                .map(|m| Arc::new(model_export::WorkerModelPayload::El(m)));
             let out = EngineOut {
                 subsumptions: res.subsumptions,
                 compact_subsumptions: None,
@@ -1376,6 +1516,8 @@ fn try_inproc_elc(
                 dropped: 0,
                 unresolved: res.unresolved,
                 pair_form: false,
+                worker_model_path: None,
+                worker_model_payload,
             };
             if out.unresolved.is_empty() {
                 Ok(Some(out))
@@ -1573,7 +1715,10 @@ impl serde::Serialize for JsonClassificationEncoding<'_> {
             }
         }
 
-        let extra = usize::from(self.graph_edges) + usize::from(self.result.classification.approximate.is_some());
+        let notes = crate::frontend::lenient::published_notes();
+        let extra = usize::from(self.graph_edges)
+            + usize::from(self.result.classification.approximate.is_some())
+            + usize::from(!notes.is_empty());
         let mut state = serializer.serialize_struct("Classification", 4 + extra)?;
         state.serialize_field("consistent", &self.result.classification.consistent)?;
         if let Some(grouped) = &self.result.grouped_subsumptions {
@@ -1585,6 +1730,9 @@ impl serde::Serialize for JsonClassificationEncoding<'_> {
         state.serialize_field("dropped", &self.result.classification.dropped)?;
         if let Some(reason) = &self.result.classification.approximate {
             state.serialize_field("approximate", reason)?;
+        }
+        if !notes.is_empty() {
+            state.serialize_field("lenient", &notes)?;
         }
         if self.graph_edges {
             state.serialize_field("subsumptions_are_graph_edges", &true)?;
@@ -1681,6 +1829,15 @@ fn timing_mark(label: &str) {
 fn validate_user_input(ont: &Path) -> Result<(), OrchestrateError> {
     let prepared = input::prepare(ont)?;
     let source = std::fs::read_to_string(prepared.path())?;
+    let source = if crate::frontend::lenient::enabled() {
+        let (rewritten, notes) = crate::frontend::lenient::rewrite_source(&source)
+            .map_err(OrchestrateError::from_conformance)?;
+        crate::frontend::lenient::set_published_notes(notes);
+        rewritten
+    } else {
+        crate::frontend::lenient::clear_published_notes();
+        std::borrow::Cow::Borrowed(source.as_str())
+    };
     // has_imports, check_source, check_iri_prefixes, check_declarations: same
     // order and messages, one shared parse (see check_user_source).
     match crate::frontend::conformance::check_user_source(&source) {
@@ -1853,6 +2010,39 @@ fn approximation_reason(
     format!("route `{route}` drops {list}")
 }
 
+/// The publication counters of the last frontend run (the thread-locals
+/// above), saved before a speculative attempt and restored when it declines,
+/// so that an abandoned attempt's frontend run (for example the object guard
+/// rewrite, which does not represent a `SameIndividual`) never counts against
+/// the answer of the route that publishes.
+struct PublicationCounters {
+    uncarried: u64,
+    dropped: u64,
+    detail: BTreeMap<String, u64>,
+    approximations: BTreeMap<String, u64>,
+    rules: u64,
+}
+
+impl PublicationCounters {
+    fn capture() -> Self {
+        PublicationCounters {
+            uncarried: UNCARRIED_DATA_ASSERTIONS.with(|u| u.get()),
+            dropped: DROPPED_SOURCE_AXIOMS.with(|u| u.get()),
+            detail: DROPPED_SOURCE_DETAIL.with(|d| d.borrow().clone()),
+            approximations: ROUTE_APPROXIMATIONS.with(|d| d.borrow().clone()),
+            rules: RULES_OUTSIDE_TAXONOMY.with(|u| u.get()),
+        }
+    }
+
+    fn restore(self) {
+        UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(self.uncarried));
+        DROPPED_SOURCE_AXIOMS.with(|u| u.set(self.dropped));
+        DROPPED_SOURCE_DETAIL.with(|d| *d.borrow_mut() = self.detail);
+        ROUTE_APPROXIMATIONS.with(|d| *d.borrow_mut() = self.approximations);
+        RULES_OUTSIDE_TAXONOMY.with(|u| u.set(self.rules));
+    }
+}
+
 fn classify_with_evidence_mode(
     initial_cfg: &Config,
     ont: &Path,
@@ -1871,6 +2061,11 @@ fn classify_with_evidence_mode(
     // KM_ROUTE. Only the outermost call can be forced.
     let forced_route = if depth == 0 { forced_route_request() } else { None };
     let mut result = classify_with_evidence_inner(initial_cfg, ont, retain_grouped_output);
+    // Any race inside the completed (or declined) inner classification has
+    // already joined its worker threads. Clear the global cancel flag so an
+    // outer classification that falls through after a declined probe can spawn
+    // its own workers.
+    engine_run::reset_cancel();
     CLASSIFY_DEPTH.with(|d| d.set(depth));
     if depth == 0
         && forced_route.is_none()
@@ -1922,6 +2117,21 @@ fn classify_with_evidence_mode(
                         evidence.classification.approximate = Some(reason);
                     }
                 }
+            } else {
+                evidence.classification.subsumptions.clear();
+                evidence.grouped_subsumptions = None;
+                if let Ok(classes) = inconsistent_unsatisfiable_classes(ont) {
+                    evidence.classification.unsatisfiable = classes;
+                }
+            }
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                if !evidence.classification.consistent {
+                    model_export::record_inconsistent();
+                } else if evidence.classification.dropped > 0 {
+                    model_export::record_declined(
+                        "source ontology has dropped or uncarried axioms".into(),
+                    );
+                }
             }
         }
         // A one-sorted clause stream on an input with a TBox nominal and data
@@ -1945,8 +2155,64 @@ fn classify_with_evidence_mode(
                 evidence.classification.approximate = Some(reason);
             }
         }
+        if !crate::frontend::lenient::enabled() {
+            crate::frontend::lenient::clear_published_notes();
+        } else if let Ok(evidence) = &mut result {
+            unescape_classification_evidence(evidence);
+        }
     }
     result
+}
+
+fn unescape_classification_evidence(evidence: &mut ClassificationEvidence) {
+    use crate::frontend::lenient::{has_escaped_iri, unescape_iri};
+    let has_escaped = evidence
+        .classification
+        .unsatisfiable
+        .iter()
+        .any(|u| has_escaped_iri(u))
+        || evidence
+            .classification
+            .subsumptions
+            .iter()
+            .any(|[a, b]| has_escaped_iri(a) || has_escaped_iri(b))
+        || evidence
+            .grouped_subsumptions
+            .as_ref()
+            .is_some_and(|g| g.iris.iter().any(|i| has_escaped_iri(i)));
+    if !has_escaped {
+        return;
+    }
+    if let Some(grouped) = evidence.grouped_subsumptions.take() {
+        let mut pairs = Vec::new();
+        let _ = grouped.try_for_each_pair(false, |s, o| {
+            let us = unescape_iri(s).into_owned();
+            let uo = unescape_iri(o).into_owned();
+            if us != uo {
+                pairs.push([us, uo]);
+            }
+            Ok::<(), std::convert::Infallible>(())
+        });
+        evidence.classification.subsumptions = pairs;
+    } else {
+        for [a, b] in &mut evidence.classification.subsumptions {
+            if has_escaped_iri(a) {
+                *a = unescape_iri(a).into_owned();
+            }
+            if has_escaped_iri(b) {
+                *b = unescape_iri(b).into_owned();
+            }
+        }
+    }
+    evidence.classification.subsumptions.sort_unstable();
+    evidence.classification.subsumptions.dedup();
+    for u in &mut evidence.classification.unsatisfiable {
+        if has_escaped_iri(u) {
+            *u = unescape_iri(u).into_owned();
+        }
+    }
+    evidence.classification.unsatisfiable.sort_unstable();
+    evidence.classification.unsatisfiable.dedup();
 }
 
 fn classify_with_evidence_inner(
@@ -1966,6 +2232,31 @@ fn classify_with_evidence_inner(
     {
         let prepared_input = input::prepare_for_reasoning(ont)?;
         let source = std::fs::read_to_string(prepared_input.path())?;
+        if !is_trusted_rewrite(ont) && crate::frontend::lenient::enabled() {
+            let (rewritten_text, notes) = crate::frontend::lenient::rewrite_source(&source)
+                .map_err(OrchestrateError::from_conformance)?;
+            crate::frontend::lenient::record_published_notes(notes);
+            if let std::borrow::Cow::Owned(rewritten_text) = rewritten_text {
+                if crate::frontend::conformance::has_imports(&rewritten_text)
+                    .map_err(OrchestrateError::from_conformance)?
+                {
+                    return Err(OrchestrateError::OutOfFragment(
+                        "cannot validate or reason over unresolved owl:imports; provide a self-contained ontology with its complete import closure".into(),
+                    ));
+                }
+                crate::frontend::conformance::check_source(&rewritten_text)
+                    .map_err(OrchestrateError::from_conformance)?;
+                let rewritten = tmpfile::TempPath::new("-lenient.ofn");
+                std::fs::write(rewritten.path(), rewritten_text)?;
+                let _trusted = TrustedRewrite::register(rewritten.path());
+                timing_mark("lenient source rewritten");
+                return classify_with_evidence_mode(
+                    initial_cfg,
+                    rewritten.path(),
+                    retain_grouped_output,
+                );
+            }
+        }
         if is_trusted_rewrite(ont) {
             timing_mark("trusted rewrite: source re-validation skipped");
         } else {
@@ -2003,7 +2294,51 @@ fn classify_with_evidence_inner(
             std::fs::write(rewritten.path(), keyed)?;
             let _trusted = TrustedRewrite::register(rewritten.path());
             timing_mark("keys rewritten as DL-safe rules");
-            return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
+            let export_was_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+            if export_was_active {
+                std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+            }
+            let res = classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
+            if export_was_active {
+                std::env::set_var("KM_EXPORT_MODEL_ACTIVE", "1");
+                if let Ok(ref ev) = res {
+                    if !ev.classification.consistent {
+                        model_export::record_inconsistent();
+                    } else {
+                        model_export::record_declined("HasKey axioms are outside the model export fragment".into());
+                    }
+                }
+            }
+            return res;
+        }
+        // W8: a lone data variable of a rule body is a data restriction
+        // (`frontend::rule_data_atoms`), rewritten before the rule gates too.
+        if let std::borrow::Cow::Owned(rules) = crate::frontend::rule_data_atoms::encode(&source)
+            .map_err(OrchestrateError::OutOfFragment)?
+        {
+            let rewritten = tmpfile::TempPath::new("-rule-data-atoms.ofn");
+            std::fs::write(rewritten.path(), rules)?;
+            let _trusted = TrustedRewrite::register(rewritten.path());
+            timing_mark("rule data variables rewritten as data restrictions");
+            let export_was_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+            if export_was_active {
+                std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+            }
+            let mut evidence = classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output)?;
+            if export_was_active {
+                std::env::set_var("KM_EXPORT_MODEL_ACTIVE", "1");
+                if !evidence.classification.consistent {
+                    model_export::record_inconsistent();
+                } else {
+                    model_export::record_declined("DL-safe SWRL rules are outside the model export fragment".into());
+                }
+            }
+            let fresh = |name: &str| name.starts_with(crate::frontend::rule_data_atoms::NAMESPACE);
+            evidence.classification.subsumptions.retain(|[a, b]| !fresh(a) && !fresh(b));
+            evidence.classification.unsatisfiable.retain(|a| !fresh(a));
+            // The grouped form would still name the fresh classes.
+            evidence.grouped_subsumptions = None;
+            return Ok(evidence);
         }
     }
     timing_mark("second source check done");
@@ -2024,26 +2359,37 @@ fn classify_with_evidence_inner(
             return Err(OrchestrateError::OutOfFragment(
                 "ground-rule source cannot bypass requested runtime certification".into()));
         }
-        let source = std::fs::read_to_string(ont)?;
-        let grounded = if project_data_abox {
-            crate::frontend::data_abox_projection::project(&source)
-                .map(|text| crate::frontend::ground_rule_source::GroundedRuleSource {
-                    text,
-                    source_rules: 0, instances: 0, private_classes: Default::default(),
-                })
-                .map_err(OrchestrateError::OutOfFragment)?
+        let grounded = if let Some(cached) = data_source::take_cached_grounded(ont, project_data_abox) {
+            cached
         } else {
-            crate::frontend::ground_rule_source::compile(&source, 100_000)
-                .map_err(OrchestrateError::OutOfFragment)?
+            let source = std::fs::read_to_string(ont)?;
+            if project_data_abox {
+                crate::frontend::data_abox_projection::project(&source)
+                    .map(|text| crate::frontend::ground_rule_source::GroundedRuleSource {
+                        text,
+                        source_rules: 0, instances: 0, private_classes: Default::default(),
+                    })
+                    .map_err(OrchestrateError::OutOfFragment)?
+            } else {
+                crate::frontend::ground_rule_source::compile(&source, 100_000)
+                    .map_err(OrchestrateError::OutOfFragment)?
+            }
         };
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!("KM_TIMING ground-rule source: rules={} instances={}",
                 grounded.source_rules, grounded.instances);
         }
+        let decline_rules = !project_data_abox
+            && grounded.source_rules > 0
+            && std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+        if decline_rules {
+            std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+        }
         // Reparse the transformed source, including its generated assertions,
         // under the ordinary ABox coverage checks. No original counts are forged.
         let input = tmpfile::TempPath::new("-ground-rules.ofn");
         std::fs::write(input.path(), grounded.text)?;
+        let _trusted = TrustedRewrite::register(input.path());
         std::env::remove_var("KM_GROUND_RULE_SOURCE");
         std::env::remove_var("KM_DATA_ABOX_PROJECT");
         crate::routing::Route::HtBridge.apply_environment();
@@ -2060,12 +2406,36 @@ fn classify_with_evidence_inner(
         std::fs::write(private_file.path(), serde_json::to_vec(&grounded.private_classes)
             .map_err(|e| OrchestrateError::OutOfFragment(e.to_string()))?)?;
         std::env::set_var("KM_GROUND_PRIVATE_CLASS_FILE", private_file.path());
+        if grounded.source_rules > 0 {
+            std::env::set_var("KM_GROUND_RULE_HAS_RULES", "1");
+        } else {
+            std::env::remove_var("KM_GROUND_RULE_HAS_RULES");
+        }
         // Consistency of the complete compiled ABox needs the benchmark's
         // native budget; the external supervisor still enforces its wall cap.
         std::env::set_var("KM_BRIDGE_PROBE_BUDGET_S", "180");
-        let mut evidence = classify_with_evidence_mode(&Config::from_env(), input.path(), false)?;
+        let counters = PublicationCounters::capture();
+        let mut evidence = match classify_with_evidence_mode(&Config::from_env(), input.path(), false) {
+            Ok(evidence) => evidence,
+            Err(_) if grounded.source_rules > 0
+                && std::env::var_os("KM_NO_BRIDGE_OBJECT_GUARD").is_none()
+                && std::env::var_os(crate::frontend::object_guard::ENV).is_none() =>
+            {
+                counters.restore();
+                std::env::set_var(crate::frontend::object_guard::ENV, "1");
+                classify_with_evidence_mode(&Config::from_env(), input.path(), false)?
+            }
+            Err(error) => return Err(error),
+        };
         if evidence.classification.dropped != 0 {
             return Err(OrchestrateError::OutOfFragment("ground-rule native bridge omitted axioms".into()));
+        }
+        if decline_rules {
+            if !evidence.classification.consistent {
+                model_export::record_inconsistent();
+            } else {
+                model_export::record_declined("DL-safe SWRL rules are outside the model export fragment".into());
+            }
         }
         evidence.classification.subsumptions.retain(|[a,b]|
             !grounded.private_classes.contains(a) && !grounded.private_classes.contains(b));
@@ -2080,10 +2450,76 @@ fn classify_with_evidence_inner(
         && !reference_force_enabled()
         && !crate::tableau::ht_lean_certification_requested()
     {
-        if let Some(mode) = data_source::automatic_candidate(ont)? {
+        let candidate = data_source::automatic_candidate(ont)?;
+        // A rule ontology under a certificate request takes the certified
+        // rules route (`ht_rules` and its certificate) first, as at v1.6.5;
+        // the ground-rule reduction answers only when that route declines.
+        let ground_rules = candidate == Some("KM_GROUND_RULE_SOURCE")
+            && data_source::cached_grounded_has_rules(ont);
+        let rules_first = ground_rules && rules_route_first_requested(|key| std::env::var_os(key));
+        let mut rules_event_recorded = false;
+        let candidate = if rules_first && std::env::var_os(GROUND_RULE_SOURCE_DEFERRED_ENV).is_some() {
+            // The nested classification below: skip the reduction here.
+            None
+        } else if rules_first {
+            let counters = PublicationCounters::capture();
+            let budget = rules_first_budget();
+            let attempt = || {
+                let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                std::env::set_var(GROUND_RULE_SOURCE_DEFERRED_ENV, "1");
+                classify_with_evidence_mode(initial_cfg, ont, retain_grouped_output)
+            };
+            let (rules_route, expired) = match budget {
+                Some(budget) => attempt_budget::run(budget, attempt),
+                None => (attempt(), false),
+            };
+            // Past its budget the attempt's workers were killed, so whatever
+            // it returned is a decline of the certified route. A rejection
+            // recorded on the way still fails the run: the checker log keeps
+            // it and `finish_classify` publishes nothing.
+            let rules_route = match rules_route {
+                Err(_) if expired && !crate::lean_checkers::rejected_in_process() => {
+                    Err(OrchestrateError::WorkerTimeout {
+                        bin: format!("rules route ({}s budget)", budget.map_or(0, |b| b.as_secs())),
+                        stderr: String::new(),
+                    })
+                }
+                other => other,
+            };
+            match rules_route {
+                Ok(evidence) => return Ok(evidence),
+                // A decline or a worker past its time or memory limit: the
+                // schedule cannot answer. A failed or rejected worker can.
+                Err(error @ (OrchestrateError::OutOfFragment(_)
+                    | OrchestrateError::WorkerTimeout { .. }
+                    | OrchestrateError::WorkerMemoryLimit { .. })) => {
+                    counters.restore();
+                    let reason = match &error {
+                        OrchestrateError::OutOfFragment(reason) => reason.clone(),
+                        OrchestrateError::WorkerTimeout { bin, .. } => format!("worker {bin} exceeded its time limit"),
+                        OrchestrateError::WorkerMemoryLimit { bin, .. } => format!("worker {bin} exceeded its RSS limit"),
+                        _ => unreachable!(),
+                    };
+                    let detail = format!(
+                        "the rules route declined ({reason}); the ground-rule bridge answer has no rules certificate"
+                    );
+                    crate::lean_checkers::record_cannot_check("rules", "ground-rule-source", &detail);
+                    rules_event_recorded = true;
+                    if std::env::var_os("KM_TIMING").is_some() || !crate::lean_checkers::active() {
+                        eprintln!("KM rules route: {detail}");
+                    }
+                    candidate
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            candidate
+        };
+        if let Some(mode) = candidate {
             if std::env::var_os("KM_TIMING").is_some() {
                 eprintln!("KM_TIMING automatic data source attempt: {mode}");
             }
+            let counters = PublicationCounters::capture();
             let attempt = {
                 let _probe_environment = crate::routing::EnvironmentGuard::capture();
                 if mode == "native" {
@@ -2100,9 +2536,20 @@ fn classify_with_evidence_inner(
                     if std::env::var_os("KM_TIMING").is_some() {
                         eprintln!("KM_TIMING automatic data source accepted: {mode}");
                     }
+                    // Under KM_LEAN_CHECKERS the rule ontology's answer comes
+                    // from the reduction, which has no checker: say so.
+                    if ground_rules && !rules_event_recorded && crate::lean_checkers::active() {
+                        crate::lean_checkers::record_cannot_check(
+                            "rules",
+                            "ground-rule-source",
+                            "the ground-rule bridge answer has no rules certificate (KM_LEAN_CHECKERS \
+                             does not run rules-cert-check; request it with KM_RULES_LEAN_CERT)",
+                        );
+                    }
                     return Ok(evidence);
                 }
                 Err(error) => {
+                    counters.restore();
                     if std::env::var_os("KM_TIMING").is_some() {
                         eprintln!("KM_TIMING automatic data source declined ({mode}): {error}");
                     }
@@ -2175,6 +2622,7 @@ fn classify_with_evidence_inner(
                     return Ok(evidence);
                 }
             }
+            model_export::clear_positive_abox_quotient();
             if timing {
                 eprintln!(
                     "KM_TIMING positive ABox quotient declined @ {:.2}s",
@@ -2247,6 +2695,7 @@ fn classify_with_evidence_inner(
                         let probe = {
                             let _trusted = TrustedRewrite::register(data_free.path());
                             let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                            std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
                             let _deadline = BridgeAttemptDeadline::install(budget);
                             std::env::set_var("KM_ABOX_QUOTIENT_ACTIVE", "1");
                             crate::routing::Route::HtBridge.apply_environment();
@@ -2327,7 +2776,11 @@ fn classify_with_evidence_inner(
             }
             if let (Ok(evidence), Some(tbox)) = (&attempt, &quotient.tbox) {
                 if certified(evidence) {
-                    let agrees = match run(tbox.path(), false) {
+                    let agrees = match {
+                        let _probe_environment = crate::routing::EnvironmentGuard::capture();
+                        std::env::remove_var("KM_EXPORT_MODEL_ACTIVE");
+                        run(tbox.path(), false)
+                    } {
                         Ok(lower) => {
                             certified(&lower)
                                 && abox_quotient::same_taxonomy(
@@ -2361,6 +2814,7 @@ fn classify_with_evidence_inner(
                     return Ok(evidence);
                 }
                 _ => {
+                    model_export::clear_abox_quotient();
                     if timing {
                         eprintln!(
                             "KM_TIMING ABox quotient declined @ {:.2}s",
@@ -2423,8 +2877,13 @@ fn classify_with_evidence_inner(
             });
         }
     }
-    let (clauses_path, meta, mut cached_input, elc_binary) =
+    let (mut clauses_path, mut meta, mut cached_input, mut elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
+    if let Some(evidence) =
+        finite_cover_evidence(ont, &meta, retain_grouped_output, timing, t_start)?
+    {
+        return Ok(evidence);
+    }
     // Owned here so it is released with this classification on every path.
     let mut positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
     let _public_subject_file = if let Some(path) = std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE") {
@@ -2485,14 +2944,15 @@ fn classify_with_evidence_inner(
             // The projection has no rules, so it cannot recursively select
             // this branch. Preserve the caller's requested output layout.
             let evidence = classify_with_evidence_mode(initial_cfg, projection.path(), retain_grouped_output)?;
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                model_export::record_declined(
+                    "answered via finite-rule class projection route".into(),
+                );
+            }
             return checked_finite_rule_taxonomy(evidence);
         }
     }
-    let elc_input_path = elc_binary
-        .as_ref()
-        .map(|path| path.path())
-        .unwrap_or_else(|| clauses_path.path());
-    let selected_route = meta
+    let mut selected_route = meta
         .route
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
@@ -2519,11 +2979,7 @@ fn classify_with_evidence_inner(
     // attempt first. The bridge is complete-answer-or-defer, so an answer is
     // publishable as is; any decline or budget expiry restores this call's
     // environment and continues with the unchanged schedule below.
-    if automatic_requested
-        && !reference_force_enabled()
-        && !meta.profile.atomic_class_abox_candidate
-        && crate::routing::bounded_bridge_first_candidate(selected_route, &meta.profile)
-    {
+    if bounded_bridge_first_scheduled(automatic_requested, selected_route, &meta.profile) {
         // The historical attempt runs first and unchanged. Only when it
         // declines on a source with data-property assertions does a second,
         // separately bounded attempt carry those assertions to the bridge as
@@ -2580,12 +3036,13 @@ fn classify_with_evidence_inner(
         for (convert_data_assertions, object_guard, budget) in attempts {
             let Some(budget) = budget else { continue };
             let attempt_t0 = std::time::Instant::now();
+            let counters = PublicationCounters::capture();
             let bridge_attempt = {
                 let _probe_environment = crate::routing::EnvironmentGuard::capture();
                 let _deadline = BridgeAttemptDeadline::install(budget);
                 crate::routing::Route::HtBridge.apply_environment();
                 std::env::set_var("KM_ROUTE", crate::routing::Route::HtBridge.as_str());
-                if convert_data_assertions {
+                if convert_data_assertions || meta.uncarried_data_assertions > 0 {
                     std::env::set_var("KM_DATA_ASSERTION_AS_CLASS", "1");
                 }
                 if object_guard {
@@ -2610,6 +3067,7 @@ fn classify_with_evidence_inner(
                     return Ok(evidence);
                 }
                 Err(error) => {
+                    counters.restore();
                     if timing {
                         eprintln!(
                             "KM_TIMING bounded bridge-first{label} declined @ {:.2}s: {error}",
@@ -2639,7 +3097,22 @@ fn classify_with_evidence_inner(
                 }
             }
         }
+        if meta.named.is_empty() && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
+        {
+            std::env::set_var("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT", "1");
+            let full_res = frontend_run::run_ofn_split_cached(initial_cfg, ont);
+            std::env::remove_var("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT");
+            (clauses_path, meta, cached_input, elc_binary) = full_res?;
+            positive_el_input = frontend_run::take_positive_el_input(clauses_path.path());
+            selected_route = meta.route.parse::<crate::routing::Route>().map_err(|error| {
+                OrchestrateError::OutOfFragment(format!("configuration: {error}"))
+            })?;
+        }
     }
+    let elc_input_path = elc_binary
+        .as_ref()
+        .map(|path| path.path())
+        .unwrap_or_else(|| clauses_path.path());
 
     // Compact expressive object-ABoxes benefit from the exact typed bridge,
     // whose source-definition hierarchy can reuse negative witnesses across
@@ -2738,6 +3211,7 @@ fn classify_with_evidence_inner(
         )
         && crate::routing::certified_nominal_general_ht_probe_candidate(&meta.profile)
     {
+        let counters = PublicationCounters::capture();
         let ht_attempt = {
             let _probe_environment = crate::routing::EnvironmentGuard::capture();
             crate::routing::Route::HtGeneral.apply_environment();
@@ -2762,6 +3236,7 @@ fn classify_with_evidence_inner(
                 return Ok(evidence);
             }
             Err(error) => {
+                counters.restore();
                 if std::env::var_os("KM_NOMINAL_HT_PROBE_TRACE").is_some() {
                     eprintln!("KM_NOMINAL_HT_PROBE result=declined error={error}");
                 }
@@ -3124,12 +3599,14 @@ fn classify_with_evidence_inner(
                 cfg.elc && meta.el_rbox_safe && elc_source_publication_safe(&meta.profile)
             }
             Mechanism::Ht => {
-                matches!(
+                (matches!(
                     selected_route,
                     crate::routing::Route::HtShoq
                         | crate::routing::Route::HtGeneral
                         | crate::routing::Route::HtBridge
-                ) && std::env::var_os("KM_NO_INPROC_HT").is_none()
+                ) || (selected_route == crate::routing::Route::Manual
+                    && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge")))
+                    && std::env::var_os("KM_NO_INPROC_HT").is_none()
             }
             Mechanism::Cb | Mechanism::Tableau | Mechanism::Unknown(_) => false,
         };
@@ -3231,8 +3708,12 @@ fn classify_with_evidence_inner(
             Some(result) => {
                 consistency_certified = true;
                 if selected_route == crate::routing::Route::Elc {
-                    if let Some(classification) = result.classification {
+                    if let Some(mut classification) = result.classification {
                         if classification.unresolved.is_empty() {
+                            let worker_model_payload = classification
+                                .exported_model
+                                .take()
+                                .map(|m| Arc::new(model_export::WorkerModelPayload::El(m)));
                             certified_el_out = Some(EngineOut {
                                 subsumptions: classification.subsumptions,
                                 compact_subsumptions: classification.compact,
@@ -3240,6 +3721,8 @@ fn classify_with_evidence_inner(
                                 dropped: 0,
                                 unresolved: Vec::new(),
                                 pair_form: false,
+                                worker_model_path: None,
+                                worker_model_payload,
                             });
                         }
                     }
@@ -3365,6 +3848,15 @@ fn classify_with_evidence_inner(
                     taxonomy.expect("checked by the guard"),
                     &meta,
                 );
+                if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                    if !classification.consistent {
+                        model_export::record_inconsistent();
+                    } else {
+                        model_export::record_declined(
+                            "answered via DL-safe rules taxonomy route".into(),
+                        );
+                    }
+                }
                 if timing {
                     eprintln!(
                         "KM_TIMING rules-consistency rule-aware taxonomy done @ {:.2}s subsumptions={} unsatisfiable={}",
@@ -3454,6 +3946,7 @@ fn classify_with_evidence_inner(
     // let the faster incomplete certify win). On a CB-timeout ont (7581) CB never
     // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
     let ht_mode: &str = cfg.ht_mode.as_str();
+    engine_run::reset_cancel();
     let atomic_attempt = if matches!(cfg.mechanism, Mechanism::Elc) && !reference_force_enabled() {
         certified_el_out
             .take()
@@ -3524,6 +4017,7 @@ fn classify_with_evidence_inner(
             out
         }
         None => {
+            engine_run::reset_cancel();
             if reference_force_enabled() {
                 return Err(OrchestrateError::OutOfFragment(
                     "KM_REFERENCE_FORCE=1".into(),
@@ -3582,6 +4076,7 @@ fn classify_with_evidence_inner(
                     );
                 }
             }
+            drop(cached_input.take());
 
             if cfg.elc
                 && out.is_none()
@@ -3680,6 +4175,11 @@ fn classify_with_evidence_inner(
                     .ok()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(4.0);
+                let cb_only_ok = meta.profile.source.logical_axioms <= 1_500
+                    && !matches!(
+                        selected_route,
+                        crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
+                    );
                 // The race below runs an HT-first phase only with cfg.ht_race.
                 let spawn_probe = || {
                     race::HtFirstProbe::spawn(cfg, clauses_path.path(), &named_set, ht_mode)
@@ -3690,6 +4190,7 @@ fn classify_with_evidence_inner(
                     std::time::Duration::from_secs_f64(budget_s),
                     cfg.ht_race
                         .then_some(&spawn_probe as &dyn Fn() -> Option<race::HtFirstProbe>),
+                    cb_only_ok,
                 )?;
                 drop(released);
                 if timing && out.is_some() {
@@ -3773,6 +4274,10 @@ fn classify_with_evidence_inner(
     }
     if deferred_rule_taxonomy && !out.inconsistent {
         out = complete_rule_taxonomy(cfg, clauses_path.path(), &meta, out)?;
+        out.worker_model_path = None;
+        out.worker_model_payload = Some(Arc::new(model_export::WorkerModelPayload::Declined(
+            "answered via hybrid CB + DL-safe rules taxonomy route".into(),
+        )));
         if timing {
             eprintln!(
                 "KM_TIMING rules-consistency rule-aware taxonomy completed after CB @ {:.2}s",
@@ -3800,6 +4305,185 @@ fn classify_with_evidence_inner(
         consistency_certified,
         timing,
     )
+}
+
+/// Whether the finite-cover route may answer: not under a route the caller
+/// forced at start-up (`KM_ROUTE` other than `auto`), and not when
+/// `KM_NO_FINITE_COVER` is set. Read once.
+fn finite_cover_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        std::env::var_os("KM_NO_FINITE_COVER").is_none()
+            && match std::env::var("KM_ROUTE") {
+                Err(_) => true,
+                Ok(route) => route.is_empty() || route == "auto",
+            }
+    })
+}
+
+/// Whether this run must produce certificates or an exported model, which
+/// the finite-cover route does not emit; the route then declines and a
+/// certifying route answers. Certificates are consumed under
+/// `KM_LEAN_CHECKERS` (`lean_checkers::active`), `KM_REQUIRE_LEAN_CHECKERS`,
+/// certified CB (`KM_CB_LEAN_REQUIRED`, `KM_CB_CERT_BUNDLE`), and a model under
+/// `--export-model` (`KM_EXPORT_MODEL_ACTIVE` without the realization's own
+/// ABox-only capture `KM_EXPORT_ABOX_ONLY`, after which realization runs its
+/// exact probe path when no model is recorded).
+/// Wall-clock budget of the rules-first attempt (`KM_RULES_FIRST_BUDGET_S`,
+/// default 30 s, `0` for none). Past it the ground-rule reduction answers,
+/// so a certificate request makes a run at most this much slower than the
+/// default schedule (plus the reduction's own time). The rules route answers
+/// the gate fixtures and ore_ont_7278 within a few seconds; on ore_ont_2526,
+/// 6615 and 15063 its CB taxonomy worker ran to the RSS limit (54 s) or past
+/// 240 s where the reduction answers in about a second.
+const RULES_FIRST_BUDGET_S: u64 = 30;
+
+fn rules_first_budget() -> Option<std::time::Duration> {
+    let seconds = std::env::var("KM_RULES_FIRST_BUDGET_S")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(RULES_FIRST_BUDGET_S);
+    (seconds > 0).then(|| std::time::Duration::from_secs(seconds))
+}
+
+/// Set by the rules-first schedule for its nested classification, which
+/// must not try the ground-rule reduction again.
+const GROUND_RULE_SOURCE_DEFERRED_ENV: &str = "KM_GROUND_RULE_SOURCE_DEFERRED";
+
+/// Whether a rule ontology takes the certified rules route before the
+/// ground-rule reduction (docs/V1.7.0-RULES-SHOIQ.md): only when a rules
+/// certificate is requested explicitly (`KM_RULES_LEAN_CERT`,
+/// `KM_RULES_LEAN_CHECKER`, `KM_RULES_INERT_CERT`,
+/// `KM_RULES_INERT_LEAN_CHECKER`) or with `KM_RULES_ROUTE_FIRST=1`. The
+/// general certificate modes (`KM_LEAN_CHECKERS` and the others of
+/// [`finite_cover_certificate_mode`]) write no rules certificate, so there
+/// the attempt would only cost time; they keep the reduction, which records
+/// its `cannot_check` event. An HT certificate request skips the reduction
+/// altogether (see the caller).
+fn rules_route_first_requested(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    let set = |key: &str| env(key).is_some_and(|v| !v.is_empty());
+    set("KM_RULES_LEAN_CERT")
+        || set("KM_RULES_LEAN_CHECKER")
+        || set("KM_RULES_INERT_CERT")
+        || set("KM_RULES_INERT_LEAN_CHECKER")
+        || env("KM_RULES_ROUTE_FIRST").is_some_and(|v| v != "0")
+}
+
+fn finite_cover_certificate_mode(env: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    let set = |key: &str| env(key).is_some_and(|v| !v.is_empty());
+    set(crate::lean_checkers::DIR_ENV)
+        || set("KM_REQUIRE_LEAN_CHECKERS")
+        || set("KM_CB_LEAN_REQUIRED")
+        || set("KM_CB_CERT_BUNDLE")
+        || (set("KM_EXPORT_MODEL_ACTIVE") && !set("KM_EXPORT_ABOX_ONLY"))
+}
+
+/// The finite-cover route (docs/V1.7.0-NOMINAL-COVER.md): an ontology with
+/// `⊤ ⊑ {o1, …, ok}`, k ≤ 4, is classified by search over its finite
+/// interpretations (`finite_cover::classify_cover`). Runs once per outermost
+/// classification, before every other route; `None` when it declines.
+fn finite_cover_evidence(
+    ont: &Path,
+    meta: &frontend_run::Meta,
+    retain_grouped_output: bool,
+    timing: bool,
+    t_start: std::time::Instant,
+) -> Result<Option<ClassificationEvidence>, OrchestrateError> {
+    // Syntactic gate first: the frontend's source profile counts the cover
+    // axioms in its single streaming pass, so an input without a cover costs
+    // one integer test here and is never read again.
+    if meta.profile.source.top_nominal_covers == 0
+        || !finite_cover_enabled()
+        || finite_cover_certificate_mode(|key| std::env::var_os(key))
+        || reference_force_enabled()
+        || CLASSIFY_DEPTH.with(|d| d.get()) != 1
+        || !meta.dropped_source_axioms.is_empty()
+        || meta.uncarried_data_assertions > 0
+        || !meta.data_roles.is_empty()
+    {
+        return Ok(None);
+    }
+    let _ = meta;
+    let text = {
+        let prepared = input::prepare_for_reasoning(ont)?;
+        std::fs::read_to_string(prepared.path())?
+    };
+    if !text.contains("ObjectOneOf") {
+        return Ok(None);
+    }
+    let answer = match finite_cover::classify_cover(&text) {
+        Ok(answer) => answer,
+        Err(reason) => {
+            if timing {
+                eprintln!("KM_TIMING finite cover declined: {}", reason.0);
+            }
+            return Ok(None);
+        }
+    };
+    if timing {
+        eprintln!(
+            "KM_TIMING finite cover answered @ {:.2}s (consistent={}, classes={}, partitions={}, solves={})",
+            t_start.elapsed().as_secs_f64(),
+            answer.consistent,
+            answer.supers.len(),
+            answer.partitions,
+            answer.solves,
+        );
+    }
+    let export = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+    if !answer.consistent {
+        if export {
+            model_export::record_inconsistent();
+        }
+        return Ok(Some(ClassificationEvidence {
+            classification: Classification {
+                approximate: None,
+                consistent: false,
+                subsumptions: vec![],
+                unsatisfiable: vec![],
+                dropped: 0,
+            },
+            grouped_subsumptions: None,
+            consistency_certified: true,
+        }));
+    }
+    // The publication convention of `map_engine_out_to_evidence`: rows by
+    // full IRI, no self rows, unsatisfiable classes listed (not their rows).
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut unsat: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (class, supers) in answer.supers {
+        match supers {
+            None => {
+                unsat.insert(class);
+            }
+            Some(supers) => {
+                let row: Vec<String> = supers.into_iter().filter(|s| *s != class).collect();
+                if !row.is_empty() {
+                    grouped.entry(class).or_default().extend(row);
+                }
+            }
+        }
+    }
+    for row in grouped.values_mut() {
+        row.sort_unstable();
+        row.dedup();
+    }
+    if export {
+        model_export::record_declined("the finite-cover route exports no model".into());
+    }
+    let _ = retain_grouped_output;
+    timing_mark("output mapping done");
+    Ok(Some(ClassificationEvidence {
+        classification: Classification {
+            approximate: None,
+            consistent: true,
+            subsumptions: flatten_grouped_subsumptions(grouped),
+            unsatisfiable: unsat.into_iter().collect(),
+            dropped: 0,
+        },
+        grouped_subsumptions: None,
+        consistency_certified: true,
+    }))
 }
 
 fn map_engine_out_to_evidence(
@@ -3999,6 +4683,9 @@ fn map_engine_out_to_evidence(
         }
     }
     if projected_abox_inconsistent || unsat_asserted {
+        if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+            model_export::record_inconsistent();
+        }
         return Ok(ClassificationEvidence {
             classification: Classification {
                 approximate: None,
@@ -4011,7 +4698,9 @@ fn map_engine_out_to_evidence(
             consistency_certified: consistency_certified || out.dropped == 0,
         });
     }
-    let (subs, grouped_subsumptions) = if retain_grouped_output {
+    let (subs, grouped_subsumptions) = if out.inconsistent {
+        (Vec::new(), None)
+    } else if retain_grouped_output {
         (
             Vec::new(),
             Some(
@@ -4023,7 +4712,21 @@ fn map_engine_out_to_evidence(
     } else {
         (flatten_grouped_subsumptions(grouped_subs), None)
     };
-    let unsat = unsat_set.into_iter().collect();
+    let unsat: Vec<String> = unsat_set.into_iter().collect();
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        if out.inconsistent {
+            model_export::record_inconsistent();
+        } else if out.dropped > 0 {
+            model_export::record_declined("source ontology has dropped or uncarried axioms".into());
+        } else {
+            model_export::record_engine_out(
+                meta.clone(),
+                out.worker_model_path.take(),
+                out.worker_model_payload.take(),
+                &unsat,
+            );
+        }
+    }
     timing_mark("output mapping done");
     Ok(ClassificationEvidence {
         classification: Classification {
@@ -4333,6 +5036,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_satisfiable_rows_match_dense_derivation() {
+        let _test_env = crate::test_env::write();
         let got = check_against_dense(
             &["A", "B", "C"],
             &[
@@ -4349,6 +5053,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_unsatisfiable_class_matches_dense_derivation() {
+        let _test_env = crate::test_env::write();
         let got = check_against_dense(
             &["A", "B", "U"],
             &[
@@ -4364,6 +5069,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_inconsistent_ontology_matches_dense_derivation() {
+        let _test_env = crate::test_env::write();
         let got = check_against_dense(
             &["A", "B"],
             &[
@@ -4379,6 +5085,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_rejects_unknown_format() {
+        let _test_env = crate::test_env::write();
         let (real, full) = names(&["A"]);
         let mut v: serde_json::Value =
             serde_json::from_slice(&sparse_json(&full, &[("A", false, &[]), (PA, false, &[]), (PB, true, &[])]))
@@ -4398,6 +5105,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_rejects_rows_out_of_order() {
+        let _test_env = crate::test_env::write();
         let (real, full) = names(&["A", "B"]);
         let out = sparse_json(
             &full,
@@ -4409,6 +5117,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_rejects_missing_row_and_named_mismatch() {
+        let _test_env = crate::test_env::write();
         let (real, full) = names(&["A", "B"]);
         let out = sparse_json(&full, &[("A", false, &[]), ("B", false, &[]), (PA, false, &[])]);
         let err = interpret_reference_stage_output(&out, &full, &real, PA, PB).unwrap_err();
@@ -4422,6 +5131,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_rejects_unknown_sup() {
+        let _test_env = crate::test_env::write();
         let (real, full) = names(&["A"]);
         let out = sparse_json(
             &full,
@@ -4433,6 +5143,7 @@ mod reference_stage_tests {
 
     #[test]
     fn checker_failure_reason_prefers_stderr() {
+        let _test_env = crate::test_env::write();
         let reason = reference_checker_failure_reason(
             b"{\"format\":\"sparse-v1\"}\n",
             b"\nio error: broken pipe\n",
@@ -4612,6 +5323,10 @@ fn try_reference_stage(
         dropped: 0,
         unresolved: Vec::new(),
         pair_form: false,
+        worker_model_path: None,
+        worker_model_payload: Some(Arc::new(model_export::WorkerModelPayload::Declined(
+            "answered via reference stage fallback".into(),
+        ))),
     };
     match map_engine_out_to_evidence(engine_out, &meta, retain_grouped_output, true, timing) {
         Ok(evidence) => {
@@ -4943,14 +5658,13 @@ fn rules_consistency(
     }
     use crate::json_io::JInput;
     let classify = request.classify;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
     let _rule_environment = crate::routing::EnvironmentGuard::capture();
     if require_source_model {
         std::env::set_var("KM_TRANSITIVE_RULE_REDUCE", "1");
     }
     let timing = std::env::var_os("KM_TIMING").is_some();
     let started = std::time::Instant::now();
-    let mut input: JInput = serde_json::from_reader(BufReader::new(File::open(clauses_path)?))?;
     // Finite grounding can erase every executable rule when no source data
     // value matches its body. The original-rule/model check is still needed
     // before publishing the class projection in that case.
@@ -4958,6 +5672,16 @@ fn rules_consistency(
     // empty executable rule list must not bypass their named-ABox clash check.
     let normalized_rules = meta.profile.normalized_unary_rules > 0
         || meta.profile.normalized_constant_data_rules > 0;
+    if meta.profile.source.rule_axioms == 0
+        && meta.profile.normalized_finite_data_rules == 0
+        && !normalized_rules
+        && !require_source_model
+    {
+        return Ok(None);
+    }
+    let bytes = std::fs::read(clauses_path)?;
+    let mut input: JInput = serde_json::from_slice(&bytes)?;
+    drop(bytes);
     if input.rules.is_empty() && !normalized_rules && !require_source_model {
         return Ok(None);
     }
@@ -5140,9 +5864,8 @@ fn rules_consistency(
     let out_path = tmpfile::TempPath::new(".rulescons.json");
     // The worker's stderr is kept so that a failure reports its reason.
     let err_path = tmpfile::TempPath::new(".rulescons.err");
-    let mut cmd = Command::new(&tab_prog);
-    cmd.args(&tab_pre)
-        .stdin(Stdio::piped())
+    let mut cmd = engine_run::worker_command(&tab_prog, &tab_pre, None, true);
+    cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path())?)
         .stderr(File::create(err_path.path())?)
         .env("KM_RULES_CONSISTENCY", "1");
@@ -5168,6 +5891,7 @@ fn rules_consistency(
     // order and never the set of matches (docs/DL-SAFE-RULES.md, "One join
     // order for both rule probes").
     cmd.env("KM_RULE_JOIN_ORDER", "1");
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: "tableau".into(),
         source: e,
@@ -5284,6 +6008,10 @@ fn resolve_residue(
         partial.subsumptions.insert(k, v); // dict.update: eng overwrites partial
     }
     partial.inconsistent = partial.inconsistent || eng.inconsistent;
+    partial.worker_model_path = None;
+    partial.worker_model_payload = Some(Arc::new(model_export::WorkerModelPayload::Declined(
+        "answered via hybrid partial-EL + query-restricted CB residue".into(),
+    )));
     Ok(partial)
 }
 
@@ -5330,7 +6058,32 @@ impl Classification {
     /// allocation-returning API and delegates here to pin byte identity.
     pub fn write_json<W: Write>(&self, writer: W) -> serde_json::Result<()> {
         let mut ser = serde_json::Serializer::with_formatter(writer, PyFmt);
-        serde::Serialize::serialize(self, &mut ser)
+        let notes = crate::frontend::lenient::published_notes();
+        if notes.is_empty() {
+            serde::Serialize::serialize(self, &mut ser)
+        } else {
+            #[derive(serde::Serialize)]
+            struct WithLenient<'a> {
+                consistent: bool,
+                subsumptions: &'a [[String; 2]],
+                unsatisfiable: &'a [String],
+                dropped: usize,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                approximate: Option<&'a str>,
+                lenient: &'a [String],
+            }
+            serde::Serialize::serialize(
+                &WithLenient {
+                    consistent: self.consistent,
+                    subsumptions: &self.subsumptions,
+                    unsatisfiable: &self.unsatisfiable,
+                    dropped: self.dropped,
+                    approximate: self.approximate.as_deref(),
+                    lenient: &notes,
+                },
+                &mut ser,
+            )
+        }
     }
 
     /// `json.dumps(res)`-compatible bytes.
@@ -5374,6 +6127,9 @@ impl Classification {
         if let Some(reason) = &self.approximate {
             out.push(format!("APPROXIMATE\t{}", reason.replace(['\t', '\n'], " ")));
         }
+        for note in crate::frontend::lenient::published_notes() {
+            out.push(format!("LENIENT\t{}", note.replace(['\t', '\n'], " ")));
+        }
         for p in &self.subsumptions {
             out.push(format!("SUB\t{}\t{}", p[0], p[1]));
         }
@@ -5388,6 +6144,7 @@ impl Classification {
 mod tests {
     #[test]
     fn coverage_guard_declines_an_answer_without_a_declared_class() {
+        let _test_env = crate::test_env::write();
         // s1966: the elc partial answer had no row for C. Removing a declared
         // class from an otherwise complete worker answer must decline.
         let declared: Vec<String> = ["A", "B", "C"].iter().map(|s| s.to_string()).collect();
@@ -5420,6 +6177,7 @@ mod tests {
 
     #[test]
     fn only_registered_rewrites_skip_revalidation_and_only_while_registered() {
+        let _test_env = crate::test_env::write();
         let user = super::tmpfile::TempPath::new("-user.ofn");
         let rewrite = super::tmpfile::TempPath::new("-rewrite.ofn");
         assert!(!super::is_trusted_rewrite(user.path()));
@@ -5433,6 +6191,7 @@ mod tests {
 
     #[test]
     fn builtin_alias_trusted_input_is_normalized_before_classification_probes() {
+        let _test_env = crate::test_env::write();
         let source = "Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(Declaration(Class(<urn:A>)) Declaration(NamedIndividual(<urn:a>)) SubClassOf(<urn:A> o:Nothing) ClassAssertion(<urn:A> <urn:a>))";
         // Establish the original-source proof before registering the rewrite;
         // no environment marker or user-controlled filename authorizes trust.
@@ -5457,6 +6216,7 @@ mod tests {
 
     #[test]
     fn invalid_user_input_is_still_rejected() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-invalid-user.ofn");
         std::fs::write(file.path(), "Ontology(SubClassOf(<urn:A> ObjectMinCardinality(-1 <urn:r>)))").unwrap();
         let cfg = super::Config::from_env();
@@ -5465,6 +6225,7 @@ mod tests {
 
     #[test]
     fn unvalidated_facet_extension_is_refused_before_classification() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-facet-extension.ofn");
         std::fs::write(file.path(), r#"Ontology(Declaration(DataProperty(<urn:p>))
             DataPropertyRange(<urn:p> DatatypeRestriction(xsd:decimal xsd:totalDigits "2"^^xsd:integer)))"#).unwrap();
@@ -5480,6 +6241,7 @@ mod tests {
 
     #[test]
     fn conformance_pattern_capacity_refusal_is_not_an_invalid_ontology_verdict() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-pattern-capacity.ofn");
         let pattern = format!("{}a{}", "(".repeat(201), ")".repeat(201));
         std::fs::write(file.path(), format!("Ontology(Declaration(DataProperty(<urn:p>)) DataPropertyRange(<urn:p> DatatypeRestriction(xsd:string xsd:pattern \"{pattern}\")))")).unwrap();
@@ -5491,6 +6253,7 @@ mod tests {
 
     #[test]
     fn public_classification_requires_entity_declarations_before_workers() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-missing-declarations.ofn");
         std::fs::write(file.path(), "Prefix(:=<urn:test:>) Ontology(SubClassOf(:A :B))").unwrap();
         let cfg = super::Config::from_env();
@@ -5508,6 +6271,7 @@ mod tests {
 
     #[test]
     fn conformance_unresolved_imports_are_a_loading_limitation() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-unresolved-import.ofn");
         std::fs::write(file.path(), "Ontology(Import(<urn:missing:ontology>))").unwrap();
         let error = match super::classify(&super::Config::from_env(), file.path()) {
@@ -5520,6 +6284,7 @@ mod tests {
 
     #[test]
     fn conformance_rejection_precedes_workers_and_has_distinct_exit_code() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-invalid-literal.ofn");
         std::fs::write(file.path(), include_str!("../../../tests/conformance/invalid-top-literal.ofn")).unwrap();
         let error = match super::classify(&super::Config::from_env(), file.path()) {
@@ -5533,6 +6298,7 @@ mod tests {
 
     #[test]
     fn conformance_rejects_anonymous_tree_without_a_permitted_root() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-invalid-anonymous-tree.ofn");
         let source = "Ontology(Declaration(ObjectProperty(<urn:r>)) ObjectPropertyAssertion(<urn:r> _:a <urn:one>) ObjectPropertyAssertion(<urn:r> _:a <urn:two>))";
         std::fs::write(file.path(), source).unwrap();
@@ -5548,6 +6314,7 @@ mod tests {
 
     #[test]
     fn finite_rule_taxonomy_requires_complete_consistent_projection() {
+        let _test_env = crate::test_env::write();
         for (consistent, dropped, accepted) in [(true, 0, true), (true, 1, false), (false, 0, false)] {
             let evidence = super::ClassificationEvidence {
                 classification: super::Classification { approximate: None, consistent, dropped,
@@ -5594,6 +6361,7 @@ mod tests {
 
     #[test]
     fn context_parallel_schedule_is_armed_only_on_the_bare_el_route() {
+        let _test_env = crate::test_env::write();
         let profile = context_parallel_panel_profile();
         assert_eq!(
             elc_context_parallel_setting(crate::routing::Route::Elc, &profile, None, 16).as_deref(),
@@ -5630,6 +6398,7 @@ mod tests {
 
     #[test]
     fn an_explicit_context_parallel_request_survives_route_selection() {
+        let _test_env = crate::test_env::write();
         let profile = context_parallel_panel_profile();
         for (route, requested) in [
             (crate::routing::Route::Elc, "0"),
@@ -5653,6 +6422,7 @@ mod tests {
 
     #[test]
     fn context_parallel_schedule_follows_the_available_parallelism() {
+        let _test_env = crate::test_env::write();
         let profile = context_parallel_panel_profile();
         let workers = |available| {
             elc_context_parallel_setting(crate::routing::Route::Elc, &profile, None, available)
@@ -5666,6 +6436,7 @@ mod tests {
 
     #[test]
     fn streamed_classification_json_matches_allocating_api() {
+        let _test_env = crate::test_env::write();
         let classification = super::Classification {
             approximate: None,
             consistent: true,
@@ -5681,6 +6452,7 @@ mod tests {
 
     #[test]
     fn grouped_json_classification_matches_flat_bytes() {
+        let _test_env = crate::test_env::write();
         let grouped = std::collections::BTreeMap::from([
             (
                 "http://a.example/A".to_string(),
@@ -5728,6 +6500,7 @@ mod tests {
 
     #[test]
     fn graph_json_preserves_closure_for_all_three_node_graphs_and_name_aliases() {
+        let _test_env = crate::test_env::write();
         fn closure(value: &serde_json::Value, names: &[&str]) -> std::collections::BTreeSet<(String, String)> {
             let mut edges: std::collections::BTreeSet<_> = value["subsumptions"].as_array().unwrap()
                 .iter().map(|p| (p[0].as_str().unwrap().to_owned(), p[1].as_str().unwrap().to_owned())).collect();
@@ -5774,6 +6547,7 @@ mod tests {
 
     #[test]
     fn graph_json_preserves_materialized_fallbacks() {
+        let _test_env = crate::test_env::write();
         for grouped in [false, true] {
             let result = super::JsonClassification {
                 classification: super::Classification {
@@ -5799,6 +6573,7 @@ mod tests {
 
     #[test]
     fn graph_json_keeps_long_chain_output_linear() {
+        let _test_env = crate::test_env::write();
         let n = 128;
         let result = super::JsonClassification {
             classification: super::Classification { approximate: None, consistent: true, subsumptions: vec![], unsatisfiable: vec![], dropped: 0 },
@@ -5821,6 +6596,7 @@ mod tests {
 
     #[test]
     fn reachability_graph_json_matches_materialized_closure() {
+        let _test_env = crate::test_env::write();
         let iris = vec![
             std::sync::Arc::from("A"),
             std::sync::Arc::from("B"),
@@ -5859,6 +6635,7 @@ mod tests {
 
     #[test]
     fn reachability_graph_json_handles_cycles_without_reflexive_pairs() {
+        let _test_env = crate::test_env::write();
         let graph = super::GroupedJsonTaxonomy {
             iris: vec![
                 std::sync::Arc::from("A"),
@@ -5897,6 +6674,7 @@ mod tests {
 
     #[test]
     fn json_iri_ids_share_repeated_values_and_reorder_fallbacks() {
+        let _test_env = crate::test_env::write();
         let map = std::collections::BTreeMap::from([
             ("local:a".to_string(), "http://z.example/Z".to_string()),
             ("local:b".to_string(), "http://z.example/Z".to_string()),
@@ -5925,6 +6703,7 @@ mod tests {
     /// that state with exit 4, and the fast path must decline it too.
     #[test]
     fn inproc_engine_declines_an_incomplete_reasoner() {
+        let _test_env = crate::test_env::write();
         let mut r = Reasoner::new(&[]);
         r.saturate();
         assert!(
@@ -5943,6 +6722,7 @@ mod tests {
     /// reasoner's unsupported-clause count from the output contract.
     #[test]
     fn inproc_engine_reports_the_real_dropped_count() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::{JAtom, JClause, JTerm};
         // An `aux` term is unsupported by the CB reasoner: the clause is
         // dropped and counted.
@@ -5964,6 +6744,7 @@ mod tests {
 
     #[test]
     fn explicit_tableau_race_is_not_shadowed_by_elc_portfolio() {
+        let _test_env = crate::test_env::write();
         assert!(use_elc_portfolio(true, true, false, false));
         assert!(!use_elc_portfolio(true, true, false, true));
         assert!(!use_elc_portfolio(true, true, true, false));
@@ -5972,6 +6753,7 @@ mod tests {
 
     #[test]
     fn atomic_inproc_elc_admits_structured_and_small_flat_exact_el() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::profile::OntologyProfile;
         use crate::routing::Route;
         let mut profile = OntologyProfile::default();
@@ -6008,6 +6790,7 @@ mod tests {
 
     #[test]
     fn bottom_recognition_is_namespace_exact() {
+        let _test_env = crate::test_env::write();
         assert!(is_bottom("owl:Nothing"));
         assert!(is_bottom("http://www.w3.org/2002/07/owl#Nothing"));
         assert!(is_bottom("\u{22A5}"));
@@ -6017,6 +6800,7 @@ mod tests {
 
     #[test]
     fn grouped_subsumption_order_matches_global_pair_sort() {
+        let _test_env = crate::test_env::write();
         use std::collections::BTreeMap;
 
         // One row represents aliases that mapped to the same full subject;
@@ -6046,6 +6830,7 @@ mod tests {
 
     #[test]
     fn composite_layout_uses_source_individuals_before_nominal_clause_augmentation() {
+        let _test_env = crate::test_env::write();
         let mut profile = crate::frontend::profile::OntologyProfile::default();
         profile.clauses.individual_term_symbols = 0;
         profile.source.distinct_individuals = 18_055;
@@ -6067,6 +6852,7 @@ mod tests {
 
     #[test]
     fn production_saturation_rss_override_only_tightens_the_default() {
+        let _test_env = crate::test_env::write();
         assert_eq!(
             production_saturation_rss_override(Some("13.5")),
             Some("13.5")
@@ -6078,5 +6864,35 @@ mod tests {
         assert_eq!(production_saturation_rss_override(Some("NaN")), None);
         assert_eq!(production_saturation_rss_override(Some("nonsense")), None);
         assert_eq!(production_saturation_rss_override(None), None);
+    }
+}
+
+#[cfg(test)]
+mod finite_cover_gate_tests {
+    use super::finite_cover_certificate_mode;
+    use std::ffi::OsString;
+
+    fn mode(vars: &[(&str, &str)]) -> bool {
+        let vars: Vec<(String, OsString)> =
+            vars.iter().map(|(k, v)| (k.to_string(), OsString::from(v))).collect();
+        finite_cover_certificate_mode(|key| {
+            vars.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+        })
+    }
+
+    #[test]
+    fn finite_cover_declines_when_certificates_or_a_model_are_consumed() {
+        assert!(!mode(&[]));
+        assert!(mode(&[("KM_LEAN_CHECKERS", "/some/dir")]));
+        assert!(mode(&[("KM_REQUIRE_LEAN_CHECKERS", "1")]));
+        assert!(mode(&[("KM_CB_LEAN_REQUIRED", "1")]));
+        assert!(mode(&[("KM_CB_CERT_BUNDLE", "/x")]));
+        // `--export-model`
+        assert!(mode(&[("KM_EXPORT_MODEL_ACTIVE", "1")]));
+        // realization's own ABox capture: the route answers, no model recorded
+        assert!(!mode(&[("KM_EXPORT_MODEL_ACTIVE", "1"), ("KM_EXPORT_ABOX_ONLY", "1")]));
+        // `--export-model` together with realization stays declined
+        assert!(mode(&[("KM_EXPORT_MODEL_ACTIVE", "1"), ("KM_LEAN_CHECKERS", "/d"), ("KM_EXPORT_ABOX_ONLY", "1")]));
+        assert!(!mode(&[("KM_LEAN_CHECKERS", "")]));
     }
 }

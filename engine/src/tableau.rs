@@ -2081,9 +2081,11 @@ impl Tableau {
                         }
                     }
                 } else {
-                    // Source unbound: must consider every edge.
+                    // Source unbound: must consider every edge. A self atom
+                    // `r(x, x)` names one variable twice, so only a loop
+                    // edge matches it.
                     for &(er, es, et) in &g.edges {
-                        if er != *r {
+                        if er != *r || (*s == *t && es != et) {
                             continue;
                         }
                         if let Some(bt) = subst.get(*t) {
@@ -3470,6 +3472,15 @@ impl Tableau {
             let mut hy: Vec<CLit> = Vec::new();
             for a in &cl.head {
                 match a {
+                    // A negative head literal (from the complementary-definer
+                    // fold, `Q1 ⊑ ¬B`) made the caching checker refute
+                    // satisfiable seeds: `C ⊓ ¬Q1` came back unsatisfiable
+                    // under `⊤ ⊑ Q1 ⊔ B`, `B ⊑ ∃s0.A` (tbox sweep
+                    // bool20033_0082). Leave such inputs to the search-based
+                    // classification, which decides them correctly.
+                    Atom::Concept { lit, .. } if lit.neg => {
+                        fence!(ci, "negative head literal")
+                    }
                     Atom::Concept { lit, t } => {
                         if *t == 0 {
                             hx.push(*lit)
@@ -5451,7 +5462,8 @@ impl<'a> CacheRun<'a> {
 
 /// JSON atom: `{"k":"c","neg":b,"c":id,"t":var}` (concept), `{"k":"r","r":id,
 /// "s":var,"t":var}` (role), `{"k":"e","r":id,"neg":b,"c":id,"t":var}` (∃ ≥1 R.B).
-#[derive(Serialize, Deserialize)]
+/// `Deserialize` is `tag_first_enum!` below (the tag is decoded first).
+#[derive(Serialize)]
 #[serde(tag = "k")]
 pub enum JAtom {
     #[serde(rename = "c")]
@@ -5464,6 +5476,13 @@ pub enum JAtom {
     Eq { s: Var, t: Var },
 }
 
+crate::tag_first_enum!(JAtom, JAtomDerived, "k", {
+    "c" => Concept { neg: bool, c: C, t: Var },
+    "r" => Role { r: R, s: Var, t: Var },
+    "e" => Exists { r: R, neg: bool, c: C, t: Var },
+    "eq" => Eq { s: Var, t: Var },
+});
+
 #[derive(Serialize, Deserialize)]
 pub struct JClause {
     pub body: Vec<JAtom>,
@@ -5473,7 +5492,7 @@ pub struct JClause {
 /// Input: integer-indexed clauses plus name tables and the named concepts to
 /// classify. `concepts`/`roles` map id → IRI for output; `queries` are the named
 /// concept ids to classify (default: all concepts).
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct TInput {
     /// Source-derived role sorts for finite rule-model verification only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -6785,6 +6804,123 @@ fn validate_native_abox(inp: &TInput) -> Result<ValidatedNativeAbox, String> {
     })
 }
 
+fn validate_producer_input_for_bridge(
+    inp: &crate::orchestrate::cb_to_ht::TInput,
+) -> Result<(), String> {
+    use crate::fxhash::FxHashSet as HashSet;
+    use crate::orchestrate::cb_to_ht::HAtom;
+
+    let check_atom = |atom: &HAtom| -> Result<(), String> {
+        match *atom {
+            HAtom::Concept { c, t, .. } => {
+                producer_id(c, "concept")?;
+                producer_id(t, "variable")?;
+            }
+            HAtom::Role { r, s, t } => {
+                producer_id(r, "role")?;
+                producer_id(s, "variable")?;
+                producer_id(t, "variable")?;
+            }
+            HAtom::Exist { r, c, t, .. } => {
+                producer_id(r, "role")?;
+                producer_id(c, "concept")?;
+                producer_id(t, "variable")?;
+            }
+            HAtom::Eq { s, t } => {
+                producer_id(s, "variable")?;
+                producer_id(t, "variable")?;
+            }
+        }
+        Ok(())
+    };
+    for clause in &inp.clauses {
+        for atom in &clause.body {
+            check_atom(atom)?;
+        }
+        for atom in &clause.head {
+            check_atom(atom)?;
+        }
+    }
+    for def in &inp.card_defs {
+        producer_id(def.marker, "cardinality marker")?;
+        producer_id(def.role, "cardinality role")?;
+        producer_id(def.filler, "cardinality filler")?;
+    }
+    for &id in &inp.queries {
+        producer_id(id, "query")?;
+    }
+    for &id in &inp.nominals {
+        producer_id(id, "nominal")?;
+    }
+    for &(a, b, c) in &inp.chains {
+        producer_id(a, "role")?;
+        producer_id(b, "role")?;
+        producer_id(c, "role")?;
+    }
+    for &id in &inp.transitive {
+        producer_id(id, "transitive role")?;
+    }
+    if inp.native_abox.is_empty() {
+        return Ok(());
+    }
+    if !inp.native_abox.complete {
+        return Err("incomplete native ABox payload".to_string());
+    }
+    let nominal_set: HashSet<usize> = inp.nominals.iter().copied().collect();
+    let mut proxy_owners = HashSet::default();
+    for individual in &inp.native_abox.individuals {
+        if individual.proxies.is_empty() {
+            return Err("native ABox individual has no singleton proxy".to_string());
+        }
+        for &id in &individual.proxies {
+            if id >= inp.concepts.len() {
+                return Err("native ABox concept id out of range".to_string());
+            }
+            if !nominal_set.contains(&id) {
+                return Err("native ABox proxy is absent from nominals".to_string());
+            }
+            if !proxy_owners.insert(id) {
+                return Err("native ABox proxy has duplicate ownership".to_string());
+            }
+            C::try_from(id).map_err(|_| "native ABox concept id overflow".to_string())?;
+        }
+        for &id in &individual.assertions {
+            if id >= inp.concepts.len() {
+                return Err("native ABox assertion id out of range".to_string());
+            }
+            C::try_from(id).map_err(|_| "native ABox assertion id overflow".to_string())?;
+        }
+    }
+    if proxy_owners != nominal_set {
+        return Err(
+            "native ABox does not assign every nominal proxy to exactly one individual".to_string(),
+        );
+    }
+    let ind_len = inp.native_abox.individuals.len();
+    let in_individual_range = |left: usize, right: usize| left < ind_len && right < ind_len;
+    if inp
+        .native_abox
+        .different
+        .iter()
+        .any(|&(left, right)| !in_individual_range(left, right))
+    {
+        return Err("native ABox individual index out of range".to_string());
+    }
+    let resolve_role = |role: usize, source: usize, target: usize| -> Result<R, String> {
+        if role >= inp.roles.len() || !in_individual_range(source, target) {
+            return Err("native ABox role/individual index out of range".to_string());
+        }
+        R::try_from(role).map_err(|_| "native ABox role id overflow".to_string())
+    };
+    for &(role, source, target) in &inp.native_abox.role_assertions {
+        resolve_role(role, source, target)?;
+    }
+    for &(role, source, target) in &inp.native_abox.negative_role_assertions {
+        resolve_role(role, source, target)?;
+    }
+    Ok(())
+}
+
 /// Read a `TInput` JSON string, classify, and return a `TOutput` JSON string.
 pub fn run_json(input: &str) -> Result<String, String> {
     run_json_inner(input, None)
@@ -6798,12 +6934,12 @@ pub fn run_json(input: &str) -> Result<String, String> {
 pub fn run_json_owned(input: String) -> Result<String, String> {
     let inp: TInput = serde_json::from_str(&input).map_err(|e| e.to_string())?;
     let raw_input = if std::env::var_os("KM_HT_BRIDGE").is_some() {
-        Some(input)
+        Some(std::borrow::Cow::Owned(input))
     } else {
         drop(input);
         None
     };
-    let output = run_tinput_inner(inp, raw_input.as_deref(), None)?;
+    let output = run_tinput_inner(inp, raw_input, None)?;
     serde_json::to_string(&output).map_err(|error| error.to_string())
 }
 
@@ -6824,17 +6960,14 @@ pub(crate) fn run_bridge_json_owned_compact(
     }
 
     // Preserve the established worker-side wire and native-ABox validation
-    // before entering the bridge. The producer value is parsed independently,
-    // exactly as the legacy bridge arm reparses `raw_input`.
-    let worker_input: TInput = serde_json::from_str(&input).map_err(|e| e.to_string())?;
-    validate_native_abox(&worker_input)?;
+    // before entering the bridge, without parsing the wire JSON twice.
     let producer_input: crate::orchestrate::cb_to_ht::TInput =
         serde_json::from_str(&input).map_err(|e| e.to_string())?;
-    drop(worker_input);
     drop(input);
-    // Return the duplicate validation parse and wire buffers before the bridge
-    // builds its completion structures. This mirrors the typed bridge path and
-    // keeps the transport optimization visible in peak RSS, not only live bytes.
+    validate_producer_input_for_bridge(&producer_input)?;
+    // Return the wire buffers before the bridge builds its completion
+    // structures. This mirrors the typed bridge path and keeps the transport
+    // optimization visible in peak RSS, not only live bytes.
     crate::mem::release_transient_heap();
 
     let (result, concepts, reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK, move || {
@@ -6843,8 +6976,72 @@ pub(crate) fn run_bridge_json_owned_compact(
             (result, producer_input.concepts, reason)
         })?;
     let result = result.ok_or_else(|| bridge_defer_message(reason))?;
+    if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
+        let _ = std::fs::write(marker, b"bridge");
+    }
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
+            .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
+        crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+            &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
+        );
+    }
     crate::mem::release_transient_heap();
     compact_bridge_classification(concepts, result)
+}
+
+/// Run a mixed bridge/specialist worker: parse the wire JSON once into the
+/// producer `TInput`, emit compact binary output when the bridge arm answers,
+/// and convert in memory to the fallback tableau `TInput` (emitting JSON) if
+/// the bridge arm defers.
+pub(crate) fn run_bridge_or_json_owned_compact(
+    input: String,
+) -> Result<Result<crate::json_io::CompactElcOutput, String>, String> {
+    if std::env::var_os("KM_HT_BRIDGE").is_none()
+        || std::env::var_os("KM_RULES_CONSISTENCY").is_some()
+        || ht_lean_certification_requested()
+    {
+        return run_json_owned(input).map(Err);
+    }
+    let producer: crate::orchestrate::cb_to_ht::TInput =
+        serde_json::from_str(&input).map_err(|e| e.to_string())?;
+    drop(input);
+    validate_producer_input_for_bridge(&producer)?;
+    crate::mem::release_transient_heap();
+
+    let (result, mut producer, reason) = crate::bigstack::run(
+        "konclude_ht bridge",
+        crate::bigstack::DEEP_STACK,
+        move || {
+            let result = crate::konclude_ht::bridge::bridged_classify(&producer);
+            let reason = crate::konclude_ht::bridge::take_bridge_defer_reason();
+            (result, producer, reason)
+        },
+    )?;
+    if let Some(result) = result {
+        if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
+            let _ = std::fs::write(marker, b"bridge");
+        }
+        if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+            let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
+                .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
+            crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+                &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
+            );
+        }
+        let concepts = std::mem::take(&mut producer.concepts);
+        drop(producer);
+        crate::mem::release_transient_heap();
+        return compact_bridge_classification(concepts, result).map(Ok);
+    }
+    if std::env::var_os("KM_HT_BRIDGE_ONLY").is_some() {
+        return Err(bridge_defer_message(reason));
+    }
+    let inp = producer_input(producer)?;
+    let output = run_tinput_inner_with_bridge(inp, None, None, false)?;
+    serde_json::to_string(&output)
+        .map(Err)
+        .map_err(|error| error.to_string())
 }
 
 /// The worker's defer error, naming the gate the bridge recorded.
@@ -7064,6 +7261,13 @@ pub(crate) fn run_bridge_producer_input_typed(
                 (result, crate::konclude_ht::bridge::take_bridge_defer_reason())
             })?;
     let result = result.ok_or_else(|| bridge_defer_message(reason))?;
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
+            .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
+        crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+            &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
+        );
+    }
     crate::mem::release_transient_heap();
     let name = |concept: usize| {
         concepts
@@ -8409,14 +8613,23 @@ pub(crate) fn ht_lean_certification_requested() -> bool {
 /// always passes `None` and reads the selected mechanism from the environment.
 fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String> {
     let inp: TInput = serde_json::from_str(input).map_err(|e| e.to_string())?;
-    let output = run_tinput_inner(inp, Some(input), forced_ht)?;
+    let output = run_tinput_inner(inp, Some(std::borrow::Cow::Borrowed(input)), forced_ht)?;
     serde_json::to_string(&output).map_err(|error| error.to_string())
 }
 
 fn run_tinput_inner(
     inp: TInput,
-    raw_input: Option<&str>,
+    raw_input: Option<std::borrow::Cow<'_, str>>,
     forced_ht: Option<bool>,
+) -> Result<TOutput, String> {
+    run_tinput_inner_with_bridge(inp, raw_input, forced_ht, true)
+}
+
+fn run_tinput_inner_with_bridge(
+    mut inp: TInput,
+    mut raw_input: Option<std::borrow::Cow<'_, str>>,
+    forced_ht: Option<bool>,
+    try_bridge: bool,
 ) -> Result<TOutput, String> {
     let native_abox = validate_native_abox(&inp)?;
     let native_abox_active = native_abox.active;
@@ -8429,6 +8642,68 @@ fn run_tinput_inner(
     }
     if native_abox_active && (!ht_enabled || std::env::var_os("KM_RULES_CONSISTENCY").is_some()) {
         return Err("native ABox requires the hypertableau mechanism".to_string());
+    }
+    if try_bridge
+        && std::env::var_os("KM_RULES_CONSISTENCY").is_none()
+        && std::env::var_os("KM_HT_BRIDGE").is_some()
+        && !lean_cert_requested
+    {
+        let bridge_only = std::env::var_os("KM_HT_BRIDGE_ONLY").is_some();
+        let mut bridge_concepts = if bridge_only {
+            let concepts = std::mem::take(&mut inp.concepts);
+            inp = TInput::default();
+            Some(concepts)
+        } else {
+            None
+        };
+        let raw = raw_input
+            .take()
+            .ok_or_else(|| "typed tableau input cannot enter the bridge route".to_string())?;
+        let tin_bridge: crate::orchestrate::cb_to_ht::TInput =
+            serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        drop(raw);
+        crate::mem::release_transient_heap();
+        let (res, defer_reason) = crate::bigstack::run(
+            "konclude_ht bridge",
+            crate::bigstack::DEEP_STACK,
+            move || {
+                let res = crate::konclude_ht::bridge::bridged_classify(&tin_bridge);
+                (res, crate::konclude_ht::bridge::take_bridge_defer_reason())
+            },
+        )?;
+        if let Some(r) = res {
+            let subs: Vec<(C, C)> = r
+                .subsumptions
+                .iter()
+                .map(|&(a, b)| (a as C, b as C))
+                .collect();
+            let concepts_slice = bridge_concepts.take().unwrap_or_else(|| std::mem::take(&mut inp.concepts));
+            let name = |c: C| {
+                concepts_slice
+                    .get(c as usize)
+                    .cloned()
+                    .unwrap_or_else(|| format!("C{c}"))
+            };
+            let out = TOutput {
+                consistent: r.consistent,
+                unsatisfiable: r.unsatisfiable.iter().map(|&c| name(c as C)).collect(),
+                subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
+            };
+            if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
+                let _ = std::fs::write(marker, b"bridge");
+            }
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let model_res = crate::konclude_ht::bridge::take_last_bridge_export_model()
+                    .unwrap_or_else(|| Err("bridge did not capture exported model".into()));
+                crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+                    &crate::orchestrate::model_export::WorkerModelPayload::Bridge(model_res),
+                );
+            }
+            return Ok(out);
+        }
+        if bridge_only {
+            return Err(bridge_defer_message(defer_reason));
+        }
     }
     let native_individuals = native_abox.individuals;
     let native_different = native_abox.different;
@@ -8466,6 +8741,18 @@ fn run_tinput_inner(
         // when the tableau identifies it with a named individual.
         if std::env::var_os("KM_RULES_CLASSIFY").is_some() {
             let (consistent, unsat, subs) = rules_classification(&inp, clauses, queries)?;
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let payload = if !consistent {
+                    crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
+                        crate::konclude_ht::bridge::BridgeExportModel::inconsistent(),
+                    ))
+                } else {
+                    crate::orchestrate::model_export::WorkerModelPayload::Declined(
+                        "answered via DL-safe rules tableau route".into(),
+                    )
+                };
+                crate::orchestrate::model_export::write_worker_model_payload_if_requested(&payload);
+            }
             let name = |c: C| {
                 inp.concepts.get(c as usize).cloned().unwrap_or_else(|| format!("C{c}"))
             };
@@ -8482,74 +8769,6 @@ fn run_tinput_inner(
             subsumptions: Vec::new(),
         };
         return Ok(out);
-    }
-
-    // KM_HT: route ALC(H) KBs (no number restrictions / nominals / inverses) to
-    // the ported HermiT hypertableau engine. Run on a large stack since the DFS
-    // recurses once per active branching point. Falls back to the legacy
-    // tableau if the KB is out of the ALC(H) fragment or the engine reports an
-    // out-of-fragment construct (returns None).
-    // KM_HT_FORCE bypasses the in-fragment gate so the Ht engine (incl. the
-    // experimental SHIQ inverse/number merge path + KM_HT_QO) actually runs on
-    // inverse/number onts for measurement — otherwise such onts fall through to
-    // the legacy tableau here, never reaching Ht.
-    // KM_HT_BRIDGE: route the KB to the konclude_ht bridge (the Rust port of
-    // Konclude's completion kernel). Sound+complete on its fragment by
-    // construction: deterministic subjects answer by canonical-model read-off,
-    // non-deterministic ones by candidate extraction + pairwise unsat probes.
-    // `None` ⇒ DEFER (unsupported clause shape / nominals / a STOPped drive):
-    // fall through to the other arms — the bridge only ever ADDS coverage.
-    if std::env::var_os("KM_HT_BRIDGE").is_some() && !lean_cert_requested {
-        // The bridge consumes the producer-side TInput (cb_to_ht) — same wire
-        // format as this worker's TInput; re-parse the raw input for it.
-        let tin_bridge: crate::orchestrate::cb_to_ht::TInput = serde_json::from_str(
-            raw_input
-                .ok_or_else(|| "typed tableau input cannot enter the bridge route".to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
-        let (res, defer_reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
-            move || {
-                let res = crate::konclude_ht::bridge::bridged_classify(&tin_bridge);
-                (res, crate::konclude_ht::bridge::take_bridge_defer_reason())
-            })?;
-        if let Some(r) = res {
-            let subs: Vec<(C, C)> = r
-                .subsumptions
-                .iter()
-                .map(|&(a, b)| (a as C, b as C))
-                .collect();
-            // `bridged_classify` publishes only a complete taxonomy (or defers),
-            // so its relation is already transitively closed.  The generic Ht
-            // closure repair below is needed for model-label candidate output,
-            // but repeating it here scans million-pair bridge taxonomies to add
-            // nothing (ORE14817).  Keep the certified bridge result directly.
-            let name = |c: C| {
-                inp.concepts
-                    .get(c as usize)
-                    .cloned()
-                    .unwrap_or_else(|| format!("C{c}"))
-            };
-            let out = TOutput {
-                consistent: r.consistent,
-                unsatisfiable: r.unsatisfiable.iter().map(|&c| name(c as C)).collect(),
-                subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
-            };
-            // Tell the orchestrator that this answer is the bridge's own
-            // complete taxonomy (not a fallback arm's). Scheduling metadata
-            // only; a failed write just keeps the conservative budget.
-            if let Some(marker) = std::env::var_os("KM_HT_BRIDGE_ANSWER_MARKER") {
-                let _ = std::fs::write(marker, b"bridge");
-            }
-            return Ok(out);
-        }
-        // The bridge declined. If it was the ONLY route this worker was
-        // spawned for (KM_HT_BRIDGE_ONLY, set by spawn_ht), emit NO answer —
-        // the legacy tableau below is not validated on this fragment and the
-        // orchestrator's CB arm must decide. Otherwise fall through to the
-        // route the worker was actually spawned for (monotone-safe).
-        if std::env::var_os("KM_HT_BRIDGE_ONLY").is_some() {
-            return Err(bridge_defer_message(defer_reason));
-        }
     }
 
     let ht_force = forced_ht == Some(true) || std::env::var_os("KM_HT_FORCE").is_some();
@@ -9351,6 +9570,18 @@ fn run_tinput_inner(
                         .map(|(sub, sup)| [name(sub), name(sup)])
                         .collect(),
                 };
+                if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                    let payload = if !consistent {
+                        crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
+                            crate::konclude_ht::bridge::BridgeExportModel::inconsistent(),
+                        ))
+                    } else {
+                        crate::orchestrate::model_export::WorkerModelPayload::Declined(
+                            "answered via non-bridge hypertableau route (qo/card/shoq/ht)".into(),
+                        )
+                    };
+                    crate::orchestrate::model_export::write_worker_model_payload_if_requested(&payload);
+                }
                 return Ok(out);
             }
             // The per-concept model-label candidate sets can miss an entailed
@@ -9373,6 +9604,18 @@ fn run_tinput_inner(
                 unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
                 subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
             };
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let payload = if !consistent {
+                    crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
+                        crate::konclude_ht::bridge::BridgeExportModel::inconsistent(),
+                    ))
+                } else {
+                    crate::orchestrate::model_export::WorkerModelPayload::Declined(
+                        "answered via non-bridge hypertableau route (qo/card/shoq/ht)".into(),
+                    )
+                };
+                crate::orchestrate::model_export::write_worker_model_payload_if_requested(&payload);
+            }
             return Ok(out);
         }
         if lean_cert_requested {
@@ -9419,6 +9662,18 @@ fn run_tinput_inner(
         unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
         subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
     };
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let payload = if !consistent {
+            crate::orchestrate::model_export::WorkerModelPayload::Bridge(Ok(
+                crate::konclude_ht::bridge::BridgeExportModel::inconsistent(),
+            ))
+        } else {
+            crate::orchestrate::model_export::WorkerModelPayload::Declined(
+                "answered via legacy tableau route".into(),
+            )
+        };
+        crate::orchestrate::model_export::write_worker_model_payload_if_requested(&payload);
+    }
     Ok(out)
 }
 
@@ -9433,6 +9688,7 @@ mod tests {
 
     #[test]
     fn selective_join_matches_complete_substitution_sets_and_seeds() {
+        let _test_env = crate::test_env::read();
         let mut graph = Graph::new();
         for _ in 0..6 { graph.new_node(None, false); }
         for node in 0..6 { graph.add_concept(node, CLit::pos(0)); }
@@ -9478,16 +9734,14 @@ mod tests {
     // Several worker-contract tests below temporarily alter process-wide
     // routing variables.  Serialize those tests so a parallel test cannot
     // observe another test's intermediate environment.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-    fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    fn lock_environment() -> crate::test_env::EnvGuard {
+        crate::test_env::write()
     }
 
     #[test]
     fn compact_bridge_transport_preserves_pairs_unsat_and_consistency() {
+        let _test_env = crate::test_env::read();
         let compact = compact_bridge_classification(
             vec!["A".into(), "B".into(), "owl:Nothing".into()],
             crate::konclude_ht::bridge::BridgedClassification {
@@ -9513,6 +9767,7 @@ mod tests {
 
     #[test]
     fn compact_bridge_transport_adds_bottom_once_and_rejects_bad_ids() {
+        let _test_env = crate::test_env::read();
         let compact = compact_bridge_classification(
             vec!["A".into()],
             crate::konclude_ht::bridge::BridgedClassification {
@@ -9554,6 +9809,7 @@ mod tests {
 
     #[test]
     fn compact_bridge_entry_requires_the_exclusive_contract() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::remove_var("KM_HT_BRIDGE");
@@ -9565,6 +9821,7 @@ mod tests {
 
     #[test]
     fn compact_bridge_entry_matches_the_legacy_json_worker() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
 
         let _environment = lock_environment();
@@ -9619,6 +9876,7 @@ mod tests {
 
     #[test]
     fn typed_producer_handoff_matches_the_json_worker_contract() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
 
         // Hold the module's environment lock: these keys are shared with the
@@ -9652,6 +9910,7 @@ mod tests {
 
     #[test]
     fn owned_wire_entry_matches_the_borrowed_worker_contract() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
 
         // Hold the module's environment lock: these keys are shared with the
@@ -9718,6 +9977,7 @@ mod tests {
 
     #[test]
     fn certified_global_verdict_is_derived_from_the_checked_evidence_shape() {
+        let _test_env = crate::test_env::read();
         let plain_sat = serde_json::json!({"version": 1, "evidence": "sat"});
         let equality_unsat = serde_json::json!({"version": 2, "evidence": {"unsat": {}}});
         let cardinality_sat = serde_json::json!({
@@ -9769,6 +10029,7 @@ mod tests {
 
     #[test]
     fn certified_input_coverage_rejects_converter_omissions_and_unsafe_combinations() {
+        let _test_env = crate::test_env::write();
         let mut producer = crate::orchestrate::cb_to_ht::TInput::default();
         let complete = consumer_input(&producer);
         assert!(check_certified_ht_input_coverage(&complete, false).is_ok());
@@ -9807,6 +10068,7 @@ mod tests {
 
     #[test]
     fn certified_input_coverage_matches_the_lean_truth_table() {
+        let _test_env = crate::test_env::write();
         for dropped in [0, 1] {
             for fenced in [false, true] {
                 for inverse in [false, true] {
@@ -9857,6 +10119,7 @@ mod tests {
 
     #[test]
     fn every_ht_lean_interface_enters_the_fail_closed_certification_boundary() {
+        let _test_env = crate::test_env::read();
         for required in [
             "KM_HT_LEAN_CERT_OUT",
             "KM_HT_LEAN_CERT_CHECKER",
@@ -10067,6 +10330,7 @@ mod tests {
 
     #[test]
     fn mixed_skolem_projection_passes_the_real_lean_checker_and_rejects_omission() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10172,6 +10436,7 @@ mod tests {
 
     #[test]
     fn cardinality_projection_passes_the_real_lean_checker_and_rejects_false_exactness() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10252,6 +10517,7 @@ mod tests {
 
     #[test]
     fn multi_filler_bundle_projection_passes_the_real_lean_checker_and_rejects_omission() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10411,6 +10677,7 @@ mod tests {
 
     #[test]
     fn native_abox_wire_contract_rejects_empty_duplicate_or_unowned_nominal_proxies() {
+        let _test_env = crate::test_env::read();
         let mut empty = native_wire_input();
         empty.native_abox.individuals[0].proxies.clear();
         assert!(validate_native_abox(&consumer_input(&empty))
@@ -10438,6 +10705,7 @@ mod tests {
 
     #[test]
     fn native_abox_projection_passes_real_lean_checker_and_rejects_forgery() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10466,6 +10734,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10548,6 +10817,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_sat_source_decision_passes_real_lean_checker() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
         else {
             return;
@@ -10593,6 +10863,7 @@ mod tests {
 
     #[test]
     fn every_cardinality_taxonomy_projection_passes_the_common_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER")
         else {
             return;
@@ -10751,6 +11022,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER")
         else {
             return;
@@ -10818,6 +11090,7 @@ mod tests {
 
     #[test]
     fn joint_native_abox_classification_carries_one_source_and_abox() {
+        let _test_env = crate::test_env::read();
         let mut producer = native_wire_input();
         producer.direct_projection_source = Some(Vec::new());
         let inp = consumer_input(&producer);
@@ -10859,6 +11132,7 @@ mod tests {
 
     #[test]
     fn joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{
             BundleProjectionLit, BundleProjectionSource, CardDefJson, DirectProjectionAtom,
             DirectProjectionClause, MixedProjectionSource, NativeAboxJson, NativeIndividualJson,
@@ -11059,6 +11333,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER")
         else {
@@ -11123,6 +11398,7 @@ mod tests {
 
     #[test]
     fn mixed_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER")
         else {
@@ -11204,6 +11480,7 @@ mod tests {
 
     #[test]
     fn bundle_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER")
         else {
@@ -11293,6 +11570,7 @@ mod tests {
 
     #[test]
     fn mixed_native_abox_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER")
         else {
             return;
@@ -11362,6 +11640,7 @@ mod tests {
 
     #[test]
     fn bundle_native_abox_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER")
         else {
             return;
@@ -11437,6 +11716,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_cardinality_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -11545,6 +11825,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_cardinality_sat_source_decision_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
         else {
             return;
@@ -11609,6 +11890,7 @@ mod tests {
 
     #[test]
     fn mixed_native_abox_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -11700,6 +11982,7 @@ mod tests {
 
     #[test]
     fn mixed_native_abox_cardinality_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -11835,6 +12118,7 @@ mod tests {
 
     #[test]
     fn bundle_native_abox_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -11932,6 +12216,7 @@ mod tests {
 
     #[test]
     fn bundle_native_abox_cardinality_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -12074,6 +12359,7 @@ mod tests {
 
     #[test]
     fn native_negative_role_wire_fact_reconstructs_a_missing_exact_clash_clause() {
+        let _test_env = crate::test_env::write();
         let mut producer = native_wire_input();
         producer
             .native_abox
@@ -12108,6 +12394,7 @@ mod tests {
 
     #[test]
     fn native_abox_never_falls_through_to_legacy_tableau_without_ht() {
+        let _test_env = crate::test_env::read();
         let input = serde_json::to_string(&native_wire_input()).unwrap();
         let error = run_json_inner(&input, Some(false)).unwrap_err();
         assert!(error.contains("requires the hypertableau mechanism"));
@@ -12115,6 +12402,7 @@ mod tests {
 
     #[test]
     fn certified_role_chain_side_data_reconstructs_exact_source_clauses() {
+        let _test_env = crate::test_env::read();
         let clauses = certified_role_chain_clauses(&[(R0, R1, 2)], &[3]);
         assert_eq!(clauses.len(), 2);
         assert!(matches!(
@@ -12143,6 +12431,7 @@ mod tests {
 
     #[test]
     fn certified_raw_role_chain_participates_in_ht_refutation() {
+        let _test_env = crate::test_env::read();
         let mut clauses = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R1, false, D, X)]),
@@ -12181,6 +12470,7 @@ mod tests {
 
     #[test]
     fn clash_a_and_not_a() {
+        let _test_env = crate::test_env::read();
         // {A, ¬A} on the root is inconsistent.
         let t = Tableau::new(vec![]);
         assert!(!t.consistent(&[CLit::pos(A), CLit::neg(A)]));
@@ -12188,6 +12478,7 @@ mod tests {
 
     #[test]
     fn simple_sat() {
+        let _test_env = crate::test_env::read();
         // A alone is satisfiable.
         let t = Tableau::new(vec![]);
         assert!(t.consistent(&[CLit::pos(A)]));
@@ -12195,6 +12486,7 @@ mod tests {
 
     #[test]
     fn existential_then_universal_clash() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.B,  A ⊑ ∀r.¬B  ⇒ A unsatisfiable.
         // clauses: A(x) → ∃r.B(x) ;  A(x) ∧ r(x,y) → ¬B(y)  ... but ¬B(y) head clashes with B(y).
         let cls = vec![
@@ -12210,6 +12502,7 @@ mod tests {
 
     #[test]
     fn existential_universal_consistent() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.B, A ⊑ ∀r.D  is satisfiable (successor gets B and D, no clash).
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
@@ -12224,6 +12517,7 @@ mod tests {
 
     #[test]
     fn disjunction_branch() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊔ D, A ⊑ ¬B, A ⊑ ¬D ⇒ A unsat (both branches clash).
         let cls = vec![
             Clause::new(
@@ -12239,6 +12533,7 @@ mod tests {
 
     #[test]
     fn disjunction_one_branch_open() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊔ D, A ⊑ ¬B ⇒ A still satisfiable (via the D branch).
         let cls = vec![
             Clause::new(
@@ -12276,6 +12571,7 @@ mod tests {
 
     #[test]
     fn careful_backjumping_skips_choices_the_refutation_does_not_use() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let mut t = Tableau::new(irrelevant_choice_clauses(8));
         t.set_number(true); // the careful path
@@ -12301,6 +12597,7 @@ mod tests {
 
     #[test]
     fn backjumped_refutation_resolves_to_a_checkable_proof() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         std::env::remove_var("KM_TAB_CAREFUL_NOBJ");
         let mut t = Tableau::new(irrelevant_choice_clauses(4));
@@ -12366,6 +12663,7 @@ mod tests {
 
     #[test]
     fn careful_delta_closure_propagates_and_falls_back_on_merge() {
+        let _test_env = crate::test_env::read();
         // A branch fact drives a concept rule, a role rule, and a second concept
         // rule without rescanning unrelated clauses.
         let mut t = Tableau::new(vec![
@@ -12416,6 +12714,7 @@ mod tests {
 
     #[test]
     fn careful_delta_closure_detects_a_new_clash() {
+        let _test_env = crate::test_env::read();
         let mut t = Tableau::new(vec![
             Clause::new(vec![con(false, B, X)], vec![con(false, E, X)]),
             Clause::new(vec![con(false, B, X)], vec![con(true, E, X)]),
@@ -12432,6 +12731,7 @@ mod tests {
 
     #[test]
     fn careful_branch_cost_prefers_the_non_generative_alternative() {
+        let _test_env = crate::test_env::read();
         let t = Tableau::new(vec![
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, E, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, F, X)]),
@@ -12453,6 +12753,7 @@ mod tests {
 
     #[test]
     fn careful_lazy_choice_requires_every_use_to_be_role_blocked() {
+        let _test_env = crate::test_env::read();
         let mut subst = Subst::new();
         subst.insert(X, 0);
         let choice = con(false, B, X);
@@ -12511,6 +12812,7 @@ mod tests {
 
     #[test]
     fn infinite_chain_blocks_and_terminates() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.A : an infinite r-chain of A's; blocking must make this terminate
         // and report satisfiable.
         let cls = vec![Clause::new(
@@ -12536,6 +12838,7 @@ mod tests {
 
     #[test]
     fn at_most_one_merge_clash_unsat() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.(B⊓E), A ⊑ ∃r.(B⊓F), E⊓F ⊑ ⊥, A ⊑ ≤1 r.B  ⇒  A unsat:
         // the two r-successors are both B, so ≤1 merges them, and the merged node
         // carries E and F at once — a clash.
@@ -12566,6 +12869,7 @@ mod tests {
 
     #[test]
     fn at_most_one_merge_consistent() {
+        let _test_env = crate::test_env::read();
         // Same minus the E⊓F clash: the merge is harmless, so A is satisfiable.
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, P, X)]),
@@ -12592,6 +12896,7 @@ mod tests {
 
     #[test]
     fn ge2_with_le1_unsat_via_slots() {
+        let _test_env = crate::test_env::read();
         // ExactCardinality-style: ≥2 r.C ⊓ ≤1 r.C ⇒ unsat. ≥2 is two existentials
         // with disjoint slots S0,S1; ≤1 tries to merge the two C-successors but
         // their disjoint slots clash, so no branch survives.
@@ -12621,6 +12926,7 @@ mod tests {
 
     #[test]
     fn ge2_alone_consistent_and_terminates() {
+        let _test_env = crate::test_env::read();
         // ≥2 r.C alone (two disjoint-slot successors, no at-most) is satisfiable
         // and must terminate.
         let cls = vec![
@@ -12637,6 +12943,7 @@ mod tests {
 
     #[test]
     fn le2_three_successors_merges_consistent() {
+        let _test_env = crate::test_env::read();
         // ≤2 r.C with three C-successors (no forced distinctness) is satisfiable:
         // the ≤2 branch merges one pair, leaving two, no clash.
         let cls = vec![
@@ -12671,6 +12978,7 @@ mod tests {
 
     #[test]
     fn nominal_singleton_merge_unsat() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃s.{a}, A ⊑ ∃t.{a}, A ⊑ ∀s.C, A ⊑ ∀t.¬C ⇒ A unsat: the s- and
         // t-successors are both the singleton {a}, so the o-rule merges them and
         // the merged node carries C and ¬C — a clash. WITHOUT the singleton
@@ -12696,6 +13004,7 @@ mod tests {
 
     #[test]
     fn nominal_singleton_merge_consistent() {
+        let _test_env = crate::test_env::read();
         // Same minus the conflict (∀t.C instead of ∀t.¬C): merging the two
         // {a}-successors is harmless, so A is satisfiable.
         let cls = vec![
@@ -12717,6 +13026,7 @@ mod tests {
 
     #[test]
     fn nominal_abox_subsumption() {
+        let _test_env = crate::test_env::read();
         // Q ≡ {a}, {a} ⊑ C  (the ABox fact C(a) lifted). Then Q ⊑ C: testing
         // {Q, ¬C} must be unsat (Q forces __nom__a, which merges into the seeded
         // nominal root and inherits C, clashing with ¬C). But C ⊑ Q is false:
@@ -12734,6 +13044,7 @@ mod tests {
 
     #[test]
     fn nominal_abox_global_inconsistency() {
+        let _test_env = crate::test_env::read();
         // {a} ⊑ C and {a} ⊑ ¬C make the named individual a contradictory, so the
         // whole KB is inconsistent — every concept (even one unrelated to a) is
         // unsatisfiable. Caught only because find_model seeds the nominal root.
@@ -12754,6 +13065,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn indexed_role_domains_match_scan_for_every_three_node_relation() {
+        let _test_env = crate::test_env::read();
         for mask in 0..512usize {
             let edges: Vec<_> = (0..3).flat_map(|a| (0..3).map(move |b| (a, b)))
                 .filter(|&(a, b)| mask & (1 << (a * 3 + b)) != 0).collect();
@@ -12779,6 +13091,7 @@ mod finite_rule_model_tests {
     fn concept(c: C, t: Var, neg: bool) -> Atom { Atom::Concept { lit: CLit { c, neg }, t } }
     #[test]
     fn pruned_source_rule_join_matches_exhaustive_two_object_models() {
+        let _test_env = crate::test_env::read();
         let source = "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>)) ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>))) Head(ClassAtom(<B> Variable(<y>)))))";
         let classes = HashMap::from_iter([("A".into(),0), ("B".into(),1)]);
         let roles = HashMap::from_iter([("r".into(),0)]);
@@ -12800,6 +13113,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn original_rules_check_concrete_guards_and_named_head_obligations() {
+        let _test_env = crate::test_env::read();
         let mut graph = Graph::new(); let a = graph.new_node(None,false); let b = graph.new_node(None,false);
         let data = graph.new_node(None,false); graph.add_edge(0,a,data);
         let classes = HashMap::from_iter([("Bad".into(),0)]); let roles = HashMap::from_iter([("p".into(),0)]);
@@ -12821,6 +13135,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn original_data_axioms_use_concrete_values_and_object_domains() {
+        let _test_env = crate::test_env::read();
         let mut graph = Graph::new(); let a = graph.new_node(None, false);
         let value = graph.new_node(None, false); let other = graph.new_node(None, false);
         graph.add_concept(a, CLit::pos(0)); graph.add_edge(0,a,value);
@@ -12848,6 +13163,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn original_property_axioms_check_chain_orientation_and_constraints() {
+        let _test_env = crate::test_env::read();
         let mut graph = Graph::new();
         let a = graph.new_node(None, false); let b = graph.new_node(None, false); let c = graph.new_node(None, false);
         graph.add_concept(a, CLit::pos(0)); graph.add_concept(c, CLit::pos(1));
@@ -12887,6 +13203,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn original_abox_checks_aliases_inverse_edges_and_negative_assertions() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::profile::RuleSourceAbox;
         let mut graph = Graph::new(); let a = graph.new_node(None, false); let b = graph.new_node(None, false);
         for class in [0, 1, 3] { graph.add_concept(a, CLit::pos(class)); }
@@ -12912,6 +13229,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn source_boolean_model_uses_constants_complements_and_full_iris() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::profile::RuleSourceClasses;
         let mut graph = Graph::new(); let object = graph.new_node(None, false);
         graph.add_concept(object, CLit::pos(0));
@@ -12934,6 +13252,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn source_model_check_rejects_converter_omissions_before_search() {
+        let _test_env = crate::test_env::read();
         for (dropped, fenced) in [(1, serde_json::json!([])),
             (0, serde_json::json!([{"kind": "unsupported"}]))] {
             let input: TInput = serde_json::from_value(serde_json::json!({
@@ -12947,6 +13266,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn source_role_sorts_check_edges_and_named_individuals() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new();
         let a = g.new_node(None, false); let b = g.new_node(None, false);
         let value = g.new_node(None, false);
@@ -12965,6 +13285,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn datatype_realization_checks_absence_and_preserves_distinct_nodes() {
+        let _test_env = crate::test_env::read();
         let names = vec!["__dt__val__\"x\"^^xsd:string".into(), "__dt__string".into()];
         let mut g = Graph::new(); let a = g.new_node(None, false);
         g.add_concept(a, CLit::pos(0));
@@ -12979,6 +13300,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn pruned_verification_matches_exhaustive_two_object_interpretations() {
+        let _test_env = crate::test_env::read();
         let atoms = vec![concept(1, 0, false), concept(1, 0, true),
             concept(2, 1, false), concept(2, 1, true),
             Atom::Role { r: 3, s: 0, t: 1 }, Atom::Eq { s: 0, t: 1 },
@@ -13013,6 +13335,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn negative_atoms_use_complements_without_negative_labels() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new(); let a = g.new_node(None, false);
         let c = Clause::new(vec![concept(1, 0, true)], vec![concept(2, 0, false)]);
         assert!(verify_finite_rule_model(&g, &[c.clone()], &[], 100).is_err());
@@ -13021,6 +13344,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn checks_all_bindings_and_actual_existential_edges() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new(); let a = g.new_node(None, false); let b = g.new_node(None, false);
         g.add_concept(a, CLit::pos(1)); g.add_concept(b, CLit::pos(2));
         let c = Clause::new(vec![concept(1, 0, false)], vec![Atom::Exists { r: 3, fil: CLit::pos(2), t: 0 }]);
@@ -13034,6 +13358,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn rejects_nonsingleton_nominals_and_exhausted_budget() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new(); let a = g.new_node(None, false); let b = g.new_node(None, false);
         g.add_concept(a, CLit::pos(7));
         assert!(verify_finite_rule_model(&g, &[], &[7], 100).is_ok());
@@ -13043,6 +13368,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn equality_respects_shared_denotations() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new(); let a = g.new_node(None, false);
         g.add_concept(a, CLit::pos(7)); g.add_concept(a, CLit::pos(8));
         let c = Clause::new(vec![concept(7, 0, false), concept(8, 1, false)], vec![Atom::Eq { s: 0, t: 1 }]);

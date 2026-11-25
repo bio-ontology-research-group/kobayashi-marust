@@ -1,0 +1,278 @@
+ontology	bytes	fragment	I	Q	oneof1	oneofN	hasvalue	same	diff	km_ofn	n_clauses	n_lower	n_upper	c2a	c2a_witness
+ore_ont_5107	17455	SHOIQ	0	1	1	6	1	0	0	ok	45755	321	7	True	
+ore_ont_14931	28503	SHOIQ	1	1	1	3	0	0	0	ok	311	33	24	True	
+ore_ont_15667	30038	SHOIQ	1	1	0	0	1	0	0	ok	234	22	48	False	[["child", false], ["parent", true]]
+ore_ont_13737	36683	SHOIQ	1	1	0	4	7	0	0	ok	450	35	12	False	[["isHeadOf", false], ["isHeadOf", false]]
+ore_ont_3806	37066	SHOIQ	1	1	1	3	0	0	2	ok	501	14	5	True	
+ore_ont_3504	37143	SHOIQ	1	1	0	0	5	0	0	ok	305	26	10	True	
+ore_ont_11895	42547	SHOIQ	0	1	0	0	4	0	0	ok	304	38	37	True	
+ore_ont_385	48019	SHOIQ	1	1	0	0	5	0	0	ok	470	48	84	True	
+ore_ont_13132	51606	SHOIQ	1	0	0	0	1	0	0	ok	399	21	3	True	
+ore_ont_16630	55446	SHOIQ	1	1	0	0	1	0	0	ok	2061	14	27	True	
+ore_ont_304	55856	SHOIQ	0	0	1	0	0	0	0	ok	757	131	0	True	
+ore_ont_178	56088	SHOIQ	1	1	0	0	5	0	0	ok	575	64	110	True	
+ore_ont_16197	57518	SHOIQ	1	1	0	0	1	0	0	ok	207	12	19	True	
+ore_ont_1342	58368	SHOIQ	1	1	0	0	8	0	0	ok	591	64	103	True	
+ore_ont_3053	65774	SHOIQ	0	1	0	0	12	0	0	ok	401	34	50	True	
+ore_ont_13077	66100	SHOIQ	1	1	0	2	3	0	0	ok	533	31	4	True	
+ore_ont_15672	70141	SHOIQ	1	1	1	0	2	0	1	ok	929	88	5	False	[["setting", false], ["setting-for", true]]
+ore_ont_185	70714	SHOIQ	1	1	1	0	2	0	1	ok	900	87	2	False	[["setting", false], ["setting-for", true]]
+ore_ont_778	71556	SHOIQ	0	0	0	0	2	0	0	ok	1041	69	0	True	
+ore_ont_9557	71866	SHOIQ	1	1	0	0	21	0	0	ok	415	51	112	False	[["funeralFor", false], ["hasFuneral", true]]
+ore_ont_14348	75927	SHOIQ	1	0	1	3	0	0	2	ok	501	30	0	True	
+ore_ont_13799	80814	SHOIQ	1	1	0	0	29	0	0	ok	720	42	25	False	[["isLaunchedBy", false], ["launches", true]]
+ore_ont_16535	83521	SHOIQ	1	1	1	0	2	0	1	ok	1039	99	5	False	[["setting", false], ["setting-for", true]]
+ore_ont_4133	89031	SHOIQ	0	0	1	3	0	0	2	ok	515	31	0	True	
+ore_ont_1823	93592	SHOIQ	0	0	3	38	0	0	0	ok	925	7	0	True	
+ore_ont_13584	93640	SROIQ	1	1	0	0	5	0	0	ok	719	27	31	True	
+ore_ont_5204	95095	SHOIQ	1	1	0	0	5	0	2	ok	454	31	12	True	
+ore_ont_568	95887	SHOIQ	0	0	12	0	0	0	0	ok	686	97	0	True	
+ore_ont_15058	96097	SHOIQ	1	1	0	9	0	0	9	ok	975	67	70	False	[["hasObservation", false], ["isObservationOf", true]]
+ore_ont_12253	96131	SHOIQ	1	1	0	0	12	0	0	ok	808	78	3	False	[["isImplementedIn", false], ["implements", true]]
+ore_ont_5184	100622	SHOIQ	1	1	1	0	1	0	0	ok	825	52	0	True	
+ore_ont_7011	103335	SHOIQ	1	1	1	34	115	0	10	ok	1427	72	33	True	
+ore_ont_7179	104542	SHOIQ	1	1	0	3	0	0	1	ok	1010	60	90	False	[["isQuantitySpaceOf", false], ["hasQuantitySpace", true]]
+ore_ont_7730	110177	SHOIQ	1	1	0	0	22	0	0	ok	867	79	0	True	
+ore_ont_12566	110681	SHOIQ	1	1	0	5	5	0	0	ok	788	53	33	True	
+ore_ont_13805	111691	SHOIQ	1	1	0	0	115	0	8	ok	783	51	12	True	
+ore_ont_7820	112821	SHOIQ	1	1	4	1	0	0	78	ok	1069	33	40	False	[["hasInstanceMethod", false], ["hasInstanceMethod", false]]
+ore_ont_3060	114646	SHOIQ	1	1	4	1	0	0	78	ok	1075	33	40	False	[["hasInstanceMethod", false], ["hasInstanceMethod", false]]
+ore_ont_3843	114735	SHOIQ	1	1	0	0	12	0	0	ok	1119	71	15	True	
+ore_ont_14924	114739	SHOIQ	1	0	0	0	155	0	0	ok	2057	182	0	True	
+ore_ont_7668	115177	SHOIQ	1	1	0	0	115	0	8	ok	875	69	33	True	
+ore_ont_3708	117330	SHOIQ	1	1	4	1	0	0	78	ok	1069	33	40	False	[["hasInstanceMethod", false], ["hasInstanceMethod", false]]
+ore_ont_9783	118671	SHOIQ	1	1	1	0	3	0	0	ok	1114	103	0	True	
+ore_ont_5033	119215	SHOIQ	1	1	4	1	0	0	78	ok	1075	33	40	False	[["hasInstanceMethod", false], ["hasInstanceMethod", false]]
+ore_ont_1853	120320	SHOIQ	1	1	4	1	0	0	78	ok	1090	35	40	False	[["hasInstanceMethod", false], ["hasInstanceMethod", false]]
+ore_ont_394	122116	SHOIQ	0	0	5	0	0	0	1	ok	1091	90	0	True	
+ore_ont_13035	122819	SHOIQ	0	0	21	0	0	0	0	ok	1154	96	0	True	
+ore_ont_2526	123300	SHOIQ	1	1	4	1	0	0	78	ok	1200	33	40	False	[["hasInstanceMethod", false], ["hasInstanceMethod", false]]
+ore_ont_3411	124385	SHOIQ	0	1	4	2	5	0	0	ok	783	27	42	True	
+ore_ont_2182	125163	SHOIQ	1	1	0	31	115	0	8	ok	1016	72	33	True	
+ore_ont_12342	125868	SHOIQ	1	1	1	3	0	0	2	ok	14427	66	26	True	
+ore_ont_6615	126128	SHOIQ	1	1	4	1	0	0	78	ok	1217	33	40	False	[["hasInstanceMethod", false], ["hasInstanceMethod", false]]
+ore_ont_16481	127666	SHOIQ	1	1	0	31	115	0	8	ok	1019	72	33	True	
+ore_ont_14883	129924	SHOIQ	1	1	1	0	3	0	1	ok	1280	129	0	True	
+ore_ont_8460	130891	SHOIQ	1	1	1	0	3	0	1	ok	1273	135	0	True	
+ore_ont_2744	130970	SHOIQ	1	1	0	1	4	0	0	ok	1068	52	90	True	
+ore_ont_1784	130976	SHOIQ	1	1	1	0	3	0	0	ok	1212	121	0	True	
+ore_ont_7339	133665	SHOIQ	0	1	0	14	0	0	0	ok	1082	110	240	True	
+ore_ont_7342	144686	SHOIQ	0	1	0	0	5	0	0	ok	249	25	4	True	
+ore_ont_6258	146607	SHOIQ	1	1	1	0	3	0	0	ok	1391	140	3	True	
+ore_ont_6272	148708	SHOIQ	1	1	0	31	115	0	8	ok	1019	72	33	True	
+ore_ont_13762	149239	SROIQ	1	0	0	0	72	0	0	ok	557	88	0	True	
+ore_ont_934	150512	SHOIQ	1	1	0	1	0	0	7	ok	1671	78	60	False	[["implementsInterface", false], ["hasVirtualInterface", true]]
+ore_ont_16708	151562	SHOIQ	1	1	0	0	1	0	0	ok	5849	142	31	True	
+ore_ont_10320	153211	SHOIQ	1	1	0	0	3	2	0	ok	745	26	6	True	
+ore_ont_6983	153341	SHOIQ	1	1	0	0	3	2	0	ok	746	26	6	True	
+ore_ont_1461	154251	SHOIQ	0	1	1	5	9	0	0	ok	1775	242	476	True	
+ore_ont_11016	154806	SHOIQ	1	1	0	1	0	0	1	ok	896	50	60	False	[["isQuantitySpaceOf", false], ["hasQuantitySpace", true]]
+ore_ont_5359	155371	SHOIQ	1	1	1	3	0	0	2	ok	2564	163	2	False	[["has_role", false], ["inheres_in", true]]
+ore_ont_8141	155373	SHOIQ	1	1	1	3	0	0	2	ok	2564	163	2	False	[["has_role", false], ["inheres_in", true]]
+ore_ont_8948	162201	SHOIQ	1	1	0	0	4	2	0	ok	813	27	6	True	
+ore_ont_16191	162775	SHOIQ	1	1	0	0	3	2	0	ok	795	28	6	True	
+ore_ont_13383	165797	SHOIQ	1	1	0	0	3	2	0	ok	821	28	6	True	
+ore_ont_5564	166613	SHOIQ	1	1	0	0	3	2	0	ok	830	26	6	True	
+ore_ont_155	168699	SHOIQ	0	0	5	0	0	0	0	ok	1195	171	0	True	
+ore_ont_2488	174292	SHOIQ	0	0	12	0	0	2	0	ok	871	72	0	True	
+ore_ont_4032	175366	SHOIQ	1	1	0	0	3	2	0	ok	891	37	6	True	
+ore_ont_6999	176451	SHOIQ	0	1	0	25	0	0	0	ok	1977	280	792	True	
+ore_ont_1958	176507	SHOIQ	1	1	1	34	115	0	10	ok	1893	80	33	True	
+ore_ont_6967	176616	SHOIQ	1	1	0	0	4	0	0	ok	9429	203	37	True	
+ore_ont_10908	180058	SROIQ	1	1	1	3	0	0	2	ok	1809	61	10	False	[["BFO_0000184", false], ["BFO_0000184", false]]
+ore_ont_13898	181353	SHOIQ	1	1	0	0	3	2	0	ok	953	28	6	True	
+ore_ont_6857	181433	SHOIQ	1	1	0	0	7	2	0	ok	941	36	6	True	
+ore_ont_4983	186541	SHOIQ	0	0	13	0	0	2	0	ok	1033	80	0	True	
+ore_ont_13954	187630	SHOIQ	1	1	0	33	174	12	8	ok	1516	115	33	True	
+ore_ont_3010	188672	SHOIQ	1	1	0	33	174	0	8	ok	1630	115	33	True	
+ore_ont_8631	189816	SROIQ	1	1	1	3	0	0	2	ok	1605	52	0	True	
+ore_ont_15413	194061	SHOIQ	1	1	0	0	5	2	0	ok	1031	35	6	True	
+ore_ont_3301	196454	SHOIQ	1	1	0	0	16	2	0	ok	1005	38	6	True	
+ore_ont_6278	197411	SHOIQ	1	1	0	0	4	2	0	ok	1040	36	6	True	
+ore_ont_4354	197862	SHOIQ	1	1	0	0	4	2	0	ok	1040	34	6	True	
+ore_ont_15575	198332	SHOIQ	1	1	0	0	7	2	0	ok	1047	36	6	True	
+ore_ont_2453	198438	SHOIQ	0	0	17	0	0	0	1	ok	826	173	0	True	
+ore_ont_7828	201553	SHOIQ	0	1	0	0	25	0	0	ok	1376	44	12	True	
+ore_ont_2826	203210	SHOIQ	1	1	0	33	174	12	8	ok	1630	115	33	True	
+ore_ont_5834	203210	SHOIQ	1	1	0	33	174	12	8	ok	1630	115	33	True	
+ore_ont_850	203210	SHOIQ	1	1	0	33	174	12	8	ok	1630	115	33	True	
+ore_ont_10702	203217	SHOIQ	1	1	0	33	174	12	8	ok	1630	115	33	True	
+ore_ont_3156	203217	SHOIQ	1	1	0	33	174	12	8	ok	1630	115	33	True	
+ore_ont_8042	203254	SHOIQ	1	1	0	33	174	12	8	ok	1630	115	33	True	
+ore_ont_14334	203417	SHOIQ	1	1	0	33	174	12	8	ok	1630	115	33	True	
+ore_ont_4469	203996	SHOIQ	1	1	0	0	45	0	0	ok	1750	159	84	True	
+ore_ont_12084	205277	SHOIQ	1	1	0	0	3	2	0	ok	2837	94	6	True	
+ore_ont_1397	215516	SHOIQ	1	1	0	33	174	12	8	ok	1624	113	33	True	
+ore_ont_8786	215788	SHOIQ	1	1	0	33	174	12	8	ok	1625	113	33	True	
+ore_ont_8250	233527	SROIQ	1	1	0	1	5	0	14	ok	4729	178	409	False	[["hasVirtualDevice", false], ["hasVirtualDevice", false]]
+ore_ont_1478	236669	SHOIQ	1	1	4	0	0	0	0	ok	2081	106	1	False	[["internally-represented-in", false], ["internally-represents", true]]
+ore_ont_8030	240298	SHOIQ	1	1	0	0	11	2	0	ok	1349	40	6	True	
+ore_ont_13646	244993	SHOIQ	0	0	28	0	0	2	0	ok	1452	106	0	True	
+ore_ont_11477	246602	SHOIQ	1	1	0	35	233	24	8	ok	2241	158	33	True	
+ore_ont_6020	254572	SHOIQ	0	1	2	4	0	0	0	ok	965	150	18	True	
+ore_ont_10517	255099	SROIQ	0	1	0	0	5	0	0	ok	1626	49	12	True	
+ore_ont_3262	256401	SHOIQ	1	1	4	0	0	0	0	ok	2413	155	11	False	[["member-of", false], ["member", true]]
+ore_ont_5964	257475	SHOIQ	1	1	1	34	115	0	10	ok	3703	216	61	True	
+ore_ont_16255	259974	SHOIQ	0	0	24	0	0	2	0	ok	1413	99	0	True	
+ore_ont_13404	260672	SHOIQ	0	1	0	0	25	0	0	ok	846	36	39	True	
+ore_ont_8387	261935	SHOIQ	0	1	4	2	5	0	0	ok	783	27	42	True	
+ore_ont_8399	266580	SHOIQ	0	0	0	32	0	0	29	ok	2954	1	0	True	
+ore_ont_9890	270008	SHOIQ	1	1	1	34	115	0	10	ok	6051	245	35	False	[["has_disposition", false], ["inheres_in", true]]
+ore_ont_8050	273030	SHOIQ	0	1	0	0	33	0	0	ok	912	43	39	True	
+ore_ont_6951	277602	SHOIQ	0	1	0	0	12	0	0	ok	3323	114	169	True	
+ore_ont_16372	283119	SHOIQ	1	1	1	4	0	0	3	ok	6479	304	28	False	[["has_function", false], ["inheres_in", true]]
+ore_ont_12925	283347	SHOIQ	1	1	0	0	3	2	0	ok	3376	104	6	True	
+ore_ont_4796	303903	SHOIQ	1	1	5	2	0	0	0	ok	2913	205	15	False	[["defined-by", false], ["component", true]]
+ore_ont_8006	305987	SHOIQ	1	1	0	0	16	2	0	ok	3455	106	6	True	
+ore_ont_8019	315343	SHOIQ	1	1	0	0	34	2	0	ok	1869	65	9	True	
+ore_ont_7327	324492	SHOIQ	1	1	0	0	17	2	0	ok	3562	107	6	True	
+ore_ont_9122	325709	SHOIQ	0	0	62	0	0	0	1	ok	1136	223	0	True	
+ore_ont_9096	335239	SHOIQ	1	1	0	0	3	2	0	ok	3734	105	6	True	
+ore_ont_15030	341802	SHOIQ	0	1	0	27	0	0	0	ok	3407	522	1127	True	
+ore_ont_5688	347689	SHOIQ	0	0	116	0	0	2	0	ok	2407	231	0	True	
+ore_ont_6401	353193	SHOIQ	0	0	2	0	0	0	0	ok	1891	265	0	True	
+ore_ont_8911	359868	SHOIQ	1	1	4	0	0	0	2	ok	3529	253	7	False	[["characterizes", false], ["characterized-by", true]]
+ore_ont_1509	361678	SHOIQ	1	1	4	0	0	0	0	ok	3532	216	13	False	[["defined-by", false], ["component", true]]
+ore_ont_6446	363870	SHOIQ	1	1	0	0	2	0	0	ok	358	42	20	True	
+ore_ont_10860	365694	SHOIQ	0	1	5	12	57	0	12	ok	2921	162	153	True	
+ore_ont_3783	392037	SHOIQ	0	0	0	32	0	0	29	ok	2954	1	0	True	
+ore_ont_3503	412443	SHOIQ	1	1	0	0	34	2	0	ok	4274	142	9	True	
+ore_ont_13113	412646	SHOIQ	0	0	161	0	0	2	0	ok	2976	265	0	True	
+ore_ont_11647	423957	SHOIQ	1	1	0	3	106	0	4	ok	17172	288	147	False	[["hasDewPointValue", false], ["qualityValue", false]]
+ore_ont_13545	429310	SROIQ	1	1	1	34	115	0	10	ok	3711	74	33	True	
+ore_ont_1481	450097	SHOIQ	0	0	75	0	0	0	1	ok	1547	307	0	True	
+ore_ont_13859	462252	SHOIQ	1	1	0	31	115	0	8	ok	14765	289	112	False	[["sao1844377738", false], ["sao923422536", true]]
+ore_ont_14285	539888	SHOIQ	1	1	0	1	0	0	1	ok	829	51	57	False	[["isQuantitySpaceOf", false], ["hasQuantitySpace", true]]
+ore_ont_8142	550577	SHOIQ	1	1	0	7	80	1	394	ok	3073	263	109	False	[["directlyFollows", false], ["directlyPrecedes", true]]
+ore_ont_5502	551667	SHOIQ	1	1	1	3	0	0	2	ok	4826	151	4	False	[["OBI_0000316", false], ["inheres_in", true]]
+ore_ont_6226	566584	SHOIQ	0	0	1	0	0	0	0	ok	474	44	0	True	
+ore_ont_8509	632034	SHOIQ	1	1	0	0	91	5	0	ok	5817	167	32	True	
+ore_ont_8595	678309	SHOIQ	1	1	0	0	82	2	0	ok	6151	200	9	True	
+ore_ont_13153	680943	SHOIQ	1	1	0	0	82	2	0	ok	6175	198	9	True	
+ore_ont_15297	684718	SHOIQ	1	1	0	0	83	2	0	ok	6194	201	9	True	
+ore_ont_5894	688726	SHOIQ	1	1	0	0	82	2	0	ok	6205	198	9	True	
+ore_ont_509	690087	SHOIQ	1	1	0	0	90	2	0	ok	6195	206	9	True	
+ore_ont_9248	710155	SHOIQ	1	1	0	0	82	2	0	ok	6348	199	9	True	
+ore_ont_7817	721049	SHOIQ	1	1	0	0	85	2	0	ok	6463	202	9	True	
+ore_ont_8294	721416	SROIQ	1	1	0	9	0	0	9	ok	4989	26	6	True	
+ore_ont_10952	723227	SHOIQ	1	1	0	0	82	2	0	ok	6413	199	9	True	
+ore_ont_9540	728884	SHOIQ	1	1	2	2	21	0	4	ok	2039	81	47	True	
+ore_ont_6727	736601	SHOIQ	1	1	0	0	87	2	0	ok	6483	199	9	True	
+ore_ont_12325	749913	SHOIQ	1	1	0	0	92	4	0	ok	6579	202	9	True	
+ore_ont_6934	758659	SHOIQ	1	1	0	1	0	0	1	ok	2156	95	74	False	[["isQuantitySpaceOf", false], ["hasQuantitySpace", true]]
+ore_ont_2703	759287	SHOIQ	1	1	0	0	121	2	0	ok	6713	240	9	True	
+ore_ont_7108	785453	SHOIQ	1	1	0	0	121	2	0	ok	6872	242	9	True	
+ore_ont_13299	819866	SHOIQ	1	1	1	3	0	0	2	ok	6447	158	4	False	[["OBI_0000316", false], ["inheres_in", true]]
+ore_ont_4903	860208	SHOIQ	1	1	0	31	115	0	8	ok	17716	680	39	True	
+ore_ont_12916	860504	SHOIQ	1	1	0	0	105	4	0	ok	7228	224	9	True	
+ore_ont_13837	900046	SHOIQ	0	0	1	0	0	0	0	ok	976	136	0	True	
+ore_ont_2604	942754	SHOIQ	1	1	0	0	93	4	0	ok	7024	221	9	True	
+ore_ont_6822	947689	SHOIQ	1	1	0	8	0	0	10	ok	7977	31	74	True	
+ore_ont_1672	952614	SHOIQ	1	1	0	2	2	0	0	ok	453	34	2	True	
+ore_ont_3381	1013061	SHOIQ	1	1	0	0	101	4	0	ok	8262	236	9	True	
+ore_ont_14818	1033584	SHOIQ	1	1	0	0	101	4	0	ok	8342	236	9	True	
+ore_ont_399	1040412	SHOIQ	1	1	0	0	101	4	0	ok	8388	237	9	True	
+ore_ont_14860	1059845	SHOIQ	1	1	0	1	4	0	0	ok	1066	52	90	True	
+ore_ont_2677	1061878	SHOIQ	1	1	0	0	101	5	0	ok	8496	238	9	True	
+ore_ont_8902	1068719	SHOIQ	1	1	0	0	107	4	0	ok	8530	238	9	True	
+ore_ont_2318	1114845	SHOIQ	1	1	0	0	104	4	0	ok	8825	248	9	True	
+ore_ont_7775	1295530	SHOIQ	1	0	0	0	253	0	0	ok	14940	858	0	True	
+ore_ont_12451	1373820	SROIQ	1	1	1	3	0	0	2	ok	21105	1826	16	False	[["BFO_0000053", false], ["BFO_0000052", true]]
+ore_ont_9429	1382637	SHOIQ	1	1	1	3	8	0	2	ok	32877	646	29	False	[["OBI_0000306", false], ["inheres_in", true]]
+ore_ont_12152	1398577	SHOIQ	0	0	242	0	0	208	78	ok	7523	611	0	True	
+ore_ont_10481	1401011	SHOIQ	0	0	242	0	0	208	78	ok	7545	613	0	True	
+ore_ont_16759	1439224	SHOIQ	0	0	235	0	0	206	76	ok	7488	606	0	True	
+ore_ont_16124	1440897	SHOIQ	0	0	235	0	0	206	76	ok	7476	604	0	True	
+ore_ont_260	1441174	SHOIQ	0	0	235	0	0	206	76	ok	7476	604	0	True	
+ore_ont_6452	1442803	SHOIQ	0	0	235	0	0	206	76	ok	7480	605	0	True	
+ore_ont_10242	1446224	SHOIQ	0	0	242	0	0	208	78	ok	7515	609	0	True	
+ore_ont_1469	1446397	SHOIQ	0	0	242	0	0	208	78	ok	7522	611	0	True	
+ore_ont_13621	1446886	SHOIQ	0	0	242	0	0	208	78	ok	7531	613	0	True	
+ore_ont_1533	1446886	SHOIQ	0	0	242	0	0	208	78	ok	7531	613	0	True	
+ore_ont_14194	1446888	SHOIQ	0	0	242	0	0	208	78	ok	7531	613	0	True	
+ore_ont_14551	1447287	SHOIQ	1	1	1	34	123	0	10	ok	33849	718	62	False	[["OBI_0000306", false], ["inheres_in", true]]
+ore_ont_12043	1450600	SHOIQ	0	0	248	0	0	208	78	ok	7579	619	0	True	
+ore_ont_12219	1451573	SHOIQ	0	0	242	0	0	208	78	ok	7546	612	0	True	
+ore_ont_7479	1456331	SHOIQ	0	0	237	0	0	206	76	ok	7544	610	0	True	
+ore_ont_13178	1462658	SHOIQ	0	0	242	0	0	208	78	ok	7602	615	0	True	
+ore_ont_11305	1475168	SHOIQ	1	1	1	37	115	0	10	ok	36909	811	67	False	[["birnlex_17", false], ["inheres_in__pato", true]]
+ore_ont_1965	1475344	SHOIQ	0	0	242	0	0	206	76	ok	7653	610	0	True	
+ore_ont_5730	1481567	SHOIQ	0	0	278	0	0	177	93	ok	8311	671	0	True	
+ore_ont_10749	1481574	SHOIQ	0	0	278	0	0	177	93	ok	8311	671	0	True	
+ore_ont_15475	1484892	SHOIQ	0	0	239	0	0	209	76	ok	7529	608	0	True	
+ore_ont_4363	1484957	SHOIQ	0	0	242	0	0	208	78	ok	7650	614	0	True	
+ore_ont_8844	1486327	SHOIQ	0	0	278	0	0	179	100	ok	8323	674	0	True	
+ore_ont_14191	1491332	SHOIQ	0	0	278	0	0	177	93	ok	8303	668	0	True	
+ore_ont_15615	1522487	SHOIQ	0	0	283	0	0	181	93	ok	8467	685	0	True	
+ore_ont_5664	1526224	SHOIQ	0	0	278	0	0	177	93	ok	8312	672	0	True	
+ore_ont_4780	1531022	SHOIQ	0	0	278	0	0	177	93	ok	8338	673	0	True	
+ore_ont_3561	1583712	SHOIQ	1	1	0	1	0	0	1	ok	1068	56	60	False	[["isQuantitySpaceOf", false], ["hasQuantitySpace", true]]
+ore_ont_3080	1598569	SROIQ	1	1	0	9	0	0	9	ok	13404	616	4	False	[["birnlex_17", false], ["inheres_in", true]]
+ore_ont_13991	1942330	SHOIQ	1	1	4	268	0	0	0	ok	13197	18	932	True	
+ore_ont_8627	2023071	SHOIQ	0	0	1	0	0	0	0	ok	972	136	0	True	
+ore_ont_4567	2137420	SHOIQ	1	1	0	0	271	0	0	ok	11936	538	32	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_12174	2249170	SHOIQ	1	1	0	0	121	1	0	ok	1312	154	90	False	[["quantityValue", false], ["valueQuantity", true]]
+ore_ont_16666	2249961	SHOIQ	1	1	0	0	214	0	0	ok	9943	397	28	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_8882	2283978	SHOIQ	0	0	1	0	0	0	0	ok	972	136	0	True	
+ore_ont_9303	2319441	SHOIQ	1	1	1	9	0	0	20	ok	7601	30	81	True	
+ore_ont_2792	2326478	SHOIQ	1	1	0	0	224	0	0	ok	10185	417	32	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_802	2356472	SHOIQ	1	1	0	0	10	0	0	ok	1899	52	38	True	
+ore_ont_15655	2531841	SHOIQ	1	1	0	1	0	0	0	ok	2941	24	58	True	
+ore_ont_10754	2662581	SHOIQ	1	1	0	1	0	0	1	ok	1079	56	60	False	[["isQuantitySpaceOf", false], ["hasQuantitySpace", true]]
+ore_ont_3917	2754035	SHOIQ	1	1	0	0	388	0	0	ok	15921	819	32	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_10949	2782932	SHOIQ	1	1	1	322	0	0	0	ok	26570	405	2222	True	
+ore_ont_8148	2787562	SHOIQ	1	1	0	0	229	0	0	ok	10387	434	32	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_3077	2889721	SHOIQ	1	1	0	0	443	0	0	ok	17108	921	32	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_699	2909100	SHOIQ	1	1	0	0	453	0	0	ok	17258	932	32	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_11378	2996720	SHOIQ	1	1	0	0	495	0	0	ok	18031	1003	32	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_12191	3006922	SHOIQ	1	1	0	0	500	0	0	ok	18123	1011	32	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_257	3258285	SHOIQ	1	1	0	0	7	0	27	ok	4606	109	24	True	
+ore_ont_13230	3271129	SHOIQ	1	1	0	0	7	0	27	ok	4561	109	24	True	
+ore_ont_10080	3569579	SROIQ	1	1	1	4	33	0	2	ok	104261	1150	29	False	[["OBI_0000312", false], ["OBI_0000299", true]]
+ore_ont_5548	3942676	SHOIQ	1	1	0	0	31	0	0	ok	11848	461	43	False	[["has_catalyst", false], ["catalyzes_reaction", true]]
+ore_ont_12698	4167485	SHOIQ	1	1	0	0	2	0	0	ok	35252	1220	4	False	[["bearer_of", false], ["bearer_of", false]]
+ore_ont_9151	4249405	SHOIQ	1	1	0	0	1113	0	0	ok	30812	2134	42	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_16420	4329875	SHOIQ	1	1	0	0	1166	0	0	ok	31748	2224	42	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_9577	4395211	SHOIQ	1	1	0	0	1237	0	0	ok	32471	2311	42	False	[["owns", false], ["isOwnedBy", true]]
+ore_ont_2142	4610346	SHOIQ	0	0	24	0	0	0	2	ok	108923	1305	0	True	
+ore_ont_13052	4719704	SHOIQ	1	1	0	0	4530	0	0	ok	32931	4606	43	False	[["has_reactant", false], ["catalyzes_reaction", true]]
+ore_ont_10391	7000301	SHOIQ	1	0	0	0	1	0	0	ok	230	6	2	True	
+ore_ont_13526	7001602	SHOIQ	1	0	0	0	1	0	0	ok	221	4	2	True	
+ore_ont_8480	7162399	SHOIQ	1	1	1	3	0	12166	2	ok	20470	5383	4	True	
+ore_ont_10006	8509633	SHOIQ	1	1	1	3	0	0	2	ok	71021	329	4	True	
+ore_ont_2577	8510731	SHOIQ	1	1	1	3	0	0	2	ok	71021	329	4	True	
+ore_ont_2632	9040202	SHOIQ	1	1	1	3	0	0	2	ok	98562	7290	4	True	
+ore_ont_4141	10826249	SHOIQ	1	1	0	0	6	0	0	ok	738	41	88	True	
+ore_ont_5849	13791320	SHOIQ	1	1	1	3	0	0	2	ok	130650	1970	4	True	
+ore_ont_3282	13792418	SHOIQ	1	1	1	3	0	0	2	ok	130650	1970	4	True	
+ore_ont_13708	15752435	SHOIQ	1	1	4	0	0	0	0	ok	65269	209	13	False	[["defined-by", false], ["component", true]]
+ore_ont_11457	15752442	SHOIQ	1	1	4	0	0	0	0	ok	65269	209	13	False	[["defined-by", false], ["component", true]]
+ore_ont_16315	15816012	SHOIQ	1	1	1	3	0	30657	2	ok	14368	3349	4	True	
+ore_ont_16184	15901619	SHOIQ	0	0	5	0	0	0	0	ok	68123	552	0	True	
+ore_ont_1123	16545157	SHOIQ	1	1	1	0	0	0	0	ok	61490	2002	202	False	[["SOPHARM_02111", false], ["SOPHARM_02110", true]]
+ore_ont_13928	18830216	SHOIQ	1	1	1	3	0	0	2	ok	137663	451	4	True	
+ore_ont_15226	18830962	SHOIQ	1	1	1	3	0	0	2	ok	137839	451	4	True	
+ore_ont_5289	18891559	SHOIQ	1	1	1	3	0	0	2	ok	182968	2685	4	True	
+ore_ont_11005	20307995	SHOIQ	1	1	1	3	0	0	2	ok	250191	17718	4	True	
+ore_ont_15687	21974908	SHOIQ	1	1	0	0	1504	0	0	rc -6: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace					
+ore_ont_8445	23834546	SHOIQ	1	1	0	0	12	0	0	ok	1098	51	96	True	
+ore_ont_10838	28585731	SHOIQ	1	1	1	3	0	40850	2	ok	12664	2781	4	True	
+ore_ont_11270	28758810	SHOIQ	1	1	2	23	6455	0	1	ok	283232	39101	132	True	
+ore_ont_10621	28758860	SHOIQ	1	1	2	23	6455	0	1	ok	283232	39101	132	True	
+ore_ont_3087	30914544	SHOIQ	1	1	1	3	0	45103	2	ok	12259	2646	4	True	
+ore_ont_8475	34535462	SHOIQ	0	0	3242	0	0	0	1	ok	463021	68610	0	True	
+ore_ont_1938	35947963	SHOIQ	1	1	1	3	0	0	2	ok	387093	25687	4	True	
+ore_ont_12743	35949061	SHOIQ	1	1	1	3	0	0	2	ok	387093	25687	4	True	
+ore_ont_7409	36117958	SHOIQ	1	1	1	3	0	0	2	ok	378764	22223	4	True	
+ore_ont_15846	40243912	SHOIQ	1	1	1	3	0	66423	2	ok	67117	20932	4	True	
+ore_ont_7557	41575343	SHOIQ	1	1	1	3	0	56568	2	ok	75576	15724	4	True	
+ore_ont_1199	46905430	SHOIQ	1	1	1	3	0	44408	2	ok	38729	965	4	True	
+ore_ont_7729	49990879	SHOIQ	1	1	1	3	0	0	2	ok	566143	39152	4	True	
+ore_ont_16462	50530513	SHOIQ	1	1	1	3	0	0	2	ok	534058	35535	4	True	
+ore_ont_10929	51968091	SHOIQ	1	1	0	1	0	0	0	ok	405	45	18	True	
+ore_ont_10568	97308515	SHOIQ	1	1	1	3	0	44408	2	ok	526574	20444	4	True	
+ore_ont_2574	114994716	SHOIQ	1	1	1	3	0	44408	2	ok	401840	23992	4	False	[["RO_0002200", false], ["RO_0002201", true]]
+ore_ont_1673	123049579	SHOIQ	1	1	1	3	0	0	2	ok	1012108	43560	4	False	[["RO_0002200", false], ["RO_0002201", true]]
+ore_ont_15803	132287537	SHOIQ	0	0	1	3	0	0	2	ok	904760	26133	0	True	
+ore_ont_7192	552291902	SHOIQ	1	1	1	3	0	56568	2	ok	395301	28136	4	False	[["RO_0002200", false], ["RO_0002201", true]]
+ore_ont_10926	584214274	SHOIQ	1	1	1	3	0	0	2	ok	3498094	56520	4	False	[["RO_0002200", false], ["RO_0002201", true]]

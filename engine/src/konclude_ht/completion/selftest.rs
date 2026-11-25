@@ -194,6 +194,7 @@ fn build_env() -> SelfTestEnv {
 
 #[test]
 fn referred_individual_tracking_vector_records_referred_and_extended_individuals() {
+    let _test_env = crate::test_env::read();
     let mut vec = ReferredIndividualTrackingVector::new();
     vec.init_referred_individual_tracking_vector(20, 5);
 
@@ -212,6 +213,7 @@ fn referred_individual_tracking_vector_records_referred_and_extended_individuals
 
 #[test]
 fn referred_individual_tracking_vector_copies_merges_and_tests_affected_sets() {
+    let _test_env = crate::test_env::read();
     let mut base = ReferredIndividualTrackingVector::new();
     base.init_referred_individual_tracking_vector(20, 5);
     base.set_individual_referred(-3);
@@ -241,6 +243,7 @@ fn referred_individual_tracking_vector_copies_merges_and_tests_affected_sets() {
 
 #[test]
 fn individual_dependence_tracking_collector_keeps_first_installed_vector() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let first = env
         .ctx
@@ -283,6 +286,7 @@ fn individual_dependence_tracking_collector_keeps_first_installed_vector() {
 
 #[test]
 fn individual_dependence_tracking_adapter_preserves_observer_and_marker_handles() {
+    let _test_env = crate::test_env::read();
     let mut ctx = CalculationAlgorithmContextBase::new();
     let observer = ctx.base.alloc_individual_dependence_tracking_collector(
         IndividualDependenceTrackingCollector::new(),
@@ -319,6 +323,7 @@ fn individual_dependence_tracking_adapter_preserves_observer_and_marker_handles(
 
 #[test]
 fn individual_dependence_tracking_adapter_resolves_through_task_context_arena() {
+    let _test_env = crate::test_env::read();
     let mut ctx = CalculationAlgorithmContextBase::new();
     let observer = ctx.base.alloc_individual_dependence_tracking_collector(
         IndividualDependenceTrackingCollector::new(),
@@ -353,6 +358,7 @@ fn individual_dependence_tracking_adapter_resolves_through_task_context_arena() 
 
 #[test]
 fn track_individual_dependence_marks_existing_referred_tracking_vector() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let track_vec = env
         .ctx
@@ -393,6 +399,7 @@ fn track_individual_dependence_marks_existing_referred_tracking_vector() {
 
 #[test]
 fn track_individual_dependence_respects_required_flag_and_missing_vector() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     assert!(!env
         .algo
@@ -408,6 +415,7 @@ fn track_individual_dependence_respects_required_flag_and_missing_vector() {
 
 #[test]
 fn track_individual_dependence_lazily_installs_vector_from_observer() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     for id in 0..5 {
         env.ctx
@@ -455,6 +463,7 @@ fn track_individual_dependence_lazily_installs_vector_from_observer() {
 
 #[test]
 fn track_individual_dependence_marks_classifier_marker_when_lazy_tracking_starts() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     for id in 0..5 {
         env.ctx
@@ -496,6 +505,7 @@ fn track_individual_dependence_marks_classifier_marker_when_lazy_tracking_starts
 
 #[test]
 fn track_individual_dependence_reuses_existing_observer_vector() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     for id in 0..5 {
         env.ctx
@@ -549,6 +559,7 @@ fn track_individual_dependence_reuses_existing_observer_vector() {
 
 #[test]
 fn track_individual_dependence_sizes_to_deterministic_graph_when_larger_than_abox() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     for id in 0..2 {
         env.ctx
@@ -604,6 +615,7 @@ fn track_individual_dependence_sizes_to_deterministic_graph_when_larger_than_abo
 /// sat: a root labelled with a single atomic concept A → COMPLETE (no clash).
 #[test]
 fn sat_single_atomic_concept_is_consistent() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -629,6 +641,7 @@ fn sat_single_atomic_concept_is_consistent() {
 /// clash: a root labelled with A and ¬A → CLASH (the contradiction fires).
 #[test]
 fn clash_a_and_not_a_is_inconsistent() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -671,6 +684,7 @@ fn clash_a_and_not_a_is_inconsistent() {
 
 #[test]
 fn add_concept_to_individual_updates_concept_occurrence_statistics() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_occurrence_statistics_collecting = true;
     env.algo.opt_collect_occurrence_statistics = true;
@@ -698,6 +712,7 @@ fn add_concept_to_individual_updates_concept_occurrence_statistics() {
 
 #[test]
 fn add_concept_to_individual_occurrence_statistics_skip_contained_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_occurrence_statistics_collecting = true;
     env.algo.opt_collect_occurrence_statistics = true;
@@ -729,6 +744,7 @@ fn add_concept_to_individual_occurrence_statistics_skip_contained_descriptor() {
 
 #[test]
 fn add_concept_to_individual_occurrence_statistics_do_not_update_rejected_clash() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_occurrence_statistics_collecting = true;
     env.algo.opt_collect_occurrence_statistics = true;
@@ -1026,6 +1042,7 @@ fn add_saturation_label_concept(
 
 #[test]
 fn create_clashed_concept_descriptor_prepends_payload() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
     let tp1 = deterministic_track_point(&mut env);
@@ -1075,6 +1092,7 @@ fn create_clashed_concept_descriptor_prepends_payload() {
 
 #[test]
 fn create_clashed_individual_node_descriptor_walks_adding_sorted_label_chain() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
     let tp1 = deterministic_track_point(&mut env);
@@ -1121,6 +1139,7 @@ fn create_clashed_individual_node_descriptor_walks_adding_sorted_label_chain() {
 
 #[test]
 fn create_clashed_individual_link_descriptor_prepends_payload() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
     let concept_tp = deterministic_track_point(&mut env);
@@ -1162,6 +1181,7 @@ fn create_clashed_individual_link_descriptor_prepends_payload() {
 
 #[test]
 fn create_individual_merge_causing_descriptors_collects_link_and_label_clashes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
     let concept_a_tp = deterministic_track_point(&mut env);
@@ -1215,6 +1235,7 @@ fn create_individual_merge_causing_descriptors_collects_link_and_label_clashes()
 
 #[test]
 fn create_clashed_individual_distinct_descriptor_prepends_payload() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
     let concept_tp = deterministic_track_point(&mut env);
@@ -1262,11 +1283,13 @@ fn create_clashed_individual_distinct_descriptor_prepends_payload() {
 
 #[test]
 fn mergeability_clash_retains_distinct_edge_dependency() {
+    let _test_env = crate::test_env::read();
     check_mergeability_distinct_dependency(false, false);
 }
 
 #[test]
 fn mergeability_clash_retains_compressed_distinct_branch_dependency() {
+    let _test_env = crate::test_env::read();
     check_mergeability_distinct_dependency(true, true);
 }
 
@@ -1317,6 +1340,7 @@ fn check_mergeability_distinct_dependency(compressed: bool, branching: bool) {
 
 #[test]
 fn mergeability_clash_retains_both_opposite_label_dependencies() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let other = env
@@ -1364,6 +1388,7 @@ fn mergeability_clash_retains_both_opposite_label_dependencies() {
 
 #[test]
 fn positive_nominal_merge_clash_keeps_branch_cause_for_ddb() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -1491,6 +1516,7 @@ fn positive_nominal_merge_clash_keeps_branch_cause_for_ddb() {
 
 #[test]
 fn create_clashed_negation_disjoint_descriptor_prepends_payload() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -1545,6 +1571,7 @@ fn create_clashed_negation_disjoint_descriptor_prepends_payload() {
 
 #[test]
 fn create_tracked_clashes_descriptor_from_concept_clash_payload() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -1597,6 +1624,7 @@ fn create_tracked_clashes_descriptor_from_concept_clash_payload() {
 
 #[test]
 fn add_indi_node_signature_of_unsatisfiable_clashed_descriptors_inserts_label_signature() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let signature = 4242;
     let mut label_set = ReapplyConceptLabelSet::new(0);
@@ -1632,6 +1660,7 @@ fn add_indi_node_signature_of_unsatisfiable_clashed_descriptors_inserts_label_si
 
 #[test]
 fn create_tracked_clashes_descriptors_prepends_each_converted_clash() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -1682,6 +1711,7 @@ fn create_tracked_clashes_descriptors_prepends_each_converted_clash() {
 
 #[test]
 fn create_tracked_clashes_descriptor_copies_independent_concept_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -1843,6 +1873,7 @@ fn add_test_connection_successor(env: &mut SelfTestEnv, node: NodeId, connected:
 
 #[test]
 fn unit03_propagate_processing_restriction_to_ancestor_marks_direct_ancestor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let child = test_node_at_depth(&mut env, 65, 1);
@@ -1868,6 +1899,7 @@ fn unit03_propagate_processing_restriction_to_ancestor_marks_direct_ancestor() {
 
 #[test]
 fn unit03_propagate_processing_restriction_to_ancestor_recurses_until_stop_flag() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let mid = test_node_at_depth(&mut env, 66, 1);
@@ -1906,6 +1938,7 @@ fn unit03_propagate_processing_restriction_to_ancestor_recurses_until_stop_flag(
 
 #[test]
 fn unit21_reactivate_indirect_satisfiable_cached_successors_marks_and_queues_deeper_successor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = false;
@@ -1961,6 +1994,7 @@ fn unit21_reactivate_indirect_satisfiable_cached_successors_marks_and_queues_dee
 
 #[test]
 fn unit21_reactivate_indirect_saturation_cached_successors_marks_and_queues_deeper_successor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = false;
@@ -2019,6 +2053,7 @@ fn unit21_reactivate_indirect_saturation_cached_successors_marks_and_queues_deep
 
 #[test]
 fn unit04_search_reactivate_drains_processing_blocked_linker() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = false;
@@ -2081,6 +2116,7 @@ fn unit04_search_reactivate_drains_processing_blocked_linker() {
 
 #[test]
 fn unit04_search_reactivate_marks_successor_ancestor_all_processed() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = false;
@@ -2110,6 +2146,7 @@ fn unit04_search_reactivate_marks_successor_ancestor_all_processed() {
 
 #[test]
 fn unit04_search_reactivate_requeues_processing_blocked_successor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = false;
@@ -2153,6 +2190,7 @@ fn unit04_search_reactivate_requeues_processing_blocked_successor() {
 
 #[test]
 fn unit04_search_reactivate_recurses_completed_successor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = false;
@@ -2216,6 +2254,7 @@ fn unit04_search_reactivate_recurses_completed_successor() {
 
 #[test]
 fn unit04_propagate_unprocessed_clears_completed_and_recurses_missing_ancestor_flag() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -2263,6 +2302,7 @@ fn unit04_propagate_unprocessed_clears_completed_and_recurses_missing_ancestor_f
 
 #[test]
 fn unit04_propagate_unprocessed_skips_successor_that_already_has_ancestor_flag() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -2303,6 +2343,7 @@ fn unit04_propagate_unprocessed_skips_successor_that_already_has_ancestor_flag()
 
 #[test]
 fn unit04_propagate_unprocessed_requires_cons_preparation_flag() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -2334,6 +2375,7 @@ fn unit04_propagate_unprocessed_requires_cons_preparation_flag() {
 
 #[test]
 fn unit04_add_concept_skip_and_processing_inserts_label_and_queue_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let dep = deterministic_track_point(&mut env);
@@ -2390,6 +2432,7 @@ fn unit04_add_concept_skip_and_processing_inserts_label_and_queue_descriptor() {
 
 #[test]
 fn unit04_add_concept_skip_and_processing_does_not_queue_and_rule() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let dep = deterministic_track_point(&mut env);
@@ -2421,6 +2464,7 @@ fn unit04_add_concept_skip_and_processing_does_not_queue_and_rule() {
 
 #[test]
 fn unit04_add_concept_skip_and_processing_marks_label_modification_when_requested() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let dep = deterministic_track_point(&mut env);
@@ -2459,6 +2503,7 @@ fn unit04_add_concept_skip_and_processing_marks_label_modification_when_requeste
 
 #[test]
 fn unit04_add_concept_skip_and_processing_counts_contained_duplicates() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let dep = deterministic_track_point(&mut env);
@@ -2509,6 +2554,7 @@ fn unit04_add_concept_skip_and_processing_counts_contained_duplicates() {
 
 #[test]
 fn unit04_insert_concept_process_descriptor_routes_propagation_to_batch_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let (concept, _, con_pro_des) = operator_concept_process_descriptor(
@@ -2548,6 +2594,7 @@ fn unit04_insert_concept_process_descriptor_routes_propagation_to_batch_queue() 
 
 #[test]
 fn unit04_insert_concept_process_descriptor_binding_routes_all_and_to_binding_count_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let (_, _, con_pro_des) = operator_concept_process_descriptor(
@@ -2588,6 +2635,7 @@ fn unit04_insert_concept_process_descriptor_binding_routes_all_and_to_binding_co
 
 #[test]
 fn unit04_add_concept_to_processing_queue_reinsert_restores_default_priority_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let (_, _, con_pro_des) =
@@ -2639,6 +2687,7 @@ fn unit04_add_concept_to_processing_queue_reinsert_restores_default_priority_des
 
 #[test]
 fn unit04_add_concept_to_processing_queue_reinsert_restores_sorted_priority_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let (_, _, con_pro_des) =
@@ -2683,6 +2732,7 @@ fn unit04_add_concept_to_processing_queue_reinsert_restores_sorted_priority_desc
 
 #[test]
 fn unit04_add_individual_depth_oriented_sets_processing_queue_flag() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = false;
@@ -2706,6 +2756,7 @@ fn unit04_add_individual_depth_oriented_sets_processing_queue_flag() {
 
 #[test]
 fn unit04_add_individual_depth_oriented_suppresses_duplicate_processing_queue_insert() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = false;
@@ -2726,6 +2777,7 @@ fn unit04_add_individual_depth_oriented_suppresses_duplicate_processing_queue_in
 
 #[test]
 fn unit04_add_individual_depth_oriented_uses_deterministic_preprocessing_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = true;
@@ -2754,6 +2806,7 @@ fn unit04_add_individual_depth_oriented_uses_deterministic_preprocessing_queue()
 
 #[test]
 fn unit04_add_individual_depth_oriented_low_priority_uses_regular_depth_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = true;
     env.algo.opt_det_exp_preporcessing = true;
@@ -2791,6 +2844,7 @@ fn unit04_add_individual_depth_oriented_low_priority_uses_regular_depth_queue() 
 
 #[test]
 fn unit04_add_individual_non_depth_direct_blocked_without_retest_skips_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = false;
     env.algo.conf_late_blocking_resolving = true;
@@ -2815,6 +2869,7 @@ fn unit04_add_individual_non_depth_direct_blocked_without_retest_skips_queue() {
 
 #[test]
 fn unit04_add_individual_non_depth_late_retest_queues_blocked_reactivation_once() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = false;
     env.algo.conf_late_blocking_resolving = true;
@@ -2848,6 +2903,7 @@ fn unit04_add_individual_non_depth_late_retest_queues_blocked_reactivation_once(
 
 #[test]
 fn unit04_add_individual_non_depth_retest_without_late_resolving_uses_regular_depth_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = false;
     env.algo.conf_late_blocking_resolving = false;
@@ -2885,6 +2941,7 @@ fn unit04_add_individual_non_depth_retest_without_late_resolving_uses_regular_de
 
 #[test]
 fn unit04_add_individual_non_depth_delayed_nominal_queue_blocks_insert() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_depth_orientated_processing = false;
     let root = env.root;
@@ -2904,6 +2961,7 @@ fn unit04_add_individual_non_depth_delayed_nominal_queue_blocks_insert() {
 
 #[test]
 fn unit04_processing_concepts_no_queue_enqueues_immediate() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.algo.conf_current_individual_queuing = true;
@@ -2930,6 +2988,7 @@ fn unit04_processing_concepts_no_queue_enqueues_immediate() {
 
 #[test]
 fn unit04_processing_concepts_immediate_queue_deduplicates_flagged_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.algo.conf_current_individual_queuing = true;
@@ -2949,6 +3008,7 @@ fn unit04_processing_concepts_immediate_queue_deduplicates_flagged_node() {
 
 #[test]
 fn unit04_processing_concepts_current_node_no_current_queueing_skips_queue_insert() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.algo.conf_current_individual_queuing = false;
@@ -2970,6 +3030,7 @@ fn unit04_processing_concepts_current_node_no_current_queueing_skips_queue_inser
 
 #[test]
 fn unit04_processing_concepts_unsorted_nominal_batch_is_live() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -3010,6 +3071,7 @@ fn unit04_processing_concepts_unsorted_nominal_batch_is_live() {
 
 #[test]
 fn unit04_processing_concepts_sorted_nominal_batch_uses_nominal_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -3062,6 +3124,7 @@ fn install_cacheable_test_label(env: &mut SelfTestEnv, node: NodeId, tag: i64) {
 
 #[test]
 fn unit21_test_all_successors_processed_accepts_empty_successor_tree() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.ctx
         .install_used_satisfiable_expander_cache_handler(SatisfiableExpanderCacheHandler::new());
@@ -3093,6 +3156,7 @@ fn unit21_test_all_successors_processed_accepts_empty_successor_tree() {
 
 #[test]
 fn unit21_test_all_successors_processed_rejects_pending_successor_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = test_node_at_depth(&mut env, 73, 1);
     let child = test_node_at_depth(&mut env, 74, 2);
@@ -3132,6 +3196,7 @@ fn unit21_test_all_successors_processed_rejects_pending_successor_queue() {
 
 #[test]
 fn unit21_write_unsat_branch_satisfiable_cache_accepts_processed_tree() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = test_node_at_depth(&mut env, 75, 1);
     let child = test_node_at_depth(&mut env, 76, 2);
@@ -3152,6 +3217,7 @@ fn unit21_write_unsat_branch_satisfiable_cache_accepts_processed_tree() {
 
 #[test]
 fn unit21_write_unsat_branch_satisfiable_cache_rejects_pending_queue_tree() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = test_node_at_depth(&mut env, 77, 1);
     let child = test_node_at_depth(&mut env, 78, 2);
@@ -3188,6 +3254,7 @@ fn unit21_write_unsat_branch_satisfiable_cache_rejects_pending_queue_tree() {
 
 #[test]
 fn unit21_absorbed_generating_reapply_prepends_drains_and_clears() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let top_concept = env.top_concept;
@@ -3268,6 +3335,7 @@ fn unit21_absorbed_generating_reapply_prepends_drains_and_clears() {
 
 #[test]
 fn unit21_absorbed_disjunction_reapply_drains_restricted_chain() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let top_concept = env.top_concept;
@@ -3486,6 +3554,7 @@ fn label_set_from_descriptors(env: &mut SelfTestEnv, descriptors: &[ConDescId]) 
 
 #[test]
 fn root_unsatisfiability_write_caches_writes_testing_concept_to_unsat_cache() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_tested_concept_write_unsat_caching = true;
     install_unsat_cache_handler(&mut env);
@@ -3568,6 +3637,7 @@ fn root_unsatisfiability_write_caches_writes_testing_concept_to_unsat_cache() {
 
 #[test]
 fn saturation_node_expansion_handler_queues_unsat_concept_write_data() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let concept_a = env.concept_a;
     let sat_node = attach_saturation_unsat_reference(&mut env, concept_a, false, false);
@@ -3590,6 +3660,7 @@ fn saturation_node_expansion_handler_queues_unsat_concept_write_data() {
 
 #[test]
 fn saturation_node_expansion_handler_skips_already_clashed_concept() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let concept_a = env.concept_a;
     attach_saturation_unsat_reference(&mut env, concept_a, false, true);
@@ -3653,6 +3724,7 @@ fn attach_saturation_blocking_data(
 
 #[test]
 fn root_unsatisfiability_write_caches_queues_saturation_unsat_concept() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo
         .conf_saturation_concept_unsatisfiability_saturated_cache_writing = true;
@@ -3697,6 +3769,7 @@ fn root_unsatisfiability_write_caches_queues_saturation_unsat_concept() {
 
 #[test]
 fn algorithm_commit_cache_messages_installs_queued_saturation_unsat_write_data() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo
         .conf_saturation_concept_unsatisfiability_saturated_cache_writing = true;
@@ -3733,6 +3806,7 @@ fn algorithm_commit_cache_messages_installs_queued_saturation_unsat_write_data()
 
 #[test]
 fn saturation_node_expansion_handler_commit_installs_unsat_write_data() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let concept_a = env.concept_a;
     let sat_node = attach_saturation_unsat_reference(&mut env, concept_a, false, false);
@@ -3765,6 +3839,7 @@ fn saturation_node_expansion_handler_commit_installs_unsat_write_data() {
 
 #[test]
 fn individual_node_saturation_blocking_data_stores_last_confirmed_and_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -3789,6 +3864,7 @@ fn individual_node_saturation_blocking_data_stores_last_confirmed_and_node() {
 
 #[test]
 fn saturation_node_expansion_handler_cacheability_accepts_completed_uncached_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -3808,6 +3884,7 @@ fn saturation_node_expansion_handler_cacheability_accepts_completed_uncached_nod
 
 #[test]
 fn saturation_node_expansion_handler_cacheability_rejects_complete_deterministic_cache_entry() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -3841,6 +3918,7 @@ fn saturation_node_expansion_handler_cacheability_rejects_complete_deterministic
 
 #[test]
 fn saturation_node_expansion_handler_cacheability_requires_deterministic_on_matching_signature() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -3876,6 +3954,7 @@ fn saturation_node_expansion_handler_cacheability_requires_deterministic_on_matc
 
 #[test]
 fn successor_connected_nominal_set_localizes_and_preserves_parent_set() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let root_set = env
@@ -3924,6 +4003,7 @@ fn successor_connected_nominal_set_localizes_and_preserves_parent_set() {
 
 #[test]
 fn blocking_follow_set_localizes_and_preserves_parent_set() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let root_set = env
@@ -3973,6 +4053,7 @@ fn blocking_follow_set_localizes_and_preserves_parent_set() {
 
 #[test]
 fn nominal_connection_flag_propagation_visits_blocking_followers() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let follower = env
@@ -4009,6 +4090,7 @@ fn nominal_connection_flag_propagation_visits_blocking_followers() {
 
 #[test]
 fn nominal_connection_flag_propagation_visits_successor_backward_dependencies() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let succ = env
@@ -4050,6 +4132,7 @@ fn nominal_connection_flag_propagation_visits_successor_backward_dependencies() 
 
 #[test]
 fn connected_nominal_propagation_visits_blocking_followers() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let follower = env
@@ -4079,6 +4162,7 @@ fn connected_nominal_propagation_visits_blocking_followers() {
 
 #[test]
 fn connected_nominal_propagation_visits_successor_backward_dependencies() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let succ = env
@@ -4113,6 +4197,7 @@ fn connected_nominal_propagation_visits_successor_backward_dependencies() {
 
 #[test]
 fn label_subset_ignore_nominals_direct_lookup_ignores_nominals_and_reports_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_op(env: &mut SelfTestEnv, tag: i64, op_code: i64) -> ConceptId {
@@ -4182,6 +4267,7 @@ fn label_subset_ignore_nominals_direct_lookup_ignores_nominals_and_reports_clash
 
 #[test]
 fn label_subset_ignore_nominals_merge_walk_ignores_nominals_and_rejects_missing_atoms() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_op(env: &mut SelfTestEnv, tag: i64, op_code: i64) -> ConceptId {
@@ -4245,6 +4331,7 @@ fn label_subset_ignore_nominals_merge_walk_ignores_nominals_and_rejects_missing_
 
 #[test]
 fn label_clash_set_direct_lookup_reports_clash_and_subset_miss() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_op(env: &mut SelfTestEnv, tag: i64, op_code: i64) -> ConceptId {
@@ -4315,6 +4402,7 @@ fn label_clash_set_direct_lookup_reports_clash_and_subset_miss() {
 
 #[test]
 fn label_clash_set_merge_walk_ignores_nominal_subset_miss_and_reports_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_op(env: &mut SelfTestEnv, tag: i64, op_code: i64) -> ConceptId {
@@ -4394,6 +4482,7 @@ fn label_clash_set_merge_walk_ignores_nominal_subset_miss_and_reports_clash() {
 
 #[test]
 fn directly_changed_search_visits_blocking_followers() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let follower = env
@@ -4433,6 +4522,7 @@ fn directly_changed_search_visits_blocking_followers() {
 
 #[test]
 fn directly_changed_propagation_establishes_connection_on_blocking_follower() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let follower = env
@@ -4483,6 +4573,7 @@ fn directly_changed_propagation_establishes_connection_on_blocking_follower() {
 
 #[test]
 fn directly_changed_clear_removes_neighbour_connection() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -4548,6 +4639,7 @@ fn directly_changed_clear_removes_neighbour_connection() {
 
 #[test]
 fn propagated_directly_changed_clear_drains_registered_nodes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let first = env
@@ -4622,6 +4714,7 @@ fn propagated_directly_changed_clear_drains_registered_nodes() {
 
 #[test]
 fn debug_incremental_expansion_string_reports_live_status() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let neighbour = env
@@ -4653,6 +4746,7 @@ fn debug_incremental_expansion_string_reports_live_status() {
 
 #[test]
 fn compatibility_update_rechecks_equal_previous_label_and_clears_propagated() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
@@ -4757,6 +4851,7 @@ fn compatibility_update_rechecks_equal_previous_label_and_clears_propagated() {
 
 #[test]
 fn compatibility_update_loads_previous_correspondence_from_previous_task_data() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
@@ -4852,6 +4947,7 @@ fn compatibility_update_loads_previous_correspondence_from_previous_task_data() 
 
 #[test]
 fn initialize_incremental_individual_expansion_collects_missing_previous_nominals() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let root_id = env.ctx.process_context().node(root).individual_node_id();
@@ -4944,6 +5040,7 @@ fn initialize_incremental_individual_expansion_collects_missing_previous_nominal
 
 #[test]
 fn are_all_dependent_facts_unchanged_accepts_unchanged_nominal_chain() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let previous_nominal = env
@@ -4990,6 +5087,7 @@ fn are_all_dependent_facts_unchanged_accepts_unchanged_nominal_chain() {
 
 #[test]
 fn are_all_dependent_facts_unchanged_rejects_current_graph_association() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let previous_nominal = env
@@ -5040,6 +5138,7 @@ fn are_all_dependent_facts_unchanged_rejects_current_graph_association() {
 
 #[test]
 fn initialize_incremental_individual_expansion_replays_missing_previous_concept() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let previous_node = env
@@ -5143,6 +5242,7 @@ fn initialize_incremental_individual_expansion_replays_missing_previous_concept(
 
 #[test]
 fn get_next_incremental_expansion_individual_skips_current_graph_nominals() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let present_individual = env
@@ -5197,6 +5297,7 @@ fn get_next_incremental_expansion_individual_skips_current_graph_nominals() {
 
 #[test]
 fn add_individual_to_incremental_expansion_queue_inserts_initializing_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -5221,6 +5322,7 @@ fn add_individual_to_incremental_expansion_queue_inserts_initializing_queue() {
 
 #[test]
 fn individual_custom_priority_processing_queue_orders_and_copies_entries() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let first = env.root;
     let second = env
@@ -5279,6 +5381,7 @@ fn batch_queue_concept_descriptor(
 
 #[test]
 fn individual_concept_batch_processing_queue_orders_by_depth_and_id() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let shallow = env.root;
     env.ctx
@@ -5365,6 +5468,7 @@ fn individual_concept_batch_processing_queue_orders_by_depth_and_id() {
 
 #[test]
 fn take_next_process_individual_drains_variable_binding_concept_batch_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -5416,6 +5520,7 @@ fn take_next_process_individual_drains_variable_binding_concept_batch_queue() {
 
 #[test]
 fn take_next_process_individual_sorts_nominal_non_deterministic_nodes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let high = env
         .ctx
@@ -5470,6 +5575,7 @@ fn take_next_process_individual_sorts_nominal_non_deterministic_nodes() {
 
 #[test]
 fn individual_reactivation_processing_queue_orders_copies_and_overwrites_force() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let shallow = env
         .ctx
@@ -5565,6 +5671,7 @@ fn individual_reactivation_processing_queue_orders_copies_and_overwrites_force()
 
 #[test]
 fn take_next_process_individual_drains_early_reactivation_queue_with_force() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -5609,6 +5716,7 @@ fn take_next_process_individual_drains_early_reactivation_queue_with_force() {
 
 #[test]
 fn take_next_process_individual_drains_late_reactivation_queue_without_force() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -5653,6 +5761,7 @@ fn take_next_process_individual_drains_late_reactivation_queue_without_force() {
 
 #[test]
 fn clear_completion_graph_caching_reapplies_absorbed_cached_concepts() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let top_concept = env.top_concept;
@@ -5723,6 +5832,7 @@ fn clear_completion_graph_caching_reapplies_absorbed_cached_concepts() {
 
 #[test]
 fn individual_processing_queue_orders_copies_and_resets_hash_priority() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let slow = env
         .ctx
@@ -5801,6 +5911,7 @@ fn individual_processing_queue_orders_copies_and_resets_hash_priority() {
 
 #[test]
 fn take_next_process_individual_drains_individual_processing_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -5835,6 +5946,7 @@ fn take_next_process_individual_drains_individual_processing_queue() {
 
 #[test]
 fn unit20_blocked_successor_propagation_and_reactivation_iterate_real_successors() {
+    let _test_env = crate::test_env::read();
     use super::super::process::edge::IndividualLinkEdge;
     use super::super::process::rs1::ReapplyQueueIterator;
 
@@ -5900,6 +6012,7 @@ fn unit20_blocked_successor_propagation_and_reactivation_iterate_real_successors
 
 #[test]
 fn unit20_add_blocking_core_concept_uses_process_data_and_label_set() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_save_core_blocking_concepts_candidates = true;
 
@@ -5974,6 +6087,7 @@ fn unit20_add_blocking_core_concept_uses_process_data_and_label_set() {
 
 #[test]
 fn unit20_linked_candidate_search_scans_core_descriptor_chain_for_min_bucket() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -6065,6 +6179,7 @@ fn unit20_linked_candidate_search_scans_core_descriptor_chain_for_min_bucket() {
 
 #[test]
 fn signature_blocking_review_set_orders_non_subset_then_subset_and_copies() {
+    let _test_env = crate::test_env::read();
     let mut set = SignatureBlockingReviewSet::new();
     set.get_review_data(true).insert(3, 30).insert(1, 10);
     set.get_review_data(false).insert(2, 20).insert(1, 11);
@@ -6086,6 +6201,7 @@ fn signature_blocking_review_set_orders_non_subset_then_subset_and_copies() {
 
 #[test]
 fn reusing_review_data_preserves_upstream_has_next_and_drains_depth_order() {
+    let _test_env = crate::test_env::read();
     let mut data = ReusingReviewData::new();
     assert!(data.is_empty());
     assert!(data.has_next_individual_id());
@@ -6113,6 +6229,7 @@ fn reusing_review_data_preserves_upstream_has_next_and_drains_depth_order() {
 
 #[test]
 fn reusing_review_data_getter_allocates_and_copies_previous_data() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     assert!(env.ctx.reusing_review_data(false).is_none());
 
@@ -6137,6 +6254,7 @@ fn reusing_review_data_getter_allocates_and_copies_previous_data() {
 
 #[test]
 fn reusing_individual_node_concept_expansion_data_copies_base_and_reuse_fields() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let tp = env
         .ctx
@@ -6268,6 +6386,7 @@ fn unit18_node_label_contains(
 
 #[test]
 fn unit18_add_reusing_blocker_following_uses_real_blocker_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let blocker = env.root;
     let blocked = env
@@ -6308,6 +6427,7 @@ fn unit18_add_reusing_blocker_following_uses_real_blocker_node() {
 
 #[test]
 fn unit18_remove_reusing_blocker_following_uses_real_blocker_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let blocker = env.root;
     let blocked = env
@@ -6352,6 +6472,7 @@ fn unit18_remove_reusing_blocker_following_uses_real_blocker_node() {
 
 #[test]
 fn unit18_rebuild_signature_blocking_candidate_hash_filters_invalid_and_installs_fresh_hash() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let valid_a = unit18_registered_candidate_node(&mut env, 101);
     let invalid = unit18_registered_candidate_node(&mut env, 102);
@@ -6400,6 +6521,7 @@ fn unit18_rebuild_signature_blocking_candidate_hash_filters_invalid_and_installs
 
 #[test]
 fn unit18_rebuild_signature_blocking_candidate_hash_drops_all_invalid_bucket() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let invalid_a = unit18_registered_candidate_node(&mut env, 111);
     let invalid_b = unit18_registered_candidate_node(&mut env, 112);
@@ -6435,6 +6557,7 @@ fn unit18_rebuild_signature_blocking_candidate_hash_drops_all_invalid_bucket() {
 
 #[test]
 fn unit18_test_alternative_blocked_uses_signature_candidate_data() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_signature_mirroring_blocking = true;
     let blocking = env.root;
@@ -6506,6 +6629,7 @@ fn unit18_test_alternative_blocked_uses_signature_candidate_data() {
 
 #[test]
 fn unit18_establish_signature_blocking_rejects_invalid_analyzed_blocker() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let blocking = env.root;
     let blocker = unit18_registered_candidate_node(&mut env, 131);
@@ -6535,6 +6659,7 @@ fn unit18_establish_signature_blocking_rejects_invalid_analyzed_blocker() {
 
 #[test]
 fn unit18_update_signature_blocking_expansion_skips_missing_dependency_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let blocking = env.root;
@@ -6582,6 +6707,7 @@ fn unit18_update_signature_blocking_expansion_skips_missing_dependency_descripto
 
 #[test]
 fn unit18_update_signature_blocking_expansion_adds_missing_expansion_with_dependencies() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let blocking = env.root;
@@ -6648,6 +6774,7 @@ fn unit18_update_signature_blocking_expansion_adds_missing_expansion_with_depend
 
 #[test]
 fn unit18_update_signature_blocking_expansion_threads_connection_dependencies() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let blocking = env.root;
@@ -6794,6 +6921,7 @@ fn unit18_update_signature_blocking_expansion_threads_connection_dependencies() 
 
 #[test]
 fn backend_neighbour_expansion_controlling_data_copies_modes_counts_and_linkers() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let tp = env
         .ctx
@@ -6843,6 +6971,7 @@ fn backend_neighbour_expansion_controlling_data_copies_modes_counts_and_linkers(
 
 #[test]
 fn backend_neighbour_expansion_controlling_getter_allocates_and_copies() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     assert!(env
         .ctx
@@ -6877,6 +7006,7 @@ fn backend_neighbour_expansion_controlling_getter_allocates_and_copies() {
 
 #[test]
 fn prepare_backend_expansion_reuse_branching_creates_modes_dependency_and_prioritized_mode() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
 
@@ -6902,6 +7032,7 @@ fn prepare_backend_expansion_reuse_branching_creates_modes_dependency_and_priori
 
 #[test]
 fn prepare_backend_expansion_reuse_branching_returns_false_when_modes_dependency_exists() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
 
@@ -6929,6 +7060,7 @@ fn prepare_backend_expansion_reuse_branching_returns_false_when_modes_dependency
 
 #[test]
 fn prepare_backend_expansion_reuse_branching_without_dependency_building_localizes_modes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = false;
 
@@ -6948,6 +7080,7 @@ fn prepare_backend_expansion_reuse_branching_without_dependency_building_localiz
 
 #[test]
 fn prepare_backend_individual_fixed_reuse_expansion_without_reuse_modes_dependency_returns_false() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -6966,6 +7099,7 @@ fn prepare_backend_individual_fixed_reuse_expansion_without_reuse_modes_dependen
 
 #[test]
 fn prepare_backend_individual_fixed_reuse_expansion_marks_reusing_individual() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
     let mode_tp = real_dependency_track_point(
@@ -7006,6 +7140,7 @@ fn prepare_backend_individual_fixed_reuse_expansion_marks_reusing_individual() {
 #[test]
 fn prepare_backend_individual_prioritized_reuse_expansion_without_reuse_modes_dependency_returns_false(
 ) {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -7031,6 +7166,7 @@ fn prepare_backend_individual_prioritized_reuse_expansion_without_reuse_modes_de
 /// one, enter the sibling), which is what the second half drives.
 #[test]
 fn prepare_backend_individual_prioritized_reuse_expansion_wires_branch_alternatives() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     env.algo.conf_build_all_branching_nodes = true;
@@ -7138,6 +7274,7 @@ fn prepare_backend_individual_prioritized_reuse_expansion_wires_branch_alternati
 
 #[test]
 fn take_next_process_individual_drains_fixed_backend_reuse_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.opt_backend_expansion_reuse = true;
     let root = env.root;
@@ -7168,6 +7305,7 @@ fn take_next_process_individual_drains_fixed_backend_reuse_queue() {
 
 #[test]
 fn take_next_process_individual_drains_prioritized_backend_reuse_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.opt_backend_expansion_reuse = true;
     let root = env.root;
@@ -7198,6 +7336,7 @@ fn take_next_process_individual_drains_prioritized_backend_reuse_queue() {
 
 #[test]
 fn add_individual_to_backend_reuse_expansion_queue_sets_flag_and_inserts_once() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -7236,6 +7375,7 @@ fn add_individual_to_backend_reuse_expansion_queue_sets_flag_and_inserts_once() 
 
 #[test]
 fn add_individual_to_backend_indirect_compatibility_expansion_queue_sets_flag_and_inserts_once() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -7276,6 +7416,7 @@ fn add_individual_to_backend_indirect_compatibility_expansion_queue_sets_flag_an
 
 #[test]
 fn add_individual_to_backend_synchronisation_retest_queue_sets_flag_and_inserts_once() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -7330,6 +7471,7 @@ fn seed_backend_sync_data(
 
 #[test]
 fn unit17_visit_relevant_backend_sync_individuals_visits_base_and_merged_nodes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let merged = test_node_at_depth(&mut env, 54, 1);
@@ -7358,6 +7500,7 @@ fn unit17_visit_relevant_backend_sync_individuals_visits_base_and_merged_nodes()
 
 #[test]
 fn unit17_visit_relevant_backend_sync_individuals_honours_visitor_stop() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let merged = test_node_at_depth(&mut env, 55, 1);
@@ -7386,6 +7529,7 @@ fn unit17_visit_relevant_backend_sync_individuals_honours_visitor_stop() {
 
 #[test]
 fn unit20_blocking_candidate_iterator_uses_descriptor_concept_tag() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_anywhere_blocking_lazy_exact_hashing = true;
 
@@ -7469,6 +7613,7 @@ fn unit20_blocking_candidate_iterator_uses_descriptor_concept_tag() {
 
 #[test]
 fn unit20_backend_cardinality_criticality_reads_sync_gate_and_cursor_snapshot() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let merged = test_node_at_depth(&mut env, 51, 1);
@@ -7505,6 +7650,7 @@ fn unit20_backend_cardinality_criticality_reads_sync_gate_and_cursor_snapshot() 
 
 #[test]
 fn unit20_backend_neighbour_criticality_reads_and_writes_sync_state() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let merged = test_node_at_depth(&mut env, 52, 1);
@@ -7544,6 +7690,7 @@ fn unit20_backend_neighbour_criticality_reads_and_writes_sync_state() {
 
 #[test]
 fn unit20_backend_neighbour_criticality_walks_label_chain_and_advances_cursor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -7604,6 +7751,7 @@ fn unit20_backend_neighbour_criticality_walks_label_chain_and_advances_cursor() 
 
 #[test]
 fn unit25_validate_backend_synchronisation_continued_updates_live_sync_cursors() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept = atom_concept_with_tag(&mut env, 6201);
@@ -7643,6 +7791,7 @@ fn unit25_validate_backend_synchronisation_continued_updates_live_sync_cursors()
 
 #[test]
 fn unit25_validate_backend_synchronisation_continued_clears_unsynced_state_on_missing_inputs() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let sync = seed_backend_sync_data(&mut env, root);
@@ -7677,6 +7826,7 @@ fn unit25_validate_backend_synchronisation_continued_clears_unsynced_state_on_mi
 
 #[test]
 fn unit25_backend_cache_concepts_synchronization_updates_live_sync_cursors() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let merged = test_node_at_depth(&mut env, 53, 1);
@@ -7718,6 +7868,7 @@ fn unit25_backend_cache_concepts_synchronization_updates_live_sync_cursors() {
 
 #[test]
 fn unit25_backend_cache_concepts_synchronization_clears_unsynced_state_on_missing_assoc() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let sync = seed_backend_sync_data(&mut env, root);
@@ -7739,6 +7890,7 @@ fn unit25_backend_cache_concepts_synchronization_clears_unsynced_state_on_missin
 
 #[test]
 fn add_individual_to_backend_direct_influence_expansion_queue_sets_flag_and_inserts_once() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -7777,6 +7929,7 @@ fn add_individual_to_backend_direct_influence_expansion_queue_sets_flag_and_inse
 
 #[test]
 fn add_individual_to_backend_neighbour_expansion_queue_sets_flag_and_inserts_once() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -7817,6 +7970,7 @@ fn add_individual_to_backend_neighbour_expansion_queue_sets_flag_and_inserts_onc
 
 #[test]
 fn add_individual_to_blocking_update_review_processing_queue_inserts_depth_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -7846,6 +8000,7 @@ fn add_individual_to_blocking_update_review_processing_queue_inserts_depth_queue
 
 #[test]
 fn get_applied_and_rule_count_returns_counter_field() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.applied_and_rule_count = 17;
 
@@ -7858,6 +8013,7 @@ fn get_applied_and_rule_count_returns_counter_field() {
 
 #[test]
 fn rule_count_getters_return_counter_fields() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.applied_and_rule_count = 11;
     env.algo.applied_or_rule_count = 12;
@@ -7878,6 +8034,7 @@ fn rule_count_getters_return_counter_fields() {
 
 #[test]
 fn take_next_process_individual_preserves_reusing_review_upstream_has_next_gate() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let q = env.ctx.reusing_review_data(true);
     env.ctx
@@ -7893,6 +8050,7 @@ fn take_next_process_individual_preserves_reusing_review_upstream_has_next_gate(
 
 #[test]
 fn take_next_process_individual_drains_signature_blocking_review_set() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -7936,6 +8094,7 @@ fn take_next_process_individual_drains_signature_blocking_review_set() {
 
 #[test]
 fn add_individual_to_incremental_expansion_queue_inserts_priority_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let exp_individual = env
@@ -7996,6 +8155,7 @@ fn add_individual_to_incremental_expansion_queue_inserts_priority_queue() {
 
 #[test]
 fn take_next_process_individual_drains_incremental_expansion_priority_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.opt_incremental_compatible_expansion = true;
     env.ctx
@@ -8052,6 +8212,7 @@ fn take_next_process_individual_drains_incremental_expansion_priority_queue() {
 
 #[test]
 fn incremental_node_expansion_materializes_missing_nominal_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.opt_incremental_compatible_expansion = true;
     env.ctx
@@ -8104,6 +8265,7 @@ fn incremental_node_expansion_materializes_missing_nominal_node() {
 
 #[test]
 fn compatibility_update_queues_directly_changed_incompatible_node() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
@@ -8180,6 +8342,7 @@ fn compatibility_update_queues_directly_changed_incompatible_node() {
 
 #[test]
 fn compatibility_update_establishes_found_directly_changed_neighbour() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
@@ -8286,6 +8449,7 @@ fn compatibility_update_establishes_found_directly_changed_neighbour() {
 
 #[test]
 fn compatible_variable_propagation_bindings_collect_matching_concepts() {
+    let _test_env = crate::test_env::read();
     use super::super::model::individual::Variable;
     use super::super::model::VariableId;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
@@ -8409,6 +8573,7 @@ fn compatible_variable_propagation_bindings_collect_matching_concepts() {
 
 #[test]
 fn variable_propagation_binding_collection_reads_live_path_hash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::individual::Variable;
     use super::super::model::VariableId;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
@@ -8505,6 +8670,7 @@ fn variable_propagation_binding_collection_reads_live_path_hash() {
 
 #[test]
 fn compatible_concept_set_signature_accepts_shifted_suffix_match() {
+    let _test_env = crate::test_env::read();
     use super::super::process::satellites::CondensedReapplyQueue;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
@@ -8581,6 +8747,7 @@ fn compatible_concept_set_signature_accepts_shifted_suffix_match() {
 
 #[test]
 fn compatible_concept_set_signature_rejects_critical_concept() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::process::satellites::CondensedReapplyQueue;
 
@@ -8647,6 +8814,7 @@ fn compatible_concept_set_signature_rejects_critical_concept() {
 
 #[test]
 fn label_concept_subset_direct_lookup_reports_missing_descriptor() {
+    let _test_env = crate::test_env::read();
     use super::super::process::satellites::CondensedReapplyQueue;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
@@ -8707,6 +8875,7 @@ fn label_concept_subset_direct_lookup_reports_missing_descriptor() {
 
 #[test]
 fn label_concept_subset_sorted_merge_accepts_contained_subset() {
+    let _test_env = crate::test_env::read();
     use super::super::process::satellites::CondensedReapplyQueue;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
@@ -8766,6 +8935,7 @@ fn label_concept_subset_sorted_merge_accepts_contained_subset() {
 
 #[test]
 fn compatible_concept_set_reuse_rejects_non_subset_without_invalidating() {
+    let _test_env = crate::test_env::read();
     use super::super::process::satellites::CondensedReapplyQueue;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
@@ -8836,6 +9006,7 @@ fn compatible_concept_set_reuse_rejects_non_subset_without_invalidating() {
 
 #[test]
 fn compatible_concept_set_reuse_rejects_signature_critical_super_descriptor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::process::satellites::CondensedReapplyQueue;
 
@@ -8907,6 +9078,7 @@ fn compatible_concept_set_reuse_rejects_signature_critical_super_descriptor() {
 
 #[test]
 fn concept_set_signature_matches_konclude_formula() {
+    let _test_env = crate::test_env::read();
     use super::super::process::satellites::ConceptSetSignature;
 
     let mut env = build_env();
@@ -8936,6 +9108,7 @@ fn concept_set_signature_matches_konclude_formula() {
 
 #[test]
 fn context_label_insert_uses_konclude_concept_pointer_signature() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut concept = Concept::new();
     concept.set_concept_tag(873);
@@ -8965,6 +9138,7 @@ fn context_label_insert_uses_konclude_concept_pointer_signature() {
 
 #[test]
 fn label_set_resolved_insert_updates_signature_once() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut concept = Concept::new();
     concept.set_concept_tag(873);
@@ -9006,6 +9180,7 @@ fn label_set_resolved_insert_updates_signature_once() {
 
 #[test]
 fn label_set_shared_main_alias_reads_previous_main_map() {
+    let _test_env = crate::test_env::read();
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -9067,6 +9242,7 @@ fn label_set_shared_main_alias_reads_previous_main_map() {
 
 #[test]
 fn label_set_iterator_snapshots_shared_additional_alias() {
+    let _test_env = crate::test_env::read();
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -9128,6 +9304,7 @@ fn label_set_iterator_snapshots_shared_additional_alias() {
 
 #[test]
 fn label_set_equal_set_reads_shared_additional_alias() {
+    let _test_env = crate::test_env::read();
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -9193,6 +9370,7 @@ fn label_set_equal_set_reads_shared_additional_alias() {
 
 #[test]
 fn label_set_equal_set_rejects_lockstep_concept_mismatch() {
+    let _test_env = crate::test_env::read();
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -9244,6 +9422,7 @@ fn label_set_equal_set_rejects_lockstep_concept_mismatch() {
 
 #[test]
 fn pairwise_label_concept_equal_set_rejects_first_pair_mismatch() {
+    let _test_env = crate::test_env::read();
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -9307,6 +9486,7 @@ fn pairwise_label_concept_equal_set_rejects_first_pair_mismatch() {
 
 #[test]
 fn pairwise_label_concept_equal_set_rejects_second_pair_mismatch() {
+    let _test_env = crate::test_env::read();
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -9370,6 +9550,7 @@ fn pairwise_label_concept_equal_set_rejects_second_pair_mismatch() {
 
 #[test]
 fn nominal_clash_only_equal_set_ignores_extra_nominal() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64, op_code: i64) -> ConceptId {
@@ -9428,6 +9609,7 @@ fn nominal_clash_only_equal_set_ignores_extra_nominal() {
 
 #[test]
 fn nominal_clash_only_equal_set_rejects_non_nominal_mismatch() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64, op_code: i64) -> ConceptId {
@@ -9491,6 +9673,7 @@ fn nominal_clash_only_equal_set_rejects_non_nominal_mismatch() {
 
 #[test]
 fn nominal_clash_only_equal_set_reports_non_nominal_polarity_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64, op_code: i64) -> ConceptId {
@@ -9553,6 +9736,7 @@ fn nominal_clash_only_equal_set_reports_non_nominal_polarity_clash() {
 
 #[test]
 fn nominal_clash_only_equal_set_reports_opposite_nominal_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64, op_code: i64) -> ConceptId {
@@ -9615,6 +9799,7 @@ fn nominal_clash_only_equal_set_reports_opposite_nominal_clash() {
 
 #[test]
 fn nominal_clash_only_equal_set_advances_different_nominals_together() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     fn concept_with_tag(env: &mut SelfTestEnv, tag: i64, op_code: i64) -> ConceptId {
@@ -9673,6 +9858,7 @@ fn nominal_clash_only_equal_set_advances_different_nominals_together() {
 
 #[test]
 fn generate_debug_dependent_nominals_string_iterates_successor_nominal_set() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     env.ctx
@@ -9694,6 +9880,7 @@ fn generate_debug_dependent_nominals_string_iterates_successor_nominal_set() {
 
 #[test]
 fn nominal_connection_status_propagation_copies_exact_successor_nominals() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_exact_nominal_dependency_tracking = true;
     let target = env.root;
@@ -9737,6 +9924,7 @@ fn nominal_connection_status_propagation_copies_exact_successor_nominals() {
 
 #[test]
 fn nominal_caching_loss_reactivation_drains_registered_nodes_to_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let waiting = env
@@ -9788,6 +9976,7 @@ fn nominal_caching_loss_reactivation_drains_registered_nodes_to_queue() {
 
 #[test]
 fn install_saturation_caching_reactivation_records_cached_dependent_nominal() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let nominal = attach_successor_nominal_connection(
@@ -9828,6 +10017,7 @@ fn install_saturation_caching_reactivation_records_cached_dependent_nominal() {
 
 #[test]
 fn install_saturation_caching_reactivation_queues_when_nominal_cache_lost() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let nominal = attach_successor_nominal_connection(
@@ -9867,6 +10057,7 @@ fn install_saturation_caching_reactivation_queues_when_nominal_cache_lost() {
 
 #[test]
 fn try_install_saturation_caching_reactivation_rejects_invalid_successor_nominal() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     attach_successor_nominal_connection(
@@ -9953,6 +10144,7 @@ fn install_matching_saturation_expansion_with_dependent_nominal(
 
 #[test]
 fn saturation_node_expansion_handler_reads_matching_expansion_with_dependent_nominal() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let sat_node = env
@@ -9979,6 +10171,7 @@ fn saturation_node_expansion_handler_reads_matching_expansion_with_dependent_nom
 
 #[test]
 fn detect_saturation_cached_retest_installs_dependent_nominal_reactivation() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_saturation_expansion_cache_reading = true;
     env.algo.conf_saturation_caching_with_nominals = true;
@@ -10032,6 +10225,7 @@ fn detect_saturation_cached_retest_installs_dependent_nominal_reactivation() {
 
 #[test]
 fn saturation_successor_connected_nominal_update_fans_out_once() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -10094,6 +10288,7 @@ fn saturation_successor_connected_nominal_update_fans_out_once() {
 
 #[test]
 fn saturation_extended_debug_writer_creates_file_with_generated_tail() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut sat_algo = SaturationTaskHandleAlgorithm::new();
     let path = format!(
@@ -10115,6 +10310,7 @@ fn saturation_extended_debug_writer_creates_file_with_generated_tail() {
 
 #[test]
 fn extended_debug_collects_backend_cut_individual_node_ids() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut algo = CompletionTaskHandleAlgorithm::new();
     let root = env.root;
@@ -10147,6 +10343,7 @@ fn extended_debug_collects_backend_cut_individual_node_ids() {
 
 #[test]
 fn saturation_successor_connected_nominal_set_overload_iterates_all_nominals() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut sat_algo = SaturationTaskHandleAlgorithm::new();
     let target = env
@@ -10269,6 +10466,7 @@ fn install_saturation_cache_label_chain(
 
 #[test]
 fn saturation_node_expansion_handler_try_queues_deterministic_expansion() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10317,6 +10515,7 @@ fn saturation_node_expansion_handler_try_queues_deterministic_expansion() {
 
 #[test]
 fn saturation_node_expansion_handler_try_copies_successor_nominals_to_dependent_set() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10360,6 +10559,7 @@ fn saturation_node_expansion_handler_try_copies_successor_nominals_to_dependent_
 
 #[test]
 fn saturation_node_expansion_handler_try_splits_nondeterministic_prefix() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10435,6 +10635,7 @@ fn saturation_node_expansion_handler_try_splits_nondeterministic_prefix() {
 
 #[test]
 fn completion_label_insertion_prepends_descriptor_chain() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let first = marker_concept(&mut env, 4043);
@@ -10525,6 +10726,7 @@ fn test_cache_value(value: i64) -> CacheValue {
 
 #[test]
 fn unit21_cache_satisfiable_individual_nodes_queues_saturation_expansion() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10572,6 +10774,7 @@ fn unit21_cache_satisfiable_individual_nodes_queues_saturation_expansion() {
 
 #[test]
 fn unit21_cache_satisfiable_individual_nodes_respects_saturation_flag_gate() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10608,6 +10811,7 @@ fn unit21_cache_satisfiable_individual_nodes_respects_saturation_flag_gate() {
 
 #[test]
 fn saturation_node_expansion_handler_commit_installs_queued_expansion_write_data() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10644,6 +10848,7 @@ fn saturation_node_expansion_handler_commit_installs_queued_expansion_write_data
 
 #[test]
 fn saturation_node_expansion_handler_commit_drains_mixed_write_data_chain() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let concept_a = env.concept_a;
     let unsat_node = attach_saturation_unsat_reference(&mut env, concept_a, false, false);
@@ -10686,6 +10891,7 @@ fn saturation_node_expansion_handler_commit_drains_mixed_write_data_chain() {
 
 #[test]
 fn saturation_node_expansion_cache_installs_deterministic_expansion_write_data() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10742,6 +10948,7 @@ fn saturation_node_expansion_cache_installs_deterministic_expansion_write_data()
 
 #[test]
 fn saturation_node_expansion_cache_installs_nondeterministic_expansion_write_data() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10802,6 +11009,7 @@ fn saturation_node_expansion_cache_installs_nondeterministic_expansion_write_dat
 
 #[test]
 fn saturation_node_expansion_cache_extends_deterministic_expansion_with_new_values() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10856,6 +11064,7 @@ fn saturation_node_expansion_cache_extends_deterministic_expansion_with_new_valu
 
 #[test]
 fn saturation_node_expansion_cache_typed_write_data_dispatches_unsat_and_expand() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let unsat_node = env
         .ctx
@@ -10907,6 +11116,7 @@ fn saturation_node_expansion_cache_typed_write_data_dispatches_unsat_and_expand(
 
 #[test]
 fn saturation_node_cache_updater_propagates_unsat_to_direct_and_indirect_flags() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let sat_node = env
         .ctx
@@ -10925,6 +11135,7 @@ fn saturation_node_cache_updater_propagates_unsat_to_direct_and_indirect_flags()
 
 #[test]
 fn saturation_node_cache_updater_propagates_copy_depending_flags() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env
         .ctx
@@ -10957,6 +11168,7 @@ fn saturation_node_cache_updater_propagates_copy_depending_flags() {
 
 #[test]
 fn saturation_node_cache_updater_propagates_non_inverse_indirect_flags() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env
         .ctx
@@ -10986,6 +11198,7 @@ fn saturation_node_cache_updater_propagates_non_inverse_indirect_flags() {
 
 #[test]
 fn saturation_node_cache_updater_propagates_role_backward_indirect_flags() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -11017,6 +11230,7 @@ fn saturation_node_cache_updater_propagates_role_backward_indirect_flags() {
 
 #[test]
 fn computed_consequences_handler_commits_type_write_data_when_cacheable() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let concept_a = env.concept_a;
     env.ctx
@@ -11046,6 +11260,7 @@ fn computed_consequences_handler_commits_type_write_data_when_cacheable() {
 
 #[test]
 fn root_unsatisfiability_write_caches_commits_computed_consequence_for_nominal_root() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let concept_a = env.concept_a;
     env.algo.conf_cache_computed_consequences = true;
@@ -11089,6 +11304,7 @@ fn root_unsatisfiability_write_caches_commits_computed_consequence_for_nominal_r
 
 #[test]
 fn tracked_clashed_descriptor_hasher_matches_konclude_identity() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -11112,6 +11328,7 @@ fn tracked_clashed_descriptor_hasher_matches_konclude_identity() {
 
 #[test]
 fn tracked_clashed_dependency_line_sorts_deduplicates_and_takes_by_priority() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -11205,6 +11422,7 @@ fn tracked_clashed_dependency_line_sorts_deduplicates_and_takes_by_priority() {
 
 #[test]
 fn tracked_clashed_dependency_line_moves_current_level_buckets_by_resorting() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -11235,6 +11453,7 @@ fn tracked_clashed_dependency_line_moves_current_level_buckets_by_resorting() {
 
 #[test]
 fn get_free_tracked_clashed_descriptor_reuses_free_list_or_allocates() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -11281,6 +11500,7 @@ fn get_free_tracked_clashed_descriptor_reuses_free_list_or_allocates() {
 
 #[test]
 fn mark_relevance_for_tracked_clashed_descriptors_marks_each_dependency_track_point() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -11330,6 +11550,7 @@ fn mark_relevance_for_tracked_clashed_descriptors_marks_each_dependency_track_po
 
 #[test]
 fn backtrack_from_tracking_line_step_caches_independent_only_and_stops() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -11355,6 +11576,7 @@ fn backtrack_from_tracking_line_step_caches_independent_only_and_stops() {
 
 #[test]
 fn backtrack_from_tracking_line_step_frees_previous_level_deterministic_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let previous_node = test_node_at_depth(&mut env, 91, 2);
     let concept_a = env.concept_a;
@@ -11419,6 +11641,7 @@ fn backtrack_from_tracking_line_step_frees_previous_level_deterministic_descript
 
 #[test]
 fn get_backtracked_deterministic_clashed_descriptors_replays_previous_track_point() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let node = test_node_at_depth(&mut env, 92, 3);
     let concept_a = env.concept_a;
@@ -11473,6 +11696,7 @@ fn get_backtracked_deterministic_clashed_descriptors_replays_previous_track_poin
 
 #[test]
 fn get_backtracked_deterministic_clashed_descriptors_includes_additional_dependencies() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let node = test_node_at_depth(&mut env, 93, 5);
     let additional_node = test_node_at_depth(&mut env, 94, 1);
@@ -11547,6 +11771,7 @@ fn get_backtracked_deterministic_clashed_descriptors_includes_additional_depende
 
 #[test]
 fn get_backtracked_deterministic_clashed_descriptors_before_processing_tag_replays_after_tag() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let node = test_node_at_depth(&mut env, 96, 4);
     let concept_a = env.concept_a;
@@ -11607,6 +11832,7 @@ fn get_backtracked_deterministic_clashed_descriptors_before_processing_tag_repla
 #[test]
 fn get_backtracked_deterministic_clashed_descriptors_before_processing_tag_frees_duplicate_replay()
 {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let node = test_node_at_depth(&mut env, 97, 4);
     let concept_a = env.concept_a;
@@ -11688,6 +11914,7 @@ fn get_backtracked_deterministic_clashed_descriptors_before_processing_tag_frees
 
 #[test]
 fn backtrack_non_deterministic_branching_clashed_descriptor_marks_branch_with_open_sibling() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let node = test_node_at_depth(&mut env, 98, 4);
     let concept_a = env.concept_a;
@@ -11790,6 +12017,7 @@ fn backtrack_non_deterministic_branching_clashed_descriptor_marks_branch_with_op
 #[test]
 fn backtrack_non_deterministic_branching_clashed_descriptor_reinitializes_when_last_branch_closed()
 {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let node = test_node_at_depth(&mut env, 99, 4);
     let concept_a = env.concept_a;
@@ -11882,6 +12110,7 @@ fn backtrack_non_deterministic_branching_clashed_descriptor_reinitializes_when_l
 
 #[test]
 fn clashed_backtracking_drives_non_deterministic_branch_core() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_dependency_backjumping = true;
     let node = test_node_at_depth(&mut env, 100, 4);
@@ -11947,6 +12176,7 @@ fn clashed_backtracking_drives_non_deterministic_branch_core() {
 
 #[test]
 fn nondeterministic_track_point_branch_allocates_new_branch() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
 
@@ -11992,6 +12222,7 @@ fn nondeterministic_track_point_branch_allocates_new_branch() {
 
 #[test]
 fn nondeterministic_track_point_branch_reuses_used_branch() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
 
@@ -12039,6 +12270,7 @@ fn nondeterministic_track_point_branch_reuses_used_branch() {
 
 #[test]
 fn create_dataassertion_dependency_disabled_returns_null_and_leaves_out_track_point() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = false;
     let mut process_indi = env.root;
@@ -12078,6 +12310,7 @@ fn create_dataassertion_dependency_disabled_returns_null_and_leaves_out_track_po
 
 #[test]
 fn create_dataassertion_dependency_allocates_factory_node_and_continue_track_point() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -12134,6 +12367,7 @@ fn create_dataassertion_dependency_allocates_factory_node_and_continue_track_poi
 
 #[test]
 fn create_merged_concept_dependency_preserves_guard() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut process_indi = env.root;
     let mut continue_dep_track_point = TrackPointId::NONE;
@@ -12167,6 +12401,7 @@ fn create_merged_concept_dependency_preserves_guard() {
 
 #[test]
 fn create_merged_concept_dependency_allocates_det_link_factory_shape() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut process_indi = env.root;
     let mut continue_dep_track_point = TrackPointId::NONE;
@@ -12237,6 +12472,7 @@ fn create_merged_concept_dependency_allocates_det_link_factory_shape() {
 
 #[test]
 fn create_atmost_dependency_allocates_factory_shaped_non_det_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -12301,6 +12537,7 @@ fn create_atmost_dependency_allocates_factory_shaped_non_det_node() {
 
 #[test]
 fn create_qualify_dependency_preserves_guard_and_allocates_factory_shaped_non_det_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut process_indi = env.root;
     let con_des = env
@@ -12425,6 +12662,7 @@ fn assert_factory_shaped_non_det_dependency(
 
 #[test]
 fn create_reuse_dependency_wrappers_allocate_factory_shaped_non_det_nodes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -12501,6 +12739,7 @@ fn create_reuse_dependency_wrappers_allocate_factory_shaped_non_det_nodes() {
 
 #[test]
 fn create_reuse_dependency_wrappers_preserve_build_dependencies_guard() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = false;
     let mut process_indi = env.root;
@@ -12654,6 +12893,7 @@ fn assert_factory_shaped_det_link_dependency(
 
 #[test]
 fn create_oronly_implication_expanded_dependencies_preserve_factory_shapes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -12740,6 +12980,7 @@ fn create_oronly_implication_expanded_dependencies_preserve_factory_shapes() {
 
 #[test]
 fn create_oronly_implication_expanded_dependencies_preserve_build_dependencies_guard() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = false;
     let mut process_indi = env.root;
@@ -12804,6 +13045,7 @@ fn create_oronly_implication_expanded_dependencies_preserve_build_dependencies_g
 
 #[test]
 fn create_varbind_and_propagate_dependency_wrappers_preserve_factory_shapes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -13029,6 +13271,7 @@ fn create_varbind_and_propagate_dependency_wrappers_preserve_factory_shapes() {
 
 #[test]
 fn create_varbind_and_propagate_dependency_wrappers_preserve_build_dependencies_guard() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = false;
     let mut process_indi = env.root;
@@ -13187,6 +13430,7 @@ fn create_varbind_and_propagate_dependency_wrappers_preserve_build_dependencies_
 
 #[test]
 fn create_bind_propagate_and_nominal_dependencies_preserve_factory_shapes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -13374,6 +13618,7 @@ fn create_bind_propagate_and_nominal_dependencies_preserve_factory_shapes() {
 
 #[test]
 fn create_bind_propagate_and_nominal_dependencies_preserve_build_dependencies_guard() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = false;
     let mut process_indi = env.root;
@@ -13510,6 +13755,7 @@ fn create_bind_propagate_and_nominal_dependencies_preserve_build_dependencies_gu
 
 #[test]
 fn create_reuse_backend_dependency_wrappers_preserve_factory_shapes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -13657,6 +13903,7 @@ fn create_reuse_backend_dependency_wrappers_preserve_factory_shapes() {
 
 #[test]
 fn create_reuse_backend_dependency_wrappers_preserve_build_dependencies_guard() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = false;
     let mut process_indi = env.root;
@@ -13716,6 +13963,7 @@ fn create_reuse_backend_dependency_wrappers_preserve_build_dependencies_guard() 
 
 #[test]
 fn create_and_dependency_preserves_guard_and_factory_continuation_semantics() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut process_indi = env.root;
     let mut and_dep_track_point = TrackPointId::NONE;
@@ -13786,6 +14034,7 @@ fn create_and_dependency_preserves_guard_and_factory_continuation_semantics() {
 
 #[test]
 fn create_automat_some_self_dependencies_preserve_factory_shapes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -13886,6 +14135,7 @@ fn create_automat_some_self_dependencies_preserve_factory_shapes() {
 
 #[test]
 fn create_value_negvalue_all_dependencies_preserve_detlink_shapes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -13998,6 +14248,7 @@ fn create_value_negvalue_all_dependencies_preserve_detlink_shapes() {
 
 #[test]
 fn create_role_assertion_and_functional_dependencies_preserve_factory_shapes() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -14099,6 +14350,7 @@ fn create_role_assertion_and_functional_dependencies_preserve_factory_shapes() {
 
 #[test]
 fn create_role_assertion_and_functional_dependencies_preserve_build_dependencies_guard() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = false;
     let mut process_indi = env.root;
@@ -14153,6 +14405,7 @@ fn create_role_assertion_and_functional_dependencies_preserve_build_dependencies
 
 #[test]
 fn create_distinct_automat_transaction_atleast_dependencies_preserve_factory_shapes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -14261,6 +14514,7 @@ fn create_distinct_automat_transaction_atleast_dependencies_preserve_factory_sha
 
 #[test]
 fn create_or_dependency_preserves_or_factory_shape() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let mut process_indi = env.root;
@@ -14324,6 +14578,7 @@ fn create_or_dependency_preserves_or_factory_shape() {
 
 #[test]
 fn create_dependend_branching_task_list_front_splices_children() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
 
     let parent = env
@@ -14380,6 +14635,7 @@ fn create_dependend_branching_task_list_front_splices_children() {
 
 #[test]
 fn create_dependend_branching_task_list_skips_debug_ids_after_depth_limit() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
 
     let parent = env
@@ -14401,6 +14657,7 @@ fn create_dependend_branching_task_list_skips_debug_ids_after_depth_limit() {
 
 #[test]
 fn create_merge_branching_task_allocates_dependent_child() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
 
     let parent = env
@@ -14451,6 +14708,7 @@ fn create_merge_branching_task_allocates_dependent_child() {
 
 #[test]
 fn create_distinct_branching_task_allocates_dependent_child() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
 
     let parent = env
@@ -14498,6 +14756,7 @@ fn create_distinct_branching_task_allocates_dependent_child() {
 
 #[test]
 fn get_collected_filtered_clashed_descriptors_from_branch_deduplicates_and_replays_self_pointing() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let node = test_node_at_depth(&mut env, 95, 4);
     let concept_a = env.concept_a;
@@ -14620,6 +14879,7 @@ fn get_collected_filtered_clashed_descriptors_from_branch_deduplicates_and_repla
 
 #[test]
 fn initialize_tracking_line_initializes_bounds_and_buckets() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -14655,6 +14915,7 @@ fn initialize_tracking_line_initializes_bounds_and_buckets() {
 
 #[test]
 fn initialize_tracking_line_rejects_tracking_error_without_sorting() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let mut line = TrackedClashedDependencyLine::new();
@@ -14675,6 +14936,7 @@ fn initialize_tracking_line_rejects_tracking_error_without_sorting() {
 
 #[test]
 fn initialize_tracking_line_detects_nominal_tracking() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -14695,6 +14957,7 @@ fn initialize_tracking_line_detects_nominal_tracking() {
 
 #[test]
 fn get_sorted_clashed_descriptors_orders_by_concept_tag_and_detaches_tail() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let c7a = marker_concept(&mut env, 7);
@@ -14754,6 +15017,7 @@ fn get_sorted_clashed_descriptors_orders_by_concept_tag_and_detaches_tail() {
 
 #[test]
 fn write_clash_descriptors_to_cache_from_line_drains_and_restores_tracking_line() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -14784,6 +15048,7 @@ fn write_clash_descriptors_to_cache_from_line_drains_and_restores_tracking_line(
 
 #[test]
 fn write_clash_descriptors_to_cache_with_additional_removes_failed_additional() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
     let concept_a = env.concept_a;
@@ -14841,6 +15106,7 @@ fn write_clash_descriptors_to_cache_with_additional_removes_failed_additional() 
 
 #[test]
 fn write_clash_descriptors_to_cache_validates_sorts_then_null_handler_fails() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_write_unsat_caching = true;
     let root = env.root;
@@ -14873,6 +15139,7 @@ fn write_clash_descriptors_to_cache_validates_sorts_then_null_handler_fails() {
 
 #[test]
 fn write_clash_descriptors_to_cache_forwards_to_installed_unsat_handler() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_write_unsat_caching = true;
     install_unsat_cache_handler(&mut env);
@@ -14907,6 +15174,7 @@ fn write_clash_descriptors_to_cache_forwards_to_installed_unsat_handler() {
 
 #[test]
 fn write_clash_descriptors_to_cache_rejects_invalid_terminology_without_sorting() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_write_unsat_caching = true;
     let root = env.root;
@@ -14935,6 +15203,7 @@ fn write_clash_descriptors_to_cache_rejects_invalid_terminology_without_sorting(
 
 #[test]
 fn write_clash_descriptors_to_cache_rejects_nominal_tracking() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_write_unsat_caching = true;
     let root = env.root;
@@ -14959,6 +15228,7 @@ fn write_clash_descriptors_to_cache_rejects_nominal_tracking() {
 
 #[test]
 fn write_clash_descriptors_to_cache_rejects_atomic_opposite_polarity() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_write_unsat_caching = true;
     let root = env.root;
@@ -14986,6 +15256,7 @@ fn write_clash_descriptors_to_cache_rejects_atomic_opposite_polarity() {
 
 #[test]
 fn raised_clash_carries_clashed_concept_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
     let tp = deterministic_track_point(&mut env);
@@ -15007,6 +15278,7 @@ fn raised_clash_carries_clashed_concept_descriptor() {
 
 #[test]
 fn concept_unsatisfiability_saturated_reads_reference_linking() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let concept_a = env.concept_a;
     attach_saturation_unsat_reference(&mut env, concept_a, false, true);
@@ -15021,6 +15293,7 @@ fn concept_unsatisfiability_saturated_reads_reference_linking() {
 
 #[test]
 fn has_saturated_clashed_flag_for_concept_reads_reference_linking() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let concept_a = env.concept_a;
     let top_concept = env.top_concept;
@@ -15040,6 +15313,7 @@ fn has_saturated_clashed_flag_for_concept_reads_reference_linking() {
 
 #[test]
 fn partial_saturation_release_detaches_completion_clash_references() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let references = [(env.concept_a, true), (env.top_concept, false)];
     for (concept, negated) in references {
@@ -15055,6 +15329,7 @@ fn partial_saturation_release_detaches_completion_clash_references() {
 
 #[test]
 fn add_concept_to_individual_raises_saturated_unsat_clash_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_concept_unsatisfiability_saturated_testing = true;
     let mut root = env.root;
@@ -15092,6 +15367,7 @@ fn add_concept_to_individual_raises_saturated_unsat_clash_descriptor() {
 
 #[test]
 fn concept_label_set_modified_updates_tagger_and_label_set_tag() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -15134,6 +15410,7 @@ fn concept_label_set_modified_updates_tagger_and_label_set_tag() {
 
 #[test]
 fn concept_label_set_modified_increments_tag_on_each_call() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -15164,6 +15441,7 @@ fn concept_label_set_modified_increments_tag_on_each_call() {
 
 #[test]
 fn add_marker_concept_to_individual_registers_marker_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let marker = marker_concept(&mut env, 301);
     let mut root = env.root;
@@ -15184,6 +15462,7 @@ fn add_marker_concept_to_individual_registers_marker_node() {
 
 #[test]
 fn add_marker_concept_to_individual_skips_contained_duplicate() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let marker = marker_concept(&mut env, 302);
     let mut root = env.root;
@@ -15206,6 +15485,7 @@ fn add_marker_concept_to_individual_skips_contained_duplicate() {
 
 #[test]
 fn add_non_marker_concept_to_individual_does_not_allocate_marker_hash() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
 
@@ -15230,6 +15510,7 @@ fn add_non_marker_concept_to_individual_does_not_allocate_marker_hash() {
 
 #[test]
 fn marker_hash_keeps_deterministic_and_nondeterministic_entries_distinct() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let marker = marker_concept(&mut env, 303);
     let deterministic_tp = deterministic_track_point(&mut env);
@@ -15278,6 +15559,7 @@ fn marker_hash_keeps_deterministic_and_nondeterministic_entries_distinct() {
 
 #[test]
 fn marker_hash_localization_preserves_inherited_entries() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let marker = marker_concept(&mut env, 304);
     let mut root = env.root;
@@ -15333,6 +15615,7 @@ fn marker_hash_localization_preserves_inherited_entries() {
 /// then take it back. This is the seed primitive the future full drive loop pops.
 #[test]
 fn concept_queue_insert_primitive() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -15396,6 +15679,7 @@ fn concept_queue_insert_primitive() {
 
 #[test]
 fn priority_for_concept_uses_context_strategy() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let root = env.root;
 
@@ -15412,6 +15696,7 @@ fn priority_for_concept_uses_context_strategy() {
 
 #[test]
 fn add_individual_node_for_cache_unsatisfiable_retrieval_prepends_databox_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut first = env.root;
     let mut second = env
@@ -15448,6 +15733,7 @@ fn add_individual_node_for_cache_unsatisfiable_retrieval_prepends_databox_queue(
 
 #[test]
 fn take_next_process_individual_prefers_cache_test_queue() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut cache_test_node = env.root;
     let immediate_node = env
@@ -15479,6 +15765,7 @@ fn take_next_process_individual_prefers_cache_test_queue() {
 /// `addConceptToReapplyQueue(role,...)` + `applyReapplyQueueConcepts(role)`.
 #[test]
 fn role_reapply_queue_applies_to_concept_processing_queue() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -15558,6 +15845,7 @@ fn role_reapply_queue_applies_to_concept_processing_queue() {
 /// role.
 #[test]
 fn individual_node_link_lookup_returns_matching_successor_role_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::process::edge::IndividualLinkEdge;
     use super::super::process::rs1::ReapplyQueueIterator;
@@ -15613,6 +15901,7 @@ fn individual_node_link_lookup_returns_matching_successor_role_edge() {
 
 #[test]
 fn create_new_individuals_links_reapplyed_installs_direct_role_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -15671,6 +15960,7 @@ fn create_new_individuals_links_reapplyed_installs_direct_role_edge() {
 
 #[test]
 fn create_new_individuals_links_reapplyed_installs_inverse_role_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -15729,6 +16019,7 @@ fn create_new_individuals_links_reapplyed_installs_inverse_role_edge() {
 
 #[test]
 fn create_new_individuals_link_reapplyed_installs_single_role_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -15781,6 +16072,7 @@ fn create_new_individuals_link_reapplyed_installs_single_role_edge() {
 
 #[test]
 fn disjoint_role_links_install_negation_disjoint_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -15849,6 +16141,7 @@ fn disjoint_role_links_install_negation_disjoint_edge() {
 
 #[test]
 fn disjoint_role_link_clashes_with_existing_role_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -15902,6 +16195,7 @@ fn disjoint_role_link_clashes_with_existing_role_edge() {
 
 #[test]
 fn role_link_install_clashes_with_existing_negation_disjoint_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::process::edge::IndividualLinkEdge;
 
@@ -15971,6 +16265,7 @@ fn role_link_install_clashes_with_existing_negation_disjoint_edge() {
 
 #[test]
 fn create_new_individuals_links_installs_direct_role_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -16049,6 +16344,7 @@ fn create_new_individuals_links_installs_direct_role_edge() {
 
 #[test]
 fn role_link_install_updates_occurrence_statistics_for_first_successor_link() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -16099,6 +16395,7 @@ fn role_link_install_updates_occurrence_statistics_for_first_successor_link() {
 
 #[test]
 fn role_link_reapplied_occurrence_statistics_skip_duplicate_successor_link() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -16156,6 +16453,7 @@ fn role_link_reapplied_occurrence_statistics_skip_duplicate_successor_link() {
 
 #[test]
 fn role_link_occurrence_statistics_do_not_update_after_disjoint_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -16219,6 +16517,7 @@ fn role_link_occurrence_statistics_do_not_update_after_disjoint_clash() {
 
 #[test]
 fn create_new_individuals_links_installs_inverse_role_edge_and_reverse_connection() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -16311,6 +16610,7 @@ fn create_new_individuals_links_installs_inverse_role_edge_and_reverse_connectio
 
 #[test]
 fn create_new_individuals_link_installs_single_role_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -16372,6 +16672,7 @@ fn create_new_individuals_link_installs_single_role_edge() {
 
 #[test]
 fn create_new_individuals_link_clashes_with_existing_negation_disjoint_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -16422,6 +16723,7 @@ fn create_new_individuals_link_clashes_with_existing_negation_disjoint_edge() {
 
 #[test]
 fn create_individuals_distinct_pair_installs_symmetric_distinct_edge() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut source = env.root;
     let mut destination = env
@@ -16500,6 +16802,7 @@ fn create_individuals_distinct_pair_installs_symmetric_distinct_edge() {
 
 #[test]
 fn create_individuals_distinct_installs_all_unordered_pairs() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let first = env.root;
     let second = env
@@ -16604,6 +16907,7 @@ fn create_individuals_distinct_installs_all_unordered_pairs() {
 
 #[test]
 fn create_new_empty_individual_uses_next_sequential_id_after_root() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
 
     let individual = env.algo.create_new_empty_individual(&mut env.ctx);
@@ -16626,6 +16930,7 @@ fn create_new_empty_individual_uses_next_sequential_id_after_root() {
 
 #[test]
 fn create_new_empty_individual_registers_next_id_and_flags() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.opt_consistence_node_marking = true;
     env.algo.opt_incremental_compatible_expansion = true;
@@ -16655,6 +16960,7 @@ fn create_new_empty_individual_registers_next_id_and_flags() {
 
 #[test]
 fn create_new_individual_seeds_object_top_concept() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
 
     let mut individual = env
@@ -16688,6 +16994,7 @@ fn create_new_individual_seeds_object_top_concept() {
 
 #[test]
 fn create_new_individual_seeds_data_top_range_and_data_flags() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
 
     let mut individual = env
@@ -16714,6 +17021,7 @@ fn create_new_individual_seeds_data_top_range_and_data_flags() {
 
 #[test]
 fn up_to_date_individual_helpers_follow_node_vector_availability() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let old = env
         .ctx
@@ -16768,6 +17076,7 @@ fn up_to_date_individual_helpers_follow_node_vector_availability() {
 
 #[test]
 fn role_successor_concept_scanners_find_labeled_successors() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -16935,6 +17244,7 @@ fn role_successor_concept_scanners_find_labeled_successors() {
 
 #[test]
 fn distinct_role_successor_concept_scanner_counts_distinct_labeled_successors() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -17075,6 +17385,7 @@ fn distinct_role_successor_concept_scanner_counts_distinct_labeled_successors() 
 
 #[test]
 fn create_successor_individual_builds_ancestor_link_and_labels_successor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -17165,6 +17476,7 @@ fn create_successor_individual_builds_ancestor_link_and_labels_successor() {
 
 #[test]
 fn create_distinct_successor_individuals_builds_pairwise_distinct_labeled_successors() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -17271,6 +17583,7 @@ fn create_distinct_successor_individuals_builds_pairwise_distinct_labeled_succes
 
 #[test]
 fn try_extend_functional_successor_individual_reuses_existing_successor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -17397,6 +17710,7 @@ fn try_extend_functional_successor_individual_reuses_existing_successor() {
 /// take the live successor, as Konclude's (whose ghost link is removed) does.
 #[test]
 fn try_extend_functional_successor_individual_skips_merged_away_successor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -17465,6 +17779,7 @@ fn try_extend_functional_successor_individual_skips_merged_away_successor() {
 
 #[test]
 fn prune_successors_recurses_and_removes_nominal_links() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -17572,6 +17887,7 @@ fn prune_successors_recurses_and_removes_nominal_links() {
 
 #[test]
 fn add_individual_node_candidate_for_concept_populates_blocking_candidate_hash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::substrate::NegLink;
     use super::super::process::blocking_hash::BlockingIndividualNodeCandidateHash;
@@ -17679,6 +17995,7 @@ fn add_individual_node_candidate_for_concept_populates_blocking_candidate_hash()
 
 #[test]
 fn debug_associated_concepts_strings_match_konclude_tag_formatting() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
     let mut ancestor = env
@@ -17766,6 +18083,7 @@ fn debug_associated_concepts_strings_match_konclude_tag_formatting() {
 
 #[test]
 fn apply_self_rule_positive_creates_missing_self_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
@@ -17825,6 +18143,7 @@ fn apply_self_rule_positive_creates_missing_self_edge() {
 
 #[test]
 fn apply_self_rule_negative_clashes_on_existing_self_edge() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
@@ -17879,6 +18198,7 @@ fn apply_self_rule_negative_clashes_on_existing_self_edge() {
 
 #[test]
 fn apply_self_rule_negative_without_edge_adds_role_reapply_descriptor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -17925,6 +18245,7 @@ fn apply_self_rule_negative_without_edge_adds_role_reapply_descriptor() {
 /// `applyReapplyQueueConcepts(concept,negation)` path.
 #[test]
 fn concept_reapply_queue_applies_to_concept_processing_queue() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -18020,6 +18341,7 @@ fn concept_reapply_queue_applies_to_concept_processing_queue() {
 /// reapplication can queue the role-triggered descriptor for processing.
 #[test]
 fn role_link_install_returns_reapply_iterator() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -18106,6 +18428,7 @@ fn role_link_install_returns_reapply_iterator() {
 
 #[test]
 fn restricted_reapply_queue_attaches_link_restriction() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -18199,6 +18522,7 @@ fn restricted_reapply_queue_attaches_link_restriction() {
 
 #[test]
 fn condensed_iterator_reapply_queues_matching_descriptors() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::process::reapply_sat::{
         CondensedReapplyConceptDescriptor, CondensedReapplyQueueIterator,
@@ -18277,6 +18601,7 @@ fn condensed_iterator_reapply_queues_matching_descriptors() {
 
 #[test]
 fn restricted_reapply_preserves_processing_restriction_priority_offset() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::process::satellites::BranchingMergingProcessingRestrictionSpecification;
 
@@ -18343,6 +18668,7 @@ fn restricted_reapply_preserves_processing_restriction_priority_offset() {
 
 #[test]
 fn direct_rule_preprocessing_lowers_or_before_queue_snapshot() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -18419,6 +18745,7 @@ fn direct_rule_preprocessing_lowers_or_before_queue_snapshot() {
 
 #[test]
 fn add_concept_to_individual_drains_condensed_reapply_iterator() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -18514,6 +18841,7 @@ fn add_concept_to_individual_drains_condensed_reapply_iterator() {
 
 #[test]
 fn add_concept_to_individual_return_descriptor_drains_condensed_reapply_iterator() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -18605,6 +18933,7 @@ fn add_concept_to_individual_return_descriptor_drains_condensed_reapply_iterator
 
 #[test]
 fn add_concepts_to_individual_drains_condensed_reapply_iterator() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -18695,6 +19024,7 @@ fn add_concepts_to_individual_drains_condensed_reapply_iterator() {
 
 #[test]
 fn propagation_binding_reapply_linker_queues_concepts() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::process::propagation_binding::PropagationBindingReapplyConceptDescriptor;
 
@@ -18786,6 +19116,7 @@ fn propagation_binding_reapply_linker_queues_concepts() {
 
 #[test]
 fn propagation_binding_fresh_producer_applies_existing_reapply_linker() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::process::propagation_binding::{
         PropagationBinding, PropagationBindingDescriptor, PropagationBindingMapData,
@@ -18931,6 +19262,7 @@ fn propagation_binding_fresh_producer_applies_existing_reapply_linker() {
 
 #[test]
 fn propagation_binding_initial_producer_copies_prev_map_with_fresh_descriptors() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::process::propagation_binding::{
         PropagationBinding, PropagationBindingDescriptor,
@@ -19105,6 +19437,7 @@ fn propagation_binding_initial_producer_copies_prev_map_with_fresh_descriptors()
 
 #[test]
 fn pbind_implication_existing_binding_refreshes_fresh_bindings() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::process::binding_hash::ConceptPropagationBindingSetHash;
     use super::super::process::propagation_binding::{
@@ -19313,6 +19646,7 @@ fn pbind_implication_existing_binding_refreshes_fresh_bindings() {
 
 #[test]
 fn propagation_binding_initial_successor_producer_copies_prev_map_with_fresh_descriptors() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::process::edge::IndividualLinkEdge;
@@ -19493,6 +19827,7 @@ fn propagation_binding_initial_successor_producer_copies_prev_map_with_fresh_des
 
 #[test]
 fn pbind_implication_new_binding_initializes_propagation_bindings() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::process::binding_hash::ConceptPropagationBindingSetHash;
     use super::super::process::propagation_binding::{
@@ -19630,6 +19965,7 @@ fn pbind_implication_new_binding_initializes_propagation_bindings() {
 
 #[test]
 fn pbind_variable_new_binding_allocates_special_propagation_binding() {
+    let _test_env = crate::test_env::read();
     use super::super::model::individual::Variable;
     use super::super::model::op;
     use super::super::process::binding_hash::ConceptPropagationBindingSetHash;
@@ -19739,6 +20075,7 @@ fn pbind_variable_new_binding_allocates_special_propagation_binding() {
 
 #[test]
 fn pbind_variable_existing_binding_allocates_missing_special_propagation_binding() {
+    let _test_env = crate::test_env::read();
     use super::super::model::individual::Variable;
     use super::super::model::op;
     use super::super::process::binding_hash::ConceptPropagationBindingSetHash;
@@ -19880,6 +20217,7 @@ fn pbind_variable_existing_binding_allocates_missing_special_propagation_binding
 
 #[test]
 fn varbind_variable_without_propagation_set_does_not_create_binding_path() {
+    let _test_env = crate::test_env::read();
     use super::super::model::individual::Variable;
     use super::super::model::op;
 
@@ -19933,6 +20271,7 @@ fn varbind_variable_without_propagation_set_does_not_create_binding_path() {
 
 #[test]
 fn varbind_variable_matching_propagation_binding_creates_binding_path() {
+    let _test_env = crate::test_env::read();
     use super::super::model::individual::Variable;
     use super::super::model::op;
     use super::super::process::binding_hash::{
@@ -20085,6 +20424,7 @@ fn varbind_variable_matching_propagation_binding_creates_binding_path() {
 
 #[test]
 fn varbind_variable_completed_transition_extension_prevents_duplicate_path() {
+    let _test_env = crate::test_env::read();
     use super::super::model::individual::Variable;
     use super::super::model::op;
     use super::super::process::binding_hash::{
@@ -20210,6 +20550,7 @@ fn varbind_variable_completed_transition_extension_prevents_duplicate_path() {
 
 #[test]
 fn varbind_join_get_joined_path_merges_sorted_bindings_and_caches_symmetrically() {
+    let _test_env = crate::test_env::read();
     use super::super::model::individual::Variable;
     use super::super::process::varbind::{
         VarBindingDescriptorId, VarBindingPathId, VariableBinding, VariableBindingDescriptor,
@@ -20299,6 +20640,7 @@ fn varbind_join_get_joined_path_merges_sorted_bindings_and_caches_symmetrically(
 
 #[test]
 fn varbind_join_propagate_records_one_side_then_combines_other_side() {
+    let _test_env = crate::test_env::read();
     use super::super::model::individual::Variable;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
     use super::super::process::varbind::{
@@ -20600,6 +20942,7 @@ fn build_varbind_join_rule_fixture(env: &mut SelfTestEnv, base_tag: i64) -> Varb
 
 #[test]
 fn varbind_join_rule_combines_existing_left_and_right_paths() {
+    let _test_env = crate::test_env::write();
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
 
     let mut env = build_env();
@@ -20649,6 +20992,7 @@ fn varbind_join_rule_combines_existing_left_and_right_paths() {
 
 #[test]
 fn varbind_join_rule_completed_extension_prevents_duplicate_join_path() {
+    let _test_env = crate::test_env::write();
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
 
     let mut env = build_env();
@@ -20686,6 +21030,7 @@ fn varbind_join_rule_completed_extension_prevents_duplicate_join_path() {
 
 #[test]
 fn varbind_grounding_without_path_set_noops_after_live_prelude() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -20733,6 +21078,7 @@ fn varbind_grounding_without_path_set_noops_after_live_prelude() {
 
 #[test]
 fn propagation_binding_fresh_successor_producer_updates_missing_entries_and_reapplies() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::process::edge::IndividualLinkEdge;
@@ -20963,6 +21309,7 @@ fn propagation_binding_fresh_successor_producer_updates_missing_entries_and_reap
 
 #[test]
 fn propagation_binding_successor_dispatcher_initializes_missing_operand_binding() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::process::binding_hash::ConceptPropagationBindingSetHash;
@@ -21106,6 +21453,7 @@ fn propagation_binding_successor_dispatcher_initializes_missing_operand_binding(
 
 #[test]
 fn propagation_binding_successor_dispatcher_refreshes_existing_operand_binding() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::process::binding_hash::ConceptPropagationBindingSetHash;
@@ -21268,6 +21616,7 @@ fn propagation_binding_successor_dispatcher_refreshes_existing_operand_binding()
 
 #[test]
 fn pbind_all_nonrestricted_fans_out_over_role_successor_links() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::process::binding_hash::ConceptPropagationBindingSetHash;
@@ -21410,6 +21759,7 @@ fn pbind_all_nonrestricted_fans_out_over_role_successor_links() {
 
 #[test]
 fn varbind_all_nonrestricted_initializes_successor_variable_bindings() {
+    let _test_env = crate::test_env::write();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
@@ -21562,6 +21912,7 @@ fn varbind_all_nonrestricted_initializes_successor_variable_bindings() {
 
 #[test]
 fn varbind_all_nonrestricted_refreshes_existing_successor_variable_bindings() {
+    let _test_env = crate::test_env::write();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
@@ -21713,6 +22064,7 @@ fn varbind_all_nonrestricted_refreshes_existing_successor_variable_bindings() {
 
 #[test]
 fn varbind_and_initializes_same_node_variable_bindings() {
+    let _test_env = crate::test_env::write();
     use super::super::model::op;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
     use super::super::process::varbind::{
@@ -21837,6 +22189,7 @@ fn varbind_and_initializes_same_node_variable_bindings() {
 
 #[test]
 fn varbind_and_refreshes_same_node_variable_bindings_in_merge_order() {
+    let _test_env = crate::test_env::write();
     use super::super::model::op;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
     use super::super::process::varbind::{VariableBindingPath, VariableBindingPathDescriptor};
@@ -22004,6 +22357,7 @@ fn varbind_and_refreshes_same_node_variable_bindings_in_merge_order() {
 
 #[test]
 fn varbind_and_existing_trigger_drains_condensed_reapply_queue_after_fresh_paths() {
+    let _test_env = crate::test_env::write();
     use super::super::model::op;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
     use super::super::process::varbind::{VariableBindingPath, VariableBindingPathDescriptor};
@@ -22228,6 +22582,7 @@ fn varbind_and_existing_trigger_drains_condensed_reapply_queue_after_fresh_paths
 
 #[test]
 fn varbind_implication_installs_missing_trigger_reapply() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -22288,6 +22643,7 @@ fn varbind_implication_installs_missing_trigger_reapply() {
 
 #[test]
 fn varbind_implication_initializes_binding_paths_when_all_triggers_present() {
+    let _test_env = crate::test_env::write();
     use super::super::model::op;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
     use super::super::process::varbind::{VariableBindingPath, VariableBindingPathDescriptor};
@@ -22452,6 +22808,7 @@ fn varbind_implication_initializes_binding_paths_when_all_triggers_present() {
 
 #[test]
 fn varbind_implication_existing_binding_refreshes_and_drains_reapply() {
+    let _test_env = crate::test_env::write();
     use super::super::model::op;
     use super::super::process::binding_hash::ConceptVariableBindingPathSetHash;
     use super::super::process::varbind::{VariableBindingPath, VariableBindingPathDescriptor};
@@ -22679,6 +23036,7 @@ fn varbind_implication_existing_binding_refreshes_and_drains_reapply() {
 
 #[test]
 fn optimized_blocking_rejects_a_node_without_an_ancestor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut root = env.root;
     let mut blocker = env.algo.create_new_individual(TrackPointId::NONE, false, &mut env.ctx);
@@ -22694,6 +23052,7 @@ fn optimized_blocking_rejects_a_node_without_an_ancestor() {
 
 #[test]
 fn optimized_blocking_b2_role_reapply_rejects_missing_forall_operand() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -22801,6 +23160,7 @@ fn optimized_blocking_b2_role_reapply_rejects_missing_forall_operand() {
 
 #[test]
 fn optimized_blocking_b3_b5_counts_blocker_role_successors() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -22919,6 +23279,7 @@ fn optimized_blocking_b3_b5_counts_blocker_role_successors() {
 
 #[test]
 fn optimized_blocking_b4a_counts_insufficient_blocker_successors() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -23064,6 +23425,7 @@ fn optimized_blocking_b4a_counts_insufficient_blocker_successors() {
 /// apply_and_rule), not just at clash-initialization.
 #[test]
 fn conjunction_rule_fires_over_drive_loop() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -23170,6 +23532,7 @@ fn conjunction_rule_fires_over_drive_loop() {
 /// choice and runs through it.
 #[test]
 fn disjunction_branch_explored() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -23268,6 +23631,7 @@ fn disjunction_branch_explored() {
 /// the sole survivor through the ORONLYOPTION path.
 #[test]
 fn disjunction_all_but_one_excluded_is_deterministic() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -23397,6 +23761,7 @@ fn disjunction_all_but_one_excluded_is_deterministic() {
 /// creation AND the chronological backtrack in `run_completion_on`.
 #[test]
 fn disjunction_all_branches_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -23514,6 +23879,7 @@ fn disjunction_all_branches_clash() {
 /// OPPOSITE polarity of the `¬A` linker (i.e. positive `A`).
 #[test]
 fn implication_unfolds_a_to_b() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -23596,6 +23962,7 @@ fn implication_unfolds_a_to_b() {
 /// `run_completion_on` ends the drive with the inconsistent verdict.
 #[test]
 fn implication_unfold_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let mut env = build_env();
@@ -23783,6 +24150,7 @@ fn label_set_has_tag(env: &mut SelfTestEnv, node: NodeId, tag: i64) -> bool {
 /// run there is an R-successor node carrying C, and the graph is CONSISTENT.
 #[test]
 fn exists_creates_successor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -23826,6 +24194,7 @@ fn exists_creates_successor() {
 /// and C (from ∀ propagation), and the graph is CONSISTENT.
 #[test]
 fn all_propagates_to_successor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -23902,6 +24271,7 @@ fn all_propagates_to_successor() {
 /// for a deterministic subsumer.
 #[test]
 fn all_propagation_preserves_role_edge_branch_dependency() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -23980,6 +24350,7 @@ fn all_propagation_preserves_role_edge_branch_dependency() {
 /// same two parents, so AQALL propagation must retain the traversed edge too.
 #[test]
 fn aqall_propagation_preserves_role_edge_branch_dependency() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -24058,6 +24429,7 @@ fn aqall_propagation_preserves_role_edge_branch_dependency() {
 /// destination, never at its source.
 #[test]
 fn all_target_lookup_respects_signed_role_direction() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
 
     let mut env = build_env();
@@ -24141,6 +24513,7 @@ fn all_target_lookup_respects_signed_role_direction() {
 /// same signed role semantics as the ordinary ALL iterator.
 #[test]
 fn fresh_edge_reapply_does_not_fire_inverse_all_forward() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -24216,6 +24589,7 @@ fn fresh_edge_reapply_does_not_fire_inverse_all_forward() {
 /// ordinary conjunction processing would do.
 #[test]
 fn completion_defaults_to_specialized_automaton_dispatch() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -24273,6 +24647,7 @@ fn completion_defaults_to_specialized_automaton_dispatch() {
 /// CLASH and the graph is INCONSISTENT.
 #[test]
 fn exists_all_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -24343,6 +24718,7 @@ fn exists_all_clash() {
 /// (min = 8) silently blocked.
 #[test]
 fn nested_exists_grows() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -24406,6 +24782,7 @@ fn nested_exists_grows() {
 /// path end-to-end.
 #[test]
 fn cyclic_tbox_exists_blocks() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -24512,6 +24889,7 @@ fn cyclic_tbox_exists_blocks() {
 /// hops deep — only possible if successors actually drain.
 #[test]
 fn nested_exists_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -24600,6 +24978,7 @@ fn role_successors(
 /// nodes, each labelled C, pairwise DISTINCT, and the graph is CONSISTENT.
 #[test]
 fn at_least_creates_n_successors() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -24662,6 +25041,7 @@ fn at_least_creates_n_successors() {
 /// successors are queued. ORE 14817 depends on this for its first three pairs.
 #[test]
 fn at_least_replays_saturation_label_to_every_created_successor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
@@ -24795,6 +25175,7 @@ fn run_some_rule_over_saturation_node(
 /// nominals; pin it so the default stays the faithful port.
 #[test]
 fn saturation_expansion_replays_a_nominal_connected_label_by_default() {
+    let _test_env = crate::test_env::read();
     let (consistent, successors, mut env, role_r, saturation_tag) =
         run_some_rule_over_saturation_node(true, false, false);
     let root = env.root;
@@ -24815,6 +25196,7 @@ fn saturation_expansion_replays_a_nominal_connected_label_by_default() {
 /// derive FEWER consequences, never more.
 #[test]
 fn saturation_expansion_declines_a_nominal_connected_label_when_fail_closed() {
+    let _test_env = crate::test_env::read();
     let (consistent, successors, mut env, role_r, saturation_tag) =
         run_some_rule_over_saturation_node(true, false, true);
     let root = env.root;
@@ -24837,6 +25219,7 @@ fn saturation_expansion_declines_a_nominal_connected_label_when_fail_closed() {
 /// leg armed — the flag must not disable the coupling wholesale.
 #[test]
 fn saturation_expansion_keeps_a_nominal_free_label_under_the_fail_closed_leg() {
+    let _test_env = crate::test_env::read();
     let (consistent, successors, mut env, role_r, saturation_tag) =
         run_some_rule_over_saturation_node(false, false, true);
     let root = env.root;
@@ -24854,6 +25237,7 @@ fn saturation_expansion_keeps_a_nominal_free_label_under_the_fail_closed_leg() {
 /// nominal would be an unsound UNSAT. A nominal-FREE clashed node still clashes.
 #[test]
 fn saturation_expansion_withholds_a_nominal_connected_clash_when_fail_closed() {
+    let _test_env = crate::test_env::read();
     let (consistent_default, _, env_default, _, _) =
         run_some_rule_over_saturation_node(true, true, false);
     assert!(
@@ -25037,6 +25421,7 @@ fn node_has_flags(env: &SelfTestEnv, node: NodeId, flags: i64) -> bool {
 /// the node stays a parked leaf.
 #[test]
 fn saturation_block_survives_a_modification_that_did_not_grow_the_label() {
+    let _test_env = crate::test_env::read();
     let (mut env, node, _sat_node) = saturation_blocked_node(true);
     let mut modified = node;
     env.algo
@@ -25080,6 +25465,7 @@ fn saturation_block_survives_a_modification_that_did_not_grow_the_label() {
 /// constructs the handler for every completion task, empty cache or not.
 #[test]
 fn saturation_block_is_lost_without_the_expansion_cache_handler() {
+    let _test_env = crate::test_env::read();
     let (mut env, node, _sat_node) = saturation_blocked_node(false);
     let mut modified = node;
     env.algo
@@ -25116,6 +25502,7 @@ fn saturation_block_is_lost_without_the_expansion_cache_handler() {
 /// Konclude (the empty cache has no entry to fall back on).
 #[test]
 fn saturation_block_is_lost_when_the_label_grows() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
 
     let (mut env, node, _sat_node) = saturation_blocked_node(true);
@@ -25155,6 +25542,7 @@ fn saturation_block_is_lost_when_the_label_grows() {
 /// would replay on cache loss.
 #[test]
 fn generating_concept_is_parked_on_a_successor_creation_blocked_node() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -25230,6 +25618,7 @@ fn generating_concept_is_parked_on_a_successor_creation_blocked_node() {
 /// `..._cardinality_problematic_count` separate this from a lost block.
 #[test]
 fn generating_concept_is_not_parked_when_the_saturation_node_is_cardinality_problematic() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -25298,6 +25687,7 @@ fn generating_concept_is_not_parked_when_the_saturation_node_is_cardinality_prob
 /// distinct successors over an at-most bound are inconsistent, not merged.)
 #[test]
 fn at_most_merges_or_clashes() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -25366,6 +25756,7 @@ fn at_most_merges_or_clashes() {
 /// — raises a CLASH ⇒ INCONSISTENT.
 #[test]
 fn cardinality_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -25442,6 +25833,7 @@ fn cardinality_clash() {
 /// — inconsistent, same verdict as the legacy spine.
 #[test]
 fn atmost_rest_functional_distinct_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -25498,6 +25890,7 @@ fn atmost_rest_functional_distinct_clash() {
 /// distinct clash. Same verdict as the legacy `cardinality_clash`.
 #[test]
 fn atmost_rest_qualified_distinct_clash() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -25559,6 +25952,7 @@ fn atmost_rest_qualified_distinct_clash() {
 /// live R-successor carrying both C and D.
 #[test]
 fn atmost_rest_reapply_resumes_and_merges() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -25651,6 +26045,7 @@ fn atmost_rest_reapply_resumes_and_merges() {
 /// R-successors, both forced distinct by the ≥2).
 #[test]
 fn atmost_rest_choose_qualifies_undecided() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -25719,6 +26114,7 @@ fn atmost_rest_choose_qualifies_undecided() {
 /// CLASHES ⇒ INCONSISTENT.
 #[test]
 fn atmost_rest_trigger_reactivation_clashes() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -25830,6 +26226,7 @@ fn seed_concept_on_queue_pri(env: &mut SelfTestEnv, root: NodeId, concept: Conce
 /// R-successor carries BOTH D (from ∃R.D) and C (from ∀S.C via the hierarchy).
 #[test]
 fn role_hierarchy_forall() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
@@ -25909,6 +26306,7 @@ fn role_hierarchy_forall() {
 /// C, reached purely through the inverse role.
 #[test]
 fn forall_ancestor_link_respects_physical_orientation() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     use super::super::model::substrate::NegLink;
 
@@ -25935,6 +26333,7 @@ fn forall_ancestor_link_respects_physical_orientation() {
 
 #[test]
 fn inverse_role_propagation() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -26038,6 +26437,7 @@ fn build_role_successor(
 /// unported subsystem (W8.1); the transitivity propagation itself is what is exercised.
 #[test]
 fn transitive_forall() {
+    let _test_env = crate::test_env::read();
     use super::super::model::op;
     use super::super::model::role::Role;
 
@@ -26218,6 +26618,7 @@ fn push_synthetic_or_branch(
 /// below covers the DEFAULT walk.
 #[test]
 fn ddb_walk_discards_refuted_exhausted_decision_with_the_live_subtree_above_it() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_dependency_backjumping = true;
     // Opt in locally: without this the walk takes the sound chronological
@@ -26286,6 +26687,7 @@ fn ddb_walk_discards_refuted_exhausted_decision_with_the_live_subtree_above_it()
 /// discarded with NO positional assumption and NO opt-in.
 #[test]
 fn ddb_walk_discards_a_closed_decision_and_its_subtree_by_default() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_dependency_backjumping = true;
     assert!(!env.algo.conf_ddb_refuted_discard);
@@ -26340,6 +26742,7 @@ fn ddb_walk_discards_a_closed_decision_and_its_subtree_by_default() {
 /// ever acquires a default-on path (or an inverse switch).
 #[test]
 fn ddb_walk_refuted_exhausted_decision_default_falls_back_without_discarding() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_dependency_backjumping = true;
     assert!(
@@ -26411,6 +26814,7 @@ fn ddb_walk_refuted_exhausted_decision_default_falls_back_without_discarding() {
 /// discarded. The escape above must not have changed this leg.
 #[test]
 fn ddb_walk_still_advances_a_refuted_target_that_has_a_remaining_alternative() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_dependency_backjumping = true;
     let node = env.root;
@@ -26466,6 +26870,7 @@ fn ddb_walk_still_advances_a_refuted_target_that_has_a_remaining_alternative() {
 /// so upstream the retained bucket is unreachable by construction.
 #[test]
 fn or_branch_opens_are_attributed_to_retained_nominal_and_fresh_nodes() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
 
     // One retained ABox root, one retained anonymous node, then the watermark.
@@ -26524,6 +26929,7 @@ fn or_branch_opens_are_attributed_to_retained_nominal_and_fresh_nodes() {
 /// `fresh` and the split stays inert on the non-retained routes.
 #[test]
 fn or_branch_open_attribution_is_inert_without_a_retained_base() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     assert_eq!(env.algo.retained_base_node_count, 0);
     let root = env.root;
@@ -26662,6 +27068,7 @@ fn new_test_concept(env: &mut SelfTestEnv, tag: Cint64) -> ConceptId {
 /// `replay_native_representative_cache`'s job and must not be duplicated here).
 #[test]
 fn backend_expansion_reuse_replays_only_nondeterministic_values_under_the_branch_track_point() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let deterministic_concept = new_test_concept(&mut env, 4100);
@@ -26669,11 +27076,11 @@ fn backend_expansion_reuse_replays_only_nondeterministic_values_under_the_branch
     let negated_choice = new_test_concept(&mut env, 4102);
 
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![
+    replay.cached_concept_values = std::sync::Arc::new(vec![
         (deterministic_concept, false, true),
         (chosen_disjunct, false, false),
         (negated_choice, true, false),
-    ];
+    ]);
     let node = make_reuse_nominal(&mut env, 7, replay);
     let reuse_tp = install_reuse_track_point(&mut env, node, 1);
 
@@ -26704,12 +27111,13 @@ fn backend_expansion_reuse_replays_only_nondeterministic_values_under_the_branch
 /// entailment.
 #[test]
 fn backend_expansion_reuse_is_inert_without_a_nondeterministic_track_point() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let chosen_disjunct = new_test_concept(&mut env, 4110);
 
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     let node = make_reuse_nominal(&mut env, 8, replay);
 
     // (a) no track point at all.
@@ -26743,13 +27151,14 @@ fn backend_expansion_reuse_is_inert_without_a_nondeterministic_track_point() {
 /// typed record means "unknown", never "empty".
 #[test]
 fn backend_expansion_reuse_declines_and_discards_an_unrepresentable_record() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let chosen_disjunct = new_test_concept(&mut env, 4120);
 
     let mut replay = reusable_replay_record();
     replay.reuse_replay_representable = false;
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     let node = make_reuse_nominal(&mut env, 9, replay);
     install_reuse_track_point(&mut env, node, 1);
 
@@ -26790,12 +27199,13 @@ fn backend_expansion_reuse_declines_and_discards_an_unrepresentable_record() {
 /// branch-dependent entry refuse the reuse.
 #[test]
 fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let contested = new_test_concept(&mut env, 4130);
 
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(contested, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(contested, false, false)]);
     let node = make_reuse_nominal(&mut env, 10, replay);
 
     // A deterministically present ¬contested refutes the recorded choice.
@@ -26820,7 +27230,7 @@ fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() 
     env.algo.conf_build_dependencies = true;
     let contested = new_test_concept(&mut env, 4130);
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(contested, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(contested, false, false)]);
     let node = make_reuse_nominal(&mut env, 10, replay);
     let branch_tp = real_dependency_track_point(&mut env, node, ConDescId::NONE, DepKind::Or, 1, 3);
     env.ctx
@@ -26849,7 +27259,7 @@ fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() 
     env.algo.conf_build_dependencies = true;
     let contested = new_test_concept(&mut env, 4130);
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(contested, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(contested, false, false)]);
     let node = make_reuse_nominal(&mut env, 10, replay);
     let branch_tp = real_dependency_track_point(&mut env, node, ConDescId::NONE, DepKind::Or, 1, 3);
     env.ctx
@@ -26876,6 +27286,7 @@ fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() 
 /// cpp 25311.
 #[test]
 fn backend_expansion_reuse_replays_nondeterministic_different_individuals_as_distinct() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
 
@@ -26943,6 +27354,7 @@ fn backend_expansion_reuse_replays_nondeterministic_different_individuals_as_dis
 /// neighbour replay.
 #[test]
 fn backend_expansion_reuse_replays_only_nondeterministic_neighbour_role_links() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let nondeterministic_role = {
@@ -27001,12 +27413,13 @@ fn backend_expansion_reuse_replays_only_nondeterministic_neighbour_role_links() 
 /// installed reuse track point together.
 #[test]
 fn backend_expansion_reuse_replay_is_rolled_back_with_its_branch_epoch() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let chosen_disjunct = new_test_concept(&mut env, 4150);
 
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     replay.cached_nondeterministic_different_individuals = vec![31];
     let node = make_reuse_nominal(&mut env, 30, replay);
     let _different = make_reuse_nominal(&mut env, 31, reusable_replay_record());
@@ -27062,6 +27475,7 @@ fn backend_expansion_reuse_replay_is_rolled_back_with_its_branch_epoch() {
 /// ordinary expansion is retained as alternative 1.
 #[test]
 fn prepare_backend_individual_prioritized_reuse_expansion_opens_a_two_way_reuse_branch() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     env.ctx
@@ -27133,11 +27547,12 @@ fn prepare_backend_individual_prioritized_reuse_expansion_opens_a_two_way_reuse_
 /// replay).
 #[test]
 fn backend_expansion_reuse_discard_alternative_retains_the_ordinary_expansion() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_build_dependencies = true;
     let chosen_disjunct = new_test_concept(&mut env, 4160);
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     let node = make_reuse_nominal(&mut env, 50, replay);
 
     let discarded = env
@@ -27188,11 +27603,12 @@ fn backend_expansion_reuse_discard_alternative_retains_the_ordinary_expansion() 
 /// first disjunction.
 #[test]
 fn reaching_a_retained_nominal_activates_backend_expansion_reuse_before_its_disjunctions() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_backend_expansion_reuse = true;
     let chosen_disjunct = new_test_concept(&mut env, 4200);
     let mut replay = reusable_replay_record();
-    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_concept_values = std::sync::Arc::new(vec![(chosen_disjunct, false, false)]);
     let node = make_reuse_nominal(&mut env, 61, replay);
     // The node belongs to the retained deterministic consistency base, so its
     // inherited concept-processing queue may hold undecided disjunctions.
@@ -27241,6 +27657,7 @@ fn reaching_a_retained_nominal_activates_backend_expansion_reuse_before_its_disj
 /// progress.
 #[test]
 fn backend_expansion_reuse_activation_is_one_shot_per_job() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_backend_expansion_reuse = true;
     let node = make_reuse_nominal(&mut env, 62, reusable_replay_record());
@@ -27276,6 +27693,7 @@ fn backend_expansion_reuse_activation_is_one_shot_per_job() {
 /// path of the lazy loader only COUNTS the undecided association.
 #[test]
 fn backend_expansion_reuse_activation_is_lazy_and_never_eager() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_backend_expansion_reuse = true;
     let node = make_reuse_nominal(&mut env, 63, reusable_replay_record());
@@ -27305,6 +27723,7 @@ fn backend_expansion_reuse_activation_is_lazy_and_never_eager() {
 /// reaches by never queueing an incompletely handled association.
 #[test]
 fn backend_expansion_reuse_activation_declines_an_unrepresentable_record() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_backend_expansion_reuse = true;
     let mut replay = reusable_replay_record();
@@ -27339,6 +27758,7 @@ fn backend_expansion_reuse_activation_declines_an_unrepresentable_record() {
 /// is active (`PRFBACKENDEXPANSIONREUSINGINDIVIDUAL`).
 #[test]
 fn backend_expansion_reuse_activation_never_overrules_the_two_way_branch() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_backend_expansion_reuse = true;
     let discarded = make_reuse_nominal(&mut env, 66, reusable_replay_record());
@@ -27377,6 +27797,7 @@ fn backend_expansion_reuse_activation_never_overrules_the_two_way_branch() {
 /// route behaves exactly as before the reuse port.
 #[test]
 fn backend_expansion_reuse_activation_is_off_when_the_mechanism_is_disarmed() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_backend_expansion_reuse = false;
     let node = make_reuse_nominal(&mut env, 68, reusable_replay_record());
@@ -27399,6 +27820,7 @@ fn backend_expansion_reuse_activation_is_off_when_the_mechanism_is_disarmed() {
 /// port: it is queued for reuse but not deferred.
 #[test]
 fn backend_expansion_reuse_activation_does_not_defer_a_freshly_materialized_node() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     env.algo.conf_backend_expansion_reuse = true;
     let node = make_reuse_nominal(&mut env, 69, reusable_replay_record());
@@ -27424,6 +27846,7 @@ fn backend_expansion_reuse_activation_does_not_defer_a_freshly_materialized_node
 
 #[test]
 fn initialized_queue_less_node_does_not_starve_other_completion_work() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let node = env.root;
     assert!(env.ctx.process_context_mut().node_concept_processing_queue(node, false).is_none());
@@ -27437,6 +27860,7 @@ fn initialized_queue_less_node_does_not_starve_other_completion_work() {
 
 #[test]
 fn singleton_index_matches_reference_carriers_and_dependencies() {
+    let _test_env = crate::test_env::read();
     fn carrier(env: &mut SelfTestEnv, concept: ConceptId, negative: bool, layout: usize) -> NodeId {
         let mut descriptor = ConceptDescriptor::new(); descriptor.concept = concept; descriptor.negated = negative;
         descriptor.set_dependency_track_point(env.ctx.get_or_create_base_dependency_track_point());
@@ -27618,6 +28042,7 @@ fn singleton_index_matches_reference_carriers_and_dependencies() {
 
 #[test]
 fn retained_class_job_skips_optional_early_singleton_scan() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let mut con = Concept::new();
     con.set_concept_tag(91001);
@@ -27633,6 +28058,7 @@ fn retained_class_job_skips_optional_early_singleton_scan() {
 
 #[test]
 fn satisfiable_cache_automaton_checks_live_edge_to_ancestor() {
+    let _test_env = crate::test_env::read();
     use super::super::model::{op, role::Role};
     let mut env = build_env();
     let mut parent = env.root;
@@ -27668,6 +28094,7 @@ fn satisfiable_cache_automaton_checks_live_edge_to_ancestor() {
 
 #[test]
 fn disjoint_role_merge_check_preserves_both_edge_dependencies() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     let mut env = build_env();
     let mut source = env.root;
@@ -27698,6 +28125,7 @@ fn disjoint_role_merge_check_preserves_both_edge_dependencies() {
 
 #[test]
 fn disjoint_role_merge_check_keeps_distinct_sources_separate() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     let mut env = build_env();
     let mut source = env.root;
@@ -27716,6 +28144,7 @@ fn disjoint_role_merge_check_keeps_distinct_sources_separate() {
 
 #[test]
 fn disjoint_role_merge_check_exhaustive_three_node_endpoint_pairs() {
+    let _test_env = crate::test_env::read();
     use super::super::model::role::Role;
     for ps in 0..3 { for pt in 0..3 { for ns in 0..3 { for nt in 0..3 {
         // The pre-merge graph is clash-free; only equality-induced
@@ -27747,6 +28176,7 @@ fn disjoint_role_merge_check_exhaustive_three_node_endpoint_pairs() {
 
 #[test]
 fn disjoint_role_merge_check_reads_positive_links_through_the_inverse() {
+    let _test_env = crate::test_env::read();
     // A positive fact stored at its other endpoint under the inverse role
     // conflicts with a negation edge once the endpoints are identified.
     use super::super::model::role::Role;
@@ -27836,6 +28266,7 @@ fn preferred_nominal_probe_decision(env: &SelfTestEnv, left: NodeId, right: Node
 
 #[test]
 fn preferred_nominal_probe_matches_full_scan_all_main_map_layouts() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let nodes: Vec<_> = (0..11).map(|layout| preferred_nominal_probe_node(&mut env, layout)).collect();
     for (i, &left) in nodes.iter().enumerate() {
@@ -27856,6 +28287,7 @@ fn preferred_nominal_probe_matches_full_scan_all_main_map_layouts() {
 
 #[test]
 fn preferred_nominal_probe_preserves_distinct_dependency_and_pending_state() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let left = preferred_nominal_probe_node(&mut env, 2);
     let right = preferred_nominal_probe_node(&mut env, 2);
@@ -27883,6 +28315,7 @@ fn preferred_nominal_probe_preserves_distinct_dependency_and_pending_state() {
 
 #[test]
 fn preferred_nominal_probe_tracks_cow_local_write_and_rollback() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let left = preferred_nominal_probe_node(&mut env, 2);
     let right = preferred_nominal_probe_node(&mut env, 3);
@@ -27898,4 +28331,71 @@ fn preferred_nominal_probe_tracks_cow_local_write_and_rollback() {
     env.ctx.process_context_mut().pop_branch_epoch();
     assert!(preferred_nominal_probe_decision(&env, left, right, 900));
     assert!(env.algo.ht_label_concept_clash_set(left, right, &env.ctx));
+}
+
+#[test]
+fn ht_label_concept_clash_set_with_descriptors_selects_single_minimum_branching_level_pair() {
+    let _test_env = crate::test_env::read();
+    for use_sorted_walk in [false, true] {
+        let mut env = build_env();
+        env.algo.map_comparison_direct_lookup_factor = if use_sorted_walk { 10 } else { 0 };
+        let left = env.ctx.process_context_mut().alloc_node(IndividualProcessNode::new(Id::NONE));
+        let right = env.ctx.process_context_mut().alloc_node(IndividualProcessNode::new(Id::NONE));
+        let c_early_tag = atom_concept_with_tag(&mut env, 100);
+        let c_late_tag = atom_concept_with_tag(&mut env, 200);
+        let tp_high = real_dependency_track_point(&mut env, left, ConDescId::NONE, DepKind::Or, 3001, 30);
+        let tp_low = real_dependency_track_point(&mut env, left, ConDescId::NONE, DepKind::Or, 3002, 5);
+
+        let d_left_100 = concept_descriptor_with_dependency(&mut env, c_early_tag, false, tp_high);
+        let d_left_200 = concept_descriptor_with_dependency(&mut env, c_late_tag, false, tp_low);
+        let d_right_100 = concept_descriptor_with_dependency(&mut env, c_early_tag, true, TrackPointId::NONE);
+        let d_right_200 = concept_descriptor_with_dependency(&mut env, c_late_tag, true, TrackPointId::NONE);
+
+        let mut left_label = ReapplyConceptLabelSet::new(INVALID);
+        left_label.concept_des_dep_map.insert(100, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: d_left_100, pos_neg_reapply_queue: Default::default(),
+        });
+        left_label.concept_des_dep_map.insert(200, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: d_left_200, pos_neg_reapply_queue: Default::default(),
+        });
+        left_label.concept_count = 2;
+
+        let mut right_label = ReapplyConceptLabelSet::new(INVALID);
+        right_label.concept_des_dep_map.insert(100, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: d_right_100, pos_neg_reapply_queue: Default::default(),
+        });
+        right_label.concept_des_dep_map.insert(200, ConceptDescriptorDependencyReapplyData {
+            concept_descriptor: d_right_200, pos_neg_reapply_queue: Default::default(),
+        });
+        right_label.concept_count = 3;
+
+        let left_ls = env.ctx.process_context_mut().alloc_label_set(left_label);
+        let right_ls = env.ctx.process_context_mut().alloc_label_set(right_label);
+        env.ctx.process_context_mut().node_mut(left).set_reapply_concept_label_set(left_ls);
+        env.ctx.process_context_mut().node_mut(right).set_reapply_concept_label_set(right_ls);
+
+        let mut clashes = ClashDescId::NONE;
+        assert!(env.algo.ht_label_concept_clash_set_with_descriptors(
+            left,
+            right,
+            &mut clashes,
+            &mut env.ctx,
+        ));
+        let mut chain = Vec::new();
+        let mut cur = clashes;
+        while cur.is_some() {
+            let cd = env.ctx.process_context().clash_desc(cur);
+            chain.push((cd.get_concept_descriptor(), cd.get_dependency_track_point()));
+            cur = cd.next;
+        }
+        assert_eq!(chain.len(), 2, "must emit a single 2-descriptor clash pair (use_sorted_walk={use_sorted_walk})");
+        assert!(
+            chain.iter().any(|&(d, tp)| d == d_left_200 && tp == tp_low),
+            "must select the minimum branching-level pair at tag 200 (level 5) over tag 100 (level 30)"
+        );
+        assert!(
+            chain.iter().any(|&(d, tp)| d == d_right_200 && tp == TrackPointId::NONE),
+            "must pair right descriptor at tag 200"
+        );
+    }
 }

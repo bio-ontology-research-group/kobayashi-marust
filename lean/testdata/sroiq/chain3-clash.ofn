@@ -1,0 +1,9 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/chain3-clash>
+SubObjectPropertyOf(ObjectPropertyChain(:s :t ObjectInverseOf(:t)) :r)
+SubClassOf(owl:Thing ObjectSomeValuesFrom(:t ObjectOneOf(:g)))
+SubClassOf(:A ObjectSomeValuesFrom(:s owl:Thing))
+SubClassOf(:A ObjectAllValuesFrom(:r :C))
+ClassAssertion(:A :a)
+ClassAssertion(ObjectComplementOf(:C) :a)
+)

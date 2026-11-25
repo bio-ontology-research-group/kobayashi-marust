@@ -1,0 +1,10 @@
+Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/r1>
+Declaration(NamedIndividual(:a4))
+Declaration(Class(:B))
+SubObjectPropertyOf(ObjectInverseOf(:s3) :s1)
+SymmetricObjectProperty(:s1)
+SubClassOf(:B ObjectSomeValuesFrom(ObjectInverseOf(:s3) :B))
+SubObjectPropertyOf(ObjectPropertyChain(:s1 :s3) :c1)
+ClassAssertion(:B :a4)
+)

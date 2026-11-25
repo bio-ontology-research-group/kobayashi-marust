@@ -851,6 +851,7 @@ mod tests {
 
     #[test]
     fn unsat_cache_handler_memo_guard_returns_false_without_update() {
+        let _test_env = crate::test_env::read();
         let (mut cache_context, reader, writer) = cache_context_with_current_tag(5);
         let (mut calc, node, con_desc) = context_with_labelled_node();
         let mut data = IndividualNodeUnsatisfiableOccurenceCacheRetrievalData::new();
@@ -879,6 +880,7 @@ mod tests {
 
     #[test]
     fn unsat_cache_handler_precheck_direct_fail_updates_retrieval_data() {
+        let _test_env = crate::test_env::read();
         let (mut cache_context, reader, writer) = cache_context_with_current_tag(7);
         let (mut calc, node, con_desc) = context_with_labelled_node();
 
@@ -932,6 +934,7 @@ mod tests {
 
     #[test]
     fn unsat_cache_handler_exact_tag_precheck_returns_clash_chain() {
+        let _test_env = crate::test_env::read();
         let (mut cache_context, reader, writer) = cache_context_with_current_tag(7);
         let (mut calc, node, con_desc) = context_with_labelled_node();
 
@@ -990,6 +993,7 @@ mod tests {
 
     #[test]
     fn unsat_cache_handler_hash_miss_updates_retrieval_data() {
+        let _test_env = crate::test_env::read();
         let (mut cache_context, reader, writer) = cache_context_with_current_tag(9);
         let (mut calc, node, con_desc) = context_with_labelled_node();
         add_unsat_tags_for_descriptor(&mut calc, con_desc, 11, 8, 1);
@@ -1028,6 +1032,7 @@ mod tests {
 
     #[test]
     fn unsat_cache_handler_hash_hit_returns_clash_chain() {
+        let _test_env = crate::test_env::read();
         let (mut cache_context, reader, writer) = cache_context_with_current_tag(0);
         let (mut calc, node, con_desc) = context_with_labelled_node();
         add_unsat_tags_for_descriptor(&mut calc, con_desc, 11, 0, 1);
@@ -1062,6 +1067,7 @@ mod tests {
 
     #[test]
     fn unsat_cache_handler_write_clashed_descriptors_round_trips_to_reader() {
+        let _test_env = crate::test_env::read();
         let (mut cache_context, reader, writer) = cache_context_with_current_tag(0);
         let (mut calc, node, con_desc) = context_with_labelled_node();
         add_unsat_tags_for_descriptor(&mut calc, con_desc, 11, 0, 1);
@@ -1109,6 +1115,7 @@ mod tests {
 
     #[test]
     fn unsat_cache_handler_write_clashed_concept_round_trips_to_reader() {
+        let _test_env = crate::test_env::read();
         let (mut cache_context, reader, writer) = cache_context_with_current_tag(0);
         let (mut calc, node, con_desc) = context_with_labelled_node();
         add_unsat_tags_for_descriptor(&mut calc, con_desc, 11, 0, 1);

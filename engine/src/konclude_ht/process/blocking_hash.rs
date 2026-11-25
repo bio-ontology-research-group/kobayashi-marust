@@ -1156,6 +1156,7 @@ mod tests {
 
     #[test]
     fn blocking_candidate_iterator_context_remove_erases_backing_map() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let data = ctx
             .alloc_blocking_indi_node_cand_data(BlockingIndividualNodeCandidateData::new(INVALID));
@@ -1192,6 +1193,7 @@ mod tests {
 
     #[test]
     fn blocking_candidate_iterator_merges_shared_base_list_in_key_order() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let data = ctx
             .alloc_blocking_indi_node_cand_data(BlockingIndividualNodeCandidateData::new(INVALID));
@@ -1228,6 +1230,7 @@ mod tests {
 
     #[test]
     fn blocking_candidate_iterator_snapshot_remove_is_local_fallback() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let data = ctx
             .alloc_blocking_indi_node_cand_data(BlockingIndividualNodeCandidateData::new(INVALID));

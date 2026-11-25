@@ -1,0 +1,40 @@
+# file	args	expected km-owl-reference --procedure sroiq-hint (ws, 2026-11-15); exit 0 when certified, 3 otherwise
+share.ofn	--check	accepted
+share.ofn	--hint share.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+share.ofn	--hint share-bad.hint	hint: rejected (an index outside the translation, or the check fails)
+share.ofn	--row nontype#http://ex/B#http://ex/a --hint share-nontype.hint	{"format":"owl-hint-v1","row":"nontype http://ex/B http://ex/a","certified":true}
+share.ofn	--row nontype#http://ex/A#http://ex/a --hint share.hint	hint: rejected (an index outside the translation, or the check fails)
+share.ofn	--row nonsubs#http://ex/A#http://ex/B#http://ex/C --hint share-nonsubs.hint	{"format":"owl-hint-v1","row":"nonsubs http://ex/A http://ex/B http://ex/C","certified":true}
+clash.ofn	--hint clash-two.hint	hint: rejected (an index outside the translation, or the check fails)
+clash.ofn	--hint clash-one.hint	hint: rejected (an index outside the translation, or the check fails)
+../sroiq/reflexive-sat.ofn	--hint reflexive-sat.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+../sroiq/irreflexive-sat.ofn	--hint ../sroiq/irreflexive-sat.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+../sroiq/reflexive-count.ofn	--hint ../sroiq/reflexive-count.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+../sroiq/asymmetric.ofn	--check	accepted
+share.ofn	--batch share.batch	{"format":"owl-hint-batch-v1","pair":0,"row":"consistent","result":"certified"} {"format":"owl-hint-batch-v1","pair":1,"row":"nontype http://ex/B http://ex/a","result":"certified"} {"format":"owl-hint-batch-v1","pair":2,"row":"consistent","result":"rejected"} {"format":"owl-hint-batch-v1","pair":3,"row":"nontype http://ex/A http://ex/a","result":"rejected"} {"format":"owl-hint-batch-v1","pair":4,"row":"nonsub http://ex/A http://ex/B http://ex/C","result":"declined","reason":"bad row: nonsub http://ex/A http://ex/B http://ex/C"} {"format":"owl-hint-batch-v1","pair":5,"row":"nonsubs http://ex/A http://ex/B http://ex/C","result":"certified"}
+# share.ofn is not C2a (sroiq-c2a --check: not C2a); its model needs core 3, an anonymous C element shared by the two B nodes.
+# clash.ofn is inconsistent; both hints are rejected (two s-predecessors of c; one element in two disjoint classes).
+# In rows, '#' stands for a space of the --row argument.
+# Stage C5 item 3: DL-safe rules by grounding (rules-safe: the rule fires only on named individuals, so the anonymous C successor of a is not B)
+rules-safe.ofn	--hint rules-safe.hint	{"format":"owl-hint-v1","row":"consistent","certified":true} 
+rules.ofn	--check	accepted 
+rules-clash.ofn	--check	accepted 
+rules-safe.ofn	(sroiq-c2a) --hint rules-safe.hint	{"format":"owl-consistency-v1","consistent":true}
+# rules-clash.ofn is inconsistent (the rule puts b in B, disjoint from C); no hint certifies it; the unhinted sroiq-c2a search runs out of memory on these inputs.
+# Stage C5 item 4: HasKey as DL-safe rules, then grounded (key: a, b share the id-filler k and differ: inconsistent; key-sat: consistent; neither has a hint here, the encodings have 64 and 125 instances)
+key-one.ofn	--hint key-one.hint	{"format":"owl-hint-v1","row":"consistent","certified":true} 
+key.ofn	--check	accepted 
+key-sat.ofn	--check	accepted 
+key-one.ofn	(sroiq-c2a) --hint key-one.hint	{"format":"owl-consistency-v1","consistent":true}
+# Stage C5 item 5: asymmetric and disjoint properties by a stronger ontology (edgeOff); sound only
+asym-sat.ofn	--hint asym-sat.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+../sroiq/asymmetric.ofn	--check	accepted
+../sroiq/disjoint.ofn	--check	accepted
+# Stage H2: --explain, --row-file, '#' inside IRIs in batch rows (a comment starts at a word beginning with '#'); asymmetric.ofn is accepted since C5 item 5 (edgeOff)
+share.ofn	--explain --hint share-bad.hint	hint: reason: core element 2: atmost 6 1 -1 6: 2 neighbours hint: rejected (an index outside the translation, or the check fails)
+share.ofn	--row-file share-nontype.row --hint share-nontype.hint	{"format":"owl-hint-v1","row":"nontype http://ex/B http://ex/a","certified":true}
+share-hash.ofn	--explain --batch share-hash.batch	{"format":"owl-hint-batch-v1","pair":0,"row":"nontype http://ex#xB http://ex#xa","result":"certified"} {"format":"owl-hint-batch-v1","pair":1,"row":"nontype http://ex#xA http://ex#xa","result":"rejected","reason":"core element 0: gci 0 -> 11: the body holds and no head name does"}
+# Built-in IRIs (H2 item 0): owl:Thing as object and owl:Nothing as subject are refused (exit 2); owl:Nothing as object keeps its meaning (hintNonSubsC_sound)
+share.ofn	--row-file builtin-sub-thing.row --hint share.hint	owl:Thing as object: every subsumption and type with owl:Thing holds; the row is refused
+share.ofn	--row-file builtin-sub-nothing.row --hint share.hint	owl:Nothing as subject: owl:Nothing is below every class; the row is refused
+share.ofn	--row-file builtin-subs-nothing.row --hint share-nonsubs.hint	hint: rejected (an index outside the translation, or the check fails)

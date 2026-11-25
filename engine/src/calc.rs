@@ -386,6 +386,31 @@ pub struct Sig {
     /// clauses with roles directed into the central variable; KM_RSUCC can
     /// additionally request it for diagnostic runs.
     pub rsucc: bool,
+    /// Concepts whose label on an individual `o` the ground context offers to
+    /// the successors `f(o)` of `o` (`rsucc_offered_over`): those a source
+    /// clause reads on a neighbour joined to the centre by an edge that can
+    /// lead from a successor to its predecessor (`grounded_label_concepts`).
+    pub grounded_label: Vec<bool>,
+    /// The r-Succ rule of arXiv:1805.01396 (`Su^r` contains `B(o)`): every
+    /// context offers its maximal labels `B(o)` on individuals over every
+    /// successor edge, keeping the constant (`CBRSuccClosure.IndividualLabels`
+    /// with `everyEdge`). `grounded_label` then holds every concept a source
+    /// clause reads on a neighbour (`grounded_label_concepts`).
+    pub individual_labels_every_edge: bool,
+    /// Demand-driven label offers (Lean `CBRSuccClosure.labelReaders`): for
+    /// a concept `B`, the central role atoms a source clause joins to a body
+    /// atom `B(v)` on a neighbour (`true`: `role(x, v)`; `false`: `role(v, x)`).
+    pub label_readers: Vec<Vec<(Iri, bool)>>,
+    /// Concepts whose labels are offered without demand (read on a constant
+    /// or on a term that no central role atom binds; `labelAlways`).
+    pub label_always: Vec<bool>,
+    /// Reverse of `label_readers`: per role, the concepts it reads `(concept, x -> v)`.
+    pub role_label_readers: std::collections::HashMap<Iri, Vec<(Iri, bool)>>,
+    /// r-Succ is on only for the labels of individuals: the ontology alone
+    /// does not enable it (`clause_enables_rsucc`), so central labels stay out
+    /// of the r-Succ pool and the root-edge offers, as without r-Succ. The
+    /// wire then lists no central reach concepts.
+    pub rsucc_labels_only: bool,
 }
 
 impl Sig {
@@ -1163,6 +1188,7 @@ mod term_encoding_tests {
 
     #[test]
     fn unsigned_layout_preserves_sequoia_order_and_ore_15846_capacity() {
+        let _test_env = crate::test_env::read();
         assert_eq!(std::mem::size_of::<Term>(), 4);
         assert!(zvar(2) < zvar(1));
         assert!(zvar(1) < Y && Y < X);
@@ -1181,6 +1207,7 @@ mod term_encoding_tests {
 
     #[test]
     fn adaptive_composite_layout_covers_both_ore_extremes() {
+        let _test_env = crate::test_env::read();
         assert_eq!(choose_comp_ind_bits(20_932, 129_647), Some(17));
         assert_eq!(choose_comp_ind_bits(130_303, 18_055), Some(15));
         assert_eq!(choose_comp_ind_bits(1 << 20, 1 << 20), None);

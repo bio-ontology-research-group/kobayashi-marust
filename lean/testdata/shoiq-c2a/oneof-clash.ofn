@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/oneof-clash>
+SubClassOf(ObjectOneOf(:a) :B)
+ClassAssertion(ObjectComplementOf(:B) :a)
+)

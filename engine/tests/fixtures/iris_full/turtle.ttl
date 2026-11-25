@@ -1,0 +1,18 @@
+@prefix : <http://example.org/i#> .
+@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/o> rdf:type owl:Ontology .
+ex:A rdf:type owl:Class ; rdfs:subClassOf ex:B .
+ex:B rdf:type owl:Class .
+ex:C rdf:type owl:Class .
+ex:D rdf:type owl:Class ; rdfs:subClassOf owl:Nothing .
+ex:r rdf:type owl:ObjectProperty ; rdfs:subPropertyOf ex:s ; rdfs:domain ex:C .
+ex:s rdf:type owl:ObjectProperty .
+ex:d rdf:type owl:DatatypeProperty .
+:a rdf:type owl:NamedIndividual , ex:A ; ex:r :b ; ex:d "5"^^xsd:integer ; owl:differentFrom :c .
+:b rdf:type owl:NamedIndividual ; owl:sameAs :c .
+:c rdf:type owl:NamedIndividual .

@@ -154,7 +154,8 @@ def RSuccClosedAt (decoded : DecodedCBGlobalClosureDocument)
     (index : Fin (productionOfGlobal decoded).contexts.length) : Prop :=
   ∀ offer ∈ rSuccOffers
       (CBRSuccClosureWire.sendCoverageOf decoded.rsucc.succ)
-      decoded.rsucc.reachConcepts decoded.rsucc.succ.join3.hyper.literalOrder
+      decoded.rsucc.reachConcepts decoded.rsucc.groundedConcepts
+      decoded.rsucc.succ.join3.hyper.literalOrder
       index.val ((productionOfGlobal decoded).contexts.get index).retained,
     ∃ targetIndex strengtheningIndex,
       offer.edge.targetIndex = targetIndex.val ∧

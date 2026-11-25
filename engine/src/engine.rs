@@ -810,13 +810,134 @@ fn root_succ_form(p: &Pred) -> Option<(Pred, Term)> {
 /// result into a persistent ordered-unique accumulator).  Shared by
 /// `propagate_inner`'s semi-naive r-Succ scan and its invariance test, so the
 /// test certifies the exact predicate production uses.
-fn rsucc_reach_tail(arena: &[ContextClause], pool: &[u32], _sig: &Sig) -> Vec<Pred> {
+fn rsucc_reach_tail(arena: &[ContextClause], pool: &[u32], sig: &Sig) -> Vec<Pred> {
     let mut out: Vec<Pred> = Vec::new();
     for &ci in pool {
         for (p, _) in arena[ci as usize].max_head_predicates() {
             if let Pred::Concept { t, .. } = p {
-                if is_central(t) {
+                // Individual labels enter the pool only in the ground context
+                // (`rsucc_pool_eligible`).
+                // With `Sig::rsucc_labels_only` central labels stay out.
+                if (is_central(t) && !sig.rsucc_labels_only) || is_individual(t) {
                     out.push(p);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Whether the reach fact `p` is offered over the edge labelled `f`: a central
+/// label over every edge, a label `B(o)` of an individual only over the
+/// grounded edges `f(o)` of that individual, where it arrives as `B(y)`, and
+/// only for a concept of `Sig::grounded_label` (`CBRSuccClosure.offeredOver`).
+/// With `Sig::individual_labels_every_edge` a label `B(o)` goes over every
+/// successor edge; over an edge whose parent is not `o` it arrives as `B(o)`
+/// (`CBRSuccClosure.forwardPredicate_individual_label`).
+fn rsucc_offered_over(sig: &Sig, f: Term, p: &Pred) -> bool {
+    match *p {
+        Pred::Concept { iri, t } if is_individual(t) => {
+            (if sig.individual_labels_every_edge {
+                is_function(f)
+            } else {
+                is_comp(f) && comp_parts(f).1 == t
+            }) && sig.grounded_label.get(iri as usize).copied().unwrap_or(false)
+        }
+        _ => true,
+    }
+}
+
+/// The concepts a source clause reads on a neighbour `v` that a role atom of
+/// the same body joins to the centre along an edge that can lead from a
+/// successor to its predecessor. Edge directions: a Skolem head `S(x, f(x))`
+/// gives `S` from predecessor to successor, `S(f(x), x)` from successor to
+/// predecessor; a clause `R(x, y) → R'(x, y)` keeps the direction and
+/// `R(x, y) → R'(y, x)` turns it; a role head of any other clause gets both.
+/// A label of such a concept is the only kind a successor can use as a
+/// predecessor label (a body atom `B(v)` with `v` the predecessor), so the
+/// ground context offers no other (a hypothesis nothing reads is inert).
+///
+/// With `every_edge` (`Sig::individual_labels_every_edge`) a label `B(o)` can
+/// reach any element linked to `o`, so every concept a source clause reads on
+/// a variable that a role atom of the same body touches counts, the centre
+/// included and in either direction.
+fn grounded_label_concepts(clauses: &[OntologyClause], concepts: usize, every_edge: bool) -> Vec<bool> {
+    let mut out = vec![false; concepts];
+    let mut dirs: HashSet<(Iri, bool)> = HashSet::default();
+    let mut rules: Vec<(Iri, Iri, bool)> = Vec::new();
+    for clause in clauses {
+        let body_roles: Vec<(Iri, Term, Term)> = clause
+            .body
+            .iter()
+            .filter_map(|p| match *p {
+                Pred::Role { iri, s, t } => Some((iri, s, t)),
+                _ => None,
+            })
+            .collect();
+        for lit in &clause.head {
+            let Lit::P(Pred::Role { iri, s, t }) = *lit else { continue };
+            if is_central(s) && is_function(t) {
+                dirs.insert((iri, true));
+            } else if is_function(s) && is_central(t) {
+                dirs.insert((iri, false));
+            } else if let [(body, bs, bt)] = body_roles.as_slice() {
+                if *bs == s && *bt == t {
+                    rules.push((*body, iri, false));
+                } else if *bs == t && *bt == s {
+                    rules.push((*body, iri, true));
+                } else {
+                    dirs.insert((iri, true));
+                    dirs.insert((iri, false));
+                }
+            } else if !body_roles.is_empty() {
+                dirs.insert((iri, true));
+                dirs.insert((iri, false));
+            }
+        }
+    }
+    loop {
+        let before = dirs.len();
+        for &(body, head, flip) in &rules {
+            for forward in [true, false] {
+                if dirs.contains(&(body, forward)) {
+                    dirs.insert((head, forward != flip));
+                }
+            }
+        }
+        if dirs.len() == before {
+            break;
+        }
+    }
+    for clause in clauses {
+        for p in &clause.body {
+            let Pred::Concept { iri, t: v } = *p else { continue };
+            if every_edge && !is_individual(v) && !is_function(v) {
+                // A successor that holds `B(o)` and an edge to `o` matches a
+                // body `B(v) ∧ R(v, w)` (or `R(w, v)`) with `v := o`, the
+                // centre included (`B(x) ∧ R(x, y) → C(y)` applied at `o`).
+                let joined = clause.body.iter().any(|q| {
+                    matches!(*q, Pred::Role { s, t, .. } if s == v || t == v)
+                });
+                if joined {
+                    if let Some(slot) = out.get_mut(iri as usize) {
+                        *slot = true;
+                    }
+                }
+                continue;
+            }
+            if is_central(v) || is_individual(v) || is_function(v) {
+                continue;
+            }
+            let reads = clause.body.iter().any(|q| match *q {
+                Pred::Role { iri: r, s, t } => {
+                    (is_central(s) && t == v && (every_edge || dirs.contains(&(r, false))))
+                        || (s == v && is_central(t) && (every_edge || dirs.contains(&(r, true))))
+                }
+                _ => false,
+            });
+            if reads {
+                if let Some(slot) = out.get_mut(iri as usize) {
+                    *slot = true;
                 }
             }
         }
@@ -855,17 +976,25 @@ fn fold_reach_unique(acc: &mut Vec<Pred>, set: &mut HashSet<Pred>, tail: Vec<Pre
 /// `propagate_inner` and its invariance test so the test certifies the exact
 /// production the engine uses.
 fn rsucc_cross_step(
+    sig: &Sig,
     successors: &[(Term, usize)],
     reach: &[Pred],
     hwm: &mut HashMap<(Term, usize), usize>,
     pushed: &mut HashSet<(Term, usize, Pred)>,
+    unit: &[bool],
 ) -> Vec<(Term, usize, Pred)> {
     let nreach = reach.len();
     let mut fired: Vec<(Term, usize, Pred)> = Vec::new();
     for &(f, target) in successors {
         let start = hwm.get(&(f, target)).copied().unwrap_or(0);
-        for &p in &reach[start..nreach] {
-            if pushed.insert((f, target, p)) {
+        for (i, &p) in reach[start..nreach].iter().enumerate() {
+            if unit.get(start + i).copied().unwrap_or(false) {
+                let grounded = matches!(p, Pred::Concept { t, .. } if is_comp(f) && comp_parts(f).1 == t);
+                if !grounded {
+                    continue;
+                }
+            }
+            if rsucc_offered_over(sig, f, &p) && pushed.insert((f, target, p)) {
                 fired.push((f, target, p));
             }
         }
@@ -1842,6 +1971,124 @@ fn ground_equality_union_min(parent: &mut [u32], left: u32, right: u32) {
     }
 }
 
+/// The individual `o` of a one-element domain, if the clause set forces it:
+/// some clause `B_1(x) ∧ … ∧ B_n(x) → x ≈ o` (n ≥ 0) whose body concepts are
+/// all forced on every element, where the forced concepts are the least set
+/// closed under body-free unit clauses `→ D(x)` and Horn clauses
+/// `B_1(x) ∧ … ∧ B_n(x) → D(x)` over forced `B_i`. This is the clause form of
+/// `⊤ ⊑ {o}` (`→ N(x)`, `N(x) → x ≈ o`). `KM_NO_DOMAIN_SINGLETON` disables it
+/// (diagnostic).
+fn forced_domain_singleton(clauses: &[OntologyClause]) -> Option<Term> {
+    if std::env::var_os("KM_NO_DOMAIN_SINGLETON").is_some() {
+        return None;
+    }
+    let concept_on_x = |p: &Pred| match *p {
+        Pred::Concept { iri, t } if t == X => Some(iri),
+        _ => None,
+    };
+    // Horn clauses over unary atoms on `x` with one concept head on `x`.
+    let mut horn: Vec<(Vec<Iri>, Iri)> = Vec::new();
+    let mut merges: Vec<(Vec<Iri>, Term)> = Vec::new();
+    for clause in clauses {
+        if clause.head.len() != 1 {
+            continue;
+        }
+        let Some(body) = clause.body.iter().map(concept_on_x).collect::<Option<Vec<Iri>>>() else {
+            continue;
+        };
+        match clause.head[0] {
+            Lit::P(p) => {
+                if let Some(d) = concept_on_x(&p) {
+                    horn.push((body, d));
+                }
+            }
+            Lit::Eq { s, t } => {
+                if s == X && is_individual(t) {
+                    merges.push((body, t));
+                } else if t == X && is_individual(s) {
+                    merges.push((body, s));
+                }
+            }
+            Lit::Ineq { .. } => {}
+        }
+    }
+    if merges.is_empty() {
+        return None;
+    }
+    let mut forced: HashSet<Iri> = HashSet::default();
+    loop {
+        let before = forced.len();
+        for (body, d) in &horn {
+            if !forced.contains(d) && body.iter().all(|b| forced.contains(b)) {
+                forced.insert(*d);
+            }
+        }
+        if forced.len() == before {
+            break;
+        }
+    }
+    merges
+        .iter()
+        .filter(|(body, _)| body.iter().all(|b| forced.contains(b)))
+        .map(|&(_, o)| o)
+        .min()
+}
+
+/// One-element domain (docs/V1.7.0-NOMINAL-COVER.md): when the clause set
+/// forces `x ≈ o` on every element (`forced_domain_singleton`), add the unit
+/// `→ a ≈ o` for every other individual `a` of the clause set, so that
+/// `merge_asserted_ground_equalities` merges all individuals into one. Each
+/// added unit is the ground instance at `a` of clauses of the set (the forcing
+/// Horn chain and the merge clause, resolved), hence entailed, and the
+/// quotient that follows is exact. Returns the number of added units.
+fn add_domain_singleton_equalities(clauses: &mut Vec<OntologyClause>) -> usize {
+    let Some(o) = forced_domain_singleton(clauses) else {
+        return 0;
+    };
+    let mut inds: Vec<Term> = Vec::new();
+    let mut see = |t: Term| {
+        if is_individual(t) {
+            inds.push(t);
+        } else if is_comp(t) {
+            inds.push(comp_parts(t).1);
+        }
+    };
+    for clause in clauses.iter() {
+        for pred in &clause.body {
+            match *pred {
+                Pred::Concept { t, .. } => see(t),
+                Pred::Role { s, t, .. } => {
+                    see(s);
+                    see(t);
+                }
+            }
+        }
+        for literal in &clause.head {
+            match *literal {
+                Lit::P(Pred::Concept { t, .. }) => see(t),
+                Lit::P(Pred::Role { s, t, .. }) => {
+                    see(s);
+                    see(t);
+                }
+                Lit::Eq { s, t } | Lit::Ineq { s, t } => {
+                    see(s);
+                    see(t);
+                }
+            }
+        }
+    }
+    inds.sort_unstable();
+    inds.dedup();
+    let mut added = 0;
+    for a in inds {
+        if a != o {
+            clauses.push(OntologyClause::new(Vec::new(), vec![Lit::eq(a, o)]));
+            added += 1;
+        }
+    }
+    added
+}
+
 /// Eagerly merge unconditional named-individual equalities.
 ///
 /// Only unit ground facts `top -> o1 = o2` participate. A conditional or
@@ -2417,6 +2664,10 @@ struct Context {
     /// avoiding the per-`propagate` full `successors × reach` rescan while
     /// emitting an identical `Msg::Succ` set and order (see `rsucc_cross_step`).
     rsucc_pair_reach_hwm: HashMap<(Term, usize), usize>,
+    /// Per `rsucc_reach` entry: a label `B(o)` that the ground context held
+    /// as an unconditional fact when it entered the reach set. It goes over
+    /// the grounded edges `f(o)` only (`rsucc_cross_step`).
+    rsucc_reach_unit: Vec<bool>,
     /// Semi-naive r-Succ cross-product driver gate.  `rsucc_offered` is the
     /// `rsucc_reach.len()` at the last time the `successors × reach` cross-step
     /// ran; `rsucc_edges_grew` records that a successor edge was added or
@@ -2451,6 +2702,14 @@ struct Context {
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
+    /// KM_RSUCC_DEMAND: role atoms this context holds with an individual,
+    /// `(role, x -> o, o)`, and the individuals its centre equals.
+    demand_roles: HashSet<(Iri, bool, Term)>,
+    demand_centre: HashSet<Term>,
+    /// `(B, o)` this context needs: it, or a successor, can read `B(o)`.
+    demand_needs: HashSet<(Iri, Term)>,
+    /// Offers of `B(o)` to this context deferred until it needs `(B, o)`.
+    demand_deferred: HashMap<(Iri, Term), Vec<(usize, Term, Pred)>>,
     /// `true` if a new worked-off clause or a new predecessor edge/pushed
     /// predicate has appeared since the last `propagate`.  When `false`,
     /// `propagate` has no new Succ/Pred message to emit (the `pushed_succ` /
@@ -2491,6 +2750,7 @@ impl Context {
             rsucc_hwm: 0,
             pushed_rsucc: HashSet::default(),
             rsucc_pair_reach_hwm: HashMap::default(),
+            rsucc_reach_unit: Vec::new(),
             rsucc_offered: 0,
             rsucc_edges_grew: false,
             root_labels: Vec::new(),
@@ -2498,6 +2758,10 @@ impl Context {
             root_reach_hwm: HashMap::default(),
             merge_hyp_inds: Vec::new(),
             seeded_inds: HashSet::default(),
+            demand_roles: HashSet::default(),
+            demand_centre: HashSet::default(),
+            demand_needs: HashSet::default(),
+            demand_deferred: HashMap::default(),
             dirty: true,
         }
     }
@@ -2512,10 +2776,16 @@ impl Context {
 /// edge-conditioned neighbour hypothesis (see `Context::rsucc_pool`). Shared by
 /// `saturate` and the closure-seeding paths, so a clause enters the pool by the
 /// same test however it reaches the worked-off set.
-fn rsucc_pool_eligible(sig: &Sig, clause: &ContextClause) -> bool {
+/// `ground`: the clause belongs to the nominal ground context, whose labels
+/// on an individual `o` are offered to the successors `f(o)` of `o` as well
+/// (`rsucc_cross_step`, `CBRSuccClosure.groundedLabel`).
+fn rsucc_pool_eligible(sig: &Sig, clause: &ContextClause, ground: bool) -> bool {
     sig.rsucc
         && clause.max_head_predicates().any(|(p, _)| match p {
-            Pred::Concept { t, .. } => is_central(t),
+            Pred::Concept { t, .. } => {
+                (is_central(t) && !sig.rsucc_labels_only)
+                    || ((ground || sig.individual_labels_every_edge) && is_individual(t))
+            }
             _ => false,
         })
 }
@@ -3664,6 +3934,101 @@ pub(crate) enum RetainedInsertBoundary {
 /// A clause with a role atom pointing into the central variable from another
 /// term (`R(y,x)`, `R(f(x),x)`, ...) can consume a parent label in a successor
 /// context, so `Engine::prepare` turns r-Succ on for its ontology.
+/// The broad shape S in which a label `B(o)` of an individual can depend on
+/// a non-ground element and be read by another element: the ontology names
+/// an individual, and some concept read on a variable that a role atom
+/// touches (`read`, the wide `grounded_label_concepts`) is derivable
+/// non-locally: as the head of a clause on a non-central term (an existential
+/// filler `B(f(x))`, which a nominal merge can turn into `B(o)`, or a
+/// universal `B(y)`), as the head of a clause whose body has a role atom, or
+/// from such a concept through any clause. Outside S every label of an
+/// individual follows from ground facts and unary clauses alone, so the
+/// ground context derives it unconditionally and its grounded and Pred
+/// offers reach every reader.
+fn individual_label_shape(clauses: &[OntologyClause], read: &[bool]) -> bool {
+    if !clauses.iter().any(clause_mentions_individual) {
+        return false;
+    }
+    let mut dep = vec![false; read.len()];
+    let mark = |dep: &mut Vec<bool>, iri: Iri| -> bool {
+        match dep.get_mut(iri as usize) {
+            Some(slot) if !*slot => {
+                *slot = true;
+                true
+            }
+            _ => false,
+        }
+    };
+    for clause in clauses {
+        let role_body = clause.body.iter().any(|p| matches!(p, Pred::Role { .. }));
+        for lit in &clause.head {
+            if let Lit::P(Pred::Concept { iri, t }) = *lit {
+                if !is_central(t) && !is_individual(t) || role_body {
+                    mark(&mut dep, iri);
+                }
+            }
+        }
+    }
+    loop {
+        let mut grew = false;
+        for clause in clauses {
+            let from_dep = clause
+                .body
+                .iter()
+                .any(|p| matches!(*p, Pred::Concept { iri, .. } if dep.get(iri as usize).copied().unwrap_or(false)));
+            if !from_dep {
+                continue;
+            }
+            for lit in &clause.head {
+                if let Lit::P(Pred::Concept { iri, .. }) = *lit {
+                    grew |= mark(&mut dep, iri);
+                }
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+    dep.iter().zip(read).any(|(&d, &r)| d && r)
+}
+
+/// KM_RSUCC_KEEP_GROUND_UNITS=1 offers ground-unit labels over every edge
+/// (A/B only), read once.
+fn keep_ground_units() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("KM_RSUCC_KEEP_GROUND_UNITS").is_some())
+}
+
+/// KM_ROOT_REACH_INDIVIDUALS=1 also sends labels of individuals over root
+/// edges, as v1.7.0's first candidate did (A/B only; docs/NOMINALS-CB.md 13.3).
+fn root_reach_individuals() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("KM_ROOT_REACH_INDIVIDUALS").is_some())
+}
+
+/// Wildcard concept of a KM_RSUCC_DEMAND need: every label of the individual.
+const DEMAND_ALL: Iri = Iri::MAX;
+
+/// Demand-driven offers of labels of individuals (docs/NOMINALS-CB.md 14):
+/// on by default, `KM_RSUCC_DEMAND=0` sends every offer at once.
+fn rsucc_demand() -> bool {
+    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("KM_RSUCC_DEMAND").is_none_or(|v| v != "0"))
+}
+
+/// Whether a source clause names an individual (a nominal or an ABox fact).
+fn clause_mentions_individual(clause: &OntologyClause) -> bool {
+    let pred = |p: &Pred| match *p {
+        Pred::Concept { t, .. } => is_individual(t),
+        Pred::Role { s, t, .. } => is_individual(s) || is_individual(t),
+    };
+    clause.body.iter().any(pred)
+        || clause.head.iter().any(|literal| match literal {
+            Lit::P(p) => pred(p),
+            Lit::Eq { s, t } | Lit::Ineq { s, t } => is_individual(*s) || is_individual(*t),
+        })
+}
+
 fn clause_enables_rsucc(clause: &OntologyClause) -> bool {
     let backward_role = |p: &Pred| matches!(p, Pred::Role { s, t, .. } if *t == X && *s != X);
     clause.body.iter().any(backward_role)
@@ -3917,6 +4282,8 @@ pub struct Engine {
     /// derived clauses remain sound, but classification is not complete and
     /// must never be published as a successful answer.
     message_truncated: bool,
+    /// A retained insertion ended demand-driven offers (`demand_active`).
+    demand_off: bool,
     /// A context whose empty clause is global inconsistency (the ground
     /// context, or a root context with an empty core: the ⊤ context or the
     /// throwaway ⊤ closure of `ensure_shared_root_closure`) has worked off
@@ -4223,6 +4590,13 @@ pub struct CbLiveTerminalSnapshot {
     pub source_ontology: Vec<CbLiveClause>,
     pub rsucc_enabled: bool,
     pub reach_concept_ids: Vec<Iri>,
+    /// `Sig::grounded_label` as ids: concepts whose labels on an individual
+    /// the ground context offers over that individual's grounded edges.
+    pub grounded_label_concept_ids: Vec<Iri>,
+    /// `Sig::individual_labels_every_edge` (`IndividualLabels.everyEdge`).
+    pub individual_labels_every_edge: bool,
+    /// Offers of those labels wait for demand (`IndividualLabels.demand`).
+    pub rsucc_demand: bool,
     pub ordinary_clause_arena: Vec<CbLiveClause>,
     pub root_clause_arena: Vec<CbLiveClause>,
     pub pending_messages: usize,
@@ -4238,6 +4612,7 @@ mod cb_live_snapshot_tests {
 
     #[test]
     fn optional_hyper_evidence_preserves_terminal_state() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -4283,6 +4658,7 @@ mod cb_live_snapshot_tests {
 
     #[test]
     fn successor_edge_without_reach_leaves_no_pending_rsucc_sweep() {
+        let _test_env = crate::test_env::read();
         // D ⊑ ∃r.A: context D gains an r-successor edge but never an r-Succ
         // pool entry, so the terminal snapshot must not report a pending
         // `successors × reach` sweep (checkers-on defect B2).
@@ -4317,6 +4693,7 @@ mod cb_live_snapshot_tests {
 
     #[test]
     fn terminal_snapshot_is_exact_stable_and_complete() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let query = sig.concept("A");
         let reach = sig.concept("__trans__r__A");
@@ -4404,12 +4781,114 @@ impl Engine {
     /// by `from_prepared`, and preparation is a pure function of the input clause
     /// set.
     pub fn prepare(sig: Sig, ont_clauses: Vec<OntologyClause>, dropped: usize) -> PreparedOntology {
+        Engine::prepare_opts(sig, ont_clauses, dropped, true)
+    }
+
+    /// `prepare`, with the one-element-domain merge
+    /// (`add_domain_singleton_equalities`) switched by `domain_singleton`.
+    /// The cb-horn model builder (`cb_model`) reads one context per
+    /// individual and keeps the merge off.
+    pub fn prepare_opts(
+        sig: Sig,
+        ont_clauses: Vec<OntologyClause>,
+        dropped: usize,
+        domain_singleton: bool,
+    ) -> PreparedOntology {
         let mut sig = sig;
         // A role pointing into the central variable can consume a parent
         // label in a successor context. Enable edge-conditioned label offers
         // for these ontologies without requiring an external tuning flag.
         sig.rsucc = std::env::var_os("KM_RSUCC").is_some()
             || ont_clauses.iter().any(clause_enables_rsucc);
+        // The r-Succ offer of individual labels over every edge
+        // (arXiv:1805.01396, `Su^r`), on by default.
+        // KM_RSUCC_INDIVIDUAL_LABELS=0 turns it off (the grounded edges `f(o)`
+        // of the ground context only), `auto` turns it on for the inputs of
+        // `individual_label_shape` only, `all` offers every concept.
+        let labels_mode = std::env::var("KM_RSUCC_INDIVIDUAL_LABELS").unwrap_or_default();
+        sig.individual_labels_every_edge = match labels_mode.as_str() {
+            "0" => false,
+            "auto" => {
+                let wide = grounded_label_concepts(&ont_clauses, sig.concept_names.len(), true);
+                individual_label_shape(&ont_clauses, &wide)
+            }
+            _ => true,
+        };
+        if std::env::var_os("KM_TIMING").is_some() && labels_mode == "auto" {
+            eprintln!("KM_TIMING individual-label shape: {}", sig.individual_labels_every_edge);
+        }
+        sig.grounded_label =
+            grounded_label_concepts(&ont_clauses, sig.concept_names.len(), sig.individual_labels_every_edge);
+        {
+            let n = sig.concept_names.len();
+            let mut readers: Vec<Vec<(Iri, bool)>> = vec![Vec::new(); n];
+            let mut always = vec![false; n];
+            for clause in &ont_clauses {
+                let roles: Vec<(Iri, Term, Term)> = clause
+                    .body
+                    .iter()
+                    .filter_map(|p| match *p { Pred::Role { iri, s, t } => Some((iri, s, t)), _ => None })
+                    .collect();
+                for p in &clause.body {
+                    let Pred::Concept { iri, t: v } = *p else { continue };
+                    let Some(slot) = readers.get_mut(iri as usize) else { continue };
+                    // Hyper grounds the central variable only in the ground
+                    // context, which never defers: a central atom reads no label.
+                    if is_central(v) {
+                        continue;
+                    }
+                    let mut anchored = false;
+                    for &(r, s, t) in &roles {
+                        if is_central(s) && t == v {
+                            anchored = true;
+                            if !slot.contains(&(r, true)) {
+                                slot.push((r, true));
+                            }
+                        }
+                        if s == v && is_central(t) {
+                            anchored = true;
+                            if !slot.contains(&(r, false)) {
+                                slot.push((r, false));
+                            }
+                        }
+                    }
+                    // A reader on a constant or on a term no central role atom
+                    // binds: offer the concept unconditionally.
+                    if !anchored || is_individual(v) {
+                        always[iri as usize] = true;
+                    }
+                }
+            }
+            let mut rev: std::collections::HashMap<Iri, Vec<(Iri, bool)>> = std::collections::HashMap::new();
+            for (b, list) in readers.iter().enumerate() {
+                for &(r, d) in list {
+                    rev.entry(r).or_default().push((b as Iri, d));
+                }
+            }
+            sig.label_readers = readers;
+            sig.label_always = always;
+            sig.role_label_readers = rev;
+        }
+        if std::env::var_os("KM_RSUCC_INDIVIDUAL_LABELS").is_some_and(|v| v == "all") {
+            // Diagnostic: offer the labels of every concept.
+            sig.grounded_label.iter_mut().for_each(|g| *g = true);
+        }
+        if sig.individual_labels_every_edge
+            && !sig.rsucc
+            && sig.grounded_label.iter().any(|&g| g)
+            && ont_clauses.iter().any(clause_mentions_individual)
+        {
+            sig.rsucc = true;
+            // KM_RSUCC_INDIVIDUAL_LABELS_CENTRAL=1 restores the central offers
+            // as well (A/B against the labels-only mode).
+            sig.rsucc_labels_only = std::env::var_os("KM_RSUCC_INDIVIDUAL_LABELS_CENTRAL").is_none();
+        }
+        let mut ont_clauses = ont_clauses;
+        let domain_singleton_units =
+            if domain_singleton { add_domain_singleton_equalities(&mut ont_clauses) } else { 0 };
+        if std::env::var_os("KM_PROF").is_some() && domain_singleton_units != 0 {
+            eprintln!("KM_PROF domain-singleton units={domain_singleton_units}");
+        }
         let (ont_clauses, max_input_ind, ground_merge) =
             merge_asserted_ground_equalities(ont_clauses);
         if std::env::var_os("KM_PROF").is_some() && ground_merge.asserted_pairs != 0 {
@@ -4555,6 +5034,7 @@ impl Engine {
                 .then(Vec::new),
             dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
+            demand_off: false,
             global_refutation: false,
             stop_on_global_refutation: false,
             nom_k: prepared.nom_k,
@@ -4712,11 +5192,23 @@ impl Engine {
             next_sig.backward_role_succ_trigger[i] |= self.sig.backward_role_succ_trigger[i];
         }
         next_sig.rsucc = self.sig.rsucc;
+        next_sig.rsucc_labels_only = self.sig.rsucc_labels_only;
+        next_sig.individual_labels_every_edge = self.sig.individual_labels_every_edge;
         // A retained insertion is the one writer of the otherwise immutable
         // ontology state.  Replacing/`make_mut`-ing the shared handles leaves
         // any other holder (a co-existing engine that shares this prepared
         // ontology) on its own unchanged copy.
         self.sig = Arc::new(next_sig);
+        // Demand: the new signature has no reader analysis, so demand ends
+        // here and every later offer goes out at once; deliver the deferred
+        // ones as well (the closure wire then reports demand off).
+        self.demand_off = true;
+        for c in 0..self.contexts.len() {
+            let deferred: Vec<(usize, Term, Pred)> = self.contexts[c].demand_deferred.drain().flat_map(|(_, v)| v).collect();
+            for (from, f, p) in deferred {
+                self.msgs.push_back(Msg::Succ { from: pack_msg_context(from), f, p, target: pack_msg_context(c) });
+            }
+        }
 
         let first_new = self.ont.clauses.len();
         let max_added_individual = input_max_individual(&additions);
@@ -5264,6 +5756,44 @@ impl Engine {
         // mentioning an individual brings that individual's ground ontology
         // facts into this context (they are Hyper/Eq providers here). The
         // ground context is fully pre-seeded at creation.
+        let mut new_needs: Vec<(Iri, Term)> = Vec::new();
+        if self.demand_active() {
+            let lits = clause.body.iter().map(|&p| Lit::P(p)).chain(clause.head.iter().copied());
+            for l in lits {
+                match l {
+                    Lit::P(Pred::Role { iri, s, t }) => {
+                        let found = if is_central(s) && is_individual(t) {
+                            Some((true, t))
+                        } else if is_individual(s) && is_central(t) {
+                            Some((false, s))
+                        } else {
+                            None
+                        };
+                        if let Some((dir, o)) = found {
+                            if self.contexts[id].demand_roles.insert((iri, dir, o)) {
+                                if let Some(cs) = self.sig.role_label_readers.get(&iri) {
+                                    for &(b, d) in cs {
+                                        if d == dir {
+                                            new_needs.push((b, o));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Lit::Eq { s, t } => {
+                        // An equation on `o` can rewrite `B(o)` onto any term,
+                        // so every label of `o` is needed (wildcard).
+                        for o in [s, t] {
+                            if is_individual(o) && self.contexts[id].demand_centre.insert(o) {
+                                new_needs.push((DEMAND_ALL, o));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         let mut new_inds: Vec<Term> = Vec::new();
         if !self.ont.ground_facts.is_empty() {
             let mut inds: Vec<Term> = Vec::new();
@@ -5320,7 +5850,45 @@ impl Engine {
                 }
             }
         }
+        for (b, o) in new_needs {
+            self.demand_note(id, b, o);
+        }
         true
+    }
+
+    /// Demand-driven offers are on: the default, until a retained insertion
+    /// (which brings clauses the reader analysis has not seen).
+    fn demand_active(&self) -> bool {
+        rsucc_demand() && !self.demand_off && self.sig.individual_labels_every_edge
+    }
+
+    /// Context `id` needs the label `B(o)` (`DEMAND_ALL`: every label of `o`).
+    /// Deliver the offers deferred for it and make every predecessor need it
+    /// as well, so it is relayed only along the edges that lead to a reader
+    /// (Lean `CBRSuccClosure.DemandView.needClosure`).
+    fn demand_note(&mut self, id: usize, b: Iri, o: Term) {
+        let mut work = vec![id];
+        while let Some(c) = work.pop() {
+            if self.contexts[c].demand_needs.contains(&(DEMAND_ALL, o))
+                || !self.contexts[c].demand_needs.insert((b, o))
+            {
+                continue;
+            }
+            let keys: Vec<(Iri, Term)> = if b == DEMAND_ALL {
+                self.contexts[c].demand_deferred.keys().filter(|k| k.1 == o).copied().collect()
+            } else {
+                vec![(b, o)]
+            };
+            for k in keys {
+                if let Some(list) = self.contexts[c].demand_deferred.remove(&k) {
+                    for (from, f, p) in list {
+                        self.msgs.push_back(Msg::Succ { from: pack_msg_context(from), f, p, target: pack_msg_context(c) });
+                    }
+                }
+            }
+            let preds: Vec<usize> = self.contexts[c].predecessors.keys().map(|&(from, _)| from).collect();
+            work.extend(preds);
+        }
     }
 
     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
@@ -5683,7 +6251,7 @@ impl Engine {
                 .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
             // r-Succ: a maximal head CENTRAL concept is offered to successors
             // as an edge-conditioned neighbour hypothesis (see `rsucc_pool`).
-            let rsucc_eligible = rsucc_pool_eligible(&self.sig, &clause);
+            let rsucc_eligible = rsucc_pool_eligible(&self.sig, &clause, self.ground_ctx == Some(id));
             {
                 let arena = &self.cc_arena[d];
                 let ctx = &mut self.contexts[id];
@@ -7415,7 +7983,9 @@ impl Engine {
             let arena = &self.cc_arena[d];
             closure
                 .into_iter()
-                .filter(|&cid| rsucc_pool_eligible(&self.sig, &arena[cid as usize]))
+                // The shared base never belongs to the ground context, which
+                // is seeded on its own (`ground_context`).
+                .filter(|&cid| rsucc_pool_eligible(&self.sig, &arena[cid as usize], false))
                 .collect()
         } else {
             Vec::new()
@@ -7511,7 +8081,7 @@ impl Engine {
             return;
         }
         let arena = &self.cc_arena[d];
-        let rsucc = rsucc_pool_eligible(&self.sig, &arena[cid as usize]);
+        let rsucc = rsucc_pool_eligible(&self.sig, &arena[cid as usize], self.ground_ctx == Some(id));
         let ctx = &mut self.contexts[id];
         if ctx.delta.seed(arena, cid) && rsucc {
             // Same r-Succ pool feed as `saturate`: a seeded clause is a
@@ -7890,21 +8460,55 @@ impl Engine {
                 // reach` rescan's fired triples and order exactly (see its
                 // doc-comment).  Disjoint field borrows let it read `rsucc_reach`
                 // while mutating the two maps.
+                // Mark the new reach entries that the ground context holds as
+                // unconditional facts (KM_RSUCC_KEEP_GROUND_UNITS=1 keeps them).
+                if self.sig.individual_labels_every_edge
+                    && !keep_ground_units()
+                {
+                    let have = self.contexts[id].rsucc_reach_unit.len();
+                    let marks: Vec<bool> = match self.ground_ctx {
+                        Some(g) => self.contexts[id].rsucc_reach[have..reach_len]
+                            .iter()
+                            .map(|&p| matches!(p, Pred::Concept { t, .. } if is_individual(t)) && self.ground_unit(g, p))
+                            .collect(),
+                        None => vec![false; reach_len - have],
+                    };
+                    self.contexts[id].rsucc_reach_unit.extend(marks);
+                }
                 let fired = {
+                    let sig = &self.sig;
                     let ctx = &mut self.contexts[id];
                     rsucc_cross_step(
+                        sig,
                         &successors,
                         &ctx.rsucc_reach,
                         &mut ctx.rsucc_pair_reach_hwm,
                         &mut ctx.pushed_rsucc,
+                        &ctx.rsucc_reach_unit,
                     )
                 };
                 // Every current edge is now offered `rsucc_reach[..reach_len]`;
                 // record it so the next round can skip an unchanged sweep.
                 self.contexts[id].rsucc_offered = reach_len;
                 self.contexts[id].rsucc_edges_grew = false;
+                let demand = self.demand_active();
                 for (f, target, p) in fired {
                     let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
+                    // Hold back a label of an individual until the target
+                    // needs it (Lean `CBRSuccClosure.DemandView.deferred`).
+                    if demand {
+                        if let Pred::Concept { iri, t } = psigma {
+                            if is_individual(t)
+                                && Some(target) != self.ground_ctx
+                                && !self.sig.label_always.get(iri as usize).copied().unwrap_or(true)
+                                && !self.contexts[target].demand_needs.contains(&(iri, t))
+                                && !self.contexts[target].demand_needs.contains(&(DEMAND_ALL, t))
+                            {
+                                self.contexts[target].demand_deferred.entry((iri, t)).or_default().push((id, f, psigma));
+                                continue;
+                            }
+                        }
+                    }
                     self.msgs.push_back(Msg::Succ {
                         from: pack_msg_context(id),
                         f,
@@ -8532,7 +9136,11 @@ impl Engine {
     /// body atom `B(y)` against a clause of the receiver with `B(x)` maximal,
     /// which exists because the receiver offered `B(y)`.
     fn offer_root_reach(&mut self, id: usize) {
-        if !self.sig.rsucc || self.contexts[id].root_labels.is_empty() || root_reach_off() {
+        if !self.sig.rsucc
+            || self.sig.rsucc_labels_only
+            || self.contexts[id].root_labels.is_empty()
+            || root_reach_off()
+        {
             return;
         }
         let Some(g) = self.ground_ctx else { return };
@@ -8549,7 +9157,14 @@ impl Engine {
                     continue;
                 }
                 for &p in &ctx.rsucc_reach[start..n] {
-                    fired.push((o, p.apply(&|v| forwards(o, v))));
+                    // Root edges carry central labels only (section 12;
+                    // `CBRSuccClosure.isGroundedLabel` is false on a constant
+                    // edge). Since labels of individuals share the reach set
+                    // (13.1), a label `B(o')` there must not go to the ground
+                    // context as a hypothesis (docs/NOMINALS-CB.md 13.3).
+                    if root_reach_individuals() || matches!(p, Pred::Concept { t, .. } if is_central(t)) {
+                        fired.push((o, p.apply(&|v| forwards(o, v))));
+                    }
                 }
                 ctx.root_reach_hwm.insert(o, n);
             }
@@ -8571,7 +9186,25 @@ impl Engine {
     /// otherwise identical saturation tail once per incoming edge predicate.
     /// The fixpoint is unchanged: every added clause remains in `todo`, and the
     /// batch-end saturation processes their union before any propagation.
+    /// Whether the ground context `g` holds the unconditional fact `→ p`.
+    fn ground_unit(&self, g: usize, p: Pred) -> bool {
+        let root = self.contexts[g].root;
+        let unit = ContextClause::new(vec![], vec![Lit::P(p)], root, &self.sig);
+        let (_, existing) = self.cc_lookup(root, &unit);
+        existing.is_some_and(|cid| self.contexts[g].has_clause(cid))
+    }
+
     fn apply_succ(&mut self, from: usize, f: Term, p: Pred, target: usize) -> usize {
+        // A new edge into a context that needs labels: its source needs them.
+        if self.demand_active()
+            && !self.contexts[target].demand_needs.is_empty()
+            && !self.contexts[target].predecessors.contains_key(&(from, f))
+        {
+            let needs: Vec<(Iri, Term)> = self.contexts[target].demand_needs.iter().copied().collect();
+            for (b, o) in needs {
+                self.demand_note(from, b, o);
+            }
+        }
         // record predecessor edge
         self.contexts[target]
             .predecessors
@@ -9341,6 +9974,10 @@ impl Engine {
                 break;
             }
             debug_assert!(batch.is_empty());
+            // Demand releases deferred offers while messages are applied
+            // (`demand_note` from `apply_succ` and from `add_clause`); keep
+            // them. Without demand nothing is enqueued during application.
+            batch.append(&mut self.msgs);
             std::mem::swap(&mut self.msgs, &mut batch);
             // Message application above only accumulates edge data and local
             // clauses. Complete each touched context once for this round, then
@@ -9977,9 +10614,19 @@ impl Engine {
             .enumerate()
             // The wire field retains its historical name, but must enumerate
             // every concept eligible for the runtime predecessor-label offer.
-            .filter_map(|(iri, &reach)| (self.sig.rsucc || reach).then_some(iri as Iri))
+            .filter_map(|(iri, &reach)| {
+                ((self.sig.rsucc && !self.sig.rsucc_labels_only) || (reach && !self.sig.rsucc_labels_only))
+                    .then_some(iri as Iri)
+            })
             .collect();
         reach_concept_ids.sort_unstable();
+        let grounded_label_concept_ids: Vec<Iri> = self
+            .sig
+            .grounded_label
+            .iter()
+            .enumerate()
+            .filter_map(|(iri, &g)| (self.sig.rsucc && g).then_some(iri as Iri))
+            .collect();
 
         let contexts = self
             .contexts
@@ -10180,6 +10827,9 @@ impl Engine {
             source_ontology: self.ont.clauses.iter().map(Into::into).collect(),
             rsucc_enabled: self.sig.rsucc,
             reach_concept_ids,
+            grounded_label_concept_ids,
+            individual_labels_every_edge: self.sig.rsucc && self.sig.individual_labels_every_edge,
+            rsucc_demand: self.sig.rsucc && self.demand_active(),
             ordinary_clause_arena: self.cc_arena[0].iter().map(Into::into).collect(),
             root_clause_arena: self.cc_arena[1].iter().map(Into::into).collect(),
             pending_messages: self.msgs.len(),
@@ -10327,6 +10977,10 @@ impl Engine {
                 }
             }
             debug_assert!(batch.is_empty());
+            // Demand releases deferred offers while messages are applied
+            // (`demand_note` from `apply_succ` and from `add_clause`); keep
+            // them. Without demand nothing is enqueued during application.
+            batch.append(&mut self.msgs);
             std::mem::swap(&mut self.msgs, &mut batch);
             if batch_completion {
                 for &id in &touched {
@@ -10615,17 +11269,1506 @@ impl Engine {
     }
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CbExportModel {
+    pub contexts: Vec<String>,
+    pub labels: Vec<Vec<String>>,
+    pub edges: Vec<(usize, String, usize)>,
+    pub inconsistent: bool,
+    pub partial_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum CbContextKey {
+    Top,
+    Query(String),
+    Core(Vec<String>),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CbContextNode {
+    pub key: CbContextKey,
+    pub labels: Vec<String>,
+    pub self_roles: Vec<String>,
+    pub fwd_roles: Vec<(String, Term)>,
+    pub bwd_roles: Vec<(String, Term)>,
+    pub succ_edges: Vec<(Term, CbContextKey)>,
+}
+
+pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
+    rbox: &[Vec<String>],
+    n_elems: usize,
+    edges: &mut std::collections::HashSet<(usize, String, usize), S>,
+) -> Result<(), String> {
+    let has_inv = edges.iter().any(|(_, r, _)| r.starts_with("__inv__"));
+    if has_inv {
+        let mut normalized: std::collections::HashSet<(usize, String, usize), S> =
+            std::collections::HashSet::default();
+        for (u, r, v) in edges.drain() {
+            if let Some(base) = r.strip_prefix("__inv__") {
+                normalized.insert((v, base.to_string(), u));
+            } else {
+                normalized.insert((u, r, v));
+            }
+        }
+        *edges = normalized;
+    }
+    const MAX_EXPORT_EDGES: usize = 500_000;
+    if edges.len() > MAX_EXPORT_EDGES {
+        return Err("RBox edge closure exceeds compact export bound (500,000 edges)".to_string());
+    }
+    if rbox.is_empty() {
+        return Ok(());
+    }
+
+    let mut has_refl = false;
+    for row in rbox {
+        let refl = if row.len() >= 2 && matches!(row[0].as_str(), "reflexivity" | "reflexive") {
+            Some(&row[1])
+        } else if row.len() >= 3
+            && row[0] == "fenced"
+            && matches!(row[1].as_str(), "reflexivity" | "reflexive")
+        {
+            Some(&row[2])
+        } else {
+            None
+        };
+        if let Some(r) = refl {
+            has_refl = true;
+            let base = r.strip_prefix("__inv__").unwrap_or(r.as_str()).to_string();
+            for u in 0..n_elems {
+                edges.insert((u, base.clone(), u));
+                if edges.len() > MAX_EXPORT_EDGES {
+                    return Err(
+                        "RBox edge closure exceeds compact export bound (500,000 edges)".to_string(),
+                    );
+                }
+            }
+        }
+    }
+    if edges.is_empty() && !has_refl {
+        return Ok(());
+    }
+
+    let insert_role = |edges: &mut std::collections::HashSet<(usize, String, usize), S>,
+                       u: usize,
+                       r: &str,
+                       v: usize| {
+        if let Some(base) = r.strip_prefix("__inv__") {
+            edges.insert((v, base.to_string(), u));
+        } else {
+            edges.insert((u, r.to_string(), v));
+        }
+    };
+
+    let pairs_for_role =
+        |by_role: &HashMap<String, Vec<(usize, usize)>>, r: &str| -> Vec<(usize, usize)> {
+            if let Some(base) = r.strip_prefix("__inv__") {
+                by_role
+                    .get(base)
+                    .map(|list| list.iter().map(|&(u, v)| (v, u)).collect())
+                    .unwrap_or_default()
+            } else {
+                by_role.get(r).cloned().unwrap_or_default()
+            }
+        };
+
+    loop {
+        let before = edges.len();
+        let mut by_role: HashMap<String, Vec<(usize, usize)>> = HashMap::default();
+        for &(u, ref r, v) in edges.iter() {
+            by_role.entry(r.clone()).or_default().push((u, v));
+        }
+        for row in rbox {
+            match row.first().map(String::as_str) {
+                Some("subrole" | "sub-role") if row.len() >= 3 => {
+                    let (sub, sup) = (&row[1], &row[2]);
+                    for (u, v) in pairs_for_role(&by_role, sub) {
+                        insert_role(edges, u, sup, v);
+                    }
+                }
+                Some("inverse") if row.len() >= 3 => {
+                    let (r1, r2) = (&row[1], &row[2]);
+                    for (u, v) in pairs_for_role(&by_role, r1) {
+                        insert_role(edges, v, r2, u);
+                    }
+                    for (u, v) in pairs_for_role(&by_role, r2) {
+                        insert_role(edges, v, r1, u);
+                    }
+                }
+                Some("symmetric-role") if row.len() >= 2 => {
+                    let r = &row[1];
+                    for (u, v) in pairs_for_role(&by_role, r) {
+                        insert_role(edges, v, r, u);
+                    }
+                }
+                Some("fenced") if row.len() >= 3 && row[1] == "symmetric-role" => {
+                    let r = &row[2];
+                    for (u, v) in pairs_for_role(&by_role, r) {
+                        insert_role(edges, v, r, u);
+                    }
+                }
+                Some("transitive") if row.len() >= 2 => {
+                    let r = &row[1];
+                    let pairs = pairs_for_role(&by_role, r);
+                    if !pairs.is_empty() {
+                        let mut adj: HashMap<usize, Vec<usize>> = HashMap::default();
+                        for &(u, v) in &pairs {
+                            adj.entry(u).or_default().push(v);
+                        }
+                        for &(u, mid) in &pairs {
+                            if let Some(ws) = adj.get(&mid) {
+                                for &w in ws {
+                                    insert_role(edges, u, r, w);
+                                    if edges.len() > MAX_EXPORT_EDGES {
+                                        return Err(
+                                            "RBox edge closure exceeds compact export bound (500,000 edges)"
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Some("chain") if row.len() >= 4 => {
+                    let (r1, r2, sup) = (&row[1], &row[2], &row[3]);
+                    let p1 = pairs_for_role(&by_role, r1);
+                    let p2 = pairs_for_role(&by_role, r2);
+                    if !p1.is_empty() && !p2.is_empty() {
+                        let mut adj2: HashMap<usize, Vec<usize>> = HashMap::default();
+                        for (mid, w) in p2 {
+                            adj2.entry(mid).or_default().push(w);
+                        }
+                        for (u, mid) in p1 {
+                            if let Some(ws) = adj2.get(&mid) {
+                                for &w in ws {
+                                    insert_role(edges, u, sup, w);
+                                    if edges.len() > MAX_EXPORT_EDGES {
+                                        return Err(
+                                            "RBox edge closure exceeds compact export bound (500,000 edges)"
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Some("chain-n") if row.len() >= 4 => {
+                    let sup = &row[1];
+                    let chain = &row[2..];
+                    let mut reach: HashSet<(usize, usize)> =
+                        pairs_for_role(&by_role, &chain[0]).into_iter().collect();
+                    if !reach.is_empty() {
+                        for step in &chain[1..] {
+                            let step_pairs = pairs_for_role(&by_role, step);
+                            if step_pairs.is_empty() {
+                                reach.clear();
+                                break;
+                            }
+                            let mut adj: HashMap<usize, Vec<usize>> = HashMap::default();
+                            for (mid, w) in step_pairs {
+                                adj.entry(mid).or_default().push(w);
+                            }
+                            let mut next_reach: HashSet<(usize, usize)> = HashSet::default();
+                            for &(u, mid) in &reach {
+                                if let Some(ws) = adj.get(&mid) {
+                                    for &w in ws {
+                                        next_reach.insert((u, w));
+                                        if next_reach.len() > MAX_EXPORT_EDGES {
+                                            return Err(
+                                                "RBox edge closure exceeds compact export bound (500,000 edges)"
+                                                    .to_string(),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            reach = next_reach;
+                            if reach.is_empty() {
+                                break;
+                            }
+                        }
+                        for (u, w) in reach {
+                            insert_role(edges, u, sup, w);
+                            if edges.len() > MAX_EXPORT_EDGES {
+                                return Err(
+                                    "RBox edge closure exceeds compact export bound (500,000 edges)"
+                                        .to_string(),
+                                );
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            if edges.len() > MAX_EXPORT_EDGES {
+                return Err(
+                    "RBox edge closure exceeds compact export bound (500,000 edges)".to_string(),
+                );
+            }
+        }
+        if edges.len() == before {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn verify_clauses_on_cb_structure_until(
+    clauses: &[crate::json_io::JClause],
+    n_elems: usize,
+    labels: &[HashSet<String>],
+    edges: &HashSet<(usize, String, usize)>,
+    deadline: Option<std::time::Instant>,
+) -> Result<(), String> {
+    use crate::json_io::{JAtom, JTerm};
+
+    let has_concept = |u: usize, c: &str| -> bool {
+        if matches!(c, "owl:Thing" | "Thing" | "⊤") {
+            true
+        } else if matches!(c, "owl:Nothing" | "Nothing" | "⊥") {
+            false
+        } else {
+            labels[u].contains(c)
+        }
+    };
+    let has_role = |u: usize, r: &str, v: usize| -> bool {
+        if let Some(base) = r.strip_prefix("__inv__") {
+            edges.contains(&(v, base.to_string(), u))
+        } else {
+            edges.contains(&(u, r.to_string(), v))
+        }
+    };
+
+    let mut by_concept: HashMap<&str, Vec<usize>> = HashMap::default();
+    for (u, lbl) in labels.iter().enumerate() {
+        for c in lbl {
+            by_concept.entry(c.as_str()).or_default().push(u);
+        }
+    }
+    let mut outgoing: HashMap<(usize, &str), Vec<usize>> = HashMap::default();
+    let mut incoming: HashMap<(usize, &str), Vec<usize>> = HashMap::default();
+    let mut edges_by_role: HashMap<&str, Vec<(usize, usize)>> = HashMap::default();
+    for &(u, ref r, v) in edges {
+        outgoing.entry((u, r.as_str())).or_default().push(v);
+        incoming.entry((v, r.as_str())).or_default().push(u);
+        edges_by_role.entry(r.as_str()).or_default().push((u, v));
+    }
+
+    let mut fun_groups: HashMap<(String, String), Vec<&crate::json_io::JClause>> =
+        HashMap::default();
+    let mut universal_clauses: Vec<&crate::json_io::JClause> = Vec::new();
+
+    fn extract_fun(term: &JTerm) -> Option<(&str, &str)> {
+        match term {
+            JTerm::Fun { function, arg } => match arg.as_ref() {
+                JTerm::Var { name } => Some((function.as_str(), name.as_str())),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    for clause in clauses {
+        let body_has_non_var = clause.body.iter().any(|atom| match atom {
+            JAtom::Concept { term, .. } => !matches!(term, JTerm::Var { .. }),
+            JAtom::Role { source, target, .. } => {
+                !matches!(source, JTerm::Var { .. }) || !matches!(target, JTerm::Var { .. })
+            }
+            JAtom::Eq { left, right } => {
+                !matches!(left, JTerm::Var { .. }) || !matches!(right, JTerm::Var { .. })
+            }
+        });
+        if body_has_non_var {
+            return Err("cb-horn declines non-variable body term".to_string());
+        }
+        let mut head_fun: Option<(&str, &str)> = None;
+        let mut head_non_var = false;
+        for atom in &clause.head {
+            match atom {
+                JAtom::Concept { term, .. } => {
+                    if !matches!(term, JTerm::Var { .. }) {
+                        head_non_var = true;
+                        head_fun = extract_fun(term);
+                    }
+                }
+                JAtom::Role { source, target, .. } => {
+                    if !matches!(source, JTerm::Var { .. }) {
+                        head_non_var = true;
+                        head_fun = extract_fun(source);
+                    }
+                    if !matches!(target, JTerm::Var { .. }) {
+                        head_non_var = true;
+                        head_fun = extract_fun(target);
+                    }
+                }
+                JAtom::Eq { left, right } => {
+                    if !matches!(left, JTerm::Var { .. }) || !matches!(right, JTerm::Var { .. }) {
+                        head_non_var = true;
+                    }
+                }
+            }
+        }
+        if head_non_var {
+            if clause.head.len() == 1 {
+                if let Some((f, v)) = head_fun {
+                    fun_groups
+                        .entry((f.to_string(), v.to_string()))
+                        .or_default()
+                        .push(clause);
+                    continue;
+                }
+            }
+            return Err("cb-horn declines complex Skolem or nominal head".to_string());
+        }
+        universal_clauses.push(clause);
+    }
+
+    let eval_body_with_seed = |body: &[JAtom],
+                               seed_var: Option<(&str, usize)>|
+     -> Vec<HashMap<String, usize>> {
+        let mut envs: Vec<HashMap<String, usize>> = Vec::new();
+        if let Some((vname, u)) = seed_var {
+            let mut m = HashMap::default();
+            m.insert(vname.to_string(), u);
+            envs.push(m);
+        } else {
+            envs.push(HashMap::default());
+        }
+        for atom in body {
+            let mut next_envs: Vec<HashMap<String, usize>> = Vec::new();
+            for env in envs {
+                match atom {
+                    JAtom::Concept {
+                        concept,
+                        term: JTerm::Var { name },
+                    } => {
+                        if let Some(&u) = env.get(name.as_str()) {
+                            if has_concept(u, concept) {
+                                next_envs.push(env);
+                            }
+                        } else if matches!(concept.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                            for u in 0..n_elems {
+                                let mut env2 = env.clone();
+                                env2.insert(name.clone(), u);
+                                next_envs.push(env2);
+                            }
+                        } else if !matches!(concept.as_str(), "owl:Nothing" | "Nothing" | "⊥") {
+                            if let Some(elems) = by_concept.get(concept.as_str()) {
+                                for &u in elems {
+                                    let mut env2 = env.clone();
+                                    env2.insert(name.clone(), u);
+                                    next_envs.push(env2);
+                                }
+                            }
+                        }
+                    }
+                    JAtom::Role {
+                        role,
+                        source: JTerm::Var { name: s_name },
+                        target: JTerm::Var { name: t_name },
+                    } => {
+                        let base_role = role.strip_prefix("__inv__");
+                        match (env.get(s_name.as_str()).copied(), env.get(t_name.as_str()).copied())
+                        {
+                            (Some(su), Some(tu)) => {
+                                if has_role(su, role, tu) {
+                                    next_envs.push(env);
+                                }
+                            }
+                            (Some(su), None) => {
+                                let list = if let Some(base) = base_role {
+                                    incoming.get(&(su, base))
+                                } else {
+                                    outgoing.get(&(su, role.as_str()))
+                                };
+                                if let Some(targets) = list {
+                                    for &tu in targets {
+                                        let mut env2 = env.clone();
+                                        env2.insert(t_name.clone(), tu);
+                                        next_envs.push(env2);
+                                    }
+                                }
+                            }
+                            (None, Some(tu)) => {
+                                let list = if let Some(base) = base_role {
+                                    outgoing.get(&(tu, base))
+                                } else {
+                                    incoming.get(&(tu, role.as_str()))
+                                };
+                                if let Some(sources) = list {
+                                    for &su in sources {
+                                        let mut env2 = env.clone();
+                                        env2.insert(s_name.clone(), su);
+                                        next_envs.push(env2);
+                                    }
+                                }
+                            }
+                            (None, None) => {
+                                let lookup_role = base_role.unwrap_or(role.as_str());
+                                if let Some(pairs) = edges_by_role.get(lookup_role) {
+                                    for &(u, v) in pairs {
+                                        let (su, tu) = if base_role.is_some() {
+                                            (v, u)
+                                        } else {
+                                            (u, v)
+                                        };
+                                        if s_name == t_name {
+                                            if su == tu {
+                                                let mut env2 = env.clone();
+                                                env2.insert(s_name.clone(), su);
+                                                next_envs.push(env2);
+                                            }
+                                        } else {
+                                            let mut env2 = env.clone();
+                                            env2.insert(s_name.clone(), su);
+                                            env2.insert(t_name.clone(), tu);
+                                            next_envs.push(env2);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    JAtom::Eq {
+                        left: JTerm::Var { name: l_name },
+                        right: JTerm::Var { name: r_name },
+                    } => match (env.get(l_name.as_str()).copied(), env.get(r_name.as_str()).copied())
+                    {
+                        (Some(lu), Some(ru)) => {
+                            if lu == ru {
+                                next_envs.push(env);
+                            }
+                        }
+                        (Some(lu), None) => {
+                            let mut env2 = env.clone();
+                            env2.insert(r_name.clone(), lu);
+                            next_envs.push(env2);
+                        }
+                        (None, Some(ru)) => {
+                            let mut env2 = env.clone();
+                            env2.insert(l_name.clone(), ru);
+                            next_envs.push(env2);
+                        }
+                        (None, None) => {
+                            for u in 0..n_elems {
+                                let mut env2 = env.clone();
+                                env2.insert(l_name.clone(), u);
+                                env2.insert(r_name.clone(), u);
+                                next_envs.push(env2);
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+                if next_envs.is_empty() {
+                    break;
+                }
+            }
+            envs = next_envs;
+            if envs.is_empty() {
+                break;
+            }
+        }
+        envs
+    };
+
+    for (idx, clause) in universal_clauses.iter().enumerate() {
+        if idx % 256 == 0 {
+            if let Some(dl) = deadline {
+                if std::time::Instant::now() >= dl {
+                    return Err("cb-horn verification exceeded export budget".to_string());
+                }
+            }
+        }
+        let mut head_vars: Vec<String> = Vec::new();
+        for atom in &clause.head {
+            match atom {
+                JAtom::Concept {
+                    term: JTerm::Var { name },
+                    ..
+                } => {
+                    if !head_vars.contains(name) {
+                        head_vars.push(name.clone());
+                    }
+                }
+                JAtom::Role {
+                    source: JTerm::Var { name: s },
+                    target: JTerm::Var { name: t },
+                    ..
+                } => {
+                    if !head_vars.contains(s) {
+                        head_vars.push(s.clone());
+                    }
+                    if !head_vars.contains(t) {
+                        head_vars.push(t.clone());
+                    }
+                }
+                JAtom::Eq {
+                    left: JTerm::Var { name: l },
+                    right: JTerm::Var { name: r },
+                } => {
+                    if !head_vars.contains(l) {
+                        head_vars.push(l.clone());
+                    }
+                    if !head_vars.contains(r) {
+                        head_vars.push(r.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut envs = eval_body_with_seed(&clause.body, None);
+        for hv in &head_vars {
+            let mut next_envs = Vec::new();
+            for env in envs {
+                if env.contains_key(hv.as_str()) {
+                    next_envs.push(env);
+                } else {
+                    for u in 0..n_elems {
+                        let mut env2 = env.clone();
+                        env2.insert(hv.clone(), u);
+                        next_envs.push(env2);
+                    }
+                }
+            }
+            envs = next_envs;
+        }
+        for env in envs {
+            let head_ok = clause.head.iter().any(|atom| match atom {
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Var { name },
+                } => env
+                    .get(name.as_str())
+                    .is_some_and(|&u| has_concept(u, concept)),
+                JAtom::Role {
+                    role,
+                    source: JTerm::Var { name: s },
+                    target: JTerm::Var { name: t },
+                } => match (env.get(s.as_str()), env.get(t.as_str())) {
+                    (Some(&su), Some(&tu)) => has_role(su, role, tu),
+                    _ => false,
+                },
+                JAtom::Eq {
+                    left: JTerm::Var { name: l },
+                    right: JTerm::Var { name: r },
+                } => match (env.get(l.as_str()), env.get(r.as_str())) {
+                    (Some(&lu), Some(&ru)) => lu == ru,
+                    _ => false,
+                },
+                _ => false,
+            });
+            if !head_ok {
+                return Err(
+                    "cb-horn unit-fact structure does not satisfy non-Horn clause".to_string(),
+                );
+            }
+        }
+    }
+
+    for (idx, ((func_name, var_name), group)) in fun_groups.iter().enumerate() {
+        if idx % 128 == 0 {
+            if let Some(dl) = deadline {
+                if std::time::Instant::now() >= dl {
+                    return Err("cb-horn verification exceeded export budget".to_string());
+                }
+            }
+        }
+        let mut active_by_u: HashMap<usize, Vec<&JAtom>> = HashMap::default();
+        for clause in group {
+            if clause.body.is_empty() {
+                for u in 0..n_elems {
+                    active_by_u.entry(u).or_default().push(&clause.head[0]);
+                }
+            } else {
+                let envs = eval_body_with_seed(&clause.body, None);
+                let mut matched_u: HashSet<usize> = HashSet::default();
+                for env in envs {
+                    if let Some(&u) = env.get(var_name.as_str()) {
+                        matched_u.insert(u);
+                    } else {
+                        for u in 0..n_elems {
+                            matched_u.insert(u);
+                        }
+                    }
+                }
+                for u in matched_u {
+                    active_by_u.entry(u).or_default().push(&clause.head[0]);
+                }
+            }
+        }
+        for (u, active_heads) in active_by_u {
+            let mut candidates: Option<&[usize]> = None;
+            for atom in &active_heads {
+                match atom {
+                    JAtom::Role {
+                        role,
+                        source: JTerm::Var { .. },
+                        target: JTerm::Fun { .. },
+                    } => {
+                        let list = if let Some(base) = role.strip_prefix("__inv__") {
+                            incoming.get(&(u, base)).map(Vec::as_slice).unwrap_or(&[])
+                        } else {
+                            outgoing.get(&(u, role.as_str())).map(Vec::as_slice).unwrap_or(&[])
+                        };
+                        candidates = Some(list);
+                        break;
+                    }
+                    JAtom::Role {
+                        role,
+                        source: JTerm::Fun { .. },
+                        target: JTerm::Var { .. },
+                    } => {
+                        let list = if let Some(base) = role.strip_prefix("__inv__") {
+                            outgoing.get(&(u, base)).map(Vec::as_slice).unwrap_or(&[])
+                        } else {
+                            incoming.get(&(u, role.as_str())).map(Vec::as_slice).unwrap_or(&[])
+                        };
+                        candidates = Some(list);
+                        break;
+                    }
+                    JAtom::Concept { concept, .. }
+                        if !matches!(concept.as_str(), "owl:Thing" | "Thing" | "⊤") =>
+                    {
+                        let list = by_concept
+                            .get(concept.as_str())
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]);
+                        if candidates.is_none_or(|prev| list.len() < prev.len()) {
+                            candidates = Some(list);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let check_w = |w: usize| -> bool {
+                active_heads.iter().all(|atom| match atom {
+                    JAtom::Concept { concept, .. } => has_concept(w, concept),
+                    JAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } => match (source, target) {
+                        (JTerm::Var { .. }, JTerm::Fun { .. }) => has_role(u, role, w),
+                        (JTerm::Fun { .. }, JTerm::Var { .. }) => has_role(w, role, u),
+                        (JTerm::Fun { .. }, JTerm::Fun { .. }) => has_role(w, role, w),
+                        _ => false,
+                    },
+                    _ => false,
+                })
+            };
+            let witness_ok = match candidates {
+                Some(cands) => cands.iter().any(|&w| check_w(w)),
+                None => (0..n_elems).any(check_w),
+            };
+            if !witness_ok {
+                return Err(format!(
+                    "cb-horn structure lacks existential witness for {func_name} at element {u}"
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn verify_clauses_on_cb_structure(
+    clauses: &[crate::json_io::JClause],
+    n_elems: usize,
+    labels: &[HashSet<String>],
+    edges: &HashSet<(usize, String, usize)>,
+) -> Result<(), String> {
+    verify_clauses_on_cb_structure_until(clauses, n_elems, labels, edges, None)
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CbExportShard {
+    pub inconsistent: bool,
+    pub nodes: Vec<CbContextNode>,
+}
+
+impl Engine {
+    pub(crate) fn extract_cb_export_shard(&self, shard_idx: usize) -> Result<CbExportShard, String> {
+        if self.incomplete() {
+            return Err("cb-horn saturation truncated by message cap".to_string());
+        }
+        if self.inconsistent() {
+            return Ok(CbExportShard {
+                inconsistent: true,
+                nodes: Vec::new(),
+            });
+        }
+        if let Some(g) = self.ground_ctx {
+            if !self.contexts[g].worked_off().is_empty() {
+                return Err("cb-horn declines ground-context nominal calculus".to_string());
+            }
+        }
+        let is_ctx_unsat = |ctx: &Context| -> bool {
+            let arena = &self.cc_arena[ctx.root as usize];
+            ctx.worked_off().iter().any(|ci| {
+                let c = &arena[ci as usize];
+                c.body.is_empty() && c.head.is_empty()
+            })
+        };
+        let key_of = |cid: usize| -> CbContextKey {
+            let ctx = &self.contexts[cid];
+            if ctx.root && ctx.core.is_empty() && ctx.query.is_none() {
+                CbContextKey::Top
+            } else if let Some(q) = ctx.query {
+                CbContextKey::Query(self.sig.concept_names[q as usize].clone())
+            } else {
+                let mut core_strs: Vec<String> = ctx
+                    .core
+                    .iter()
+                    .map(|p| match *p {
+                        Pred::Concept { iri, t } => {
+                            format!("C:{}:{t}", self.sig.concept_names[iri as usize])
+                        }
+                        Pred::Role { iri, s, t } => {
+                            format!("R:{}:{s}:{t}", self.sig.role_names[iri as usize])
+                        }
+                    })
+                    .collect();
+                core_strs.sort();
+                if core_strs.is_empty() {
+                    core_strs.push(format!("__cb_s{shard_idx}_c{cid}"));
+                }
+                CbContextKey::Core(core_strs)
+            }
+        };
+
+        let mut reachable: HashSet<usize> = HashSet::default();
+        let mut queue: VecDeque<usize> = VecDeque::new();
+        for ctx in &self.contexts {
+            if Some(ctx.id) == self.ground_ctx {
+                continue;
+            }
+            if ctx.root && (ctx.core.is_empty() || ctx.query.is_some()) && !is_ctx_unsat(ctx) {
+                if reachable.insert(ctx.id) {
+                    queue.push_back(ctx.id);
+                }
+            }
+        }
+        while let Some(cid) = queue.pop_front() {
+            let ctx = &self.contexts[cid];
+            for &succ_id in ctx.successors.values() {
+                let sctx = &self.contexts[succ_id];
+                if !is_ctx_unsat(sctx) && reachable.insert(succ_id) {
+                    queue.push_back(succ_id);
+                }
+            }
+        }
+
+        let mut ordered_cids: Vec<usize> = reachable.into_iter().collect();
+        ordered_cids.sort_unstable();
+        let mut nodes = Vec::with_capacity(ordered_cids.len());
+
+        for cid in ordered_cids {
+            let ctx = &self.contexts[cid];
+            let key = key_of(cid);
+            let mut labels: HashSet<String> = HashSet::default();
+            let mut self_roles: HashSet<String> = HashSet::default();
+            let mut fwd_roles: Vec<(String, Term)> = Vec::new();
+            let mut bwd_roles: Vec<(String, Term)> = Vec::new();
+            let mut unit_lits: HashSet<Lit> = HashSet::default();
+
+            for &p in &ctx.core {
+                unit_lits.insert(Lit::P(p));
+                match p {
+                    Pred::Concept { iri, t } if is_central(t) => {
+                        let cname = &self.sig.concept_names[iri as usize];
+                        if !matches!(cname.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                            labels.insert(cname.clone());
+                        }
+                    }
+                    Pred::Role { iri, s, t } if is_central(s) && is_central(t) => {
+                        self_roles.insert(self.sig.role_names[iri as usize].clone());
+                    }
+                    _ => {}
+                }
+            }
+
+            let arena = &self.cc_arena[ctx.root as usize];
+            for ci in ctx.worked_off().iter() {
+                let c = &arena[ci as usize];
+                if c.body.is_empty() && c.head.len() == 1 {
+                    let lit = c.head[0];
+                    unit_lits.insert(lit);
+                    match lit {
+                        Lit::P(Pred::Concept { iri, t }) if is_central(t) => {
+                            let cname = &self.sig.concept_names[iri as usize];
+                            if !matches!(cname.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                                labels.insert(cname.clone());
+                            }
+                        }
+                        Lit::P(Pred::Role { iri, s, t }) if is_central(s) && is_central(t) => {
+                            self_roles.insert(self.sig.role_names[iri as usize].clone());
+                        }
+                        Lit::P(Pred::Role { iri, s, t }) if is_central(s) && is_function(t) => {
+                            fwd_roles.push((self.sig.role_names[iri as usize].clone(), t));
+                        }
+                        Lit::P(Pred::Role { iri, s, t }) if is_function(s) && is_central(t) => {
+                            bwd_roles.push((self.sig.role_names[iri as usize].clone(), s));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Fast non-Horn check: if a reachable context has a body-free non-unit
+            // clause in worked_off() with no disjunct satisfied by unit facts (or
+            // successor central facts), the unit-fact graph cannot satisfy the ontology.
+            for ci in ctx.worked_off().iter() {
+                let c = &arena[ci as usize];
+                if c.body.is_empty() && c.head.len() > 1 {
+                    let satisfied = c.head.iter().any(|lit| match *lit {
+                        Lit::Eq { s, t } => s == t || unit_lits.contains(lit),
+                        Lit::Ineq { s, t } => s != t,
+                        Lit::P(Pred::Concept { iri, t }) if is_function(t) => {
+                            unit_lits.contains(lit)
+                                || ctx
+                                    .successors
+                                    .get(&t)
+                                    .is_some_and(|&scid| self.ctx_derives_central(scid, iri))
+                        }
+                        _ => unit_lits.contains(lit),
+                    });
+                    if !satisfied {
+                        return Err(
+                            "cb-horn declines non-Horn disjunction in saturated context"
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+
+            let mut succ_edges: Vec<(Term, CbContextKey)> = ctx
+                .successors
+                .iter()
+                .filter(|(_, &scid)| !is_ctx_unsat(&self.contexts[scid]))
+                .map(|(&f, &scid)| (f, key_of(scid)))
+                .collect();
+            succ_edges.sort_by(|a, b| a.0.cmp(&b.0));
+
+            let mut labels_vec: Vec<String> = labels.into_iter().collect();
+            labels_vec.sort();
+            let mut self_roles_vec: Vec<String> = self_roles.into_iter().collect();
+            self_roles_vec.sort();
+            fwd_roles.sort();
+            fwd_roles.dedup();
+            bwd_roles.sort();
+            bwd_roles.dedup();
+
+            nodes.push(CbContextNode {
+                key,
+                labels: labels_vec,
+                self_roles: self_roles_vec,
+                fwd_roles,
+                bwd_roles,
+                succ_edges,
+            });
+        }
+
+        Ok(CbExportShard {
+            inconsistent: false,
+            nodes,
+        })
+    }
+}
+
+pub(crate) fn build_cb_export_model_from_shards(
+    shards: &[CbExportShard],
+    mutual_unit_groups: &[(String, Vec<String>)],
+    input: &crate::json_io::JInput,
+    deadline: Option<std::time::Instant>,
+) -> Result<CbExportModel, String> {
+    if !input.rules.is_empty() || !input.cardinalities.is_empty() {
+        return Err("cb-horn declines SWRL rules and cardinality restrictions".to_string());
+    }
+    if shards.iter().any(|s| s.inconsistent) {
+        return Ok(CbExportModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            inconsistent: true,
+            partial_reason: None,
+        });
+    }
+
+    let mut nodes_by_key: HashMap<CbContextKey, CbContextNode> = HashMap::default();
+    for shard in shards {
+        for node in &shard.nodes {
+            nodes_by_key
+                .entry(node.key.clone())
+                .and_modify(|existing| {
+                    for l in &node.labels {
+                        if !existing.labels.contains(l) {
+                            existing.labels.push(l.clone());
+                        }
+                    }
+                    existing.labels.sort();
+                    for r in &node.self_roles {
+                        if !existing.self_roles.contains(r) {
+                            existing.self_roles.push(r.clone());
+                        }
+                    }
+                    existing.self_roles.sort();
+                    for fr in &node.fwd_roles {
+                        if !existing.fwd_roles.contains(fr) {
+                            existing.fwd_roles.push(fr.clone());
+                        }
+                    }
+                    for br in &node.bwd_roles {
+                        if !existing.bwd_roles.contains(br) {
+                            existing.bwd_roles.push(br.clone());
+                        }
+                    }
+                    for se in &node.succ_edges {
+                        if !existing.succ_edges.iter().any(|(f, _)| *f == se.0) {
+                            existing.succ_edges.push(se.clone());
+                        }
+                    }
+                })
+                .or_insert_with(|| node.clone());
+        }
+    }
+
+    let mut ordered_keys: Vec<CbContextKey> = nodes_by_key.keys().cloned().collect();
+    ordered_keys.sort();
+
+    let mut key_to_elem: HashMap<CbContextKey, usize> = HashMap::default();
+    for (idx, k) in ordered_keys.iter().enumerate() {
+        key_to_elem.insert(k.clone(), idx);
+    }
+
+    let mut model_contexts: Vec<String> = Vec::with_capacity(ordered_keys.len());
+    let mut label_sets: Vec<HashSet<String>> = vec![HashSet::default(); ordered_keys.len()];
+    let mut edge_set: HashSet<(usize, String, usize)> = HashSet::default();
+
+    for (u, k) in ordered_keys.iter().enumerate() {
+        let node = &nodes_by_key[k];
+        let ctx_name = match k {
+            CbContextKey::Top => "⊤".to_string(),
+            CbContextKey::Query(q) => q.clone(),
+            CbContextKey::Core(_) => format!("__cb_ctx_{u}"),
+        };
+        for l in &node.labels {
+            if l.starts_with("__nom__") && l != &ctx_name {
+                return Err(
+                    "cb-horn declines nominal appearing in non-nominal context label".to_string(),
+                );
+            }
+            label_sets[u].insert(l.clone());
+        }
+        for r in &node.self_roles {
+            edge_set.insert((u, r.clone(), u));
+        }
+        let succ_map: HashMap<Term, usize> = node
+            .succ_edges
+            .iter()
+            .filter_map(|(f, tk)| key_to_elem.get(tk).map(|&v| (*f, v)))
+            .collect();
+        for (r, f) in &node.fwd_roles {
+            if let Some(&v) = succ_map.get(f) {
+                edge_set.insert((u, r.clone(), v));
+            }
+        }
+        for (r, f) in &node.bwd_roles {
+            if let Some(&v) = succ_map.get(f) {
+                edge_set.insert((v, r.clone(), u));
+            }
+        }
+        model_contexts.push(ctx_name);
+    }
+
+    // Restore root witness elements for query-equivalence aliases collapsed by
+    // Reasoner::collapse_mutual_unit_queries.
+    for (rep_name, members) in mutual_unit_groups {
+        let Some(&rep_u) = key_to_elem.get(&CbContextKey::Query(rep_name.clone())) else {
+            continue;
+        };
+        let rep_labels = label_sets[rep_u].clone();
+        let rep_out_edges: Vec<(String, usize)> = edge_set
+            .iter()
+            .filter(|(s, _, _)| *s == rep_u)
+            .map(|(_, r, t)| (r.clone(), *t))
+            .collect();
+        for member in members {
+            if member == rep_name
+                || key_to_elem.contains_key(&CbContextKey::Query(member.clone()))
+            {
+                continue;
+            }
+            let new_u = model_contexts.len();
+            key_to_elem.insert(CbContextKey::Query(member.clone()), new_u);
+            model_contexts.push(member.clone());
+            label_sets.push(rep_labels.clone());
+            for (r, t) in &rep_out_edges {
+                let target = if *t == rep_u { new_u } else { *t };
+                edge_set.insert((new_u, r.clone(), target));
+            }
+        }
+    }
+
+    let n_elems = model_contexts.len();
+    close_edges_under_rbox_rows(&input.rbox, n_elems, &mut edge_set)?;
+
+    let mut partial_reason = None;
+    match verify_clauses_on_cb_structure_until(
+        &input.clauses,
+        n_elems,
+        &label_sets,
+        &edge_set,
+        deadline,
+    ) {
+        Ok(()) => {}
+        Err(msg) if msg.contains("budget") => {
+            partial_reason = Some(msg);
+        }
+        Err(e) => return Err(e),
+    }
+
+    let labels: Vec<Vec<String>> = label_sets
+        .into_iter()
+        .map(|set| {
+            let mut v: Vec<String> = set.into_iter().collect();
+            v.sort();
+            v
+        })
+        .collect();
+    let mut edges: Vec<(usize, String, usize)> = edge_set.into_iter().collect();
+    edges.sort();
+
+    Ok(CbExportModel {
+        contexts: model_contexts,
+        labels,
+        edges,
+        inconsistent: false,
+        partial_reason,
+    })
+}
+
+pub(crate) fn cb_model(
+    input: &crate::json_io::JInput,
+    abox_inconsistent: bool,
+) -> Result<CbExportModel, String> {
+    use crate::json_io::{JAtom, JClause, JTerm};
+
+    if !input.rules.is_empty() || !input.cardinalities.is_empty() {
+        return Err("cb-horn declines SWRL rules and cardinality restrictions".to_string());
+    }
+    if abox_inconsistent {
+        return Ok(CbExportModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            inconsistent: true,
+            partial_reason: None,
+        });
+    }
+
+    let meta = &input.nominal_abox;
+    let mut clauses = input.clauses.clone();
+    let mut ids: HashMap<&str, usize> = HashMap::default();
+    let mut parent: Vec<usize> = Vec::new();
+    let mut root_noms: HashSet<String> = HashSet::default();
+    let mut extra_noms_for_root: HashMap<String, Vec<String>> = HashMap::default();
+
+    fn find(parent: &mut [usize], mut node: usize) -> usize {
+        let mut root = node;
+        while parent[root] != root {
+            root = parent[root];
+        }
+        while parent[node] != node {
+            let next = parent[node];
+            parent[node] = root;
+            node = next;
+        }
+        root
+    }
+
+    if !meta.is_empty() {
+        if !meta.complete || !meta.unsupported.is_empty() {
+            return Err("cb-horn declines incomplete or unsupported ABox".to_string());
+        }
+        ids = meta
+            .individuals
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| (entry.individual.as_str(), i))
+            .collect();
+        for (left, right) in meta.same.iter().chain(meta.different.iter()) {
+            if !ids.contains_key(left.as_str()) || !ids.contains_key(right.as_str()) {
+                return Err("cb-horn ABox identity endpoint missing".to_string());
+            }
+        }
+        for edge in meta
+            .role_assertions
+            .iter()
+            .chain(meta.negative_role_assertions.iter())
+        {
+            if !ids.contains_key(edge.source.as_str()) || !ids.contains_key(edge.target.as_str()) {
+                return Err("cb-horn ABox role endpoint missing".to_string());
+            }
+        }
+        parent = (0..ids.len()).collect();
+        for (left, right) in &meta.same {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l != r {
+                parent[r] = l;
+            }
+        }
+        for (left, right) in &meta.different {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l == r {
+                return Ok(CbExportModel {
+                    contexts: Vec::new(),
+                    labels: Vec::new(),
+                    edges: Vec::new(),
+                    inconsistent: true,
+                    partial_reason: None,
+                });
+            }
+        }
+        let mut nom_alias: HashMap<String, String> = HashMap::default();
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            if entry.assertions.len() != entry.assertion_markers.len() {
+                return Err("cb-horn ABox assertion marker mismatch".to_string());
+            }
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            let self_nom = format!("__nom__{}", entry.individual);
+            root_noms.insert(root_nom.clone());
+            extra_noms_for_root
+                .entry(root_nom.clone())
+                .or_default()
+                .push(self_nom.clone());
+            if self_nom != root_nom {
+                nom_alias.insert(self_nom, root_nom.clone());
+            }
+            for proxy in &entry.proxies {
+                if proxy != &root_nom {
+                    nom_alias.insert(proxy.clone(), root_nom.clone());
+                }
+            }
+        }
+        if !nom_alias.is_empty() {
+            for clause in &mut clauses {
+                for atom in clause.body.iter_mut().chain(clause.head.iter_mut()) {
+                    if let JAtom::Concept { concept, .. } = atom {
+                        if let Some(target) = nom_alias.get(concept.as_str()) {
+                            *concept = target.clone();
+                        }
+                    }
+                }
+            }
+        }
+        let var = || JTerm::Var {
+            name: "x".to_string(),
+        };
+        let concept = |name: String, term: JTerm| JAtom::Concept {
+            concept: name,
+            term,
+        };
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            for marker in &entry.assertion_markers {
+                clauses.push(JClause {
+                    body: vec![concept(root_nom.clone(), var())],
+                    head: vec![concept(marker.clone(), var())],
+                });
+            }
+        }
+        for (edge_index, edge) in meta.role_assertions.iter().enumerate() {
+            let source = find(&mut parent, ids[edge.source.as_str()]);
+            let target = find(&mut parent, ids[edge.target.as_str()]);
+            let source_nom = format!("__nom__{}", meta.individuals[source].individual);
+            let target_nom = format!("__nom__{}", meta.individuals[target].individual);
+            let fun = JTerm::Fun {
+                function: format!("__km_abox_edge_{edge_index}"),
+                arg: Box::new(var()),
+            };
+            clauses.push(JClause {
+                body: vec![concept(source_nom.clone(), var())],
+                head: vec![JAtom::Role {
+                    role: edge.role.clone(),
+                    source: var(),
+                    target: fun.clone(),
+                }],
+            });
+            clauses.push(JClause {
+                body: vec![concept(source_nom, var())],
+                head: vec![concept(target_nom, fun)],
+            });
+        }
+        for root_nom in &root_noms {
+            clauses.push(JClause {
+                body: vec![concept(root_nom.clone(), var())],
+                head: vec![concept(root_nom.clone(), var())],
+            });
+        }
+    }
+
+    let (mut sig, ont_clauses, max_z) = crate::reasoner::load_clauses_for_cb_model(&clauses)?;
+    sig.concept_succ_trigger.fill(true);
+    sig.forward_role_succ_trigger.fill(true);
+    sig.backward_role_succ_trigger.fill(true);
+    let mut engine = Engine::from_prepared(&Engine::prepare_opts(sig, ont_clauses, max_z, false));
+    let mut queries = engine.named_queries();
+    for rnom in &root_noms {
+        if let Some(pos) = engine.sig.concept_names.iter().position(|n| n == rnom) {
+            let iri = pos as Iri;
+            if !engine.sig.is_nothing_concept(iri) && !queries.contains(&iri) {
+                queries.push(iri);
+            }
+        }
+    }
+    queries.sort_unstable();
+    queries.dedup();
+    engine.run_for(&queries);
+
+    if engine.incomplete() {
+        return Err("cb-horn saturation truncated by message cap".to_string());
+    }
+
+    let is_ctx_unsat = |ctx: &Context| -> bool {
+        let arena = &engine.cc_arena[ctx.root as usize];
+        ctx.worked_off().iter().any(|ci| {
+            let c = &arena[ci as usize];
+            c.body.is_empty() && c.head.is_empty()
+        })
+    };
+
+    let mut inconsistent = engine.inconsistent();
+    if !inconsistent {
+        for rnom in &root_noms {
+            if let Some(pos) = engine.sig.concept_names.iter().position(|n| n == rnom) {
+                let iri = pos as Iri;
+                if engine.sig.is_nothing_concept(iri) {
+                    inconsistent = true;
+                    break;
+                }
+                if let Some(ctx) = engine
+                    .contexts
+                    .iter()
+                    .find(|c| c.root && c.query == Some(iri))
+                {
+                    if is_ctx_unsat(ctx) {
+                        inconsistent = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if inconsistent {
+        return Ok(CbExportModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            inconsistent: true,
+            partial_reason: None,
+        });
+    }
+
+    let mut reachable: HashSet<usize> = HashSet::default();
+    let mut queue: VecDeque<usize> = VecDeque::new();
+    for ctx in &engine.contexts {
+        if Some(ctx.id) == engine.ground_ctx {
+            continue;
+        }
+        if ctx.root && (ctx.core.is_empty() || ctx.query.is_some()) && !is_ctx_unsat(ctx) {
+            if reachable.insert(ctx.id) {
+                queue.push_back(ctx.id);
+            }
+        }
+    }
+    while let Some(cid) = queue.pop_front() {
+        let ctx = &engine.contexts[cid];
+        for &succ_id in ctx.successors.values() {
+            let sctx = &engine.contexts[succ_id];
+            if !is_ctx_unsat(sctx) && reachable.insert(succ_id) {
+                queue.push_back(succ_id);
+            }
+        }
+    }
+
+    let mut ordered_ctx_ids: Vec<usize> = reachable.into_iter().collect();
+    ordered_ctx_ids.sort_by_key(|&cid| {
+        let ctx = &engine.contexts[cid];
+        let is_top = ctx.root && ctx.core.is_empty();
+        let query_name = ctx
+            .query
+            .map(|q| engine.sig.concept_names[q as usize].as_str())
+            .unwrap_or("");
+        (!is_top, !ctx.root, query_name, cid)
+    });
+
+    let mut ctx_to_elem: HashMap<usize, usize> = HashMap::default();
+    for (idx, &cid) in ordered_ctx_ids.iter().enumerate() {
+        ctx_to_elem.insert(cid, idx);
+    }
+
+    let n_elems = ordered_ctx_ids.len();
+    let mut model_contexts: Vec<String> = Vec::with_capacity(n_elems);
+    let mut label_sets: Vec<HashSet<String>> = vec![HashSet::default(); n_elems];
+    let mut edge_set: HashSet<(usize, String, usize)> = HashSet::default();
+
+    for (u, &cid) in ordered_ctx_ids.iter().enumerate() {
+        let ctx = &engine.contexts[cid];
+        let ctx_name = if ctx.root && ctx.core.is_empty() {
+            "⊤".to_string()
+        } else if let Some(q) = ctx.query {
+            engine.sig.concept_names[q as usize].clone()
+        } else {
+            format!("__cb_ctx_{cid}")
+        };
+        for p in &ctx.core {
+            match *p {
+                Pred::Concept { iri, t } if is_central(t) => {
+                    let cname = &engine.sig.concept_names[iri as usize];
+                    if !matches!(cname.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                        label_sets[u].insert(cname.clone());
+                    }
+                }
+                Pred::Role { iri, s, t } if is_central(s) && is_central(t) => {
+                    edge_set.insert((u, engine.sig.role_names[iri as usize].clone(), u));
+                }
+                _ => {}
+            }
+        }
+        let arena = &engine.cc_arena[ctx.root as usize];
+        for ci in ctx.worked_off().iter() {
+            let c = &arena[ci as usize];
+            if c.body.is_empty() && c.head.len() == 1 {
+                match c.head[0] {
+                    Lit::P(Pred::Concept { iri, t }) if is_central(t) => {
+                        let cname = &engine.sig.concept_names[iri as usize];
+                        if !matches!(cname.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                            label_sets[u].insert(cname.clone());
+                        }
+                    }
+                    Lit::P(Pred::Role { iri, s, t }) if is_central(s) && is_central(t) => {
+                        edge_set.insert((u, engine.sig.role_names[iri as usize].clone(), u));
+                    }
+                    Lit::P(Pred::Role { iri, s, t }) if is_central(s) && is_function(t) => {
+                        if let Some(&succ_cid) = ctx.successors.get(&t) {
+                            if let Some(&v) = ctx_to_elem.get(&succ_cid) {
+                                edge_set.insert((
+                                    u,
+                                    engine.sig.role_names[iri as usize].clone(),
+                                    v,
+                                ));
+                            }
+                        }
+                    }
+                    Lit::P(Pred::Role { iri, s, t }) if is_function(s) && is_central(t) => {
+                        if let Some(&succ_cid) = ctx.successors.get(&s) {
+                            if let Some(&v) = ctx_to_elem.get(&succ_cid) {
+                                edge_set.insert((
+                                    v,
+                                    engine.sig.role_names[iri as usize].clone(),
+                                    u,
+                                ));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for item in &label_sets[u] {
+            if item.starts_with("__nom__") && item != &ctx_name {
+                return Err(
+                    "cb-horn declines nominal appearing in non-nominal context label".to_string(),
+                );
+            }
+        }
+        if let Some(extras) = extra_noms_for_root.get(&ctx_name) {
+            for extra in extras {
+                label_sets[u].insert(extra.clone());
+            }
+        }
+        model_contexts.push(ctx_name);
+    }
+
+    close_edges_under_rbox_rows(&input.rbox, n_elems, &mut edge_set)?;
+
+    let elem_of_ctx_name: HashMap<&str, usize> = model_contexts
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.as_str(), i))
+        .collect();
+    for (left, right) in &meta.different {
+        let l_root = find(&mut parent, ids[left.as_str()]);
+        let r_root = find(&mut parent, ids[right.as_str()]);
+        let l_nom = format!("__nom__{}", meta.individuals[l_root].individual);
+        let r_nom = format!("__nom__{}", meta.individuals[r_root].individual);
+        if let (Some(&lu), Some(&ru)) = (
+            elem_of_ctx_name.get(l_nom.as_str()),
+            elem_of_ctx_name.get(r_nom.as_str()),
+        ) {
+            if lu == ru || label_sets[lu].contains(&r_nom) || label_sets[ru].contains(&l_nom) {
+                return Err("cb-horn DifferentIndividuals violated".to_string());
+            }
+        }
+    }
+    for neg in &meta.negative_role_assertions {
+        let s_root = find(&mut parent, ids[neg.source.as_str()]);
+        let t_root = find(&mut parent, ids[neg.target.as_str()]);
+        let s_nom = format!("__nom__{}", meta.individuals[s_root].individual);
+        let t_nom = format!("__nom__{}", meta.individuals[t_root].individual);
+        if let (Some(&su), Some(&tu)) = (
+            elem_of_ctx_name.get(s_nom.as_str()),
+            elem_of_ctx_name.get(t_nom.as_str()),
+        ) {
+            if edge_set.contains(&(su, neg.role.clone(), tu)) {
+                return Err("cb-horn NegativeObjectPropertyAssertion violated".to_string());
+            }
+        }
+    }
+
+    verify_clauses_on_cb_structure(&clauses, n_elems, &label_sets, &edge_set)?;
+
+    let labels: Vec<Vec<String>> = label_sets
+        .into_iter()
+        .map(|set| {
+            let mut v: Vec<String> = set.into_iter().collect();
+            v.sort();
+            v
+        })
+        .collect();
+    let mut edges: Vec<(usize, String, usize)> = edge_set.into_iter().collect();
+    edges.sort();
+
+    Ok(CbExportModel {
+        contexts: model_contexts,
+        labels,
+        edges,
+        inconsistent: false,
+        partial_reason: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn minimal_core_retains_cycle_generator_and_unproved_constraints() {
+        let _test_env = crate::test_env::read();
         Engine::check_minimal_core_example();
     }
 
     #[test]
     fn inter_context_message_uses_compact_context_endpoints() {
+        let _test_env = crate::test_env::read();
         assert_eq!(std::mem::size_of::<MsgContext>(), 4);
         assert_eq!(std::mem::size_of::<Msg>(), 28);
         assert_eq!(pack_msg_context(u32::MAX as usize), u32::MAX);
@@ -10633,6 +12776,7 @@ mod tests {
 
     #[test]
     fn compact_posting_preserves_order_across_inline_and_spill() {
+        let _test_env = crate::test_env::read();
         assert_eq!(std::mem::size_of::<Posting>(), 16);
         let mut posting = Posting::default();
         assert!(posting.is_empty());
@@ -10660,6 +12804,7 @@ mod tests {
 
     #[test]
     fn compact_trigger_set_is_sorted_and_unique() {
+        let _test_env = crate::test_env::read();
         let mut set = Vec::new();
         let predicates = [cx(3, X), cx(1, X), cx(2, X), cx(1, X)];
         assert!(sorted_pred_insert(&mut set, predicates[0]));
@@ -10691,6 +12836,7 @@ mod tests {
     /// a function (which is all Hyper's resolvents depend on) fails the test.
     #[test]
     fn central_subst_matches_hashmap_oracle() {
+        let _test_env = crate::test_env::read();
         use std::collections::HashMap;
 
         // Reference: what the old HashMap-backed `add` would store/decide.
@@ -10797,6 +12943,7 @@ mod tests {
     /// ungrounded central binding never accepts an individual image.
     #[test]
     fn central_subst_identity_and_ground_gate() {
+        let _test_env = crate::test_env::read();
         let mut subst = CentralSubst::new(false);
         for &t in &[X, Y, zvar(1), ind_term(1), fterm(1)] {
             assert_eq!(subst.apply(t), t);
@@ -10820,6 +12967,7 @@ mod tests {
 
     #[test]
     fn nominal_blocks_reuse_only_the_exact_firing() {
+        let _test_env = crate::test_env::read();
         let mut engine = Engine::new(Sig::default(), Vec::new(), 0);
         engine.nom_budget = 4;
         let key = NomFiringKey {
@@ -10852,6 +13000,7 @@ mod tests {
 
     #[test]
     fn nominal_covers_share_block_when_body_and_kept_head_are_strengthened() {
+        let _test_env = crate::test_env::read();
         let mut engine = Engine::new(Sig::default(), Vec::new(), 0);
         engine.nom_budget = 2;
         let key1 = NomFiringKey {
@@ -10923,6 +13072,7 @@ mod tests {
     /// in-place join derive the same resolvents the clone-per-candidate join did.
     #[test]
     fn central_subst_mark_rollback_restores_like_clone() {
+        let _test_env = crate::test_env::read();
         let probes = [
             X,
             Y,
@@ -10979,6 +13129,7 @@ mod tests {
     /// determines every resolvent `build_hyper_resolvent` emits.
     #[test]
     fn hyper_join_trail_matches_clone_join() {
+        let _test_env = crate::test_env::read();
         // Leaf record: the substitution as a function over a fixed probe set.
         fn leaf(sigma: &CentralSubst) -> Vec<Term> {
             [X, Y, zvar(1), zvar(2), zvar(3), ind_term(1), fterm(1)]
@@ -11270,6 +13421,7 @@ mod tests {
     /// the genuine witnesses.
     #[test]
     fn hyper_narrowing_matches_generic_join_on_qualified_at_most() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let g = sig.concept("G");
         let c = sig.concept("C");
@@ -11350,6 +13502,7 @@ mod tests {
     /// differential tests alone would happily accept).
     #[test]
     fn reduce_hyper_candidates_keeps_exactly_the_witnesses() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let c = sig.concept("C");
         let r = sig.role("r");
@@ -11394,6 +13547,7 @@ mod tests {
     /// walk the product.
     #[test]
     fn reduce_hyper_candidates_detects_the_empty_join() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let c = sig.concept("C");
         let r = sig.role("r");
@@ -11420,6 +13574,7 @@ mod tests {
     /// the cardinality test above is the shape that motivated it.
     #[test]
     fn hyper_narrowing_matches_generic_join_property() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         for name in ["C0", "C1", "C2"] {
             sig.concept(name);
@@ -11542,6 +13697,7 @@ mod tests {
     /// narrowing on and off.
     #[test]
     fn hyper_narrowing_preserves_saturation_output() {
+        let _test_env = crate::test_env::read();
         let build = || {
             let mut sig = Sig::default();
             let a = sig.concept("A");
@@ -11592,6 +13748,7 @@ mod tests {
     /// as candidates and so silently alter derivability.
     #[test]
     fn back_subsume_incremental_unindex_matches_rebuild() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11652,6 +13809,7 @@ mod tests {
     /// strengthened away; the incremental index must again match the rebuild.
     #[test]
     fn back_subsume_incremental_unindex_matches_rebuild_roles() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11707,6 +13865,7 @@ mod tests {
     /// derived subsumption must be unchanged.
     #[test]
     fn disjunct_strengthening_backsubsumes_and_derives() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11733,6 +13892,7 @@ mod tests {
     /// which is then B1 ⊓ B2, so A ⊑ C.
     #[test]
     fn nom_rule_oiq_example3() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b1 = sig.concept("B1");
@@ -11783,6 +13943,7 @@ mod tests {
     /// invariant: the duplicate `Vec<Pred>` key is gone, dedup is unchanged.
     #[test]
     fn context_core_interning_dedup() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11826,6 +13987,7 @@ mod tests {
     /// successors need not merge, so A ⊑ C must NOT be derived.
     #[test]
     fn nom_rule_no_counting_no_merge() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b1 = sig.concept("B1");
@@ -11865,6 +14027,7 @@ mod tests {
     /// the filler definers imply x ≈ o).
     #[test]
     fn nominal_filler_merge() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11911,6 +14074,7 @@ mod tests {
     /// a role without the self loop must stay unaffected.
     #[test]
     fn hyper_pairs_a_self_loop_head_with_itself() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11947,6 +14111,7 @@ mod tests {
     /// never derived `s(a,c)`, `s(b,c)` (fuzz case mm_21_138_4).
     #[test]
     fn ground_context_grounds_top_facts_at_individuals() {
+        let _test_env = crate::test_env::read();
         fn run(top_fact: bool) -> bool {
             let mut sig = Sig::default();
             let q = sig.concept("Q0");
@@ -11982,6 +14147,7 @@ mod tests {
     /// resolves to `→ E(x)`.
     #[test]
     fn class_trigger_subsumption_drops_inverse_hypothesis_exactly() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let c = sig.concept("C");
@@ -12018,6 +14184,7 @@ mod tests {
     /// Eq turns it into `A1 ⊑ A5`.
     #[test]
     fn merge_tied_context_receives_ground_facts_of_its_individual() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a1 = sig.concept("A1");
         let a5 = sig.concept("A5");
@@ -12044,6 +14211,7 @@ mod tests {
 
     #[test]
     fn central_core_excludes_conditional_triggers() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let e = sig.concept("E");
@@ -12091,6 +14259,7 @@ mod tests {
 
     #[test]
     fn guarded_role_hyper_index_preserves_absorbed_existential() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let c = sig.concept("C");
@@ -12126,6 +14295,7 @@ mod tests {
     /// is both B and C — A is unsatisfiable.
     #[test]
     fn nominal_ground_clash() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -12152,6 +14322,7 @@ mod tests {
 
     #[test]
     fn asserted_ground_equality_merge_transfers_labels_and_links() {
+        let _test_env = crate::test_env::read();
         let a = ind_term(1);
         let alias = ind_term(2);
         let other = ind_term(3);
@@ -12198,6 +14369,7 @@ mod tests {
 
     #[test]
     fn asserted_same_and_different_individuals_collapse_to_clash() {
+        let _test_env = crate::test_env::read();
         let a = ind_term(1);
         let alias = ind_term(2);
         let clauses = vec![
@@ -12212,6 +14384,7 @@ mod tests {
 
     #[test]
     fn disjunctive_ground_equality_is_not_an_asserted_merge() {
+        let _test_env = crate::test_env::read();
         let a = ind_term(1);
         let b = ind_term(2);
         let clauses = vec![OntologyClause::new(
@@ -12226,6 +14399,7 @@ mod tests {
 
     #[test]
     fn ground_hyper_uses_bound_role_endpoints_without_order_dependence() {
+        let _test_env = crate::test_env::read();
         fn run(facts_reversed: bool) {
             let mut sig = Sig::default();
             let c = sig.concept("C");
@@ -12285,6 +14459,7 @@ mod tests {
 
     #[test]
     fn resource_backstops_mark_the_engine_incomplete() {
+        let _test_env = crate::test_env::read();
         let mut e = Engine::new(Sig::default(), Vec::new(), 0);
         assert!(!e.incomplete());
         e.message_truncated = true;
@@ -12296,6 +14471,7 @@ mod tests {
 
     #[test]
     fn exact_max_head_pred_index_separates_terms() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let p1 = cx(7, fterm(1));
         let p2 = cx(7, fterm(2));
@@ -12325,6 +14501,7 @@ mod tests {
 
     #[test]
     fn max_head_term_index_matches_sequoia_eq_lookup() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let f1 = fterm(1);
         let f2 = fterm(2);
@@ -12359,6 +14536,7 @@ mod tests {
 
     #[test]
     fn sequoia_active_redundancy_index_matches_linear_subsumption() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let o = ind_term(1);
         let p1 = cx(1, o);
@@ -12475,6 +14653,7 @@ mod tests {
     /// screen fixpoint-preserving rather than merely fast.
     #[test]
     fn clause_sig_screen_never_rejects_a_genuine_subsumer() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         for &root in &[false, true] {
             let pop = screen_population(&sig, root, 400);
@@ -12505,6 +14684,7 @@ mod tests {
     /// majority of candidates without consulting the clause.
     #[test]
     fn clause_sig_screen_rejects_most_non_subsumers() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let pop = screen_population(&sig, false, 200);
         let sigs = sigs_of(&pop);
@@ -12533,6 +14713,7 @@ mod tests {
     /// included.
     #[test]
     fn screened_fwd_subsumed_matches_unscreened_linear_scan() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let arena = screen_population(&sig, false, 240);
         let sigs = sigs_of(&arena);
@@ -12582,6 +14763,7 @@ mod tests {
     /// removal sets are compared for equality, not inclusion.
     #[test]
     fn screened_back_subsume_removes_the_same_clauses() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let arena = screen_population(&sig, false, 200);
         let sigs = sigs_of(&arena);
@@ -12624,6 +14806,7 @@ mod tests {
     /// so a drift here would mis-screen (or panic) rather than fail loudly.
     #[test]
     fn clause_sig_array_mirrors_the_clause_arena() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             OntologyClause::new(vec![cx(1, X)], vec![Lit::P(cx(2, X))]),
             OntologyClause::new(vec![cx(2, X)], vec![Lit::P(cx(3, X)), Lit::P(cx(4, X))]),
@@ -12659,6 +14842,7 @@ mod tests {
 
     #[test]
     fn sequoia_redundancy_trie_removes_exact_supersets() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let a = cx(1, X);
         let b = cx(2, X);
@@ -12686,6 +14870,7 @@ mod tests {
 
     #[test]
     fn local_pred_pins_triggering_clause_like_sequoia() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -12755,6 +14940,7 @@ mod tests {
 
     #[test]
     fn incremental_pred_join_matches_sequoia_cartesian_antichain() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let p1 = cx(sig.concept("P1"), X);
         let p2 = cx(sig.concept("P2"), X);
@@ -12823,6 +15009,7 @@ mod tests {
     /// on ORE 1194: several premises each with many incomparable providers.
     #[test]
     fn local_pred_left_deep_join_matches_full_product_antichain() {
+        let _test_env = crate::test_env::read();
         let canonical = |clauses: Vec<ContextClause>| {
             clauses
                 .into_iter()
@@ -12928,6 +15115,7 @@ mod tests {
     /// wildly different amounts of work and must still agree.
     #[test]
     fn local_pred_join_matches_product_on_a_wide_premise_set() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let premises: Vec<Pred> = (0..3)
             .map(|i| cx(sig.concept(&format!("P{i}")), X))
@@ -12997,6 +15185,7 @@ mod tests {
 
     #[test]
     fn pred_payload_normalizes_substitution_collisions() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13024,6 +15213,7 @@ mod tests {
     /// atom that is already ground (`L(o')`) is a label `C_i` and is copied.
     #[test]
     fn composite_edge_pred_resolves_premises_and_copies_labels() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13074,6 +15264,7 @@ mod tests {
     /// scan over every active clause, under insertions and removals.
     #[test]
     fn forward_subsumption_postings_match_a_full_scan() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
         let mut next = |n: u64| {
@@ -13115,6 +15306,7 @@ mod tests {
 
     #[test]
     fn pred_result_buffer_keeps_a_strengthening_antichain() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let a = Lit::P(cx(1, X));
         let b = cx(2, X);
@@ -13151,6 +15343,7 @@ mod tests {
 
     #[test]
     fn pred_result_buffer_reuses_slots_and_preserves_survivor_order() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let a = Lit::P(cx(1, X));
         let c = Lit::P(cx(3, X));
@@ -13176,6 +15369,7 @@ mod tests {
 
     #[test]
     fn nominal_enumeration_reuses_complete_ground_labels() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13220,6 +15414,7 @@ mod tests {
 
     #[test]
     fn nominal_enumeration_requires_the_reverse_union_proof() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let q = sig.concept("Q_0");
@@ -13243,6 +15438,7 @@ mod tests {
 
     #[test]
     fn back_subsumption_deactivates_pending_pred_push() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let a = Lit::P(cx(1, X));
         let b = cx(2, X);
@@ -13299,6 +15495,7 @@ mod rsucc_rolechain_tests {
     // ---- Test 1 (crux): delta reach extraction == full rescan, every split. ----
     #[test]
     fn rsucc_reach_delta_equals_full_rescan() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let t1 = sig.concept("__trans__R__A"); // reach
         let t2 = sig.concept("__trans__R__B"); // reach
@@ -13395,6 +15592,7 @@ mod rsucc_rolechain_tests {
     // ---- Test 2: transitive witness. ∃R.C ⊑ D over transitive R, two R-hops. --
     #[test]
     fn transitive_witness_answer_invariant() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13426,6 +15624,7 @@ mod rsucc_rolechain_tests {
     // ---- Test 3: chain witness. R∘S ⊑ T, consumer ∃T.C ⊑ D. ----
     #[test]
     fn chain_witness_answer_invariant() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13456,6 +15655,7 @@ mod rsucc_rolechain_tests {
     //      the delta scan runs over an ontology carrying inverse back-edges. ----
     #[test]
     fn inverse_witness_answer_invariant() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13491,6 +15691,7 @@ mod rsucc_rolechain_tests {
     //      existential ⇒ the subject is unsatisfiable. ----
     #[test]
     fn domain_range_witness_answer_invariant() {
+        let _test_env = crate::test_env::read();
         // domain: A ⊑ ∃R.B, domain(R)=D  ⟹  A ⊑ D
         let mut sig = Sig::default();
         let a = sig.concept("A");
@@ -13564,6 +15765,7 @@ mod rsucc_rolechain_tests {
     //      ⇒ identical emitted messages ⇒ identical fixpoint. ----
     #[test]
     fn rsucc_cross_delta_equals_full_rescan() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let r0 = cx(sig.concept("__trans__R__A"), X);
         let r1 = cx(sig.concept("__trans__R__B"), X);
@@ -13610,10 +15812,12 @@ mod rsucc_rolechain_tests {
         for (succ, reach) in &rounds {
             full_fired.extend(full_round(succ, reach, &mut full_pushed));
             delta_fired.extend(rsucc_cross_step(
+                &Sig::default(),
                 succ,
                 reach,
                 &mut delta_hwm,
                 &mut delta_pushed,
+                &[],
             ));
         }
 
@@ -13694,20 +15898,24 @@ mod rsucc_rolechain_tests {
 
             // Reference: cross-step every round.
             u_fired.extend(rsucc_cross_step(
+                &Sig::default(),
                 &successors,
                 &u_reach,
                 &mut u_hwm,
                 &mut u_pushed,
+                &[],
             ));
 
             // Gated: cross-step only on a genuine delta.
             let reach_len = g_reach.len();
             if edges_grew || reach_len > offered {
                 g_fired.extend(rsucc_cross_step(
+                    &Sig::default(),
                     &successors,
                     &g_reach,
                     &mut g_hwm,
                     &mut g_pushed,
+                    &[],
                 ));
                 offered = reach_len;
                 edges_grew = false;
@@ -13734,6 +15942,7 @@ mod rsucc_rolechain_tests {
     //      sequences ⇒ identical `Msg::Succ` emission ⇒ identical fixpoint. ----
     #[test]
     fn rsucc_driver_gate_equals_unconditional() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let r0 = cx(sig.concept("__trans__R__A"), X);
         let r1 = cx(sig.concept("__trans__R__B"), X);
@@ -13786,6 +15995,7 @@ mod rsucc_rolechain_tests {
     #[test]
     #[ignore]
     fn rsucc_driver_gate_microbench() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let reach_preds: Vec<Pred> = (0..8)
             .map(|i| cx(sig.concept(&format!("__trans__R__C{i}")), X))
@@ -14049,6 +16259,7 @@ mod base_delta_tests {
 
     #[test]
     fn shared_seed_preserves_nominal_pred_equalities() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let nominal = ind_term(1);
         let arena = vec![ContextClause::new(
@@ -14099,6 +16310,7 @@ mod base_delta_tests {
     /// pending deactivations, must agree on every observable after every step.
     #[test]
     fn base_layer_matches_flat_representation() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let arena = population(&sig, 220, 0x2545_f491_4f6c_dd1d);
         let sigs = sigs_of(&arena);
@@ -14305,6 +16517,7 @@ mod base_delta_tests {
     /// so the representation is checked directly.
     #[test]
     fn a_masked_base_clause_reenters_at_the_end_like_the_flat_representation() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -14354,6 +16567,7 @@ mod base_delta_tests {
     /// the base's Pred/Succ pools deliberately retain back-subsumed entries.
     #[test]
     fn subset_seed_materialization_reproduces_the_flat_seed_sequence() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let arena = population(&sig, 90, 0x9e37_79b9_7f4a_7c15);
         let sigs = sigs_of(&arena);
@@ -14447,6 +16661,7 @@ mod base_delta_tests {
     /// attached, not re-derived, so context creation is unchanged too).
     #[test]
     fn shared_base_classification_matches_flat() {
+        let _test_env = crate::test_env::read();
         let (sig, clauses) = sample_ontology();
         let run = |base_layer: bool, seed_from_subset: bool| {
             let mut e = Engine::new(sig.clone(), clauses.clone(), 0);

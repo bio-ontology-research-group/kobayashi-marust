@@ -1,0 +1,6 @@
+Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/n>
+Declaration(Class(:C)) Declaration(Class(:E)) Declaration(Class(:K)) Declaration(ObjectProperty(:t)) Declaration(ObjectProperty(:u)) Declaration(NamedIndividual(:a5)) Declaration(NamedIndividual(:b))
+DisjointClasses(:E :C)
+SubClassOf(ObjectSomeValuesFrom(:t ObjectOneOf(:a5)) :E) ClassAssertion(ObjectSomeValuesFrom(ObjectInverseOf(:t) :C) :a5)
+)

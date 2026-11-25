@@ -242,6 +242,8 @@ public class ExplanationGeneratorTest {
         manager.addAxiom(ontology, first);
 
         KMReasoner reasoner = (KMReasoner) new KMReasonerFactory().createReasoner(ontology);
+        // The first revision is committed on first use (Protege precomputes right away).
+        reasoner.precomputeInferences(org.semanticweb.owlapi.reasoner.InferenceType.CLASS_HIERARCHY);
         manager.addAxiom(ontology, pending);
         assertTrue(reasoner.getPendingAxiomAdditions().contains(pending));
         assertTrue(reasoner.createExplanationGenerator()

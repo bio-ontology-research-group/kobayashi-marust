@@ -640,6 +640,7 @@ mod tests {
 
     #[test]
     fn cache_value_hasher_hash_resolves_arena_value() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let value = CacheValue::new_value(17, 23, CacheValueIdentifier::CacheValTagAndRole);
         let value_id = ctx.alloc_cache_value(value);
@@ -650,6 +651,7 @@ mod tests {
 
     #[test]
     fn cache_value_hasher_equality_is_by_resolved_value() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let first = ctx.alloc_cache_value(CacheValue::new_value(
             11,

@@ -292,6 +292,7 @@ fn inconsistency_witness_with(text: &str, scanned: &Scan, budget_seconds: f64,
 struct Taxonomy {
     consistent: bool,
     dropped: usize,
+    lenient: Arc<[String]>,
     iris: Vec<Arc<str>>,
     /// JSON string encoding of each IRI.
     escaped: Vec<Arc<str>>,
@@ -311,6 +312,7 @@ impl Taxonomy {
         Taxonomy {
             consistent: true,
             dropped: 0,
+            lenient: Arc::from([]),
             iris: Vec::new(),
             escaped: Vec::new(),
             ids: FxHashMap::default(),
@@ -429,7 +431,12 @@ impl Taxonomy {
             if k > 0 { w.write_all(b",")?; }
             w.write_all(self.escaped[*u as usize].as_bytes())?;
         }
-        w.write_all(b"]}")
+        w.write_all(b"]")?;
+        if !self.lenient.is_empty() {
+            w.write_all(b",\"lenient\":")?;
+            serde_json::to_writer(&mut *w, &*self.lenient).map_err(std::io::Error::other)?;
+        }
+        w.write_all(b"}")
     }
 
     fn write_json<W: Write>(&self, w: &mut W) -> std::io::Result<()> {
@@ -491,7 +498,12 @@ impl Taxonomy {
             }
             w.write_all(escaped[*u as usize].as_bytes())?;
         }
-        write!(w, "],\"dropped\":{}}}", self.dropped)
+        write!(w, "],\"dropped\":{}", self.dropped)?;
+        if !self.lenient.is_empty() {
+            w.write_all(b",\"lenient\":")?;
+            serde_json::to_writer(&mut *w, &*self.lenient).map_err(std::io::Error::other)?;
+        }
+        w.write_all(b"}")
     }
 }
 
@@ -690,7 +702,18 @@ fn verified_source_support_with(source: &Arc<Statements>, scanned: &Scan,
         || answer.get("consistent") != Some(&serde_json::Value::Bool(false))
         || answer.get("dropped").and_then(serde_json::Value::as_u64) != Some(0)
     { return None; }
-    InconsistencyCertificate::from_verified_inconsistent(source.clone(), Some(proposal))
+    let has_unsat_field = answer.get("unsatisfiable").is_some();
+    let cert = InconsistencyCertificate::from_verified_inconsistent(source.clone(), Some(proposal))?;
+    if has_unsat_field {
+        INCONSISTENCY_SUPPORT_HAS_UNSAT.with(|flag| flag.set(true));
+    } else {
+        INCONSISTENCY_SUPPORT_HAS_UNSAT.with(|flag| flag.set(false));
+    }
+    Some(cert)
+}
+
+thread_local! {
+    static INCONSISTENCY_SUPPORT_HAS_UNSAT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 struct Revision {
@@ -1389,6 +1412,30 @@ impl Session {
 
     /// Classify one complete revision (init or replace).
     fn update(&mut self, text: String) -> Result<(Arc<Taxonomy>, Receipt), String> {
+        let (text, lenient_notes) = if crate::frontend::lenient::enabled() {
+            let (rewritten, notes) = crate::frontend::lenient::rewrite_source(&text)?;
+            (rewritten.into_owned(), notes)
+        } else {
+            (text, Vec::new())
+        };
+        let (mut tax, receipt) = if crate::frontend::lenient::has_escaped_iri(&text) {
+            self.full_without_reuse(Arc::new(text), Instant::now(), "lenient IRI escape")?
+        } else {
+            self.update_inner(text)?
+        };
+        if !lenient_notes.is_empty() && tax.lenient.is_empty() {
+            let mut copy = (*tax).clone();
+            copy.lenient = lenient_notes.into();
+            copy.rendered = std::sync::OnceLock::new();
+            tax = Arc::new(copy);
+            if let Some(cur) = self.current {
+                self.memo[cur].taxonomy = tax.clone();
+            }
+        }
+        Ok((tax, receipt))
+    }
+
+    fn update_inner(&mut self, text: String) -> Result<(Arc<Taxonomy>, Receipt), String> {
         let started = Instant::now();
         self.validated_new = false;
         let mut preparation = PreparationWork::default();
@@ -1689,6 +1736,14 @@ impl Session {
                 if let Some(certificate) = early_object_support_with(new, scanned, &mut verify_support) {
                     let old_total = self.memo[bi].statements.as_ref().expect("selected statements").total;
                     let mut tax = Taxonomy::empty(); tax.consistent = false;
+                    if INCONSISTENCY_SUPPORT_HAS_UNSAT.with(|flag| flag.replace(false)) {
+                        if let Ok(classes) = crate::orchestrate::inconsistent_unsatisfiable_classes_from_text(&new.text) {
+                            for c in classes {
+                                let id = tax.id(&c);
+                                tax.unsat.insert(id);
+                            }
+                        }
+                    }
                     let mut receipt = Receipt { strategy: "verified_inconsistency_support",
                         base_revision_statements: old_total, ..Default::default() };
                     receipt.apply_delta(delta);
@@ -1870,6 +1925,14 @@ impl Session {
             if delta.added_axioms != 0 {
                 if let Some(certificate) = early_object_support_with(new, scanned, &mut verify_support) {
                     let mut tax = Taxonomy::empty(); tax.consistent = false;
+                    if INCONSISTENCY_SUPPORT_HAS_UNSAT.with(|flag| flag.replace(false)) {
+                        if let Ok(classes) = crate::orchestrate::inconsistent_unsatisfiable_classes_from_text(&new.text) {
+                            for c in classes {
+                                let id = tax.id(&c);
+                                tax.unsat.insert(id);
+                            }
+                        }
+                    }
                     let mut receipt = Receipt { strategy: "verified_inconsistency_support",
                         base_revision_statements: old.total, ..Default::default() };
                     receipt.apply_delta(delta);
@@ -2743,10 +2806,24 @@ fn replace_rows(tax: &mut Taxonomy, fresh: &Taxonomy, subjects: &[&str]) {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
-    Init { functional_syntax: String },
+    Init {
+        functional_syntax: String,
+        #[serde(default)]
+        unknown_datatypes: Option<String>,
+        #[serde(default)]
+        lenient: Option<bool>,
+    },
     /// `base_revision`: the revision whose answer the client already holds. When it
     /// equals the last published revision the answer is sent as a row delta.
-    Replace { functional_syntax: String, #[serde(default)] base_revision: Option<u64> },
+    Replace {
+        functional_syntax: String,
+        #[serde(default)]
+        base_revision: Option<u64>,
+        #[serde(default)]
+        unknown_datatypes: Option<String>,
+        #[serde(default)]
+        lenient: Option<bool>,
+    },
     Classify,
     Stats,
 }
@@ -2768,19 +2845,46 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
         let request_started = Instant::now();
         match serde_json::from_str::<Command>(&line) {
             Ok(command @ (Command::Init { .. } | Command::Replace { .. })) => {
-                let (functional_syntax, base_revision) = match command {
-                    Command::Init { functional_syntax } => (functional_syntax, None),
-                    Command::Replace { functional_syntax, base_revision } => (functional_syntax, base_revision),
+                let (functional_syntax, base_revision, unknown_datatypes, lenient) = match command {
+                    Command::Init { functional_syntax, unknown_datatypes, lenient } => {
+                        (functional_syntax, None, unknown_datatypes, lenient)
+                    }
+                    Command::Replace { functional_syntax, base_revision, unknown_datatypes, lenient } => {
+                        (functional_syntax, base_revision, unknown_datatypes, lenient)
+                    }
                     _ => unreachable!(),
                 };
                 drop(line);
+                let op = if session.current.is_none() { "init" } else { "replace" };
+                if let Some(flag) = lenient {
+                    if flag {
+                        std::env::set_var("KM_LENIENT", "1");
+                    } else {
+                        std::env::remove_var("KM_LENIENT");
+                    }
+                }
+                if let Some(mode) = unknown_datatypes.as_deref() {
+                    match mode {
+                        "strict" => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
+                        "free" => std::env::set_var("KM_UNKNOWN_DATATYPES", "free"),
+                        other => {
+                            write_error(
+                                &mut writer,
+                                op,
+                                &format!("unknown_datatypes takes strict or free, got {other:?}"),
+                            )?;
+                            writer.write_all(b"\n")?;
+                            writer.flush()?;
+                            continue;
+                        }
+                    }
+                }
                 let delta_base = match (&published, base_revision) {
                     (Some((revision, tax)), Some(base)) if *revision == base && session.revision == base
                         && session.current.is_some() => Some(tax.clone()),
                     _ => None,
                 };
                 stage("request parsed", request_started);
-                let op = if session.current.is_none() { "init" } else { "replace" };
                 match session.update(functional_syntax) {
                     Ok((tax, receipt)) => {
                         stage("update returned", request_started);
@@ -2854,6 +2958,7 @@ mod tests {
 
     #[test]
     fn taxonomy_json_round_trips_rows_and_unsatisfiable() {
+        let _test_env = crate::test_env::write();
         let rows = TaxonomyRows {
             consistent: true,
             dropped: 0,
@@ -2884,6 +2989,7 @@ mod tests {
 
     #[test]
     fn cloned_rendered_taxonomy_shares_bytes_and_invalidates_independently() {
+        let _test_env = crate::test_env::write();
         let base = Taxonomy::from_rows(TaxonomyRows {
             consistent: true, dropped: 0, unsatisfiable: Vec::new(),
             iris: vec!["http://e/A".into(), "http://e/B".into()],
@@ -2908,6 +3014,7 @@ mod tests {
 
     #[test]
     fn current_class_domain_distinguishes_punning_and_implicit_builtin_aliases() {
+        let _test_env = crate::test_env::write();
         let text = "Prefix(:=<http://e/>) Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(Declaration(ObjectProperty(:A)) Declaration(Class(:B)) SubClassOf(o:Thing :B))";
         let scanned = scan(text).unwrap();
         let index = LocalityIndex::build(text, &scanned, false).unwrap();
@@ -2921,6 +3028,7 @@ mod tests {
 
     #[test]
     fn two_pass_statement_delta_matches_previous_algorithm_for_multisets_and_collisions() {
+        let _test_env = crate::test_env::write();
         fn reference_delta(old: &Statements, new: &Statements) -> Option<StatementDelta> {
             if old.collision || new.collision || old.header() != new.header() { return None; }
             if old.counts.keys().any(|hash| new.counts.contains_key(hash) && old.stmt(hash) != new.stmt(hash)) {
@@ -2969,6 +3077,7 @@ mod tests {
 
     #[test]
     fn preparation_ledger_records_failures_and_assignment_does_not_double_count() {
+        let _test_env = crate::test_env::write();
         let mut work = PreparationWork::default();
         let source = "Prefix(:=<urn:e#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) SubClassOf(:A :B))";
         let scanned = scan(source).unwrap();
@@ -2994,6 +3103,7 @@ mod tests {
 
     #[test]
     fn compiler_ledger_distinguishes_prior_committed_donors_from_same_update_builds() {
+        let _test_env = crate::test_env::write();
         let text = "Prefix(:=<urn:e#>) Ontology(SubClassOf(:A :B))";
         let scanned = scan(text).unwrap();
         let donor = Arc::new(LocalityIndex::build(text, &scanned, false).unwrap());
@@ -3014,6 +3124,7 @@ mod tests {
 
     #[test]
     fn receipt_strategy_alone_does_not_claim_meaningful_reuse() {
+        let _test_env = crate::test_env::write();
         let mut receipt = Receipt { strategy: "common_module_reuse", rebuilt_index_axioms: 10, ..Default::default() };
         assert!(!receipt.meaningful_reuse());
         assert_eq!(receipt.resumed_backend_states, 0);
@@ -3031,6 +3142,7 @@ mod tests {
 
     #[test]
     fn statement_multisets_ignore_order_and_layout_outside_statements() {
+        let _test_env = crate::test_env::write();
         let a = "Prefix(:=<http://e/>)\nOntology(<http://e/o>\nSubClassOf(:A :B)\n# note\nSubClassOf(:B :C)\n)\n";
         let b = "Prefix(:=<http://e/>)\nOntology(<http://e/o>\n\nSubClassOf(:B :C)\nSubClassOf(:A :B)\n)";
         let c = "Prefix(:=<http://e/>)\nOntology(<http://e/o>\nSubClassOf(:B :C)\n)\n";
@@ -3048,6 +3160,7 @@ mod tests {
 
     #[test]
     fn fingerprint_collisions_never_decide_reuse() {
+        let _test_env = crate::test_env::write();
         // Forge a collision: give two different statements the same
         // fingerprint and check that text confirmation rejects it.
         let a = "Prefix(:=<http://e/>)\nOntology(<http://e/o>\nSubClassOf(:A :B)\nSubClassOf(:B :C)\n)\n";
@@ -3066,6 +3179,7 @@ mod tests {
 
     #[test]
     fn full_environment_guard_restores_added_and_changed_keys() {
+        let _test_env = crate::test_env::write();
         std::env::set_var("KM_INCR_SESSION_TEST_KEEP", "1");
         {
             let _guard = FullEnvironment::capture();
@@ -3083,6 +3197,7 @@ mod tests {
 
     #[test]
     fn early_object_support_requires_complete_timely_independent_result() {
+        let _test_env = crate::test_env::write();
         let source = certificate_source("Declaration(NamedIndividual(:a)) ClassAssertion(:A :a) ClassAssertion(:B :a) DisjointClasses(:A :B) SubClassOf(:E :F)");
         let scanned = scan(&source.text).unwrap();
         let proposal = crate::incr_support::propose_object(&source.text, &scanned).unwrap();
@@ -3118,6 +3233,7 @@ mod tests {
 
     #[test]
     fn early_object_support_rejects_unknown_ids_collisions_and_expired_budget() {
+        let _test_env = crate::test_env::write();
         let source = certificate_source("SubClassOf(:A :B)");
         let scanned = scan(&source.text).unwrap();
         let hash = fingerprint(b"SubClassOf(:A :B)");
@@ -3154,6 +3270,7 @@ mod tests {
 
     #[test]
     fn global_deletion_without_proved_rows_declines_before_backend() {
+        let _test_env = crate::test_env::write();
         let old = certificate_source("Declaration(ObjectProperty(:r)) ReflexiveObjectProperty(:r) ObjectPropertyDomain(:r :A) SubClassOf(:B :E)");
         let new = certificate_source("Declaration(ObjectProperty(:r)) ReflexiveObjectProperty(:r) SubClassOf(:B :E)");
         let mut session = early_support_session(&old);
@@ -3171,6 +3288,7 @@ mod tests {
 
     #[test]
     fn global_deletion_requires_old_augmented_fragment_even_when_new_is_eligible() {
+        let _test_env = crate::test_env::write();
         let old=certificate_source("Declaration(ObjectProperty(:r)) Declaration(DataProperty(:p)) Declaration(NamedIndividual(:a)) ReflexiveObjectProperty(:r) ObjectPropertyDomain(:r :A) ClassAssertion(DataSomeValuesFrom(:p xsd:string) :a) SubClassOf(:B :E)");
         let new=certificate_source("Declaration(ObjectProperty(:r)) Declaration(DataProperty(:p)) Declaration(NamedIndividual(:a)) ReflexiveObjectProperty(:r) SubClassOf(:B :E)");
         assert!(crate::incr_envelope::eligible(&old.text,&scan(&old.text).unwrap()).is_none());
@@ -3185,6 +3303,7 @@ mod tests {
 
     #[test]
     fn early_object_support_skips_healthy_common_additions() {
+        let _test_env = crate::test_env::write();
         let old = certificate_source("");
         let new = certificate_source("SubClassOf(:A owl:Thing)");
         let scanned = scan(&new.text).unwrap();
@@ -3199,6 +3318,7 @@ mod tests {
 
     #[test]
     fn early_object_support_admission_publication_and_retained_rollback() {
+        let _test_env = crate::test_env::write();
         const CHILD:&str = "KM_EARLY_OBJECT_SUPPORT_TEST_CHILD";
         if std::env::var(CHILD).as_deref()!=Ok("1") {
             let mut command=std::process::Command::new(std::env::current_exe().unwrap());
@@ -3283,6 +3403,7 @@ mod tests {
 
     #[test]
     fn first_verified_core_shares_one_full_index_with_inconsistent_base() {
+        let _test_env = crate::test_env::write();
         // Interleave declarations deliberately: the verifier document must
         // retain the old all-declarations-before-core layout byte for byte.
         let text = Arc::new("Prefix(:=<urn:core#>) Ontology(<urn:core> SubClassOf(owl:Thing :A) Declaration(Class(:A)) SubClassOf(:A owl:Nothing) Declaration(Class(:B)) SubClassOf(:B :A))".to_owned());
@@ -3323,6 +3444,7 @@ mod tests {
 
     #[test]
     fn first_core_failed_verifier_retains_index_but_only_full_source_certificate() {
+        let _test_env = crate::test_env::write();
         let source = certificate_source("SubClassOf(owl:Thing owl:Nothing)");
         let scanned = scan(&source.text).unwrap();
         for verdict in [Some(false), None] {
@@ -3350,6 +3472,7 @@ mod tests {
 
     #[test]
     fn first_core_containment_loss_declines_even_if_a_smaller_clash_survives() {
+        let _test_env = crate::test_env::write();
         let original = certificate_source("SubClassOf(owl:Thing owl:Nothing)\nSubClassOf(owl:Thing :E)");
         let scanned = scan(&original.text).unwrap();
         let mut work = PreparationWork::default();
@@ -3383,6 +3506,7 @@ mod tests {
 
     #[test]
     fn small_support_proposal_requires_its_own_verified_inconsistent_answer() {
+        let _test_env = crate::test_env::write();
         let source = data_clash_proposal_source();
         let scanned = scan(&source.text).unwrap();
         let expected = crate::incr_support::propose(&source.text, &scanned).unwrap();
@@ -3412,6 +3536,7 @@ mod tests {
 
     #[test]
     fn rejected_or_timed_out_proposal_keeps_verified_support_and_minimizes_normally() {
+        let _test_env = crate::test_env::write();
         let source = data_clash_proposal_source();
         let scanned = scan(&source.text).unwrap();
         for proposal_verdict in [Some(false), None] {
@@ -3436,6 +3561,7 @@ mod tests {
 
     #[test]
     fn exhausted_total_witness_budget_does_not_invoke_optional_proposal_verifier() {
+        let _test_env = crate::test_env::write();
         let source = data_clash_proposal_source();
         let scanned = scan(&source.text).unwrap();
         let mut work = PreparationWork::default();
@@ -3459,6 +3585,7 @@ mod tests {
 
     #[test]
     fn inconsistency_certificate_full_support_shares_source_and_checks_exact_identity() {
+        let _test_env = crate::test_env::write();
         let source = certificate_source("SubClassOf(owl:Thing owl:Nothing)");
         let certificate = InconsistencyCertificate::from_verified_inconsistent(source.clone(), None).unwrap();
         assert_eq!(certificate.origin_source_key, fingerprint(source.text.as_bytes()));
@@ -3475,6 +3602,7 @@ mod tests {
 
     #[test]
     fn inconsistency_certificate_compact_support_checks_text_collisions_and_context() {
+        let _test_env = crate::test_env::write();
         let source = certificate_source("SubClassOf(owl:Thing owl:Nothing)\nSubClassOf(:A :B)");
         let hash = clash_hash(&source);
         let certificate = InconsistencyCertificate::from_verified_inconsistent(source.clone(), Some(&[hash])).unwrap();
@@ -3500,6 +3628,7 @@ mod tests {
 
     #[test]
     fn inconsistency_certificate_arc_survives_memo_eviction_without_old_source() {
+        let _test_env = crate::test_env::write();
         let original = certificate_source("SubClassOf(owl:Thing owl:Nothing)\nSubClassOf(:A :B)");
         let weak_source = Arc::downgrade(&original.text);
         let certificate = InconsistencyCertificate::from_verified_inconsistent(original.clone(), Some(&[clash_hash(&original)])).unwrap();
@@ -3530,6 +3659,7 @@ mod tests {
     }
     #[test]
     fn inconsistency_certificate_full_support_propagates_same_arc_after_eviction() {
+        let _test_env = crate::test_env::write();
         let original = certificate_source("SubClassOf(owl:Thing owl:Nothing)");
         let certificate = InconsistencyCertificate::from_verified_inconsistent(original.clone(), None).unwrap();
         let mut taxonomy = Taxonomy::empty(); taxonomy.consistent = false;
@@ -3556,6 +3686,7 @@ mod tests {
     }
     #[test]
     fn pure_addition_new_index_matches_explicit_union_despite_order_and_duplicates() {
+        let _test_env = crate::test_env::write();
         let source = |body: &str| Arc::new(format!("Prefix(:=<urn:add#>) Ontology(<urn:add>\nDeclaration(Class(:A))\nDeclaration(Class(:B))\nDeclaration(Class(:C))\nDeclaration(Class(:E))\nDeclaration(Class(:F))\nDeclaration(ObjectProperty(:r))\nDeclaration(NamedIndividual(:a))\n{body}\n)"));
         for (old_body, new_body) in [
             ("SubClassOf(:A :B)\nSubClassOf(:E :F)", "SubClassOf(:E :F)\nSubClassOf(:B :C)\nSubClassOf(:A :B)\nSubClassOf(:A :B)"),
@@ -3612,6 +3743,7 @@ mod tests {
     }
     #[test]
     fn empty_module_decline_prediction_needs_no_full_compiler() {
+        let _test_env = crate::test_env::write();
         let head = "Prefix(:=<urn:pred#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) \
             Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) SubClassOf(:A :B) ";
         let make = |body: &str| Arc::new(format!("{head}{body})"));
@@ -3666,6 +3798,7 @@ mod tests {
 
     #[test]
     fn exact_union_pair_reuses_both_indexes_with_fresh_module_and_domain_parity() {
+        let _test_env = crate::test_env::write();
         let (old, new, base) = exact_pair_fixture();
         let (prepared, cached) = base.exact_union_pair(&old, &new).unwrap();
         assert!(Arc::ptr_eq(prepared.index(), base.full.as_ref().unwrap()));
@@ -3712,6 +3845,7 @@ mod tests {
 
     #[test]
     fn exact_union_pair_rejects_masks_missing_pairs_and_unconfirmed_source() {
+        let _test_env = crate::test_env::write();
         let (old, new, mut base) = exact_pair_fixture();
         let saved = base.disabled.clone();
         base.disabled = Arc::from([]);
@@ -3756,6 +3890,7 @@ mod tests {
 
     #[test]
     fn pending_union_materializes_exact_new_before_nominal_full_index_reuse() {
+        let _test_env = crate::test_env::write();
         let make = |body: &str| Arc::new(format!("Prefix(:=<urn:prepared#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:K)) Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a)) {body})"));
         let nominal = "SubClassOf(:A ObjectSomeValuesFrom(:r ObjectOneOf(:a)))";
         let union_text = make(&format!("{nominal} SubClassOf(:B :C) SubClassOf(owl:Thing :A) ClassAssertion(:K :a)"));
@@ -3796,6 +3931,7 @@ mod tests {
 
     #[test]
     fn mixed_union_donor_callback_excludes_historical_disabled_formulas() {
+        let _test_env = crate::test_env::write();
         let make = |body: &str| Arc::new(format!("Prefix(:=<urn:donor#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:E)) Declaration(Class(:F)) Declaration(Class(:G)) {body})"));
         let historical = make("SubClassOf(:A :B) SubClassOf(:E :F) SubClassOf(:F :G)");
         let historical_scan = scan(&historical).unwrap();
@@ -3817,6 +3953,7 @@ mod tests {
     }
     #[test]
     fn consistent_fallback_retains_masked_union_without_second_build() {
+        let _test_env = crate::test_env::write();
         let make = |body: &str| Arc::new(format!("Prefix(:=<urn:masked#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:K)) Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:C)) {body})"));
         let nominal = "SubClassOf(:A ObjectSomeValuesFrom(:r ObjectOneOf(:a)))";
         let removed_global = "SubClassOf(owl:Thing :B)";
@@ -3891,6 +4028,7 @@ mod tests {
 
     #[test]
     fn consistent_fallback_refuses_conflicted_union_without_consuming_exact_recovery() {
+        let _test_env = crate::test_env::write();
         let text = Arc::new("Prefix(:=<urn:conflict#>) Ontology(Declaration(Class(:A)) SubClassOf(:A <urn:conflict#A>))".to_string());
         let scanned = scan(&text).unwrap();
         let index = Arc::new(LocalityIndex::build(&text, &scanned, false).unwrap());
@@ -3908,6 +4046,7 @@ mod tests {
 
     #[test]
     fn declined_common_admission_remains_transaction_local_and_keeps_origin_provenance() {
+        let _test_env = crate::test_env::write();
         const CHILD: &str = "KM_INCR_ADMISSION_FALLBACK_TEST_CHILD";
         if std::env::var(CHILD).as_deref() != Ok("1") {
             let mut command = std::process::Command::new(std::env::current_exe().unwrap());
@@ -3974,6 +4113,7 @@ mod tests {
 
     #[test]
     fn nominal_common_marks_every_data_owner_including_shared_iri_punning() {
+        let _test_env = crate::test_env::write();
         let make=|body:&str| Arc::new(format!("Prefix(:=<urn:punned#>) Ontology(Declaration(Class(:P)) Declaration(DataProperty(:P)) Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) {body})"));
         let old_text=make("SubClassOf(:A :P) DataPropertyRange(:P xsd:string)");
         let new_text=make("SubClassOf(:A :P) DataPropertyRange(:P xsd:string) SubClassOf(:B :C)");
@@ -4006,6 +4146,7 @@ mod tests {
 
     #[test]
     fn object_certificate_uses_old_core_and_declares_uncovered_requested_classes() {
+        let _test_env = crate::test_env::write();
         let make=|body:&str|Arc::new(format!("Prefix(:=<urn:object-module#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:K)) Declaration(NamedIndividual(:a)) {body})"));
         let old_text=make("SubClassOf(owl:Thing :A) ClassAssertion(:K :a) ClassAssertion(rdfs:Resource :a)");
         let new_text=make("SubClassOf(owl:Thing :A) ClassAssertion(rdfs:Resource :a)");
@@ -4084,6 +4225,7 @@ mod tests {
 
     #[test]
     fn delta_of_identical_taxonomy_is_empty() {
+        let _test_env = crate::test_env::write();
         let t = tax_of(&["http://e/A", "http://e/B"], vec![(0, vec![1])], &["http://e/U"]);
         let d = delta_value(&t.clone(), &t);
         assert_eq!(d["delta"], true);
@@ -4094,6 +4236,7 @@ mod tests {
 
     #[test]
     fn delta_removes_subjects_and_patches_rows_aligned_and_unaligned() {
+        let _test_env = crate::test_env::write();
         let prev = tax_of(&["http://e/A", "http://e/B\"q", "http://e/C"],
             vec![(0, vec![1, 2]), (2, vec![1])], &[]);
         // Aligned: same ids, one row shrinks and one subject loses its row.
@@ -4122,6 +4265,7 @@ mod tests {
     /// `iris`. Its unsatisfiability must still replace the base row.
     #[test]
     fn replace_rows_from_keeps_unsatisfiable_subject_absent_from_iris() {
+        let _test_env = crate::test_env::write();
         let mut tax = tax_of(&["http://e/A", "http://e/Q", "http://e/T"],
             vec![(1, vec![0]), (0, vec![2])], &[]);
         let fresh = TaxonomyRows { consistent: true, dropped: 0,
@@ -4153,6 +4297,7 @@ mod tests {
     /// tests run alone in a child process (as the admission tests above do).
     #[test]
     fn session_row_delta_protocol_runs_isolated() {
+        let _test_env = crate::test_env::write();
         const CHILD: &str = "KM_INCR_ROW_DELTA_TEST_CHILD";
         if std::env::var(CHILD).as_deref() != Ok("1") {
             let mut command = std::process::Command::new(std::env::current_exe().unwrap());
@@ -4169,6 +4314,8 @@ mod tests {
         }
         session_delta_mismatch_failure_and_recovery_equal_full_answers();
         session_delta_after_refused_update_uses_last_published_revision();
+        session_unknown_datatypes_free_admits_opaque_rdfs_literal();
+        session_lenient_mode_admits_hermit_inputs();
     }
 
     fn session_delta_mismatch_failure_and_recovery_equal_full_answers() {
@@ -4228,5 +4375,65 @@ mod tests {
         assert_eq!(lines[2]["result"]["delta"], true);
         assert_eq!(lines[2]["result"]["base_revision"], 1);
         assert_eq!(lines[2]["revision"], 2);
+    }
+
+    fn session_unknown_datatypes_free_admits_opaque_rdfs_literal() {
+        use serde_json::json;
+        let src = "Prefix(:=<http://example.org/>)\n\
+            Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)\n\
+            Prefix(owl:=<http://www.w3.org/2002/07/owl#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(DataProperty(:dp))\n\
+              Declaration(NamedIndividual(:a))\n\
+              ClassAssertion(:A :a)\n\
+              DataPropertyAssertion(:dp :a \"NULL\"^^rdfs:Literal)\n\
+              SubClassOf(ObjectIntersectionOf(:A DataHasValue(:dp \"NULL\"^^rdfs:Literal)) owl:Nothing)\n\
+            )\n";
+        let strict_lines = session_lines(&[json!({"op":"init","functional_syntax":src})]);
+        assert_eq!(strict_lines[0]["status"], "error");
+        assert!(strict_lines[0]["error"].as_str().unwrap().contains("invalid OWL 2 DL input"));
+
+        let free_lines = session_lines(&[json!({
+            "op":"init",
+            "functional_syntax":src,
+            "unknown_datatypes":"free"
+        })]);
+        std::env::remove_var("KM_UNKNOWN_DATATYPES");
+        assert_eq!(free_lines[0]["status"], "ok");
+        assert_eq!(free_lines[0]["result"]["consistent"], false);
+        assert_eq!(free_lines[0]["result"]["dropped"], 0);
+    }
+
+    fn session_lenient_mode_admits_hermit_inputs() {
+        use serde_json::json;
+        let src = "Prefix(:=<http://example.org/t#>)\n\
+            Ontology(\n\
+              Declaration(Class(:A))\n\
+              Declaration(Class(:B))\n\
+              Declaration(ObjectProperty(:r))\n\
+              SubClassOf(:A ObjectHasValue(:r _:b1))\n\
+              SubClassOf(ObjectHasValue(:r _:b1) :B)\n\
+            )\n";
+        let strict_lines = session_lines(&[json!({"op":"init","functional_syntax":src,"lenient":false})]);
+        assert_eq!(strict_lines[0]["status"], "error");
+        assert!(strict_lines[0]["error"].as_str().unwrap().contains("ObjectHasValue"));
+
+        let lenient_lines = session_lines(&[json!({
+            "op":"init",
+            "functional_syntax":src,
+            "lenient":true
+        })]);
+        std::env::remove_var("KM_LENIENT");
+        assert_eq!(lenient_lines[0]["status"], "ok");
+        assert_eq!(lenient_lines[0]["result"]["consistent"], true);
+        assert_eq!(lenient_lines[0]["result"]["dropped"], 0);
+        assert!(lenient_lines[0]["result"]["lenient"].is_array());
+        let subs = lenient_lines[0]["result"]["subsumptions"].as_array().unwrap();
+        assert!(
+            subs.contains(&json!([":A", ":B"]))
+                || subs.contains(&json!(["http://example.org/t#A", "http://example.org/t#B"])),
+            "unexpected subsumptions: {subs:?}"
+        );
     }
 }

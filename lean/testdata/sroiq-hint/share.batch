@@ -1,0 +1,64 @@
+# batch of (row, hint) pairs for share.ofn (km-owl-reference --procedure sroiq-hint --batch)
+row consistent
+blocks 4
+ty 0 0 3 6 8
+ty 1 1 3 6 8
+ty 2 2 6
+ty 3 5 6 10
+lab 3 2 +1
+kid 0 +0 / 4 6 9
+kid 1 +0 / 4 6 9
+rec 0 4 6 9
+ranc 0 0 -0
+rce 0 3 +0
+rec 1 4 6 9
+ranc 1 1 -0
+rce 1 3 +0
+end
+row nontype http://ex/B http://ex/a
+blocks 4
+ty 0 0 3 6 8 11
+ty 1 1 3 6 8
+ty 2 2 6
+ty 3 5 6 10
+lab 3 2 +1
+kid 0 +0 / 4 6 9
+kid 1 +0 / 4 6 9
+rec 0 4 6 9
+ranc 0 0 -0
+rce 0 3 +0
+rec 1 4 6 9
+ranc 1 1 -0
+rce 1 3 +0
+end
+row consistent
+blocks 1
+ty 0 6
+end
+row nontype http://ex/A http://ex/a
+blocks 1
+ty 0 0 6
+end
+row nonsub http://ex/A http://ex/B http://ex/C
+end
+row nonsubs http://ex/A http://ex/B http://ex/C
+blocks 5
+ty 0 0 4 7 9
+ty 1 1 4 7 9
+ty 2 2 7
+ty 3 3 4 7 9 12 13
+ty 4 6 7 11
+lab 4 2 +1
+kid 0 +0 / 5 7 10
+kid 1 +0 / 5 7 10
+kid 3 +0 / 5 7 10
+rec 0 5 7 10
+ranc 0 0 -0
+rce 0 4 +0
+rec 1 5 7 10
+ranc 1 1 -0
+rce 1 4 +0
+rec 2 5 7 10
+ranc 2 3 -0
+rce 2 4 +0
+end

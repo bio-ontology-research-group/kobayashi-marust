@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/float-no-between>
+SubClassOf(:A DataSomeValuesFrom(:p DatatypeRestriction(xsd:float xsd:minExclusive "1.0"^^xsd:float xsd:maxExclusive "1.0000001"^^xsd:float)))
+)

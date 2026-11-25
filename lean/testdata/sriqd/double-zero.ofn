@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/double-zero>
+SubClassOf(:A DataSomeValuesFrom(:p DataIntersectionOf(DatatypeRestriction(xsd:double xsd:minInclusive "0.0"^^xsd:double xsd:maxInclusive "0.0"^^xsd:double) DataComplementOf(DataOneOf("0.0"^^xsd:double)))))
+)

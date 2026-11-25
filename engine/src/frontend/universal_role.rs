@@ -509,6 +509,7 @@ mod tests {
 
     #[test]
     fn constant_restrictions_fold_without_a_hub() {
+        let _test_env = crate::test_env::read();
         let out = rewritten("SubClassOf(:A ObjectSomeValuesFrom(owl:topObjectProperty owl:Thing)) \
             SubClassOf(:B ObjectAllValuesFrom(owl:topObjectProperty owl:Nothing)) \
             SubClassOf(:C ObjectHasValue(owl:topObjectProperty :a)) \
@@ -523,6 +524,7 @@ mod tests {
 
     #[test]
     fn general_restrictions_use_the_hub_and_nest() {
+        let _test_env = crate::test_env::read();
         let out = rewritten("EquivalentClasses(:T ObjectSomeValuesFrom(owl:topObjectProperty \
             ObjectIntersectionOf(:F ObjectAllValuesFrom(owl:topObjectProperty :G))))");
         assert!(!out.contains("topObjectProperty"), "{out}");
@@ -552,6 +554,7 @@ mod tests {
 
     #[test]
     fn universal_sub_role_becomes_the_hub_chain() {
+        let _test_env = crate::test_env::read();
         for sub in ["owl:topObjectProperty", "ObjectInverseOf(owl:topObjectProperty)"] {
             let out = rewritten(&format!("SubObjectPropertyOf({sub} :r) SubClassOf(owl:Thing ObjectAllValuesFrom(:r :C))"));
             assert!(!out.contains("topObjectProperty"), "{out}");
@@ -562,6 +565,7 @@ mod tests {
 
     #[test]
     fn universal_chain_operands_become_the_hub_chain() {
+        let _test_env = crate::test_env::read();
         let out = rewritten("SubObjectPropertyOf(ObjectPropertyChain(:s owl:topObjectProperty ObjectInverseOf(owl:topObjectProperty)) :r)");
         assert!(out.contains(&format!("SubObjectPropertyOf(ObjectPropertyChain(:s {HUB_UNIVERSAL} {HUB_UNIVERSAL}) :r)")), "{out}");
         assert!(out.contains(&format!("SubObjectPropertyOf({} {HUB_UNIVERSAL})", chain())), "{out}");
@@ -570,6 +574,7 @@ mod tests {
 
     #[test]
     fn equivalent_and_inverse_universal_members_make_the_others_universal() {
+        let _test_env = crate::test_env::read();
         let out = rewritten("EquivalentObjectProperties(:s owl:topObjectProperty ObjectInverseOf(:r)) InverseObjectProperties(:t owl:topObjectProperty)");
         assert!(!out.contains("topObjectProperty"), "{out}");
         for member in [":s", "ObjectInverseOf(:r)", ":t"] {
@@ -579,6 +584,7 @@ mod tests {
 
     #[test]
     fn universal_tautologies_are_removed() {
+        let _test_env = crate::test_env::read();
         for body in [
             "SubObjectPropertyOf(owl:topObjectProperty owl:topObjectProperty)",
             "SubObjectPropertyOf(ObjectPropertyChain(:r owl:topObjectProperty) owl:topObjectProperty)",
@@ -598,6 +604,7 @@ mod tests {
 
     #[test]
     fn universal_assertions_and_rule_atoms_are_constants() {
+        let _test_env = crate::test_env::read();
         let out = rewritten("ObjectPropertyAssertion(owl:topObjectProperty :a :b) \
             NegativeObjectPropertyAssertion(ObjectInverseOf(owl:topObjectProperty) :c :d) \
             DLSafeRule(Body(ObjectPropertyAtom(owl:topObjectProperty Variable(<urn:x>) :e)) Head(ClassAtom(:B Variable(<urn:x>))))");
@@ -612,6 +619,7 @@ mod tests {
     /// rejects both rather than read `U` as an ordinary role.
     #[test]
     fn other_occurrences_are_rejected() {
+        let _test_env = crate::test_env::read();
         for body in [
             "HasKey(:A (owl:topObjectProperty) ()) SubClassOf(:A ObjectSomeValuesFrom(owl:topObjectProperty :B))",
             "SubClassOf(:A ObjectMinCardinality(2 owl:topObjectProperty :B))",
@@ -624,6 +632,7 @@ mod tests {
 
     #[test]
     fn vacuous_super_role_alone_leaves_the_source_unchanged() {
+        let _test_env = crate::test_env::read();
         for body in [
             "SubObjectPropertyOf(:r owl:topObjectProperty)",
             "SubObjectPropertyOf(ObjectPropertyChain(:r :s) owl:topObjectProperty)",
@@ -636,6 +645,7 @@ mod tests {
 
     #[test]
     fn inverse_universal_role_and_domain_range_axioms_are_encoded() {
+        let _test_env = crate::test_env::read();
         let out = rewritten("SubClassOf(:A ObjectSomeValuesFrom(ObjectInverseOf(owl:topObjectProperty) :B)) \
             ObjectPropertyDomain(Annotation(rdfs:comment \"d\") owl:topObjectProperty :C) \
             ObjectPropertyRange(ObjectInverseOf(owl:topObjectProperty) ObjectAllValuesFrom(owl:topObjectProperty :D))");
@@ -648,6 +658,7 @@ mod tests {
 
     #[test]
     fn admitted_side_occurrences_and_annotations_do_not_block() {
+        let _test_env = crate::test_env::read();
         let out = rewritten("Declaration(ObjectProperty(owl:topObjectProperty)) \
             SubObjectPropertyOf(:r owl:topObjectProperty) \
             AnnotationAssertion(rdfs:comment owl:topObjectProperty \"x\") \
@@ -658,6 +669,7 @@ mod tests {
 
     #[test]
     fn generated_namespace_in_source_disables_the_rewrite() {
+        let _test_env = crate::test_env::read();
         let source = "Ontology(SubClassOf(<urn:km:internal:universal-role#hub> \
             ObjectSomeValuesFrom(owl:topObjectProperty <urn:B>)))";
         assert!(matches!(encode(source).unwrap(), Cow::Borrowed(_)));

@@ -293,6 +293,7 @@ mod compact_distinct_tests {
 
     #[test]
     fn shared_distinct_producer_installs_complete_pair_evidence_without_pair_edges() {
+        let _test_env = crate::test_env::read();
         use super::super::context::ProcessContext;
         use super::super::node::IndividualProcessNode;
         let mut context = ProcessContext::new();
@@ -321,6 +322,7 @@ mod compact_distinct_tests {
 
     #[test]
     fn duplicate_distinct_witnesses_defer_before_changing_any_hash() {
+        let _test_env = crate::test_env::read();
         use super::super::context::ProcessContext;
         use super::super::node::IndividualProcessNode;
         let mut context = ProcessContext::new();
@@ -333,6 +335,7 @@ mod compact_distinct_tests {
 
     #[test]
     fn lazy_distinct_edge_has_actual_endpoints_and_is_cached_symmetrically() {
+        let _test_env = crate::test_env::read();
         use super::super::context::ProcessContext;
         use super::super::node::IndividualProcessNode;
         let mut context = ProcessContext::new();
@@ -360,6 +363,7 @@ mod compact_distinct_tests {
 
     #[test]
     fn localized_group_edge_cache_does_not_change_restored_parent_evidence() {
+        let _test_env = crate::test_env::read();
         use super::super::context::ProcessContext;
         use super::super::node::IndividualProcessNode;
         let mut context = ProcessContext::new();
@@ -400,6 +404,7 @@ mod compact_distinct_tests {
 
     #[test]
     fn distinct_hash_mixes_group_and_pair_provenance_and_localizes_removals() {
+        let _test_env = crate::test_env::read();
         let first = TrackPointId::new(1);
         let second = TrackPointId::new(2);
         let mut edges = Arena::new();
@@ -442,6 +447,7 @@ mod compact_distinct_tests {
     #[test]
     #[should_panic(expected = "actual pair-edge materialization")]
     fn compressed_pair_cannot_silently_look_like_an_absent_edge() {
+        let _test_env = crate::test_env::read();
         let mut distinct = DistinctHash::new();
         distinct.install_distinct_group(1, DistinctGroup::new(vec![1, 2], TrackPointId::NONE));
         distinct.get_individual_distinct_edge(2);
@@ -449,6 +455,7 @@ mod compact_distinct_tests {
 
     #[test]
     fn group_installation_preserves_explicit_self_inequality() {
+        let _test_env = crate::test_env::read();
         let mut edges = Arena::new();
         let edge = edges.push(DistinctEdge::new());
         let mut distinct = DistinctHash::new();

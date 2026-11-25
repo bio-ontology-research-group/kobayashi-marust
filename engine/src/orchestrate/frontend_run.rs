@@ -13,7 +13,7 @@ use super::{Config, OrchestrateError};
 
 /// Side data from `ofn --meta` (everything needed to map engine output back to
 /// OWL, minus the clauses). Mirrors `bin/ofn.rs`'s `Meta`.
-#[derive(serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Deserialize)]
 pub struct Meta {
     pub iri_map: BTreeMap<String, String>,
     pub named: Vec<String>,
@@ -46,6 +46,14 @@ pub struct Meta {
     /// See `FrontendResult::one_sorted_data_successors`.
     #[serde(default)]
     pub one_sorted_data_successors: bool,
+    #[serde(default)]
+    pub rbox: Vec<Vec<String>>,
+    #[serde(default)]
+    pub data_roles: Vec<String>,
+    #[serde(default)]
+    pub nominal_abox: crate::json_io::NominalAboxMeta,
+    #[serde(default)]
+    pub separable_abox_export: Option<crate::frontend::SeparableAboxExport>,
 }
 
 fn manual_route() -> String {
@@ -79,6 +87,12 @@ fn ht_typed_handoff_candidate(route: Option<crate::routing::Route>, source_bytes
         Some(crate::routing::Route::HtShoq) => true,
         Some(crate::routing::Route::HtGeneral | crate::routing::Route::HtBridge) => {
             source_bytes < IN_PROCESS_GENERAL_HT_MAX
+        }
+        Some(crate::routing::Route::Manual)
+            if std::env::var("KM_MECHANISM").as_deref() == Ok("ht")
+                && std::env::var("KM_HT_ONLY").as_deref() == Ok("bridge") =>
+        {
+            source_bytes <= 8 * 1024 * 1024
         }
         _ => false,
     }
@@ -249,10 +263,13 @@ fn run_ofn_in_process(
     text: &str,
     clauses_path: &Path,
 ) -> Result<(Meta, Option<crate::json_io::JInput>, Option<TempPath>), OrchestrateError> {
-    let result = match crate::frontend::ofn_to_clauses_for_classifier(text) {
+    let abort_on_uncarried = !data_assertions_as_class_requested()
+        && std::env::var_os("KM_KEEP_CLAUSES").is_none();
+    let result = match crate::frontend::ofn_to_clauses_for_classifier_pass(text, abort_on_uncarried) {
         Ok(r) => r,
         Err(e) => return Err(OrchestrateError::OutOfFragment(e.0)),
     };
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     let meta = Meta {
         iri_map: result.iri_map,
         named: result.named,
@@ -266,6 +283,22 @@ fn run_ofn_in_process(
         dropped_source_axioms: result.dropped_source_axioms,
         route_approximations: result.route_approximations,
         one_sorted_data_successors: result.one_sorted_data_successors,
+        rbox: if export_active {
+            result.rbox.clone()
+        } else {
+            Vec::new()
+        },
+        data_roles: if export_active {
+            result.data_roles.clone()
+        } else {
+            Vec::new()
+        },
+        nominal_abox: if export_active {
+            result.nominal_abox.clone()
+        } else {
+            crate::json_io::NominalAboxMeta::default()
+        },
+        separable_abox_export: result.separable_abox_export,
     };
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
@@ -278,6 +311,22 @@ fn run_ofn_in_process(
         rules: result.rules,
         data_roles: result.data_roles,
     };
+    if abort_on_uncarried
+        && (meta.uncarried_data_assertions > 0
+            || (meta.named.is_empty() && out.clauses.is_empty()))
+    {
+        // The subprocess frontend always emits a clauses file; the in-process
+        // fast path must do the same. Downstream code (rule consistency, CB
+        // and HT workers, the positive-EL ABox certificate) opens clauses_path
+        // unconditionally, so an early return without writing it produced
+        // "No such file or directory" on empty or data-only ontologies when
+        // the reference stage was unavailable.
+        let f = File::create(clauses_path)?;
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
+        crate::json_io::write_jinput_json(&mut w, &out)?;
+        std::io::Write::flush(&mut w)?;
+        return Ok((meta, None, None));
+    }
     if let Some(dir) = std::env::var_os("KM_KEEP_CLAUSES").filter(|d| !d.is_empty()) {
         let dir_path = Path::new(&dir);
         let out_file = dir_path.join("clauses.json");
@@ -402,7 +451,27 @@ fn run_ofn_split_cached_passes(
     // classification (the key is restored by the caller's environment guard).
     // Whatever stays uncarried after that (negative assertions, a literal
     // vocabulary above the cap) is published as dropped axioms.
-    if result.1.uncarried_data_assertions > 0 && !data_assertions_as_class_requested() {
+    // The conversion may wait only for a schedule that carries the
+    // assertions itself: the automatic bounded bridge-first attempts, which
+    // re-run this frontend in full when they decline. On a forced route the
+    // frontend's early return for uncarried assertions also leaves `named`
+    // empty, but no such attempt follows.
+    let automatic_requested =
+        std::env::var("KM_ROUTE").as_deref() == Ok(crate::routing::Route::Auto.as_str());
+    let deferred_for_bounded_bridge = result.1.named.is_empty()
+        && std::env::var_os("KM_NO_BOUNDED_BRIDGE_SHORT_CIRCUIT").is_none()
+        && result
+            .1
+            .route
+            .parse::<crate::routing::Route>()
+            .ok()
+            .is_some_and(|route| {
+                super::bounded_bridge_first_scheduled(automatic_requested, route, &result.1.profile)
+            });
+    if result.1.uncarried_data_assertions > 0
+        && !data_assertions_as_class_requested()
+        && !deferred_for_bounded_bridge
+    {
         if std::env::var_os("KM_TIMING").is_some() {
             eprintln!(
                 "KM_TIMING frontend: {} data-property assertion(s) not carried; \
@@ -488,6 +557,8 @@ fn run_ofn_split_cached_once(
                 };
                 match parsed {
                     Ok((meta, cached, elc_binary)) => {
+                        drop(text);
+                        crate::mem::release_transient_heap();
                         if timing {
                             eprintln!(
                                 "KM_TIMING in-process frontend: read={read_s:.2}s screen={screen_s:.2}s \
@@ -533,8 +604,22 @@ fn run_ofn_split_cached_once(
     if keep_clauses_dir.is_none() {
         command.arg("--elc-binary").arg(elc_binary.path());
     }
+    // When this classification's own `check_user_source` accepted exactly the
+    // bytes now in this file (byte equality with the retained copy, never a
+    // hash or a flag), hand the worker those bytes on stdin. It parses them
+    // without validating them again, instead of re-reading the file and
+    // repeating the check: on ore_ont_12567 and 12128 the repeat was 3.5 s of
+    // the worker's 14 s. Anything else (no cache, lenient rewrite, converted
+    // input, a file that changed) leaves the worker on its own validation.
+    let validated_source = (!trusted && std::env::var_os("KM_NO_VALIDATED_STDIN").is_none())
+        .then(|| std::fs::read_to_string(ont).ok())
+        .flatten()
+        .filter(|text| crate::frontend::conformance::cached_user_source_accepted(text));
+    if validated_source.is_some() {
+        command.arg("--source-stdin");
+    }
     command
-        .stdin(Stdio::null())
+        .stdin(if validated_source.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(File::create(clauses.path())?)
         .stderr(File::create(stderr.path())?)
         .env(crate::frontend::CLASSIFIER_EXTENDED_ATOMIC_ABOX_ENV, "1");
@@ -544,12 +629,25 @@ fn run_ofn_split_cached_once(
     } else {
         command.env_remove(super::TRUSTED_REWRITE_ENV);
     }
-    let status = command
-        .status()
-        .map_err(|e| OrchestrateError::Spawn {
-            bin: "ofn".into(),
-            source: e,
-        })?;
+    crate::mem::release_code_pages();
+    let mut child = command.spawn().map_err(|e| OrchestrateError::Spawn {
+        bin: "ofn".into(),
+        source: e,
+    })?;
+    let feeder = match (validated_source, child.stdin.take()) {
+        (Some(text), Some(mut stdin)) => Some(std::thread::spawn(move || {
+            // A worker that exits early closes the pipe; its status reports why.
+            let _ = std::io::Write::write_all(&mut stdin, text.as_bytes());
+        })),
+        _ => None,
+    };
+    let status = child.wait().map_err(|e| OrchestrateError::Spawn {
+        bin: "ofn".into(),
+        source: e,
+    })?;
+    if let Some(feeder) = feeder {
+        let _ = feeder.join();
+    }
 
     let code = crate::orchestrate::engine_run::exit_status_code(&status);
     if code == 3 {
@@ -613,6 +711,10 @@ pub fn run_ofn_for_reference(
                 dropped_source_axioms: result.dropped_source_axioms,
                 route_approximations: result.route_approximations,
                 one_sorted_data_successors: result.one_sorted_data_successors,
+                rbox: result.rbox,
+                nominal_abox: result.nominal_abox,
+                data_roles: result.data_roles,
+                separable_abox_export: result.separable_abox_export,
             };
             return Ok((result.clauses, meta));
         }
@@ -665,6 +767,7 @@ mod tests {
     /// serde's canonical encoding) for frontend inputs of that shape.
     #[test]
     fn positive_el_input_round_trips() {
+        let _test_env = crate::test_env::write();
         // The handoff depends on KM_ROUTE and KM_NO_INPROC_ELC, which other
         // tests set while they hold this lock.
         let _environment_lock = crate::frontend::lock_test_environment();
@@ -701,6 +804,7 @@ mod tests {
 
     #[test]
     fn general_ht_typed_handoff_is_bounded_but_shoq_is_not() {
+        let _test_env = crate::test_env::write();
         use crate::routing::Route;
 
         assert!(ht_typed_handoff_candidate(
@@ -728,6 +832,7 @@ mod tests {
 
     #[test]
     fn exact_el_screen_admits_inverse_rich_el_and_rejects_non_el_constructors() {
+        let _test_env = crate::test_env::write();
         assert!(source_looks_exact_el(
             "Ontology(SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>)) \
              SubClassOf(ObjectIntersectionOf(<A> <B>) <C>) \
@@ -764,6 +869,7 @@ mod tests {
 
     #[test]
     fn in_process_el_band_sits_between_the_small_and_giant_bounds() {
+        let _test_env = crate::test_env::write();
         assert!(!in_process_el_band(IN_PROCESS_OFN_MAX - 1));
         assert!(in_process_el_band(IN_PROCESS_OFN_MAX));
         assert!(in_process_el_band(MEASURED_IN_PROCESS_EL_OFN_MAX - 1));
@@ -780,6 +886,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_flat_el_with_unused_punned_properties() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         struct RestoreInprocElc(Option<std::ffi::OsString>);
@@ -833,6 +940,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_writes_the_el_binary_sidecar_for_an_uncached_el_route() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ROUTE", "elc");
@@ -863,6 +971,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_the_selected_shoq_input() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         // Route selection itself has a separate profile regression test. This
@@ -882,6 +991,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_the_selected_general_ht_input() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ROUTE", "ht_general");
@@ -899,6 +1009,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_the_selected_bridge_input() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ROUTE", "ht_bridge");
@@ -916,6 +1027,7 @@ mod tests {
 
     #[test]
     fn giant_rbox_scan_detects_tokens_across_chunk_boundaries() {
+        let _test_env = crate::test_env::write();
         let path = TempPath::new(".ofn");
         let token = b"TransitiveObjectProperty(";
         let mut input = vec![b'x'; (64 << 10) - token.len() / 2];
@@ -927,6 +1039,7 @@ mod tests {
 
     #[test]
     fn giant_rbox_scan_accepts_plain_el_source() {
+        let _test_env = crate::test_env::write();
         let path = TempPath::new(".ofn");
         std::fs::write(
             path.path(),
@@ -938,6 +1051,7 @@ mod tests {
 
     #[test]
     fn giant_rbox_scan_checks_tail_then_full_source() {
+        let _test_env = crate::test_env::write();
         let tail_path = TempPath::new(".ofn");
         let mut tail_input = vec![b'x'; (1 << 20) + 4096];
         tail_input.extend_from_slice(b"InverseObjectProperties(<urn:r> <urn:s>)");

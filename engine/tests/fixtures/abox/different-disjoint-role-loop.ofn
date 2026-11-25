@@ -1,0 +1,12 @@
+Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/loop>
+Declaration(ObjectProperty(:s0))
+Declaration(ObjectProperty(:s1))
+Declaration(NamedIndividual(:a1))
+Declaration(NamedIndividual(:a2))
+Declaration(NamedIndividual(:a3))
+DisjointObjectProperties(:s0 :s1)
+ObjectPropertyAssertion(:s0 :a3 :a3)
+ObjectPropertyAssertion(:s1 :a1 :a2)
+SameIndividual(:a2 :a3)
+)

@@ -1,0 +1,22 @@
+inputs 173 {'full': 20, 'none': 98, 'partial': 32, 'km-failed': 6, 'no negative rows (km: inconsistent)': 3, 'signature-failed': 9, 'driver-timeout': 5}
+rows 24028736149 certified 424774 0.00%
+by kind (rows/certified): {'consistency': (150, 52), 'sat': (679782, 2738), 'nonsub': (23977826305, 419549), 'nontype': (50229912, 2435)}
+  fragment ALC {'full': 1, 'none': 3, 'driver-timeout': 1}
+  fragment EL {'full': 12, 'partial': 20, 'none': 22, 'driver-timeout': 1}
+  fragment SHI {'partial': 5, 'full': 1, 'none': 3, 'driver-timeout': 1}
+  fragment SHIQ {'none': 8, 'full': 1, 'partial': 1}
+  fragment SHIQ+ABox {'full': 4, 'none': 35, 'partial': 5, 'km-failed': 4, 'no negative rows (km: inconsistent)': 2, 'signature-failed': 8}
+  fragment SHOIQ {'full': 1, 'none': 23, 'partial': 1, 'no negative rows (km: inconsistent)': 1, 'signature-failed': 1, 'driver-timeout': 1}
+  fragment SROIQ {'none': 4, 'km-failed': 2, 'driver-timeout': 1}
+  size a<100K {'full': 19, 'none': 21, 'partial': 17}
+  size b<1M {'partial': 15, 'none': 43, 'full': 1, 'km-failed': 1, 'no negative rows (km: inconsistent)': 1}
+  size c<10M {'none': 27, 'no negative rows (km: inconsistent)': 2, 'signature-failed': 6, 'km-failed': 3}
+  size d>=10M {'none': 7, 'signature-failed': 3, 'km-failed': 2, 'driver-timeout': 5}
+reasons for partial/none:
+   72 checker timeout
+   33 producer wall budget
+   15 checker budget
+    9 checker out of memory
+    9 signature-failed
+    6 km-failed
+    1 checker rejected  hint: rejected (an index outside the tr

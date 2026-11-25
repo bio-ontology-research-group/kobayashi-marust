@@ -1,0 +1,10 @@
+Prefix(:=<http://ex.org/r#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex.org/r/dfunc>
+Declaration(DataProperty(:age))
+Declaration(NamedIndividual(:a))
+FunctionalDataProperty(:age)
+DataPropertyAssertion(:age :a "1"^^xsd:integer)
+DataPropertyAssertion(:age :a "2"^^xsd:integer)
+)

@@ -225,6 +225,7 @@ pub(crate) fn status_cancellable(cmd: &mut std::process::Command) -> Option<std:
     if CANCEL.load(Ordering::SeqCst) {
         return None;
     }
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().ok()?;
     let pid = child.id();
     register(pid);
@@ -289,6 +290,36 @@ pub(crate) fn read_rss(pid: u32) -> Option<u64> {
     Some(resident * 4096)
 }
 
+/// A worker `Command` for `program prefix...`, as `nice -n <nice> program
+/// prefix...` would run it but without the `nice` process: the increment is
+/// applied in the child before `exec` (`bigstack::prepare_worker_command`).
+/// `deep_stack` marks a `km tableau` worker, which then starts with the
+/// stack limit its own re-execution would install. An increment that is not
+/// an integer keeps the `nice` program, which reports it as before.
+pub(crate) fn worker_command(
+    program: &Path,
+    prefix: &[String],
+    nice: Option<&str>,
+    deep_stack: bool,
+) -> Command {
+    let stack = deep_stack.then(crate::bigstack::tableau_worker_stack_bytes);
+    match nice.map(|value| (value, value.trim().parse::<i32>())) {
+        Some((value, Err(_))) => {
+            let mut c = Command::new("nice");
+            c.arg("-n").arg(value).arg(program).args(prefix);
+            crate::bigstack::prepare_worker_command(&mut c, stack, None);
+            c
+        }
+        parsed => {
+            let mut c = Command::new(program);
+            c.args(prefix);
+            let increment = parsed.and_then(|(_, n)| n.ok());
+            crate::bigstack::prepare_worker_command(&mut c, stack, increment);
+            c
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_engine(
     program: &Path,
@@ -320,16 +351,8 @@ pub fn run_engine(
     let stdout_tmp = TempPath::new(".out.json");
     let stderr_tmp = TempPath::new(".err");
 
-    let mut cmd = if nice {
-        // the niced racer only consumes cores the primary leaves idle.
-        let mut c = Command::new("nice");
-        c.arg("-n").arg("19").arg(program).args(prefix);
-        c
-    } else {
-        let mut c = Command::new(program);
-        c.args(prefix);
-        c
-    };
+    // the niced racer only consumes cores the primary leaves idle.
+    let mut cmd = worker_command(program, prefix, nice.then_some("19"), false);
     cmd.stdin(File::open(clauses_path)?)
         .stdout(File::create(stdout_tmp.path())?)
         .stderr(File::create(stderr_tmp.path())?);
@@ -339,7 +362,13 @@ pub fn run_engine(
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
+    if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+        let mut model_out = stdout_tmp.path().as_os_str().to_os_string();
+        model_out.push(".model");
+        cmd.env("KM_WORKER_MODEL_OUT", model_out);
+    }
 
+    crate::mem::release_code_pages();
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: bin_name.clone(),
         source: e,
@@ -351,7 +380,7 @@ pub fn run_engine(
     // resident pages over the whole process tree. Freed frontend and
     // conversion garbage left here would otherwise stay resident beside the
     // worker's own peak for its entire lifetime (see `crate::mem`).
-    crate::mem::release_transient_heap();
+    crate::mem::release_before_worker_wait();
 
     let cap_bytes = rss_cap_gb.map(|g| (g * (1u64 << 30) as f64) as u64);
     let deadline = time_cap_s.map(|s| Instant::now() + Duration::from_secs_f64(s));
@@ -499,6 +528,7 @@ mod tests {
 
     #[test]
     fn exit_notification_preserves_normal_completion() {
+        let _test_env = crate::test_env::write();
         let input = empty_input();
         let result = run_engine(
             Path::new("/bin/sh"),
@@ -518,6 +548,7 @@ mod tests {
 
     #[test]
     fn exit_notification_preserves_timeout_kill() {
+        let _test_env = crate::test_env::write();
         let input = empty_input();
         let result = run_engine(
             Path::new("/bin/sh"),
@@ -540,6 +571,7 @@ mod tests {
 
     #[test]
     fn signal_death_is_not_reported_as_a_timeout() {
+        let _test_env = crate::test_env::write();
         let input = empty_input();
         let result = run_engine(
             Path::new("/bin/sh"),
@@ -561,6 +593,7 @@ mod tests {
 
     #[test]
     fn arm_event_wakes_waiter_before_its_timeout() {
+        let _test_env = crate::test_env::write();
         let event = ArmEvent::new();
         let seen = event.epoch();
         let notifier = event.clone();
@@ -577,6 +610,7 @@ mod tests {
 
     #[test]
     fn arm_event_does_not_sleep_through_an_earlier_notification() {
+        let _test_env = crate::test_env::write();
         let event = ArmEvent::new();
         let seen = event.epoch();
         event.notify();
@@ -587,6 +621,7 @@ mod tests {
 
     #[test]
     fn arm_event_times_out_without_a_notification() {
+        let _test_env = crate::test_env::write();
         let event = ArmEvent::new();
         let seen = event.epoch();
         let started = Instant::now();
@@ -598,6 +633,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn exit_notifier_wakes_on_child_exit() {
+        let _test_env = crate::test_env::write();
         let mut child = std::process::Command::new("/bin/sh")
             .arg("-c")
             .arg("sleep 0.05")
@@ -615,6 +651,7 @@ mod tests {
 
     #[test]
     fn exit_notification_preserves_rss_kill() {
+        let _test_env = crate::test_env::write();
         let input = empty_input();
         let result = run_engine(
             Path::new("/bin/sh"),

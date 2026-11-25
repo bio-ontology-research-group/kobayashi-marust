@@ -1,5 +1,6 @@
 name = "ContextCalculus"
 defaultTargets = ["ContextCalculus", "Validation"]
+weakLeanArgs = ["-j2", "-s65536"]
 
 [[require]]
 name = "mathlib"
@@ -11,6 +12,9 @@ name = "ContextCalculus"
 
 [[lean_lib]]
 name = "Validation"
+
+[[lean_lib]]
+name = "SRIQFast"
 
 [[lean_exe]]
 name = "elc-cert-check"
@@ -464,3 +468,15 @@ root = "KMOWLReferenceCheck"
 [[lean_exe]]
 name = "km-sri-probe"
 root = "KMSRIProbe"
+
+[[lean_exe]]
+name = "km-sriq-probe"
+root = "KMSRIQProbe"
+
+[[lean_exe]]
+name = "km-sriqd-probe"
+root = "KMSRIQDProbe"
+
+[[lean_exe]]
+name = "km-sriq-fast-probe"
+root = "KMSRIQFastProbe"

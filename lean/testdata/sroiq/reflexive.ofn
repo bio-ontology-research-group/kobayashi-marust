@@ -1,0 +1,8 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/reflexive>
+ReflexiveObjectProperty(:r)
+SubObjectPropertyOf(ObjectPropertyChain(:r :s) :q)
+ObjectPropertyAssertion(:s :a :b)
+ClassAssertion(ObjectAllValuesFrom(:r :C) :a)
+ClassAssertion(ObjectAllValuesFrom(:q :D) :a)
+)

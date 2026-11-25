@@ -87,6 +87,7 @@ mod tests {
 
     #[test]
     fn sat_vector_sparse_set_data_sets_item_count_to_max_index_plus_one() {
+        let _test_env = crate::test_env::read();
         let mut vec = IndividualSaturationProcessNodeVector::new();
         let node = SatNodeId::new(3);
 
@@ -100,6 +101,7 @@ mod tests {
 
     #[test]
     fn sat_vector_negative_ids_are_outside_the_dynamic_vector() {
+        let _test_env = crate::test_env::read();
         let mut vec = IndividualSaturationProcessNodeVector::new();
         vec.set_data(-1, SatNodeId::new(1));
 

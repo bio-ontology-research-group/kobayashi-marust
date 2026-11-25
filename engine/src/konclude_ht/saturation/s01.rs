@@ -875,11 +875,13 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     // must make the same check inside a large node's
                                     // concept queue; checking only between nodes lets
                                     // one item overrun the whole saturation budget.
-                                    if t0.elapsed() >= budget {
+                                    rss_check_applications += 1;
+                                    if (rss_check_applications & 255) == 0
+                                        && t0.elapsed() >= budget
+                                    {
                                         report_timeout("concept-queue", self, calc_alg_context);
                                         return false;
                                     }
-                                    rss_check_applications += 1;
                                     if rss_limit_kib.is_some()
                                         && rss_check_applications % 8_192 == 0
                                     {
@@ -1192,6 +1194,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         }
 
         self.complete_saturated_individual_nodes(calc_alg_context); // 438
+        // Diagnostic only (`KM_SAT_COUNTERS` with `KM_BRIDGE_PROGRESS`): the
+        // same counter lines as an aborted pass, labelled `stage=completed`,
+        // for comparison with Konclude's `KSATDBG precompute` line.
+        if self.diagnostic_counters_enabled {
+            report_timeout("completed", self, calc_alg_context);
+        }
         true // 450 (satisfiable)
     }
 
@@ -1675,6 +1683,7 @@ mod tests {
 
     #[test]
     fn has_remaining_extension_processing_nodes_reads_successor_extension_queue() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx
@@ -1693,6 +1702,7 @@ mod tests {
 
     #[test]
     fn orphaned_concept_work_is_reconnected_to_the_global_queue() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx
@@ -1731,6 +1741,7 @@ mod tests {
 
     #[test]
     fn orphaned_successor_work_is_reconnected_to_the_global_queue() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx

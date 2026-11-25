@@ -598,6 +598,7 @@ mod tests {
 
     #[test]
     fn range_domain_and_functionality_leave_values_inert() {
+        let _test_env = crate::test_env::read();
         let tin = range_only();
         let reach = value_singletons_inert(&tin, &[TRUE, FALSE]).expect("inert");
         assert!(!reach.edge[U]);
@@ -606,6 +607,7 @@ mod tests {
 
     #[test]
     fn a_data_existential_makes_values_reachable() {
+        let _test_env = crate::test_env::read();
         let mut tin = range_only();
         tin.clauses.push(cl(vec![c(A, 0)], vec![HAtom::Exist { r: U, neg: false, c: BOOL, t: 0 }]));
         assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_none());
@@ -613,6 +615,7 @@ mod tests {
 
     #[test]
     fn a_negated_universal_definer_creates_an_edge() {
+        let _test_env = crate::test_env::read();
         // Q resolves to ∀u.boolean; ¬Q in a head is ∃u.¬boolean.
         let mut tin = range_only();
         tin.definers.push(DefinerMeta {
@@ -629,6 +632,7 @@ mod tests {
 
     #[test]
     fn an_underivable_existential_definer_stays_inert() {
+        let _test_env = crate::test_env::read();
         // Q ≡ ∃u.⊤ is derivable only from a u-edge (the domain recognition).
         let mut tin = range_only();
         tin.definers.push(DefinerMeta {
@@ -647,6 +651,7 @@ mod tests {
 
     #[test]
     fn source_axioms_follow_polarity() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept, Role};
         let name = |n: &str| Concept::Name(n.to_string());
         let u = || Role::Name("u".to_string());
@@ -681,6 +686,7 @@ mod tests {
 
     #[test]
     fn abox_data_edges_and_unmodelled_channels_keep_the_gate() {
+        let _test_env = crate::test_env::read();
         let mut tin = range_only();
         tin.native_abox.role_assertions.push((U, 0, 1));
         assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_none());

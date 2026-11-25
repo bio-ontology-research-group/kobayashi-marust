@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/int-bounds>
+SubClassOf(:A DataSomeValuesFrom(:p DataIntersectionOf(DatatypeRestriction(xsd:int xsd:minInclusive "5"^^xsd:integer) DatatypeRestriction(xsd:int xsd:maxInclusive "3"^^xsd:integer))))
+)

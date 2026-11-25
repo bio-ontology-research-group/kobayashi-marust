@@ -49,6 +49,27 @@ public final class Classifier {
         public int dropped = 0;
         public final List<String[]> subsumptions = new ArrayList<>(); // {sub, super}
         public final List<String> unsatisfiable = new ArrayList<>();
+        public final List<String> lenient = new ArrayList<>();
+    }
+
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger(Classifier.class);
+    private static final java.util.concurrent.atomic.AtomicBoolean LENIENT_MODE_LOGGED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static volatile String lastLoggedModeNote;
+
+    static void logLenientModeOnFirstUse() {
+        if (LENIENT_MODE_LOGGED.compareAndSet(false, true)) {
+            String note = "Kobayashi-MaRust Protege plugin: using lenient input mode "
+                    + "(--lenient --unknown-datatypes=free) for OWL API / HermiT compatibility";
+            lastLoggedModeNote = note;
+            LOG.info(note);
+            System.err.println(note);
+        }
+    }
+
+    static String lastLoggedModeNote() {
+        return lastLoggedModeNote;
     }
 
     /** Receipt for the last native source-level transaction. */
@@ -122,6 +143,7 @@ public final class Classifier {
         /** One String instance per distinct IRI: the retained rows must not hold 2 copies per pair. */
         private Map<String, String> pool = new HashMap<>();
         private List<String> unsat = new ArrayList<>();
+        private List<String> lenient = new ArrayList<>();
         private boolean consistent = true;
         private int dropped;
         /** Revision of the committed answer; -1 until the first one. */
@@ -135,12 +157,24 @@ public final class Classifier {
         }
 
         public Session(String functionalSyntax) throws Exception {
+            this(functionalSyntax, null);
+        }
+
+        /**
+         * Start a session. {@code started} receives the session as soon as its
+         * native process runs, before the first (long) transaction, so a caller
+         * can interrupt that transaction.
+         */
+        public Session(String functionalSyntax, java.util.function.Consumer<Session> started)
+                throws Exception {
+            logLenientModeOnFirstUse();
             this.kmBin = KMExecutable.resolve();
             this.timeoutSeconds = parseTimeout();
-            this.log = Files.createTempFile("kmarust-incremental-", ".log");
-            ProcessBuilder builder = new ProcessBuilder(kmBin, "incremental-source");
+            this.log = TempFiles.create("incremental", ".log");
+            ProcessBuilder builder = new ProcessBuilder(
+                    kmBin, "incremental-source", "--lenient", "--unknown-datatypes=free");
             builder.redirectError(log.toFile());
-            this.process = builder.start();
+            this.process = NativeProcessTree.start(builder);
             this.input = new BufferedWriter(new OutputStreamWriter(
                     process.getOutputStream(), StandardCharsets.UTF_8));
             this.output = new BufferedReader(new InputStreamReader(
@@ -151,6 +185,7 @@ public final class Classifier {
                 return thread;
             });
             try {
+                if (started != null) started.accept(this);
                 transact("init", functionalSyntax);
             } catch (Exception error) {
                 close();
@@ -186,10 +221,13 @@ public final class Classifier {
                     for (String o : e.getValue()) r.subsumptions.add(new String[]{e.getKey(), o});
                 }
                 r.unsatisfiable.addAll(unsat);
+                r.lenient.addAll(lenient);
                 result = r;
             }
             return result;
         }
+
+        public synchronized List<String> lenient() { return Collections.unmodifiableList(lenient); }
 
         /** Retained subject rows; the map is the live committed state, read it under no concurrent update. */
         public synchronized Map<String, String[]> rows() { return Collections.unmodifiableMap(rows); }
@@ -287,6 +325,7 @@ public final class Classifier {
                 changed = true;
             }
             unsat = newUnsat;
+            lenient = r.lenient == null ? new ArrayList<>() : r.lenient;
             consistent = r.consistent;
             dropped = r.dropped;
             committedRevision = wire.revision == null ? committedRevision + 1 : wire.revision;
@@ -308,6 +347,10 @@ public final class Classifier {
             command.addProperty("op", op);
             if (source != null) command.addProperty("functional_syntax", source);
             if (baseRevision != null) command.addProperty("base_revision", baseRevision);
+            if ("init".equals(op) || "replace".equals(op)) {
+                command.addProperty("lenient", true);
+                command.addProperty("unknown_datatypes", "free");
+            }
             // Stream the request: same bytes as toJson(command), without a second
             // copy of the whole source as an intermediate String.
             gson.toJson(command, input);
@@ -420,6 +463,14 @@ public final class Classifier {
                         r.unsatisfiable = list;
                         break;
                     }
+                    case "lenient": {
+                        List<String> list = new ArrayList<>();
+                        reader.beginArray();
+                        while (reader.hasNext()) list.add(reader.nextString());
+                        reader.endArray();
+                        r.lenient = list;
+                        break;
+                    }
                     case "rows": {
                         List<WireRow> rowsList = new ArrayList<>();
                         reader.beginArray();
@@ -513,7 +564,7 @@ public final class Classifier {
             reads.shutdownNow();
             try { input.close(); } catch (Exception ignored) { }
             try { output.close(); } catch (Exception ignored) { }
-            try { Files.deleteIfExists(log); } catch (Exception ignored) { }
+            TempFiles.delete(log);
         }
 
         @Override
@@ -523,7 +574,7 @@ public final class Classifier {
             try { input.close(); } catch (Exception ignored) { }
             NativeProcessTree.terminateAndWait(process);
             reads.shutdownNow();
-            try { Files.deleteIfExists(log); } catch (Exception ignored) { }
+            TempFiles.delete(log);
         }
     }
 
@@ -567,6 +618,7 @@ public final class Classifier {
         Map<String, String[]> builtRows;
         Map<String, String> builtPool;
         List<String> unsatisfiable;
+        List<String> lenient;
         // Row-delta answers: only subjects whose superclass set changed.
         Boolean delta;
         Long base_revision;
@@ -597,24 +649,334 @@ public final class Classifier {
         return timeout;
     }
 
+    /**
+     * Entailed types and equalities of the named individuals, as reported by
+     * {@code km classify --lines --realize}. Individuals and classes are full
+     * IRIs. {@code owl:Thing} is never listed; individuals with no entry have
+     * only {@code owl:Thing} as a type.
+     */
+    public static final class Realization {
+        public boolean consistent = true;
+        public int dropped = 0;
+        /** Individual IRI to the IRIs of all its entailed named classes. */
+        public final Map<String, List<String>> types = new HashMap<>();
+        /** Pairs {a, b} with a &lt; b. */
+        public final List<String[]> same = new ArrayList<>();
+    }
+
+    /**
+     * Run {@code km classify --lines <flags>} once on the given functional
+     * syntax and return the output lines. The incremental session cannot
+     * realize or report properties, so these are separate one-shot native
+     * runs. {@code onStart} receives the process so the caller can cancel it.
+     * Fails on a non-zero exit, on a time out, and when the output has no
+     * {@code CONSISTENT} row.
+     */
+    static List<String> oneShot(String functionalSyntax, String[] flags, String label,
+                                        java.util.function.Consumer<Process> onStart) throws Exception {
+        logLenientModeOnFirstUse();
+        String kmBin = KMExecutable.resolve();
+        long timeout = parseTimeout();
+        Path tmp = TempFiles.create(label.replace(' ', '-'), ".ofn");
+        Path log = null;
+        try {
+            log = TempFiles.create(label.replace(' ', '-'), ".log");
+            Files.write(tmp, functionalSyntax.getBytes(StandardCharsets.UTF_8));
+            List<String> command = new ArrayList<>();
+            command.add(kmBin);
+            command.add("classify");
+            command.add("--lines");
+            command.add("--lenient");
+            command.add("--unknown-datatypes=free");
+            for (String flag : flags) {
+                if (!"--lenient".equals(flag) && !"--unknown-datatypes=free".equals(flag)) {
+                    command.add(flag);
+                }
+            }
+            command.add("--format");
+            command.add("functional");
+            command.add(tmp.toString());
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectErrorStream(true);
+            pb.redirectOutput(log.toFile());
+            Process proc = NativeProcessTree.start(pb);
+            if (onStart != null) onStart.accept(proc);
+            try {
+                if (!proc.waitFor(timeout, TimeUnit.SECONDS)) {
+                    NativeProcessTree.terminateAndWait(proc);
+                    throw new RuntimeException(
+                            "Kobayashi-MaRust " + label + " timed out after " + timeout + " seconds");
+                }
+            } finally {
+                if (onStart != null) onStart.accept(null);
+            }
+            int rc = proc.exitValue();
+            List<String> lines = Files.readAllLines(log, StandardCharsets.UTF_8);
+            if (rc != 0) {
+                String joined = String.join("\n", lines);
+                if (rc == 3 && joined.contains("unsupported:")) {
+                    throw new UnsupportedOperationException("Kobayashi-MaRust " + label + " failed (exit "
+                            + rc + "):\n" + joined);
+                }
+                throw new RuntimeException("Kobayashi-MaRust " + label + " failed (exit "
+                        + rc + "):\n" + joined);
+            }
+            boolean protocolSeen = false;
+            for (String line : lines) {
+                if (line.startsWith("CONSISTENT ")) protocolSeen = true;
+            }
+            if (!protocolSeen) {
+                throw new RuntimeException("Kobayashi-MaRust returned no " + label + " result:\n"
+                        + String.join("\n", lines));
+            }
+            return lines;
+        } finally {
+            TempFiles.delete(tmp);
+            TempFiles.delete(log);
+        }
+    }
+
+    /** The one value of an {@code APPROXIMATE} row, or null. */
+    static String approximate(List<String> lines) {
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 2 && f[0].equals("APPROXIMATE")) return f[1];
+        }
+        return null;
+    }
+
+    static boolean consistentRow(List<String> lines) {
+        boolean consistent = true;
+        for (String line : lines) {
+            if (line.startsWith("CONSISTENT ")) consistent = line.trim().endsWith("1");
+        }
+        return consistent;
+    }
+
+    static int droppedRow(List<String> lines) {
+        int dropped = 0;
+        for (String line : lines) {
+            if (line.startsWith("DROPPED ")) {
+                try { dropped = Integer.parseInt(line.trim().substring(8)); }
+                catch (NumberFormatException ignore) { }
+            }
+        }
+        return dropped;
+    }
+
+    /**
+     * Run {@code km classify --lines --realize} once on the given functional
+     * syntax. {@code onStart} receives the process so the caller can cancel it.
+     */
+    public static Realization realize(String functionalSyntax,
+                                      java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--realize"}, "realization", onStart);
+        Realization r = new Realization();
+        r.consistent = consistentRow(lines);
+        r.dropped = droppedRow(lines);
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 3 && f[0].equals("TYPE")) {
+                r.types.computeIfAbsent(f[1], k -> new ArrayList<>()).add(f[2]);
+            } else if (f.length == 3 && f[0].equals("SAME")) {
+                r.same.add(new String[]{f[1], f[2]});
+            }
+        }
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete realization: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        if (r.dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete realization: "
+                    + r.dropped + " clause(s) were dropped");
+        }
+        return r;
+    }
+
+    /**
+     * The object property rows of {@code km classify --lines --properties}
+     * (see {@code docs/PROPERTIES.md}). Names are full IRIs; an inverse
+     * expression keeps its {@code ObjectInverseOf(...)} spelling.
+     */
+    public static final class Properties {
+        public boolean consistent = true;
+        public int dropped = 0;
+        /** Pairs {r, f}: {@code r} named, {@code f} a property expression. */
+        public final List<String[]> subproperties = new ArrayList<>();
+        /** Properties equivalent to the universal property. */
+        public final List<String> top = new ArrayList<>();
+        /** Empty properties. */
+        public final List<String> bottom = new ArrayList<>();
+        /** Pairs {r, C}. */
+        public final List<String[]> domains = new ArrayList<>();
+        public final List<String[]> ranges = new ArrayList<>();
+    }
+
+    /**
+     * Run {@code km classify --lines --properties} once on the given
+     * functional syntax. {@code onStart} receives the process so the caller
+     * can cancel it. An approximate answer or a dropped clause is refused.
+     */
+    public static Properties properties(String functionalSyntax,
+                                        java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--properties"},
+                "property classification", onStart);
+        Properties p = new Properties();
+        p.consistent = consistentRow(lines);
+        p.dropped = droppedRow(lines);
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 3 && f[0].equals("SUBPROP")) p.subproperties.add(new String[]{f[1], f[2]});
+            else if (f.length == 2 && f[0].equals("TOPPROP")) p.top.add(f[1]);
+            else if (f.length == 2 && f[0].equals("BOTPROP")) p.bottom.add(f[1]);
+            else if (f.length == 3 && f[0].equals("DOMAIN")) p.domains.add(new String[]{f[1], f[2]});
+            else if (f.length == 3 && f[0].equals("RANGE")) p.ranges.add(new String[]{f[1], f[2]});
+        }
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete property classification: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        if (p.dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete property classification: "
+                    + p.dropped + " clause(s) were dropped");
+        }
+        return p;
+    }
+
+    /**
+     * The data property rows of {@code km classify --lines --data-properties}.
+     * Names are full IRIs.
+     */
+    public static final class DataProperties {
+        public boolean consistent = true;
+        public int dropped = 0;
+        public boolean disjointComputed = true;
+        public final List<String[]> subproperties = new ArrayList<>();
+        public final List<String> top = new ArrayList<>();
+        public final List<String> bottom = new ArrayList<>();
+        public final List<String[]> domains = new ArrayList<>();
+        public final List<String[]> disjoint = new ArrayList<>();
+    }
+
+    /**
+     * Run {@code km classify --lines --data-properties} once on the given
+     * functional syntax. An approximate answer or a dropped clause is refused.
+     */
+    public static DataProperties dataProperties(String functionalSyntax,
+                                                java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--data-properties"},
+                "data property classification", onStart);
+        DataProperties d = new DataProperties();
+        d.consistent = consistentRow(lines);
+        d.dropped = droppedRow(lines);
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 3 && f[0].equals("SUBDATAPROP")) d.subproperties.add(new String[]{f[1], f[2]});
+            else if (f.length == 2 && f[0].equals("TOPDATAPROP")) d.top.add(f[1]);
+            else if (f.length == 2 && f[0].equals("BOTDATAPROP")) d.bottom.add(f[1]);
+            else if (f.length == 3 && f[0].equals("DATADOMAIN")) d.domains.add(new String[]{f[1], f[2]});
+            else if (f.length == 3 && f[0].equals("DISJOINTDATAPROP")) d.disjoint.add(new String[]{f[1], f[2]});
+            else if (f.length == 1 && f[0].equals("NODATADISJOINT")) d.disjointComputed = false;
+        }
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete data property classification: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        if (d.dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete data property classification: "
+                    + d.dropped + " clause(s) were dropped");
+        }
+        return d;
+    }
+
+    /**
+     * The object property value rows of {@code km classify --lines --values}.
+     * Triples {@code {r, a, b}} are full IRIs.
+     */
+    public static final class Values {
+        public boolean consistent = true;
+        public int dropped = 0;
+        public final List<String[]> values = new ArrayList<>();
+    }
+
+    /**
+     * Run {@code km classify --lines --values} once on the given functional
+     * syntax. An approximate answer or a dropped clause is refused.
+     */
+    public static Values values(String functionalSyntax,
+                                java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--values"},
+                "object property values", onStart);
+        Values v = new Values();
+        v.consistent = consistentRow(lines);
+        v.dropped = droppedRow(lines);
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 4 && f[0].equals("VALUE")) v.values.add(new String[]{f[1], f[2], f[3]});
+        }
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete object property values run: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        if (v.dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete object property values run: "
+                    + v.dropped + " clause(s) were dropped");
+        }
+        return v;
+    }
+
+    /**
+     * Run {@code km classify --lines --top} once on the given functional
+     * syntax and return the IRIs of named classes entailed equivalent to
+     * {@code owl:Thing}. An approximate answer or a dropped clause is refused.
+     */
+    public static List<String> topClasses(String functionalSyntax,
+                                          java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--top"},
+                "top class check", onStart);
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete top class check: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        int dropped = droppedRow(lines);
+        if (dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete top class check: "
+                    + dropped + " clause(s) were dropped");
+        }
+        List<String> top = new ArrayList<>();
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 2 && f[0].equals("TOP")) top.add(f[1]);
+        }
+        return top;
+    }
+
     public static Result classify(OWLOntology ontology) throws Exception {
+        logLenientModeOnFirstUse();
         String kmBin = KMExecutable.resolve();
         long timeout = parseTimeout();
 
         // Flatten the complete imports closure. KM intentionally rejects
         // unresolved owl:imports declarations rather than classifying a
         // partial ontology.
-        Path tmp = Files.createTempFile("kmarust-", ".ofn");
-        Path log = Files.createTempFile("kmarust-", ".log");
+        Path tmp = TempFiles.create("classify", ".ofn");
+        Path log = null;
         try {
+            log = TempFiles.create("classify", ".log");
             FlattenedOntology.save(ontology, tmp);
 
             ProcessBuilder pb = new ProcessBuilder(
-                    kmBin, "classify", "--lines", "--format", "functional",
+                    kmBin, "classify", "--lines", "--lenient", "--unknown-datatypes=free",
+                    "--format", "functional",
                     tmp.toString());
             pb.redirectErrorStream(true);
             pb.redirectOutput(log.toFile());
-            Process proc = pb.start();
+            Process proc = NativeProcessTree.start(pb);
 
             if (!proc.waitFor(timeout, TimeUnit.SECONDS)) {
                 NativeProcessTree.terminateAndWait(proc);
@@ -642,6 +1004,8 @@ public final class Classifier {
                     catch (NumberFormatException ignore) {}
                 } else if (f.length == 2 && f[0].equals("APPROXIMATE")) {
                     approximate = f[1];
+                } else if (f.length == 2 && f[0].equals("LENIENT")) {
+                    r.lenient.add(f[1]);
                 } else if (f.length == 3 && f[0].equals("SUB")) {
                     r.subsumptions.add(new String[]{f[1], f[2]});
                 } else if (f.length == 2 && f[0].equals("UNSAT")) {
@@ -667,8 +1031,8 @@ public final class Classifier {
             }
             return r;
         } finally {
-            Files.deleteIfExists(tmp);
-            Files.deleteIfExists(log);
+            TempFiles.delete(tmp);
+            TempFiles.delete(log);
         }
     }
 }

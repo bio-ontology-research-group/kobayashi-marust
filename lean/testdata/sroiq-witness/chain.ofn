@@ -1,0 +1,13 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/chain>
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:C))
+Declaration(Class(:D))
+Declaration(ObjectProperty(:r))
+Declaration(NamedIndividual(:d))
+SubClassOf(:A :B)
+SubClassOf(:B :C)
+SubClassOf(:D ObjectSomeValuesFrom(:r :A))
+ClassAssertion(:D :d)
+)

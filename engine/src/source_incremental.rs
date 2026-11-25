@@ -1993,12 +1993,51 @@ fn is_bottom(name: &str) -> bool {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum SourceCommand {
-    Init { functional_syntax: String },
+    Init {
+        functional_syntax: String,
+        #[serde(default)]
+        unknown_datatypes: Option<String>,
+        #[serde(default)]
+        lenient: Option<bool>,
+    },
     // `base_revision` (row-delta request) is accepted and ignored: this session always
     // publishes the complete answer.
-    Replace { functional_syntax: String, #[serde(default)] base_revision: Option<u64> },
+    Replace {
+        functional_syntax: String,
+        #[serde(default)]
+        base_revision: Option<u64>,
+        #[serde(default)]
+        unknown_datatypes: Option<String>,
+        #[serde(default)]
+        lenient: Option<bool>,
+    },
     Classify,
     Stats,
+}
+
+fn apply_session_unknown_datatypes(mode: Option<&str>) -> Result<(), String> {
+    match mode {
+        None => Ok(()),
+        Some("strict") => {
+            std::env::remove_var("KM_UNKNOWN_DATATYPES");
+            Ok(())
+        }
+        Some("free") => {
+            std::env::set_var("KM_UNKNOWN_DATATYPES", "free");
+            Ok(())
+        }
+        Some(other) => Err(format!("unknown_datatypes takes strict or free, got {other:?}")),
+    }
+}
+
+fn apply_session_lenient(lenient: Option<bool>) {
+    if let Some(flag) = lenient {
+        if flag {
+            std::env::set_var("KM_LENIENT", "1");
+        } else {
+            std::env::remove_var("KM_LENIENT");
+        }
+    }
 }
 
 pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std::io::Result<()> {
@@ -2009,8 +2048,19 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
             continue;
         }
         let response = match serde_json::from_str::<SourceCommand>(&line) {
-            Ok(SourceCommand::Init { functional_syntax }) => {
-                match SourceIncrementalClassifier::new(&functional_syntax) {
+            Ok(SourceCommand::Init { functional_syntax, unknown_datatypes, lenient }) => {
+                apply_session_lenient(lenient);
+                match apply_session_unknown_datatypes(unknown_datatypes.as_deref())
+                    .and_then(|()| {
+                        let (rewritten, notes) = if crate::frontend::lenient::enabled() {
+                            crate::frontend::lenient::rewrite_source(&functional_syntax)?
+                        } else {
+                            (std::borrow::Cow::Borrowed(functional_syntax.as_str()), Vec::new())
+                        };
+                        crate::frontend::lenient::set_published_notes(notes);
+                        SourceIncrementalClassifier::new(&rewritten)
+                    })
+                {
                     Ok(classifier) => {
                         let response = session_response("init", &classifier, None);
                         session = Some(classifier);
@@ -2019,11 +2069,24 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
                     Err(error) => error_response("init", error),
                 }
             }
-            Ok(SourceCommand::Replace { functional_syntax, .. }) => match session.as_mut() {
-                Some(classifier) => match classifier.replace_source(&functional_syntax) {
-                    Ok(receipt) => session_response("replace", classifier, Some(receipt)),
-                    Err(error) => error_response("replace", error),
-                },
+            Ok(SourceCommand::Replace { functional_syntax, unknown_datatypes, lenient, .. }) => match session.as_mut() {
+                Some(classifier) => {
+                    apply_session_lenient(lenient);
+                    match apply_session_unknown_datatypes(unknown_datatypes.as_deref())
+                        .and_then(|()| {
+                            let (rewritten, notes) = if crate::frontend::lenient::enabled() {
+                                crate::frontend::lenient::rewrite_source(&functional_syntax)?
+                            } else {
+                                (std::borrow::Cow::Borrowed(functional_syntax.as_str()), Vec::new())
+                            };
+                            crate::frontend::lenient::set_published_notes(notes);
+                            classifier.replace_source(&rewritten)
+                        })
+                    {
+                        Ok(receipt) => session_response("replace", classifier, Some(receipt)),
+                        Err(error) => error_response("replace", error),
+                    }
+                }
                 None => error_response("replace", "session is not initialised"),
             },
             Ok(SourceCommand::Classify) => match session.as_ref() {
@@ -2055,6 +2118,13 @@ fn session_response(
     classifier: &SourceIncrementalClassifier,
     receipt: Option<SourceIncrementalReceipt>,
 ) -> Value {
+    let mut result = serde_json::to_value(classifier.classification()).unwrap_or(Value::Null);
+    let notes = crate::frontend::lenient::published_notes();
+    if !notes.is_empty() {
+        if let Value::Object(ref mut map) = result {
+            map.insert("lenient".to_string(), serde_json::to_value(notes).unwrap_or(Value::Null));
+        }
+    }
     json!({
         "status": "ok",
         "op": op,
@@ -2062,7 +2132,7 @@ fn session_response(
         "route": classifier.route(),
         "retained_backend": classifier.retained_backend(),
         "receipt": receipt,
-        "result": classifier.classification(),
+        "result": result,
     })
 }
 
@@ -2081,10 +2151,10 @@ mod tests {
     use crate::orchestrate::cb_to_ht::TInput;
     use crate::orchestrate::Classification;
 
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn publication_delta_matches_full_mapping_across_row_edits_and_aliases() {
+        let _test_env = crate::test_env::write();
         let _lock = lock_environment();
         let mut frontend = super::normalize_selected(
             "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)))",
@@ -2121,6 +2191,7 @@ mod tests {
 
     #[test]
     fn publication_delta_declines_changed_mapping_and_inexact_results_without_mutation() {
+        let _test_env = crate::test_env::write();
         let _lock = lock_environment();
         let mut frontend = super::normalize_selected(
             "Ontology(Declaration(Class(<urn:A>)))", "ht_bridge").unwrap();
@@ -2160,6 +2231,7 @@ mod tests {
 
     #[test]
     fn source_locality_coverage_rejects_missing_metadata_and_hidden_constraints() {
+        let _test_env = crate::test_env::write();
         let _lock=lock_environment();
         let source="Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>))
             Declaration(ObjectProperty(<urn:r>)) SubClassOf(<urn:A> ObjectSomeValuesFrom(<urn:r> <urn:B>)))";
@@ -2175,6 +2247,7 @@ mod tests {
 
     #[test]
     fn source_locality_reuses_rows_across_definer_churn_with_exact_fresh_answers() {
+        let _test_env = crate::test_env::write();
         let _lock=lock_environment();
         let declarations="Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>))
             Declaration(Class(<urn:C>)) Declaration(Class(<urn:X>)) Declaration(Class(<urn:Y>))
@@ -2234,6 +2307,7 @@ mod tests {
 
     #[test]
     fn source_module_preserves_role_background_and_full_iri_collisions() {
+        let _test_env = crate::test_env::write();
         let _lock=lock_environment();
         let declarations = ["urn:A","other:A","urn:B","urn:C","urn:D","urn:E","urn:U","urn:V"]
             .iter().map(|iri| format!("Declaration(Class(<{iri}>))")).collect::<Vec<_>>().join(" ");
@@ -2268,6 +2342,7 @@ mod tests {
 
     #[test]
     fn partial_bridge_update_keeps_unaffected_role_chain_entailments() {
+        let _test_env = crate::test_env::write();
         let _lock = lock_environment();
         let axioms = "Declaration(Class(<urn:test:A>)) Declaration(Class(<urn:test:B>)) Declaration(Class(<urn:test:C>))
             Declaration(Class(<urn:test:X>)) Declaration(Class(<urn:test:Y>))
@@ -2308,10 +2383,8 @@ mod tests {
         }).unwrap();
     }
 
-    fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    fn lock_environment() -> crate::test_env::EnvGuard {
+        crate::test_env::write()
     }
 
     fn fact(name: &str) -> JClause {
@@ -2326,6 +2399,7 @@ mod tests {
 
     #[test]
     fn invalid_source_replacement_preserves_the_existing_session() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let valid = "Prefix(:=<urn:test:>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) SubClassOf(:A :B))";
         let invalid = "Prefix(:=<urn:test:>) Ontology(SubClassOf(:A :B))";
@@ -2342,6 +2416,7 @@ mod tests {
 
     #[test]
     fn direct_abox_clash_is_preserved_across_source_revisions() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let consistent = r#"Ontology(
 Declaration(Class(<http://example.org/A>)) Declaration(Class(<http://example.org/B>)) Declaration(Class(<http://example.org/C>))
@@ -2406,6 +2481,7 @@ Ontology(
 
     #[test]
     fn multiset_delta_preserves_duplicate_clause_identity() {
+        let _test_env = crate::test_env::write();
         let a = fact("A");
         let b = fact("B");
         let (removed, added) = clause_delta(
@@ -2419,6 +2495,7 @@ Ontology(
 
     #[test]
     fn exact_public_bridge_seed_round_trips_through_frontend_names() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let frontend = normalize_automatic(
             r#"Prefix(:=<http://example.org/bridge-seed#>)
@@ -2466,6 +2543,7 @@ Ontology(
 
     #[test]
     fn complete_source_el_addition_reuses_the_fixpoint() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Ontology(
  Declaration(Class(<http://example.org/A>))
@@ -2494,6 +2572,7 @@ Ontology(
 
     #[test]
     fn complete_source_el_removal_retains_an_independent_component() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -2526,6 +2605,7 @@ Ontology(
 
     #[test]
     fn jsonl_session_publishes_a_transaction_receipt() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = "Prefix(:=<http://example.org/>)\nOntology(\nDeclaration(Class(:A)) Declaration(Class(:B))\nSubClassOf(:A :B)\n)";
         let after =
@@ -2560,6 +2640,7 @@ Ontology(
 
     #[test]
     fn typed_abox_state_never_enters_the_clause_only_adapter() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let source = r#"Ontology(
  Declaration(Class(<http://example.org/A>))
@@ -2573,6 +2654,7 @@ Ontology(
 
     #[test]
     fn exact_bridge_route_cannot_enter_an_ordinary_ht_or_qo_adapter() {
+        let _test_env = crate::test_env::write();
         assert!(!super::generic_ht_adapter_allowed("ht_bridge"));
         for route in ["ht_general", "ht_qo", "certified_card_nominals"] {
             assert!(super::generic_ht_adapter_allowed(route), "{route}");
@@ -2581,6 +2663,7 @@ Ontology(
 
     #[test]
     fn every_automatic_clause_route_alias_uses_its_complete_retained_core() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let source = r#"Ontology(
  Declaration(Class(<http://example.org/A>))
@@ -2619,6 +2702,7 @@ Ontology(
 
     #[test]
     fn positive_el_abox_updates_reuse_typed_completion_state() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let prior_elision = std::env::var_os("KM_NO_SEPARABLE_ABOX_ELISION");
         let terminology = (0..1_000)
@@ -2670,6 +2754,7 @@ Ontology(
 
     #[test]
     fn automatic_production_portfolio_reuses_its_complete_cb_state() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Ontology(
  Declaration(Class(<http://example.org/A>)) Declaration(Class(<http://example.org/B>)) Declaration(Class(<http://example.org/C>))
@@ -2705,6 +2790,7 @@ Ontology(
 
     #[test]
     fn exact_nominal_clause_route_reuses_cb_state_and_matches_fresh() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -2741,6 +2827,7 @@ Ontology(
 
     #[test]
     fn typed_ht_source_preparation_reuses_unaffected_probes() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -2784,6 +2871,7 @@ Ontology(
 
     #[test]
     fn automatic_route_never_selects_uncertified_general_ht() {
+        let _test_env = crate::test_env::write();
         // `ht_general` is a measurement arm without a certificate; automatic
         // incremental sessions keep a certified nominal route and still agree
         // with fresh classification after source edits.
@@ -2802,6 +2890,7 @@ Ontology(
 
     #[test]
     fn automatic_card_nominal_route_reuses_typed_probes_and_matches_fresh() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -2859,6 +2948,7 @@ Ontology(
 
     #[test]
     fn automatic_proxy_card_abox_route_reuses_certified_tbox_probes() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -2912,6 +3002,7 @@ Ontology(
 
     #[test]
     fn automatic_nominal_ni_abox_route_rechecks_and_reuses_models() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -2966,6 +3057,7 @@ Ontology(
 
     #[test]
     fn certified_nominal_route_preserves_singleton_taxonomy_during_cb_delta() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Prefix(:=<http://example.org/>)
 Ontology(
@@ -3014,6 +3106,7 @@ Ontology(
 
     #[test]
     fn quasi_order_source_preparation_reuses_disconnected_queries() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let before = r#"Prefix(:=<http://example.org/>)
 Ontology(

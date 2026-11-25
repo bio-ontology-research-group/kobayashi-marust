@@ -127,6 +127,18 @@ theorem transExpr_noCh : ∀ (E : ClassExpr) (p : Bool) (s : St), NoCh s (transE
       simp only [transExpr]
       exact (roleT_noCh r s).trans ((transExpr_noCh c true _).trans
         ((freshC_noCh _ _).trans (emit_noCh (by trivial) _)))
+  | .oneOf _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .hasValue _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .hasSelf _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .min _ _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .max _ _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .exact _ _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .dataSome _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .dataAll _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .dataHasValue _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .dataMin _ _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .dataMax _ _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
+  | .dataExact _ _ _, _, s => by simp only [transExpr]; exact NoCh.rfl
 
 theorem transList_noCh : ∀ (cs : List ClassExpr) (p : Bool) (s : St) acc,
     NoCh s (transList cs p s acc).2
@@ -187,8 +199,8 @@ theorem transAxiom_chainsOK {s : St} (hs : ChainsOK s) (ax : Axiom) (hax : ax.is
       simp only [transAxiom]
       have h := hs.of_noCh ((roleTs_noCh rs s []).trans (roleT_noCh r _))
       refine h.emit ?_
-      simp only [Axiom.isSHI, Bool.or_eq_true, beq_iff_eq] at hax
-      rcases hax with hl | rfl
+      simp only [Axiom.isSHI, Bool.or_eq_true, beq_iff_eq, Bool.and_eq_true] at hax
+      rcases hax.1.1 with hl | rfl
       · exact Or.inl (by rw [roleTs_length, hl])
       · right
         simp only [roleTs, roleT_idem, List.reverse_cons, List.reverse_nil, List.nil_append,
@@ -212,6 +224,32 @@ theorem transAxiom_chainsOK {s : St} (hs : ChainsOK s) (ax : Axiom) (hax : ax.is
       exact (hs.of_noCh (roleT_noCh r s)).emit (Or.inl rfl)
   | declareClass _ | declareObjectProperty _ =>
       simp only [transAxiom]; exact hs
+  | declareDataProperty _ => simp only [transAxiom]; exact hs
+  | declareNamedIndividual _ => simp only [transAxiom]; exact hs
+  | declareDatatype _ => simp only [transAxiom]; exact hs
+  | declareAnnotationProperty _ => simp only [transAxiom]; exact hs
+  | disjointUnion _ _ => simp only [transAxiom]; exact hs
+  | disjointObjectProperties _ => simp only [transAxiom]; exact hs
+  | functional _ => simp only [transAxiom]; exact hs
+  | inverseFunctional _ => simp only [transAxiom]; exact hs
+  | reflexive _ => simp only [transAxiom]; exact hs
+  | irreflexive _ => simp only [transAxiom]; exact hs
+  | asymmetric _ => simp only [transAxiom]; exact hs
+  | subDataPropertyOf _ _ => simp only [transAxiom]; exact hs
+  | equivalentDataProperties _ => simp only [transAxiom]; exact hs
+  | disjointDataProperties _ => simp only [transAxiom]; exact hs
+  | dataDomain _ _ => simp only [transAxiom]; exact hs
+  | dataRange _ _ => simp only [transAxiom]; exact hs
+  | functionalData _ => simp only [transAxiom]; exact hs
+  | datatypeDefinition _ _ => simp only [transAxiom]; exact hs
+  | hasKey _ _ _ => simp only [transAxiom]; exact hs
+  | sameIndividual _ => simp only [transAxiom]; exact hs
+  | differentIndividuals _ => simp only [transAxiom]; exact hs
+  | classAssertion _ _ => simp only [transAxiom]; exact hs
+  | objectPropertyAssertion _ _ _ => simp only [transAxiom]; exact hs
+  | negativeObjectPropertyAssertion _ _ _ => simp only [transAxiom]; exact hs
+  | dataPropertyAssertion _ _ _ => simp only [transAxiom]; exact hs
+  | negativeDataPropertyAssertion _ _ _ => simp only [transAxiom]; exact hs
 
 theorem foldl_trans_chainsOK : ∀ (axs : List Axiom) (s : St), ChainsOK s →
     (∀ ax ∈ axs, ax.isSHI = true) → ChainsOK (axs.foldl transAxiom s)

@@ -317,10 +317,10 @@ pub struct OrBranchLearningStats {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NativeNominalBackendReplay {
     pub asserted_concepts: Vec<(ConceptId, bool)>,
-    pub deterministic_cached_concepts: Vec<(ConceptId, bool)>,
+    pub deterministic_cached_concepts: std::sync::Arc<Vec<(ConceptId, bool)>>,
     /// Complete FULL_CONCEPT_SET values as
     /// `(concept, negated, deterministic)`, sorted by that key.
-    pub cached_concept_values: Vec<(ConceptId, bool, bool)>,
+    pub cached_concept_values: std::sync::Arc<Vec<(ConceptId, bool, bool)>>,
     /// Positive own nominal excluded by Konclude's concept-set
     /// synchronization test.
     pub own_nominal_concept: ConceptId,
@@ -397,8 +397,8 @@ impl Default for NativeNominalBackendReplay {
     fn default() -> Self {
         NativeNominalBackendReplay {
             asserted_concepts: Vec::new(),
-            deterministic_cached_concepts: Vec::new(),
-            cached_concept_values: Vec::new(),
+            deterministic_cached_concepts: std::sync::Arc::new(Vec::new()),
+            cached_concept_values: std::sync::Arc::new(Vec::new()),
             own_nominal_concept: ConceptId::NONE,
             role_assertions: Vec::new(),
             cached_neighbour_roles: Vec::new(),
@@ -1068,6 +1068,9 @@ pub struct CompletionTaskHandleAlgorithm {
     /// Blocking candidates of the retained consistency base (u20
     /// `BlockingBaseIndex`); set at the base snapshot, `None` otherwise.
     pub blocking_base_index: Option<std::sync::Arc<super::u20::BlockingBaseIndex>>,
+    /// Singleton carrier snapshot of the retained consistency leaf (u02
+    /// `RetainedSingletonBase`); set on leaf jobs, `None` otherwise.
+    pub retained_singleton_base: Option<std::sync::Arc<super::u02::RetainedSingletonBase>>,
     /// Nodes taken off the backend-individual reuse-expansion queue
     /// (`u02` Probes 19/34 → `handle_backend_expansion_reuse_queue_node`).
     pub native_reuse_queue_drain_count: u64,
@@ -1734,6 +1737,7 @@ impl CompletionTaskHandleAlgorithm {
             native_reuse_pending_defer_count: 0,
             native_reuse_lazy_lookup_hit_count: 0,
             blocking_base_index: None,
+            retained_singleton_base: None,
             native_reuse_queue_drain_count: 0,
             native_reuse_check_pass_count: 0,
             native_reuse_check_decline_count: 0,

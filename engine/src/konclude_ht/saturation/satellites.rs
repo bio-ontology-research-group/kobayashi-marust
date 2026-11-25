@@ -728,6 +728,47 @@ impl IntoIterator for CompactCreationRoleLinks {
     }
 }
 
+/// Head of a creation-role list held in the process context's cell pool
+/// (`ProcessContext::creation_roles`). Konclude keeps `mCreationRoleLinker` as
+/// a pointer to a linker chain, and a successor record created by
+/// `forceNewCreation` takes over its predecessor's chain pointer, so the
+/// records of one successor share one chain. The port shares cells the same
+/// way, but keeps cells immutable: adding a role puts one new cell in front,
+/// and negating a role copies only the cells in front of it. Each record
+/// therefore sees exactly the list it saw when it owned a private copy.
+/// `0` is the empty list; otherwise the value is the cell index plus one.
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+pub struct CreationRoleList(pub(crate) u32);
+
+impl CreationRoleList {
+    pub const EMPTY: Self = CreationRoleList(0);
+    #[inline]
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
+
+/// One immutable cell of a shared creation-role list.
+#[derive(Copy, Clone, Debug)]
+pub struct CreationRoleCell {
+    /// Role id plus one (so `RoleId::NONE` is representable).
+    pub(crate) role: u32,
+    pub(crate) negated: bool,
+    pub(crate) next: CreationRoleList,
+}
+
+impl CreationRoleCell {
+    #[inline]
+    pub fn new(link: NegLink<RoleId>, next: CreationRoleList) -> Self {
+        let role = u32::try_from(link.target.raw + 1).expect("role id fits in u32");
+        CreationRoleCell { role, negated: link.negated, next }
+    }
+    #[inline]
+    pub fn link(&self) -> NegLink<RoleId> {
+        NegLink { target: RoleId::new(self.role as Cint64 - 1), negated: self.negated }
+    }
+}
+
 /// Port of `CSaturationSuccessorData`.
 ///
 /// A per-successor record in a `CLinkedRoleSaturationSuccessorData`'s
@@ -750,8 +791,9 @@ pub struct SaturationSuccessorData {
     pub succ_indi_node: SatNodeId,
     /// `mNextLink`.
     pub next_link: SaturationSuccessorDataId,
-    /// `mCreationRoleLinker` (`CXNegLinker<CRole*>*` → negated-role chain).
-    pub creation_role_linker: CompactCreationRoleLinks,
+    /// `mCreationRoleLinker` (`CXNegLinker<CRole*>*`): the head of a shared,
+    /// immutable list in the context's cell pool (see `CreationRoleList`).
+    pub creation_role_linker: CreationRoleList,
 }
 
 impl Default for SaturationSuccessorData {
@@ -764,7 +806,7 @@ impl Default for SaturationSuccessorData {
             value_nominal_id: 0,
             succ_indi_node: SatNodeId::NONE,
             next_link: SaturationSuccessorDataId::NONE,
-            creation_role_linker: CompactCreationRoleLinks::new(),
+            creation_role_linker: CreationRoleList::EMPTY,
         }
     }
 }
@@ -880,6 +922,110 @@ impl IndividualSaturationSuccessorLinkDataLinker {
 // CLinkedRoleSaturationSuccessorData
 // ===========================================================================
 
+/// Compact sorted map from successor node id (`Cint64`) to
+/// `SaturationSuccessorDataId` (`CLinkedRoleSaturationSuccessorData::mSuccNodeDataMap`).
+///
+/// Nearly every `LinkedRoleSaturationSuccessorData` record has zero or one
+/// successor. `std::collections::BTreeMap<Cint64, SaturationSuccessorDataId>`
+/// allocates a 192-byte heap leaf node on the first insertion; storing up to one
+/// `(key, value)` pair inline in a sorted `SmallVec` keeps the struct size at
+/// 24 bytes, preserves ascending `Cint64` iteration order, and avoids heap
+/// allocation for zero- and one-successor buckets.
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct CompactSuccessorNodeDataMap(SmallVec<[(Cint64, SaturationSuccessorDataId); 1]>);
+
+impl CompactSuccessorNodeDataMap {
+    #[inline]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    #[inline]
+    pub fn get(&self, key: &Cint64) -> Option<&SaturationSuccessorDataId> {
+        match self.0.as_slice() {
+            [] => None,
+            [(k0, v0)] => (*k0 == *key).then_some(v0),
+            slice => slice
+                .binary_search_by_key(key, |(k, _)| *k)
+                .ok()
+                .map(|idx| &slice[idx].1),
+        }
+    }
+
+    #[inline]
+    pub fn contains_key(&self, key: &Cint64) -> bool {
+        self.get(key).is_some()
+    }
+
+    #[inline]
+    pub fn insert(
+        &mut self,
+        key: Cint64,
+        value: SaturationSuccessorDataId,
+    ) -> Option<SaturationSuccessorDataId> {
+        match self.0.as_mut_slice() {
+            [] => {
+                self.0.push((key, value));
+                None
+            }
+            [(k0, v0)] => {
+                if *k0 == key {
+                    Some(std::mem::replace(v0, value))
+                } else if *k0 < key {
+                    self.0.push((key, value));
+                    None
+                } else {
+                    self.0.insert(0, (key, value));
+                    None
+                }
+            }
+            slice => match slice.binary_search_by_key(&key, |(k, _)| *k) {
+                Ok(idx) => Some(std::mem::replace(&mut self.0[idx].1, value)),
+                Err(idx) => {
+                    self.0.insert(idx, (key, value));
+                    None
+                }
+            },
+        }
+    }
+
+    #[inline]
+    pub fn remove(&mut self, key: &Cint64) -> Option<SaturationSuccessorDataId> {
+        let idx = self.0.binary_search_by_key(key, |(k, _)| *k).ok()?;
+        Some(self.0.remove(idx).1)
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = (&Cint64, &SaturationSuccessorDataId)> {
+        self.0.iter().map(|(k, v)| (k, v))
+    }
+
+    #[inline]
+    pub fn values(&self) -> impl Iterator<Item = &SaturationSuccessorDataId> {
+        self.0.iter().map(|(_, v)| v)
+    }
+
+    #[inline]
+    pub fn keys(&self) -> impl Iterator<Item = &Cint64> {
+        self.0.iter().map(|(k, _)| k)
+    }
+}
+
 /// Port of `CLinkedRoleSaturationSuccessorData`.
 ///
 /// The per-role bucket in a `CLinkedRoleSaturationSuccessorHash`: a
@@ -891,10 +1037,8 @@ pub struct LinkedRoleSaturationSuccessorData {
     /// `mSuccNodeDataMap` (`CPROCESSMAP<cint64,CSaturationSuccessorData*>`).
     /// KONCLUDE-PORT-NOTE[ordering]: `CPROCESSMAP` is a sorted map — every
     /// verdict-relevant walk (collectATMOSTConceptRelevantSuccessors, the
-    /// successor extensions) iterates it in individual-id order. A `HashMap`
-    /// here made the extension machinery nondeterministic; `BTreeMap` restores
-    /// the C++ iteration order.
-    pub succ_node_data_map: std::collections::BTreeMap<Cint64, SaturationSuccessorDataId>,
+    /// successor extensions) iterates it in individual-id order.
+    pub succ_node_data_map: CompactSuccessorNodeDataMap,
     /// `mLastLink`.
     pub last_link: SaturationSuccessorDataId,
     /// `mSuccCount`.
@@ -914,7 +1058,7 @@ pub struct LinkedRoleSaturationSuccessorData {
 impl Default for LinkedRoleSaturationSuccessorData {
     fn default() -> Self {
         LinkedRoleSaturationSuccessorData {
-            succ_node_data_map: std::collections::BTreeMap::new(),
+            succ_node_data_map: CompactSuccessorNodeDataMap::new(),
             last_link: SaturationSuccessorDataId::NONE,
             succ_count: 0,
             extension_data: SaturationSuccessorExtensionDataId::NONE,
@@ -932,15 +1076,11 @@ impl LinkedRoleSaturationSuccessorData {
         Self::default()
     }
     /// Port of `getSuccessorNodeDataMap` (`return &mSuccNodeDataMap`).
-    pub fn get_successor_node_data_map(
-        &self,
-    ) -> &std::collections::BTreeMap<Cint64, SaturationSuccessorDataId> {
+    pub fn get_successor_node_data_map(&self) -> &CompactSuccessorNodeDataMap {
         &self.succ_node_data_map
     }
     /// Mutable accessor for the successor-node map (`create == true` path).
-    pub fn get_successor_node_data_map_mut(
-        &mut self,
-    ) -> &mut std::collections::BTreeMap<Cint64, SaturationSuccessorDataId> {
+    pub fn get_successor_node_data_map_mut(&mut self) -> &mut CompactSuccessorNodeDataMap {
         &mut self.succ_node_data_map
     }
     /// Port of `getLastSuccessorLinkData` (`return mLastLink`).
@@ -2195,12 +2335,18 @@ impl ConceptNegationPair {
 #[derive(Clone)]
 pub struct SaturationConceptExtensionMap {
     pub concept_extension_map: HashMap<Cint64, ConceptNegationPair>,
+    /// The map is keyed by concept tag, so it holds one polarity per concept.
+    /// Set when an insertion met the opposite polarity of a concept already in
+    /// the map: the extended node would carry `C` and `¬C`, which the map
+    /// cannot express (the first entry is kept).
+    pub polarity_conflict: bool,
 }
 
 impl Default for SaturationConceptExtensionMap {
     fn default() -> Self {
         Self {
             concept_extension_map: HashMap::default(),
+            polarity_conflict: false,
         }
     }
 }
@@ -2210,7 +2356,13 @@ impl SaturationConceptExtensionMap {
         Self::default()
     }
     pub fn insert(&mut self, concept_tag: Cint64, pair: ConceptNegationPair) -> &mut Self {
-        self.concept_extension_map.insert(concept_tag, pair);
+        match self.concept_extension_map.get(&concept_tag) {
+            Some(existing) if existing.negation != pair.negation => self.polarity_conflict = true,
+            Some(_) => {}
+            None => {
+                self.concept_extension_map.insert(concept_tag, pair);
+            }
+        }
         self
     }
     pub fn iter(&self) -> impl Iterator<Item = (&Cint64, &ConceptNegationPair)> {
@@ -3185,6 +3337,11 @@ pub struct SaturationIndividualNodeFunctionalConceptsExtensionData {
     pub functionality_added_roles: crate::fxhash::FxHashSet<RoleId>,
     /// `mCopyingInitializingRoleProcessLinker`.
     pub copying_initializing_role_process_linker: RoleSaturationProcessLinkerId,
+    /// Interned role chain of functional roles installed while this node owned a
+    /// `linked_role_succ_hash`, used to lazily populate
+    /// `role_functional_concepts_queuing_required` when a role bucket is first
+    /// materialized instead of pre-allocating empty buckets for every role.
+    pub functional_succ_queuing_role_process_linker: RoleSaturationProcessLinkerId,
     /// `mQualFuncAtmostConProcessLinker`.
     pub qual_func_atmost_con_process_linker: ConceptSaturationProcessLinkerId,
     /// `mLinkedPredecessorAddedRoleProcessLinker`.
@@ -3193,8 +3350,9 @@ pub struct SaturationIndividualNodeFunctionalConceptsExtensionData {
     pub predecessor_extension_process_linker: Cint64,
     /// `mForwardingPredMergedHash` (`CPROCESSHASH<CIndividualSaturationProcessNode*,CRole*>*`).
     pub forwarding_pred_merged_hash: HashMap<SatNodeId, HashSet<RoleId>>,
-    /// `mQualifiedFunctionalAtmostConceptProcessSet` (`CPROCESSSET<CConceptSaturationDescriptor*>*`, not yet ported).
-    pub qualified_functional_atmost_concept_process_set: Cint64,
+    /// `mQualifiedFunctionalAtmostConceptProcessSet` (`CPROCESSSET<CConceptSaturationDescriptor*>*`).
+    pub qualified_functional_atmost_concept_process_set:
+        crate::fxhash::FxHashSet<ConceptSaturationDescriptorId>,
 }
 
 impl Default for SaturationIndividualNodeFunctionalConceptsExtensionData {
@@ -3211,11 +3369,12 @@ impl Default for SaturationIndividualNodeFunctionalConceptsExtensionData {
             functionality_added_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             functionality_added_roles: Default::default(),
             copying_initializing_role_process_linker: RoleSaturationProcessLinkerId::NONE,
+            functional_succ_queuing_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             qual_func_atmost_con_process_linker: ConceptSaturationProcessLinkerId::NONE,
             linked_predecessor_added_role_process_linker: RoleSaturationProcessLinkerId::NONE,
             predecessor_extension_process_linker: INVALID,
             forwarding_pred_merged_hash: HashMap::default(),
-            qualified_functional_atmost_concept_process_set: INVALID,
+            qualified_functional_atmost_concept_process_set: Default::default(),
         }
     }
 }
@@ -3240,13 +3399,14 @@ impl SaturationIndividualNodeFunctionalConceptsExtensionData {
         self.functionality_added_role_process_linker = RoleSaturationProcessLinkerId::NONE;
         self.functionality_added_roles.clear();
         self.copying_initializing_role_process_linker = RoleSaturationProcessLinkerId::NONE;
+        self.functional_succ_queuing_role_process_linker = RoleSaturationProcessLinkerId::NONE;
         self.successor_extension_initialized = false;
         self.extension_processing_queued = false;
         self.successor_extension_process_linker =
             SaturationSuccessorFunctionalConceptExtensionDataId::NONE;
         self.predecessor_extension_process_linker = INVALID;
         self.forwarding_pred_merged_hash.clear();
-        self.qualified_functional_atmost_concept_process_set = INVALID;
+        self.qualified_functional_atmost_concept_process_set.clear();
         self
     }
 
@@ -4149,6 +4309,7 @@ mod layered_label_tests {
 
     #[test]
     fn saturation_layers_checkpoint_and_preserve_newest_entry_lookup() {
+        let _test_env = crate::test_env::read();
         let mut layers = SaturationConceptTagLayers::default();
         let checkpoint_layers = saturation_label_checkpoint_layers();
         for tag in 0..checkpoint_layers as Cint64 {
@@ -4195,6 +4356,7 @@ mod layered_label_tests {
 
     #[test]
     fn saturation_layers_preserve_independently_populated_components() {
+        let _test_env = crate::test_env::read();
         let mut layers = SaturationConceptTagLayers::default();
         let tag = 17;
         let mut concept_layer = SaturationConceptTagMap::default();
@@ -4219,6 +4381,7 @@ mod layered_label_tests {
 
     #[test]
     fn successor_creation_roles_store_one_inline_and_clone_by_value() {
+        let _test_env = crate::test_env::read();
         let role_a = RoleId::new(11);
         let role_b = RoleId::new(13);
         let mut original = CompactCreationRoleLinks::from(vec![NegLink {
@@ -4240,5 +4403,23 @@ mod layered_label_tests {
         original[0].negated = true;
         assert!(original[0].negated);
         assert!(!copied[0].negated);
+    }
+}
+
+#[cfg(test)]
+mod concept_extension_map_tests {
+    use super::*;
+
+    #[test]
+    fn opposite_polarity_of_one_tag_is_a_conflict_not_an_overwrite() {
+        let concept = ConceptId::new(7);
+        let mut map = SaturationConceptExtensionMap::new();
+        map.insert(11, ConceptNegationPair::new(concept, false));
+        map.insert(11, ConceptNegationPair::new(concept, false));
+        assert!(!map.polarity_conflict);
+        map.insert(11, ConceptNegationPair::new(concept, true));
+        assert!(map.polarity_conflict);
+        let kept: Vec<_> = map.iter().map(|(tag, pair)| (*tag, pair.negation)).collect();
+        assert_eq!(kept, [(11, false)]);
     }
 }

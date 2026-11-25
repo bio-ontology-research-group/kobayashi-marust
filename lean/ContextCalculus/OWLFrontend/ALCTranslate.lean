@@ -101,7 +101,7 @@ mutual
 
 /-- Structural transformation of one occurrence. `pos = false` is a negative
 occurrence (the result `X` satisfies `E ⊑ X`), `pos = true` a positive one
-(`X ⊑ E`). -/
+(`X ⊑ E`). Constructors outside OWL ALC give `top` and no clause. -/
 def transExpr : ClassExpr → Bool → St → Nat × St
   | .cls a, _, s => internC a s
   | .thing, _, s => (s.b.top, s)
@@ -155,6 +155,10 @@ def transExpr : ClassExpr → Bool → St → Nat × St
       let y := transExpr c true a.2
       let x := freshC (.all r c) y.2
       (x.1, emit (.allRight x.1 a.1 y.1) x.2)
+  | .oneOf _, _, s | .hasValue .., _, s | .hasSelf _, _, s | .min .., _, s
+  | .max .., _, s | .exact .., _, s | .dataSome .., _, s | .dataAll .., _, s
+  | .dataHasValue .., _, s | .dataMin .., _, s | .dataMax .., _, s
+  | .dataExact .., _, s => (s.b.top, s)
 
 /-- Translate a list of occurrences of one polarity, keeping each next to its
 index, in order. -/
@@ -202,6 +206,15 @@ def transAxiom (s : St) : Axiom → St
   | .subObjectPropertyOf _ _ | .equivalentObjectProperties _
   | .inverseObjectProperties _ _ | .transitive _ | .symmetric _ => s
   | .declareClass _ | .declareObjectProperty _ => s
+  | .disjointUnion .. | .disjointObjectProperties _ | .functional _
+  | .inverseFunctional _ | .reflexive _ | .irreflexive _ | .asymmetric _
+  | .subDataPropertyOf .. | .equivalentDataProperties _ | .disjointDataProperties _
+  | .dataDomain .. | .dataRange .. | .functionalData _ | .datatypeDefinition ..
+  | .hasKey .. | .sameIndividual _ | .differentIndividuals _ | .classAssertion ..
+  | .objectPropertyAssertion .. | .negativeObjectPropertyAssertion ..
+  | .dataPropertyAssertion .. | .negativeDataPropertyAssertion ..
+  | .declareDataProperty _ | .declareNamedIndividual _ | .declareDatatype _
+  | .declareAnnotationProperty _ => s
 
 /-- The start state after the prepass: `top` and `bottom` with their two
 clauses (newest first). -/

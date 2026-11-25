@@ -7,11 +7,11 @@ use std::sync::{Arc, Mutex};
 use super::sexpr::{tokens, Node, Parser};
 
 mod roles;
-mod anonymous;
-mod datatypes;
+pub(crate) mod anonymous;
+pub(crate) mod datatypes;
 mod facets;
 mod pattern;
-mod entities;
+pub(crate) mod entities;
 mod lexical;
 mod xml_literal;
 
@@ -124,7 +124,7 @@ fn expands_to(datatype: &str, prefixes: &BTreeMap<String, String>, target: &str)
     } else { datatype == target }
 }
 
-fn expand(datatype: &str, prefixes: &BTreeMap<String, String>) -> String {
+pub(crate) fn expand(datatype: &str, prefixes: &BTreeMap<String, String>) -> String {
     if let Some(iri) = datatype.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
         iri.to_owned()
     } else if let Some((prefix, local)) = datatype.split_once(':') {
@@ -245,6 +245,7 @@ pub fn check_user_source(text: &str) -> Result<(), UserSourceError> {
     let mut entities = Slot::Live(entities::Checker::default());
     let mut datatypes = Slot::Live(datatypes::Checker::default());
     let cache_enabled = std::env::var_os("KM_CACHE_CONFORMANCE").is_some()
+        && !unknown_datatypes_free()
         && text.len() <= VALIDATED_SOURCE_CACHE_LIMIT;
     let mut profile = (cache_enabled && text.len() <= SOURCE_STATISTICS_BOUND)
         .then(super::profile::SourceProfileBuilder::new);
@@ -332,7 +333,7 @@ pub fn check_source(text: &str) -> Result<(), String> {
     let timing = std::env::var_os("KM_CONFORMANCE_TIMING").is_some();
     let start = timing.then(std::time::Instant::now);
     let mut reused = false;
-    let result = if std::env::var_os("KM_CACHE_CONFORMANCE").is_some() {
+    let result = if std::env::var_os("KM_CACHE_CONFORMANCE").is_some() && !unknown_datatypes_free() {
         // Take the retained copy out while validating so the lock is never
         // held across a long check; put it, or the new document, back after.
         let mut cache = VALIDATED_SOURCE.lock().unwrap_or_else(|e| e.into_inner()).take();
@@ -371,6 +372,21 @@ fn check_source_uncached(text: &str) -> Result<(), String> {
     datatypes::check(text, &prefixes)
 }
 
+/// `--unknown-datatypes=free` (W7, `KM_UNKNOWN_DATATYPES=free`): a datatype
+/// outside the OWL 2 datatype map that has no `DatatypeDefinition` is read as
+/// a fresh datatype, and each of its literals as an opaque data value. Exact
+/// semantics: the datatype denotes an arbitrary subset of the data domain;
+/// a literal `"l"^^D` denotes one fixed data value (every occurrence of the
+/// same literal the same value) about which nothing else is known: it need
+/// not lie in `D`, and it may or may not equal any other literal or value.
+/// This is the reading HermiT's `ignoreUnsupportedDatatypes` gives on the
+/// inputs compared in `docs/DATATYPES.md`. Default `strict` rejects such
+/// input as OWL 2 DL requires.
+pub fn unknown_datatypes_free() -> bool {
+    std::env::var("KM_UNKNOWN_DATATYPES").is_ok_and(|mode| mode == "free")
+        || super::lenient::enabled()
+}
+
 /// Reject use of the top data range as a literal datatype. OWL 2 Direct
 /// Semantics excludes rdfs:Literal from the lexical datatype map. Its use as
 /// a range is legal; assigning it a lexical-to-value map would invent semantics.
@@ -395,9 +411,16 @@ pub fn check_literal_datatypes(text: &str) -> Result<(), String> {
         let datatype = if datatype.is_empty() { stream.next().unwrap_or("") } else { datatype };
         let expanded = expand(datatype, &prefixes);
         if expanded == "http://www.w3.org/2000/01/rdf-schema#Literal" {
+            if unknown_datatypes_free() {
+                continue;
+            }
             let offset = literal.as_ptr() as usize - text.as_ptr() as usize;
             let line = text[..offset].bytes().filter(|b| *b == b'\n').count() + 1;
             return Err(format!("invalid OWL 2 DL input at line {line}: literal {literal}^^{datatype} uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."));
+        }
+        if !datatypes::builtin(&expanded) && expanded != "http://www.w3.org/2002/07/owl#real" && unknown_datatypes_free() {
+            // W7: an opaque value of a fresh datatype; no lexical space to check.
+            continue;
         }
         if !datatypes::builtin(&expanded) || expanded == "http://www.w3.org/2002/07/owl#real" {
             return Err(format!("invalid OWL 2 DL input: literal {literal}^^{datatype} has no lexical interpretation in the OWL 2 datatype map; custom datatype definitions specify data ranges, not new literal lexical mappings"));
@@ -412,6 +435,7 @@ mod tests {
     use super::*;
     #[test]
     fn exact_validation_cache_preserves_rejections_after_valid_input() {
+        let _test_env = crate::test_env::read();
         let valid = "Ontology(Declaration(Class(<urn:A>)))";
         let mut cache = None;
         check_source_cached(valid, &mut cache, VALIDATED_SOURCE_CACHE_LIMIT).unwrap();
@@ -434,6 +458,7 @@ mod tests {
 
     #[test]
     fn exact_validation_cache_does_not_retain_oversized_sources() {
+        let _test_env = crate::test_env::read();
         // The production bound is 1 GiB; the same rule is exercised at 1 KiB.
         let limit = 1024;
         let source = format!("Ontology(){}", " ".repeat(limit));
@@ -447,6 +472,7 @@ mod tests {
 
     #[test]
     fn public_prefix_declarations_are_unique_and_cannot_rebind_standard_names() {
+        let _test_env = crate::test_env::read();
         for source in [
             "Prefix(:=<urn:a:>) Prefix(:=<urn:b:>) Ontology()",
             "Prefix(p:=<urn:a:>) Prefix(p:=<urn:a:>) Ontology()",
@@ -463,6 +489,7 @@ mod tests {
 
     #[test]
     fn user_prefix_checks_cover_entity_and_rule_iris_without_scanning_literal_contents() {
+        let _test_env = crate::test_env::read();
         for source in [
             "Ontology(Declaration(Class(missing:A)))",
             "Ontology(Declaration(Class(:A)))",
@@ -484,6 +511,7 @@ mod tests {
 
     #[test]
     fn grammar_rejects_wrong_arity_without_numeric_model_limits() {
+        let _test_env = crate::test_env::read();
         for source in ["Ontology(SubClassOf(:A))", "Ontology(ObjectPropertyAssertion(:p :a))",
             "Ontology(SubClassOf(:A ObjectComplementOf(:B :C)))"] {
             assert!(check_source(source).is_err(), "accepted {source}");
@@ -494,6 +522,7 @@ mod tests {
     }
     #[test]
     fn document_boundaries_cannot_silently_drop_input() {
+        let _test_env = crate::test_env::read();
         for text in ["", "garbage", "Ontology() garbage", "Ontology() Ontology()",
             "Ontology(", "Ontology(bare)", "Ontology(Ontology())", "Prefix Ontology()",
             "Ontology(Declaration(Class(:A)) <urn:late>)"] {
@@ -507,6 +536,7 @@ mod tests {
     }
     #[test]
     fn source_validation_preserves_dl_safe_rules_and_top_data_ranges() {
+        let _test_env = crate::test_env::read();
         let source = r#"Prefix(:=<urn:conformance:>)
 Ontology(
  Declaration(Class(:Patient))
@@ -524,6 +554,7 @@ Ontology(
     }
     #[test]
     fn rejects_top_typed_literals_in_assertions_and_rules() {
+        let _test_env = crate::test_env::read();
         for datatype in ["rdfs:Literal", "<http://www.w3.org/2000/01/rdf-schema#Literal>", "top:Literal"] {
             for separator in ["^^", "^^ ", " ^^ "] {
                 for axiom in [format!("DataPropertyAssertion(:p :a \"Diabetes\"{separator}{datatype})"),
@@ -538,6 +569,7 @@ Ontology(
     }
     #[test]
     fn allows_ranges_strings_rules_and_nonstandard_prefix_binding() {
+        let _test_env = crate::test_env::read();
         for text in [
             "Ontology(DataPropertyRange(:p rdfs:Literal) DataPropertyAssertion(:p :a \"Diabetes\"^^xsd:string))",
             "Ontology(DLSafeRule(Body(DataPropertyAtom(:p Variable(:x) \"Diabetes\"^^xsd:string)) Head(ClassAtom(:A Variable(:x)))))",
@@ -547,6 +579,7 @@ Ontology(
     }
     #[test]
     fn custom_and_real_datatypes_cannot_supply_literal_lexical_forms() {
+        let _test_env = crate::test_env::read();
         for datatype in ["owl:real", "custom:Literal", "xsd:date"] {
             assert!(check_literal_datatypes(&format!("Ontology(DataPropertyAssertion(:p :a \"1\"^^{datatype}))")).unwrap_err().contains("no lexical interpretation"));
         }
@@ -556,6 +589,7 @@ Ontology(
     }
     #[test]
     fn untyped_language_tagged_and_plain_literals_are_validated() {
+        let _test_env = crate::test_env::read();
         for literal in ["\"hello\"@en-GB", "\"hello@en-GB\"^^rdf:PlainLiteral", "\"hello@\"^^rdf:PlainLiteral", "\"hello\"@i-klingon"] {
             assert!(check_literal_datatypes(&format!("Ontology(Annotation(rdfs:label {literal}))")).is_ok(), "{literal}");
         }
@@ -565,6 +599,7 @@ Ontology(
     }
     #[test]
     fn rejects_13129_literal_pattern_without_rewriting() {
+        let _test_env = crate::test_env::read();
         let text = include_str!("../../../tests/conformance/invalid-top-literal.ofn");
         assert!(check_literal_datatypes(text).unwrap_err().contains("invalid OWL 2 DL input"));
     }

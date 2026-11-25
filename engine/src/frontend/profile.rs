@@ -186,6 +186,12 @@ pub struct SourceStatistics {
     #[serde(default, skip_serializing_if = "is_zero")]
     pub object_nominal_concepts: u64,
     pub has_self: u64,
+    /// `SubClassOf(owl:Thing ObjectOneOf(..))` and `EquivalentClasses` with
+    /// `owl:Thing` and an `ObjectOneOf` operand: covers of the domain by
+    /// named individuals (the finite-cover route's syntactic gate,
+    /// docs/V1.7.0-NOMINAL-COVER.md).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_nominal_covers: u64,
     pub datatype_constructors: u64,
     pub max_concept_depth: u64,
     pub max_concept_arity: u64,
@@ -534,6 +540,12 @@ impl<'a> SourceProfileBuilder<'a> {
             "SubClassOf" => {
                 self.logical_tbox(head);
                 self.stats.subclass_axioms += 1;
+                if args.len() == 2
+                    && args[0].as_atom().is_some_and(is_top)
+                    && args[1].head() == Some("ObjectOneOf")
+                {
+                    self.stats.top_nominal_covers += 1;
+                }
                 if let Some(lhs) = args.first().and_then(|arg| arg.as_atom()) {
                     self.subclass_lhs.insert(lhs);
                 }
@@ -551,6 +563,11 @@ impl<'a> SourceProfileBuilder<'a> {
             "EquivalentClasses" => {
                 self.logical_tbox(head);
                 self.stats.equivalent_class_axioms += 1;
+                if args.iter().any(|arg| arg.as_atom().is_some_and(is_top))
+                    && args.iter().any(|arg| arg.head() == Some("ObjectOneOf"))
+                {
+                    self.stats.top_nominal_covers += 1;
+                }
                 if args.len() == 2 {
                     for (named, definition) in [(args[0], args[1]), (args[1], args[0])] {
                         if definition.head() == Some("ObjectSomeValuesFrom") {
@@ -1046,7 +1063,7 @@ impl<'a> SourceProfileBuilder<'a> {
     /// (declared or used), sorted; the frontend's sort encoding resolves them
     /// against the registry without assigning new names.
     /// Every class name the source mentions (declarations aside).
-    pub(super) fn class_names(&self) -> Vec<&'a str> {
+    pub(crate) fn class_names(&self) -> Vec<&'a str> {
         let mut names: Vec<_> = self.classes.iter().copied().collect();
         names.sort_unstable();
         names
@@ -1058,10 +1075,22 @@ impl<'a> SourceProfileBuilder<'a> {
         names
     }
 
+    pub(super) fn object_property_names(&self) -> Vec<&'a str> {
+        let mut names: Vec<_> = self.object_properties.iter().copied().collect();
+        names.sort_unstable();
+        names
+    }
+
+    pub(super) fn all_individual_names(&self) -> Vec<&'a str> {
+        let mut names: Vec<_> = self.individuals.iter().copied().collect();
+        names.sort_unstable();
+        names
+    }
+
     pub(super) fn rule_individual_names(&self) -> Vec<&'a str> {
         if self.stats.rule_axioms == 0 { return Vec::new(); }
         let mut names: Vec<_> = self.individuals.iter().copied()
-            .filter(|name| !name.starts_with("_:"))
+            .filter(|name| !name.starts_with("_:") && !super::lenient::is_skolem_anon_iri(name))
             .collect();
         names.sort_unstable();
         names
@@ -1174,25 +1203,30 @@ impl<'a> SourceProfileBuilder<'a> {
             self.expr.negation_disjunction = true;
         }
         self.expr.finish();
+        // A nominal in an object property domain or range is a concept-level
+        // nominal for the ABox certificates: `ObjectPropertyDomain(r {a})`
+        // with `r` read by a restriction ties a TBox entailment to the
+        // asserted edges of `a` (tests/fixtures/properties/domrange_nominal:
+        // `∃r.B ⊑ ∃s.B` holds only through `s(a, b)`).
+        let any_concept_nominal =
+            self.nominal_from_concept || !self.conditional_nominal_roles.is_empty();
         let positive_abox_tbox_separable = positive_abox_tbox_separable(
             &self.stats,
             &self.expr,
-            self.nominal_from_concept,
+            any_concept_nominal,
             identity_consistent,
         ) || top_identity_abox_tbox_separable(
             &self.stats,
             &self.expr,
             self.top_class_assertions,
-            self.nominal_from_concept || !self.conditional_nominal_roles.is_empty(),
+            any_concept_nominal,
         );
         let positive_el_abox_materializable = positive_el_abox_materializable(
             &self.stats,
             &self.expr,
-            self.nominal_from_concept,
+            any_concept_nominal,
             identity_consistent,
         );
-        let any_concept_nominal =
-            self.nominal_from_concept || !self.conditional_nominal_roles.is_empty();
         let disjoint_union_abox_candidate =
             disjoint_union_abox_candidate(&self.stats, &self.expr, any_concept_nominal);
         let mut separable_class_names =
@@ -2375,6 +2409,7 @@ mod tests {
 
     #[test]
     fn konclude_code_precedence_is_exact() {
+        let _test_env = crate::test_env::read();
         let mut e = ExpressivityProfile {
             negation_disjunction: true,
             transitivity: true,
@@ -2393,6 +2428,7 @@ mod tests {
 
     #[test]
     fn parsed_constructs_drive_expressivity_not_text_tokens() {
+        let _test_env = crate::test_env::read();
         let p = source(
             r#"Ontology(
               AnnotationAssertion(rdfs:comment <x> "ObjectUnionOf(")
@@ -2409,6 +2445,7 @@ mod tests {
 
     #[test]
     fn top_identity_abox_separation_certificate_fails_closed() {
+        let _test_env = crate::test_env::read();
         // Thing-typed, possibly identified individuals: the TBox may use
         // negation, cardinality, datatypes and functional roles.
         let top_only = source(
@@ -2442,6 +2479,7 @@ mod tests {
 
     #[test]
     fn positive_abox_tbox_separation_certificate_fails_closed() {
+        let _test_env = crate::test_env::read();
         let positive = source(
             r#"Ontology(
               SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>))
@@ -2538,6 +2576,7 @@ mod tests {
 
     #[test]
     fn disjoint_union_abox_gate_excludes_component_connectors() {
+        let _test_env = crate::test_env::read();
         let admitted = source(
             r#"Ontology(
               DisjointClasses(<A> <B>)
@@ -2564,6 +2603,7 @@ mod tests {
 
     #[test]
     fn cardinality_matches_konclude_q_n_f_precedence() {
+        let _test_env = crate::test_env::read();
         let f = source("Ontology(SubClassOf(<A> ObjectMaxCardinality(1 <r> <B>)))");
         assert_eq!(f.expressivity.code, "ALIF+");
         let q = source("Ontology(SubClassOf(<A> ObjectMinCardinality(2 <r> <B>)))");
@@ -2578,6 +2618,7 @@ mod tests {
 
     #[test]
     fn inverse_cardinality_role_separation_is_source_certified() {
+        let _test_env = crate::test_env::read();
         // The inverse role remains semantically active (domain/range and a
         // restriction share class A with the cardinality axiom), but its role
         // component is disjoint from the simple number role p. Exact inverse
@@ -2694,6 +2735,7 @@ mod tests {
 
     #[test]
     fn clause_retained_role_constraints_stay_out_of_the_number_component() {
+        let _test_env = crate::test_env::read();
         // ore_ont_7499 in miniature: named inverse pairs, a transitive role, a
         // role chain, a complex range and an irreflexive role on roles that the
         // number restriction never touches, plus the tautological
@@ -2750,6 +2792,7 @@ mod tests {
 
     #[test]
     fn post_preprocessing_axiom_flags_match_official_konclude() {
+        let _test_env = crate::test_env::read();
         assert_eq!(
             source("Ontology(EquivalentClasses(<A> <B>))")
                 .expressivity
@@ -2824,6 +2867,7 @@ mod tests {
 
     #[test]
     fn post_preprocessing_reachability_matches_official_witnesses() {
+        let _test_env = crate::test_env::read();
         assert_eq!(
             source(
                 "Ontology(EquivalentClasses(<A> ObjectSomeValuesFrom(<r> <B>)) SubClassOf(<A> <B>))",
@@ -2880,6 +2924,7 @@ mod tests {
 
     #[test]
     fn rule_representability_is_profiled_before_routing() {
+        let _test_env = crate::test_env::read();
         let supported = source(
             "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>)) ObjectPropertyAtom(<r> Variable(<x>) <i>)) Head(ClassAtom(<B> Variable(<x>)))))",
         );
@@ -2899,6 +2944,7 @@ mod tests {
 
     #[test]
     fn complex_chain_replaces_base_with_sr() {
+        let _test_env = crate::test_env::read();
         let p = source(
             "Ontology(SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) TransitiveObjectProperty(<u>) InverseObjectProperties(<t> <v>))",
         );
@@ -2909,6 +2955,7 @@ mod tests {
 
     #[test]
     fn vacuous_universal_role_elision_describes_the_retained_ontology() {
+        let _test_env = crate::test_env::read();
         // Inverse/complement terminology with a positive object ABox whose
         // asserted role is read by a TBox existential, and one tautological
         // `r ⊑ owl:topObjectProperty` as the only universal-role occurrence.
@@ -2966,6 +3013,7 @@ mod rule_property_kind_tests {
     use super::*;
     #[test]
     fn graph_source_sorts_survive_frontend_converter_and_worker_wire() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = super::super::separable_abox_elision_tests::lock_environment();
         struct Restore(Vec<(&'static str, Option<std::ffi::OsString>)>);
         impl Drop for Restore {
@@ -2996,6 +3044,7 @@ mod rule_property_kind_tests {
     }
     #[test]
     fn worker_sorts_use_full_iris_and_reject_incomplete_or_ambiguous_tables() {
+        let _test_env = crate::test_env::read();
         let kinds = RulePropertyKinds { object: vec!["https://one/p".into()], data: vec!["https://two/p".into()] };
         let map = BTreeMap::from([("p".into(), "https://one/p".into()), ("p_1".into(), "https://two/p".into())]);
         assert_eq!(kinds.worker_data_roles(&["p_1".into(), "p".into()], &map).unwrap(), vec![true, false]);

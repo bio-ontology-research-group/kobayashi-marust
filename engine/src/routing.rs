@@ -98,8 +98,6 @@ pub enum Route {
     HtFeatures,
     HtFull,
     HtRules,
-    Tableau,
-    TabRace,
     CardFn,
     /// Complete-answer-or-defer SHOIQ TBox specialist for the certified
     /// finite nominal layout selected by `nominal_ni_tbox_candidate`.
@@ -113,7 +111,7 @@ pub enum Route {
 }
 
 impl Route {
-    pub const NAMED: [Route; 40] = [
+    pub const NAMED: [Route; 38] = [
         Route::Default,
         Route::Default8,
         Route::Default1,
@@ -146,8 +144,6 @@ impl Route {
         Route::HtFeatures,
         Route::HtFull,
         Route::HtRules,
-        Route::Tableau,
-        Route::TabRace,
         Route::CardFn,
         Route::NominalNiTbox,
         Route::NominalNiAbox,
@@ -192,8 +188,6 @@ impl Route {
             Route::HtFeatures => "ht_features",
             Route::HtFull => "ht_full",
             Route::HtRules => "ht_rules",
-            Route::Tableau => "tableau",
-            Route::TabRace => "tab_race",
             Route::CardFn => "card_fn",
             Route::NominalNiTbox => "nominal_ni_tbox",
             Route::NominalNiAbox => "nominal_ni_abox",
@@ -240,8 +234,6 @@ impl Route {
             Route::HtFeatures => HT_FEATURES,
             Route::HtFull => HT_FULL,
             Route::HtRules => HT_RULES,
-            Route::Tableau => TABLEAU,
-            Route::TabRace => TAB_RACE,
             Route::CardFn => CARD_FN,
             Route::NominalNiTbox => NOMINAL_NI_TBOX,
             Route::NominalNiAbox => NOMINAL_NI_ABOX,
@@ -311,7 +303,6 @@ impl Route {
                 | Route::HtFeatures
                 | Route::HtFull
                 | Route::HtRules
-                | Route::Tableau
                 | Route::CardFn
                 | Route::NominalNiTbox
                 | Route::Nominals
@@ -385,8 +376,6 @@ impl FromStr for Route {
             "ht_features" | "ht_feature_pack" => Route::HtFeatures,
             "ht_full" => Route::HtFull,
             "ht_rules" | "rules" => Route::HtRules,
-            "tableau" => Route::Tableau,
-            "tab_race" | "tab" => Route::TabRace,
             "card_fn" | "functional_card" => Route::CardFn,
             "nominal_ni_tbox" | "ni_tbox" => Route::NominalNiTbox,
             "nominal_ni_abox" | "ni_abox" => Route::NominalNiAbox,
@@ -683,7 +672,8 @@ pub(crate) fn bounded_bridge_first_candidate(selected: Route, profile: &Ontology
                 semantic_fragment(profile),
                 SemanticFragment::Nominal | SemanticFragment::NativeBridgeAbox
             )
-            && reflexive_roles == 0
+            && (reflexive_roles == 0
+                || (source.max_cardinalities == 0 && source.exact_cardinalities == 0))
             && source.file_bytes <= BOUNDED_BRIDGE_FIRST_MAX_BYTES
             && source.imports == 0
             && source.rule_axioms == 0
@@ -697,7 +687,8 @@ pub(crate) fn bounded_bridge_first_candidate(selected: Route, profile: &Ontology
             semantic_fragment(profile),
             SemanticFragment::Nominal | SemanticFragment::NativeBridgeAbox
         )
-        && reflexive_roles == 0
+        && (reflexive_roles == 0
+            || (source.max_cardinalities == 0 && source.exact_cardinalities == 0))
         && !(selected == Route::CertifiedNominals
             && source.unions == 0
             && source.role_assertions > 0
@@ -2861,6 +2852,15 @@ pub(crate) struct EnvironmentGuard {
     values: Vec<(&'static str, Option<std::ffi::OsString>)>,
 }
 
+/// True inside a `KM_GROUND_RULE_SOURCE` attempt whose source had zero rules
+/// and zero keys (`grounded.source_rules == 0`). Such an attempt must keep the
+/// pre-`v170/rules-shoiq` admission gates so rule-free inputs take the exact
+/// code path of `km-f2eb0196`.
+pub(crate) fn ground_rule_zero_rules_mode() -> bool {
+    std::env::var_os("KM_GROUND_PRIVATE_CLASS_FILE").is_some()
+        && std::env::var_os("KM_GROUND_RULE_HAS_RULES").is_none()
+}
+
 impl EnvironmentGuard {
     pub(crate) fn capture() -> Self {
         let values = std::iter::once("KM_ROUTE")
@@ -2868,6 +2868,8 @@ impl EnvironmentGuard {
             .chain(std::iter::once("KM_TRANSITIVE_RULE_REDUCE"))
             .chain(std::iter::once("KM_RULE_JOIN_ORDER"))
             .chain(std::iter::once("KM_GROUND_RULE_SOURCE"))
+            .chain(std::iter::once("KM_GROUND_RULE_SOURCE_DEFERRED"))
+            .chain(std::iter::once("KM_GROUND_RULE_HAS_RULES"))
             .chain(std::iter::once("KM_GROUND_PRIVATE_CLASS_FILE"))
             .chain(std::iter::once("KM_BRIDGE_PUBLIC_SUBJECT_FILE"))
             .chain(std::iter::once("KM_PUBLIC_SUBJECT_IRIS_FILE"))
@@ -3314,20 +3316,6 @@ const HT_RULES: &[(&str, &str)] = &[
     ("KM_NO_HT_CARD", "1"),
     ("KM_NO_RETRY", "1"),
 ];
-const TABLEAU: &[(&str, &str)] = &[
-    ("KM_MECHANISM", "tableau"),
-    ("KM_NO_HT_RULES", "1"),
-    ("KM_TAB_RACE", "1"),
-    ("KM_TAB_FEAT", "1"),
-    ("KM_TAB_RACE_NICE", "0"),
-];
-const TAB_RACE: &[(&str, &str)] = &[
-    ("KM_MECHANISM", "portfolio"),
-    ("KM_TAB_RACE", "1"),
-    ("KM_TAB_FEAT", "1"),
-    ("KM_NO_ELC_PORTFOLIO", "1"),
-    ("KM_NO_HT_RACE", "1"),
-];
 const CB_PORTFOLIO: &[(&str, &str)] = &[
     ("KM_MECHANISM", "portfolio"),
     ("KM_NO_ELC_PORTFOLIO", "1"),
@@ -3580,6 +3568,7 @@ mod tests {
     /// the structural bound of a flat hierarchy.
     #[test]
     fn general_policy_contains_no_numeric_thresholds() {
+        let _test_env = crate::test_env::write();
         let src = include_str!("routing.rs");
         let body = |name: &str| -> String {
             let start = src
@@ -3627,6 +3616,7 @@ mod tests {
     /// not EL takes the production portfolio.
     #[test]
     fn general_policy_defaults_are_portfolios() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 10;
         profile.source.tbox_axioms = 10;
@@ -3651,6 +3641,7 @@ mod tests {
 
     #[test]
     fn compact_functional_identity_abox_uses_exact_nominal_portfolio() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.expressivity.nominal = true;
@@ -3673,6 +3664,7 @@ mod tests {
 
     #[test]
     fn parsed_functional_nominal_fixture_uses_exact_portfolio_with_class_abox() {
+        let _test_env = crate::test_env::write();
         let text = include_str!("../tests/fixtures/nominal_wine_absorption.ofn");
         let closing = text.rfind(')').unwrap();
         let input = format!("{}\nDeclaration(NamedIndividual(<http://km.test/sample>))\nClassAssertion(<http://www.ifomis.org/bfo/1.1#WhiteTableWine> <http://km.test/sample>)\n)", &text[..closing]);
@@ -3715,6 +3707,7 @@ mod tests {
 
     #[test]
     fn wine_tbox_extensions_stay_out_of_the_typed_abox_specialist() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let base = wine_nominal_ni_profile();
         assert!(nominal_ni_tbox_candidate(&base));
@@ -3770,6 +3763,7 @@ mod tests {
 
     #[test]
     fn automatic_route_admits_the_large_near_el_shape_with_exact_fallback() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         assert!(certified_el_production_candidate(&large_near_el_profile()));
         assert_eq!(
@@ -3780,6 +3774,7 @@ mod tests {
 
     #[test]
     fn certified_el_production_gate_fails_closed_on_semantic_risk() {
+        let _test_env = crate::test_env::write();
         let mut profile = large_near_el_profile();
         profile.source.complements = 1;
         assert!(!certified_el_production_candidate(&profile));
@@ -3794,6 +3789,7 @@ mod tests {
 
     #[test]
     fn automatic_route_admits_large_extended_el_tbox_with_exact_fallback() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let profile = large_extended_el_tbox_profile();
         assert!(certified_el_production_candidate(&profile));
@@ -3802,6 +3798,7 @@ mod tests {
 
     #[test]
     fn extended_el_tbox_gate_requires_scale_declaration_and_safe_shape() {
+        let _test_env = crate::test_env::write();
         let mut profile = large_extended_el_tbox_profile();
         profile.source.logical_axioms = 399_999;
         assert!(!certified_el_production_candidate(&profile));
@@ -3817,6 +3814,7 @@ mod tests {
 
     #[test]
     fn automatic_route_certifies_large_el_tbox_with_tiny_identity_abox() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let profile = large_el_tbox_with_small_identity_abox_profile();
         assert!(certified_el_production_candidate(&profile));
@@ -3825,6 +3823,7 @@ mod tests {
 
     #[test]
     fn small_identity_abox_gate_fails_closed_on_non_identity_or_risky_axioms() {
+        let _test_env = crate::test_env::write();
         let mut profile = large_el_tbox_with_small_identity_abox_profile();
         profile.source.role_assertions = 1;
         assert!(!certified_el_production_candidate(&profile));
@@ -3905,6 +3904,7 @@ mod tests {
 
     #[test]
     fn automatic_route_certifies_bounded_near_el_sources() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         for profile in [
             bounded_near_el_terminology_profile(),
@@ -3937,6 +3937,7 @@ mod tests {
 
     #[test]
     fn bounded_near_el_route_keeps_the_certificate_and_exact_fallback() {
+        let _test_env = crate::test_env::write();
         // The route publishes only on a passing canonical-model certificate
         // (`KM_ELC_CERT`), and it is deliberately not atomic: the orchestrator
         // reruns the absorbed production portfolio on any refusal.
@@ -3948,6 +3949,7 @@ mod tests {
 
     #[test]
     fn bounded_near_el_gate_fails_closed_outside_the_el_class_fragment() {
+        let _test_env = crate::test_env::write();
         // Every construct outside the admitted EL class fragment must fall
         // back to the unchanged production route.
         let cases: [(&str, fn(&mut OntologyProfile)); 12] = [
@@ -3995,6 +3997,7 @@ mod tests {
 
     #[test]
     fn bounded_near_el_gate_declines_expensive_refusals() {
+        let _test_env = crate::test_env::write();
         // A near-complete disjointness clique carries no positive EL structure
         // to complete and expands quadratically in the class count.
         let mut profile = bounded_near_el_terminology_profile();
@@ -4020,6 +4023,7 @@ mod tests {
 
     #[test]
     fn bounded_near_el_gate_never_preempts_an_exact_fragment_route() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         // A non-separable ABox is a nominal source: the EL worker sees clauses,
         // not singleton identity, so it must keep the exact nominal calculus.
@@ -4272,6 +4276,7 @@ mod tests {
 
     #[test]
     fn automatic_route_runs_bare_cb_on_the_positive_abox_horn_family() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let profile = positive_abox_horn_profile();
         assert_eq!(semantic_fragment(&profile), SemanticFragment::PositiveAbox);
@@ -4300,6 +4305,7 @@ mod tests {
 
     #[test]
     fn positive_abox_horn_cb_gate_fails_closed_outside_its_fragment() {
+        let _test_env = crate::test_env::write();
         let cases: [(&str, fn(&mut OntologyProfile)); 14] = [
             ("union", |p| p.source.unions = 1),
             ("complement", |p| p.source.complements = 1),
@@ -4365,6 +4371,7 @@ mod tests {
 
     #[test]
     fn positive_abox_horn_cb_gate_never_preempts_an_exact_fragment_route() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         // Without the positive separation certificate this is an ordinary
         // nominal ABox. The source shape still passes the screen, but the
@@ -4392,6 +4399,7 @@ mod tests {
 
     #[test]
     fn automatic_route_runs_bare_cb_on_bounded_non_el_terminologies() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         for (profile, expected) in [
             (disjointness_clique_schema_profile(), Route::CbPlain1),
@@ -4418,6 +4426,7 @@ mod tests {
 
     #[test]
     fn bounded_non_el_cb_gate_requires_a_construct_outside_the_el_class_fragment() {
+        let _test_env = crate::test_env::write();
         // Named disjointness alone is an EL constraint (`elc` represents it as
         // an NF5 empty-head clause), so the portfolio's EL arm can decide this
         // terminology and must keep the chance to.
@@ -4450,6 +4459,7 @@ mod tests {
 
     #[test]
     fn bounded_non_el_cb_gate_fails_closed_on_density_size_and_nominals() {
+        let _test_env = crate::test_env::write();
         // More than one union per hundred logical axioms is live disjunction,
         // which is exactly what the isolated CB bundles lose on.
         let mut profile = complement_bearing_terminology_profile();
@@ -4511,6 +4521,7 @@ mod tests {
 
     #[test]
     fn bounded_bridge_first_only_precedes_nominal_leaves_and_keeps_selection() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = union_free_disjointness_terminology_profile();
         profile.source.abox_axioms = 1;
@@ -4564,6 +4575,7 @@ mod tests {
 
     #[test]
     fn bounded_non_el_cb_gate_never_preempts_an_exact_fragment_route() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         // Any ABox leaves the nominal-free fragment this screen is scoped to.
         let mut profile = union_free_disjointness_terminology_profile();
@@ -4596,6 +4608,7 @@ mod tests {
 
     #[test]
     fn bare_cb_routes_keep_the_exact_production_fallback() {
+        let _test_env = crate::test_env::write();
         // These bundles set `KM_NO_RETRY=1`, so a worker error, a non-fixpoint
         // exit, or an RSS trip has to return to the route the screen displaced.
         for route in [Route::CbAbsorb8, Route::CbPlain1, Route::CbTrigger16] {
@@ -4629,6 +4642,7 @@ mod tests {
 
     #[test]
     fn every_matrix_route_round_trips() {
+        let _test_env = crate::test_env::write();
         for route in Route::NAMED {
             assert_eq!(route.as_str().parse::<Route>().unwrap(), route);
         }
@@ -4636,6 +4650,7 @@ mod tests {
 
     #[test]
     fn component_abox_bridge_source_gate_is_positive_object_only() {
+        let _test_env = crate::test_env::write();
         let ontology = |abox: &str| {
             source_profile(&format!(
                 "Ontology( Declaration(Class(:A)) Declaration(ObjectProperty(:r)) {abox} )"
@@ -4659,6 +4674,7 @@ mod tests {
 
     #[test]
     fn only_automatic_routing_is_an_explanation_oracle() {
+        let _test_env = crate::test_env::write();
         assert!(Route::Auto.is_explanation_safe());
         assert!(!Route::Manual.is_explanation_safe());
         for route in Route::NAMED {
@@ -4671,6 +4687,7 @@ mod tests {
 
     #[test]
     fn closing_bundles_match_the_matrix_contract() {
+        let _test_env = crate::test_env::write();
         assert!(Route::ProductionAll
             .settings()
             .contains(&("KM_TRIGGER_ABSORB", "1")));
@@ -4757,15 +4774,9 @@ mod tests {
         assert!(Route::HtFull
             .settings()
             .contains(&("KM_TRIGGER_ABSORB", "1")));
-        assert!(Route::Tableau
-            .settings()
-            .contains(&("KM_MECHANISM", "tableau")));
-        assert!(Route::TabRace.settings().contains(&("KM_TAB_RACE", "1")));
-        assert!(Route::TabRace.settings().contains(&("KM_TAB_FEAT", "1")));
-        assert!(Route::TabRace
-            .settings()
-            .contains(&("KM_NO_ELC_PORTFOLIO", "1")));
-        assert!(Route::TabRace.settings().contains(&("KM_NO_HT_RACE", "1")));
+        // The legacy tableau routes are not part of the release.
+        assert!("tableau".parse::<Route>().is_err());
+        assert!("tab_race".parse::<Route>().is_err());
         assert!(Route::CardFn.settings().contains(&("KM_HT_CARD_FN", "1")));
         for required in [
             ("KM_MECHANISM", "ht"),
@@ -4871,6 +4882,7 @@ mod tests {
 
     #[test]
     fn isolated_nominal_queries_keep_the_complete_nominal_route() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 4;
@@ -4890,6 +4902,7 @@ mod tests {
 
     #[test]
     fn reflexive_horn_bridge_retains_complete_production_fallback() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.axiom_types.insert("ReflexiveObjectProperty".into(), 1);
@@ -4917,6 +4930,7 @@ mod tests {
 
     #[test]
     fn nominal_chain_bridge_keeps_nominal_fallback_and_semantic_fences() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 2;
@@ -4939,6 +4953,7 @@ mod tests {
 
     #[test]
     fn data_assertion_bridge_attempt_is_bounded_and_has_nominal_fallback() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.tbox_axioms = 300;
@@ -4960,6 +4975,7 @@ mod tests {
 
     #[test]
     fn compact_nominal_profile_never_selects_uncertified_general_ht() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.expressivity.nominal_individual = true;
         profile.source.logical_axioms = 7_000;
@@ -4972,6 +4988,7 @@ mod tests {
 
     #[test]
     fn large_card_profile_never_selects_uncertified_general_ht() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.card_number_role_separable = true;
         profile.source.logical_axioms = 11_821;
@@ -4985,6 +5002,7 @@ mod tests {
 
     #[test]
     fn high_unqualified_cardinality_profile_never_selects_uncertified_shoq() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.expressivity.nominal = true;
@@ -5009,6 +5027,7 @@ mod tests {
 
     #[test]
     fn portfolios_are_never_atomic_tree_leaves() {
+        let _test_env = crate::test_env::write();
         for route in [
             Route::Default,
             Route::Default8,
@@ -5018,7 +5037,6 @@ mod tests {
             Route::ProductionAll1,
             Route::CertifiedNominals,
             Route::CbAbsorbPortfolio16,
-            Route::TabRace,
         ] {
             assert!(!route.is_atomic(), "{} must remain a portfolio", route);
         }
@@ -5037,6 +5055,7 @@ mod tests {
 
     #[test]
     fn semantic_fragment_gate_precedes_the_learned_tree() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         // Keep this semantic-dispatch test outside the small-production
@@ -5132,6 +5151,7 @@ mod tests {
 
     #[test]
     fn independent_large_abox_uses_complete_production_portfolio() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 10_000;
@@ -5202,6 +5222,7 @@ mod tests {
 
     #[test]
     fn large_nominal_abox_prefers_no_cardinality_production() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 256_427;
@@ -5240,6 +5261,7 @@ mod tests {
 
     #[test]
     fn typed_object_abox_candidate_uses_certified_bridge_portfolio() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let profile = source_profile(
             r#"Ontology(
@@ -5299,6 +5321,7 @@ mod tests {
 
     #[test]
     fn large_typed_abox_defers_cb_allocation_until_bridge_defer() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 2;
         profile.source.class_assertions = 1;
@@ -5321,6 +5344,7 @@ mod tests {
 
     #[test]
     fn large_disjunctive_shi_tbox_runs_bridge_before_cb() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 54_977;
         profile.source.tbox_axioms = 54_973;
@@ -5339,6 +5363,7 @@ mod tests {
 
     #[test]
     fn compact_role_rich_tbox_uses_fail_closed_ht_bridge() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 1_675;
@@ -5361,6 +5386,7 @@ mod tests {
 
     #[test]
     fn compact_normalized_families_use_fail_closed_ht_bridge() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut qualified = OntologyProfile::default();
         qualified.source.logical_axioms = 178;
@@ -5419,6 +5445,7 @@ mod tests {
 
     #[test]
     fn dense_role_rich_el_closure_enables_parallel_nf4_frontiers() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 2_544_794;
@@ -5439,6 +5466,7 @@ mod tests {
 
     #[test]
     fn heap_trim_is_limited_to_the_measured_small_nominal_worker_shape() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.expressivity.code = "SHOI".into();
@@ -5464,6 +5492,7 @@ mod tests {
 
     #[test]
     fn compact_nominal_worker_schedule_is_bounded_by_source_shape() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.file_bytes = 96_360;
@@ -5490,6 +5519,7 @@ mod tests {
 
     #[test]
     fn compact_nominal_worker_gate_carries_no_ontology_identity() {
+        let _test_env = crate::test_env::write();
         let source = include_str!("routing.rs");
         let start = source
             .find("pub(crate) fn one_thread_compact_nominal_candidate")
@@ -5504,6 +5534,7 @@ mod tests {
     /// the retained 592-profile directory explicitly.
     #[test]
     fn compact_nominal_worker_projection_over_retained_profiles() {
+        let _test_env = crate::test_env::write();
         #[derive(serde::Deserialize)]
         struct Record {
             ont: String,
@@ -5540,6 +5571,7 @@ mod tests {
 
     #[test]
     fn source_nominal_free_ht_schedule_is_bounded_by_source_shape() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.file_bytes = 147_634;
@@ -5577,6 +5609,7 @@ mod tests {
 
     #[test]
     fn source_nominal_free_ht_gate_carries_no_ontology_identity() {
+        let _test_env = crate::test_env::write();
         let source = include_str!("routing.rs");
         let start = source
             .find("pub(crate) fn one_worker_source_nominal_free_ht_candidate")
@@ -5590,6 +5623,7 @@ mod tests {
     /// Release validation supplies the retained 592-profile directory.
     #[test]
     fn source_nominal_free_ht_projection_over_retained_profiles() {
+        let _test_env = crate::test_env::write();
         #[derive(serde::Deserialize)]
         struct Record {
             ont: String,
@@ -5634,6 +5668,7 @@ mod tests {
 
     #[test]
     fn large_role_chain_cardinality_tbox_uses_eight_workers() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 155_724;
@@ -5652,6 +5687,7 @@ mod tests {
 
     #[test]
     fn large_plain_tbox_uses_eight_workers() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 24_749;
@@ -5673,6 +5709,7 @@ mod tests {
 
     #[test]
     fn medium_shi_tbox_uses_one_worker() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 80_435;
@@ -5693,6 +5730,7 @@ mod tests {
 
     #[test]
     fn small_horn_class_abox_uses_plain_cb_schedule() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 2_464;
@@ -5713,6 +5751,7 @@ mod tests {
 
     #[test]
     fn small_production_tboxes_use_one_worker_without_crossing_slow_shapes() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.file_bytes = 1_000_000;
@@ -5741,6 +5780,7 @@ mod tests {
 
     #[test]
     fn typed_object_abox_without_cardinality_uses_production_portfolio() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let profile = source_profile(
             r#"Ontology(
@@ -5765,6 +5805,7 @@ mod tests {
 
     #[test]
     fn compact_shoin_object_abox_tries_the_exact_bridge_first() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 284;
@@ -5801,6 +5842,7 @@ mod tests {
 
     #[test]
     fn flat_role_rich_abox_keeps_certified_nominal_route() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 521;
@@ -5825,6 +5867,7 @@ mod tests {
 
     #[test]
     fn compact_expressive_object_abox_uses_four_ht_workers() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 487;
@@ -5855,6 +5898,7 @@ mod tests {
 
     #[test]
     fn compact_datatype_has_value_abox_uses_three_ht_workers() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 171;
@@ -5888,6 +5932,7 @@ mod tests {
 
     #[test]
     fn giant_flat_taxonomy_uses_el_completion() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.source.subclass_axioms = 1_974_320;
         profile.source.logical_axioms = profile.source.subclass_axioms;
@@ -5928,6 +5973,7 @@ mod tests {
 
     #[test]
     fn every_nonempty_flat_taxonomy_uses_el_completion() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.source.subclass_axioms = 847_755;
         profile.source.logical_axioms = profile.source.subclass_axioms;
@@ -5952,6 +5998,7 @@ mod tests {
 
     #[test]
     fn intersection_only_taxonomy_uses_el_completion() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 12_343;
         profile.source.tbox_axioms = 12_343;
@@ -5978,6 +6025,7 @@ mod tests {
 
     #[test]
     fn large_source_el_terminology_uses_atomic_completion() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 50_000;
         profile.source.tbox_axioms = 49_990;
@@ -6045,6 +6093,7 @@ mod tests {
 
     #[test]
     fn inverse_chain_el_family_uses_complete_bridge_with_exact_fallback() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.expressivity.inverse = true;
@@ -6090,6 +6139,7 @@ mod tests {
 
     #[test]
     fn inverse_chain_bridge_selection_does_not_depend_on_taxonomy_size() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         for classes in [2, 7_802, 43_917, 89_930] {
             for disjoint in [0, 1, 65, 100] {
@@ -6117,6 +6167,7 @@ mod tests {
 
     #[test]
     fn certified_positive_el_abox_uses_atomic_completion() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.positive_el_abox_materializable = true;
         profile.source.logical_axioms = 50_000;
@@ -6157,6 +6208,7 @@ mod tests {
 
     #[test]
     fn large_data_assertion_abox_without_cardinality_keeps_nominal_fallback() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 607_933;
@@ -6190,6 +6242,7 @@ mod tests {
 
     #[test]
     fn large_identity_nominal_abox_gets_complete_general_ht_probe() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 256_427;
@@ -6227,6 +6280,7 @@ mod tests {
 
     #[test]
     fn compact_abox_shapes_get_fail_closed_general_ht_probe() {
+        let _test_env = crate::test_env::write();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 600;
         profile.source.tbox_axioms = 1_900;
@@ -6254,6 +6308,7 @@ mod tests {
 
     #[test]
     fn small_class_identity_abox_uses_exact_nominal_route() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = source_profile(
             r#"Ontology(
@@ -6287,6 +6342,7 @@ mod tests {
 
     #[test]
     fn large_tbox_small_identity_abox_uses_certified_nominal_portfolio() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = source_profile(
             r#"Ontology(
@@ -6318,6 +6374,7 @@ mod tests {
 
     #[test]
     fn vacuous_top_role_object_abox_uses_the_certified_typed_bridge() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         // Inverse/complement SHOI terminology of roughly 8,600 axioms with a
         // compact positive object ABox whose roles are read by the TBox: the
@@ -6382,6 +6439,7 @@ mod tests {
 
     #[test]
     fn large_horn_functional_terminology_retains_exact_fallback() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 37_696;
@@ -6416,6 +6474,7 @@ mod tests {
 
     #[test]
     fn automatic_atomic_declines_retain_source_appropriate_fallbacks() {
+        let _test_env = crate::test_env::write();
         let mut nominal = OntologyProfile::default();
         nominal.source.abox_axioms = 1;
         assert_eq!(semantic_fragment(&nominal), SemanticFragment::Nominal);
@@ -6446,6 +6505,7 @@ mod tests {
 
     #[test]
     fn explicit_nominal_counterexample_keeps_the_exact_fallback() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         // This profile deliberately satisfies the cheap 10621-shaped source
         // gate but can fail the bridge's stronger converted-input certificate:
@@ -6549,6 +6609,7 @@ mod tests {
 
     #[test]
     fn production_bundles_normalize_to_the_proven_3215_closure_environment() {
+        let _test_env = crate::test_env::write();
         for route in [
             Route::ProductionAll,
             Route::ProductionAll8,
@@ -6576,6 +6637,7 @@ mod tests {
 
     #[test]
     fn automatic_sriq_routing_reaches_the_proven_bridge_stack() {
+        let _test_env = crate::test_env::write();
         // Regression for the 3215 coverage break: with KM_ROUTE unset the
         // orchestrator routes SRIQ-core terminologies through this selection,
         // and `apply_environment` REPLACES the ambient routing keys. If the
@@ -6612,6 +6674,7 @@ mod tests {
     /// the CB fallback is fed the identical disjunction-shrunk clause set.
     #[test]
     fn production_bundles_absorb_the_cb_fallback_clause_set() {
+        let _test_env = crate::test_env::write();
         for route in [
             Route::ProductionAll,
             Route::ProductionAll8,
@@ -6657,6 +6720,7 @@ mod tests {
     /// restore one without the other.
     #[test]
     fn automatic_sriq_route_absorbs_the_cb_fallback() {
+        let _test_env = crate::test_env::write();
         let route = select(&OntologyProfile::default());
         let env = normalized_environment(route);
         assert!(
@@ -6671,6 +6735,7 @@ mod tests {
 
     #[test]
     fn measurement_only_routes_fail_the_sriq_policy_gate() {
+        let _test_env = crate::test_env::write();
         for route in [
             Route::CbTrigger16,
             Route::CbTrigger8,
@@ -6698,6 +6763,7 @@ mod tests {
     /// route must carry the exact nominal fallback for every defer.
     #[test]
     fn certified_proxy_card_route_is_automatic_with_exact_fallback() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 223;
@@ -6718,6 +6784,7 @@ mod tests {
 
     #[test]
     fn rules_route_keeps_the_validated_precheck_enabled() {
+        let _test_env = crate::test_env::write();
         // The DL-safe rule consistency precheck is gated on the ABSENCE of
         // KM_NO_HT_RULES in both the frontend (rule collection + ABox
         // retention in the clause set) and the orchestrator
@@ -6749,7 +6816,6 @@ mod tests {
                     | Route::ProductionAll8
                     | Route::ProductionAll1
                     | Route::CbAbsorbPortfolio16
-                    | Route::TabRace
             );
             assert_eq!(
                 keeps_precheck, expected,
@@ -6760,6 +6826,7 @@ mod tests {
 
     #[test]
     fn generated_tree_has_no_ontology_identity() {
+        let _test_env = crate::test_env::write();
         let source = include_str!("routing/routing_tree_generated.rs");
         assert!(!source.contains("ore_ont_"));
     }
@@ -6797,6 +6864,7 @@ mod tests {
 
     #[test]
     fn context_parallel_gate_arms_the_measured_el_terminology_family() {
+        let _test_env = crate::test_env::write();
         let profile = context_parallel_panel_profile();
         // The gate only ever schedules the bare EL route it was measured on.
         assert_eq!(select(&profile), Route::Elc);
@@ -6814,6 +6882,7 @@ mod tests {
 
     #[test]
     fn context_parallel_gate_arms_the_measured_wide_role_chain_free_family() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         let mut profile = context_parallel_panel_profile();
         profile.source.logical_axioms = 175_170;
@@ -6850,6 +6919,7 @@ mod tests {
 
     #[test]
     fn context_parallel_gate_is_deterministic_for_one_profile() {
+        let _test_env = crate::test_env::write();
         let profile = context_parallel_panel_profile();
         let first = elc_context_parallel_workers(&profile, 16);
         for _ in 0..64 {
@@ -6863,6 +6933,7 @@ mod tests {
 
     #[test]
     fn context_parallel_gate_declines_outside_the_measured_family() {
+        let _test_env = crate::test_env::write();
         legacy_policy();
         // Individuals: the two ABox members of the panel hold its two largest
         // peak increases and neither recovers a gate.
@@ -6926,6 +6997,7 @@ mod tests {
 
     #[test]
     fn context_parallel_gate_carries_no_ontology_identity() {
+        let _test_env = crate::test_env::write();
         let source = include_str!("routing.rs");
         let start = source
             .find("pub(crate) fn elc_context_parallel_workers")
@@ -6943,6 +7015,7 @@ mod tests {
     /// depend on corpus artifacts.
     #[test]
     fn context_parallel_projection_over_the_retained_profiles() {
+        let _test_env = crate::test_env::write();
         #[derive(serde::Deserialize)]
         struct Record {
             ont: String,

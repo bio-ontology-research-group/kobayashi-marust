@@ -331,6 +331,9 @@ pub struct Ontology {
     /// ABox coverage check (`frontend::nominal_abox_meta`) counts them as
     /// covered: a repeated axiom adds nothing.
     duplicate_abox_axioms: std::collections::BTreeMap<&'static str, u64>,
+    /// Data-property assertions `(individual, role, literal)` carried by
+    /// `value_projection` when `KM_EXPORT_MODEL_ACTIVE` is set.
+    projected_data_assertions: Vec<(String, String, String)>,
 }
 
 impl Ontology {
@@ -577,17 +580,55 @@ impl Ontology {
                 self.data_assertion_class_axioms += 1;
             }
         }
+        let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
+        let mut sub_roles: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        if export_active {
+            for ax in &self.axioms {
+                if let Axiom::RoleInclusion(sub, sup) = ax.as_ref() {
+                    sub_roles.entry(sub.clone()).or_default().push(sup.clone());
+                }
+            }
+        }
         let mut rest = Vec::new();
         for ((axiom, literal), projected) in pending.into_iter().zip(projection.projected) {
             if projected {
                 // Every source occurrence counts, repeated ones included (the
                 // uncarried count compares with the occurrence count, fr217).
                 self.data_assertions_as_class += 1;
+                if export_active {
+                    if let Axiom::ConceptAssertion(Concept::Exists(Role::Name(role), _), ind) =
+                        &axiom
+                    {
+                        let mut stack = vec![role.clone()];
+                        let mut seen = std::collections::BTreeSet::new();
+                        while let Some(r) = stack.pop() {
+                            if seen.insert(r.clone()) {
+                                self.projected_data_assertions.push((
+                                    ind.clone(),
+                                    r.clone(),
+                                    literal.clone(),
+                                ));
+                                if let Some(sups) = sub_roles.get(&r) {
+                                    stack.extend(sups.iter().cloned());
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 rest.push((axiom, literal));
             }
         }
         rest
+    }
+
+    pub fn take_projected_data_assertions(&mut self) -> Vec<(String, String, String)> {
+        std::mem::take(&mut self.projected_data_assertions)
+    }
+
+    pub fn set_projected_data_assertions(&mut self, values: Vec<(String, String, String)>) {
+        self.projected_data_assertions = values;
     }
 
     /// Class assertions added by the data-assertion conversion.
@@ -646,6 +687,13 @@ impl Ontology {
     }
 
     /// Record a source axiom the parser drops (see `dropped_source_axioms`).
+    /// A source ABox axiom that holds in every interpretation and adds no
+    /// parsed axiom (`DifferentIndividuals(:a :a)`, one individual after
+    /// removing repeats). Counted like a repeated axiom: covered, no pair.
+    pub fn note_vacuous_abox_axiom(&mut self, head: &'static str) {
+        *self.duplicate_abox_axioms.entry(head).or_default() += 1;
+    }
+
     pub fn drop_source_axiom(&mut self, head: &str) {
         *self.dropped_source_axioms.entry(head.to_string()).or_default() += 1;
     }

@@ -116,6 +116,7 @@ mod tests {
 
     #[test]
     fn disjoint_dataoneof_ranges_are_empty() {
+        let _test_env = crate::test_env::read();
         let mut dr = DataRanges::default();
         observe_all(
             &mut dr,
@@ -133,6 +134,7 @@ mod tests {
 
     #[test]
     fn overlapping_dataoneof_ranges_are_nonempty() {
+        let _test_env = crate::test_env::read();
         let mut dr = DataRanges::default();
         observe_all(
             &mut dr,
@@ -147,6 +149,7 @@ mod tests {
 
     #[test]
     fn equal_values_with_alternative_lexical_forms_block_emptiness() {
+        let _test_env = crate::test_env::read();
         for ranges in [
             [
                 "DataPropertyRange(P DataOneOf(\"1\"^^xsd:boolean))",
@@ -177,6 +180,7 @@ mod tests {
 
     #[test]
     fn single_dataoneof_range_is_nonempty() {
+        let _test_env = crate::test_env::read();
         let mut dr = DataRanges::default();
         observe_all(
             &mut dr,

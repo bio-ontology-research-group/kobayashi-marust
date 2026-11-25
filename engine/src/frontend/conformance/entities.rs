@@ -172,7 +172,9 @@ impl Types {
                     Class => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#Thing" | "http://www.w3.org/2002/07/owl#Nothing"),
                     ObjectProperty => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#topObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty"),
                     DataProperty => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#topDataProperty" | "http://www.w3.org/2002/07/owl#bottomDataProperty"),
-                    Datatype => super::datatypes::builtin(&name),
+                    // W7: under `--unknown-datatypes=free` a reserved datatype IRI
+                    // outside the map (`xsd:date`) is a fresh datatype.
+                    Datatype => super::datatypes::builtin(&name) || super::unknown_datatypes_free(),
                     AnnotationProperty => matches!(name.as_str(), "http://www.w3.org/2000/01/rdf-schema#label"
                         | "http://www.w3.org/2000/01/rdf-schema#comment" | "http://www.w3.org/2000/01/rdf-schema#seeAlso"
                         | "http://www.w3.org/2000/01/rdf-schema#isDefinedBy" | "http://www.w3.org/2002/07/owl#deprecated"
@@ -204,7 +206,10 @@ impl Types {
             "http://www.w3.org/2000/01/rdf-schema#", "http://www.w3.org/2001/XMLSchema#"]
             .iter().any(|ns|name.starts_with(ns));
         for kind in kinds {
-            if kind != Kind::Individual && !builtin && self.declared[id] & bit(kind) == 0 {
+            // W7: an undeclared datatype is a fresh datatype under
+            // `--unknown-datatypes=free`, as HermiT reads it.
+            let free_datatype = kind == Kind::Datatype && super::unknown_datatypes_free();
+            if kind != Kind::Individual && !builtin && !free_datatype && self.declared[id] & bit(kind) == 0 {
                 return Some(format!("invalid OWL 2 DL input: <{name}> is used as {kind:?} but has no matching declaration"));
             }
         }
@@ -217,6 +222,45 @@ pub(super) fn check_declarations(text: &str, prefixes: &BTreeMap<String,String>)
     crate::frontend::parse::for_each_ontology_child(text, |node| {types.observe(node,prefixes); Ok(())}).map_err(|e|e.0)?;
     types.declarations()?;
     types.finish()
+}
+
+/// Undeclared entity `(kind_keyword, full_iri)` pairs in `text`, or empty when
+/// `types.finish()` rejects incompatible punning or reserved-vocabulary use.
+pub(crate) fn missing_declarations(
+    text: &str,
+    prefixes: &BTreeMap<String, String>,
+) -> Result<Vec<(&'static str, String)>, String> {
+    let mut types = Types::default();
+    crate::frontend::parse::for_each_ontology_child(text, |node| {
+        types.observe(node, prefixes);
+        Ok(())
+    })
+    .map_err(|e| e.0)?;
+    if types.finish().is_err() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for id in 0..types.names.len() {
+        let name = &types.names[id];
+        let builtin = [
+            "http://www.w3.org/2002/07/owl#",
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "http://www.w3.org/2000/01/rdf-schema#",
+            "http://www.w3.org/2001/XMLSchema#",
+        ]
+        .iter()
+        .any(|ns| name.starts_with(ns));
+        if builtin {
+            continue;
+        }
+        for kind in kinds_in(types.used[id]) {
+            if kind == Kind::AnnotationProperty && types.declared[id] & bit(kind) == 0 {
+                out.push(("AnnotationProperty", name.clone()));
+            }
+        }
+    }
+    out.sort_unstable();
+    Ok(out)
 }
 
 pub(super) fn check(text: &str, prefixes: &BTreeMap<String, String>) -> Result<(), String> {
@@ -270,6 +314,7 @@ mod tests {
     /// the order of first use (the order the former sorted scan produced).
     #[test]
     fn first_failing_entity_in_name_order_is_reported() {
+        let _test_env = crate::test_env::read();
         let incompatible = "Ontology(Declaration(Class(<urn:z>)) Declaration(Datatype(<urn:z>)) \
             Declaration(Class(<urn:m>)) Declaration(Datatype(<urn:m>)) \
             Declaration(ObjectProperty(<urn:b>)) Declaration(DataProperty(<urn:b>)))";
@@ -282,6 +327,7 @@ mod tests {
     }
     #[test]
     fn keys_require_properties_and_preserve_entity_types() {
+        let _test_env = crate::test_env::read();
         for key in ["HasKey(:A () ())", "HasKey(Annotation(rdfs:comment \"empty\") :A () ())"] {
             assert!(check_source(&format!("Ontology({key})")).unwrap_err().contains("at least one"));
         }
@@ -297,6 +343,7 @@ mod tests {
     }
     #[test]
     fn incompatible_property_kinds_are_rejected_with_or_without_declarations() {
+        let _test_env = crate::test_env::read();
         for axioms in ["Declaration(ObjectProperty(:p)) Declaration(DataProperty(:p))",
             "ObjectPropertyAssertion(:p :a :b) DataPropertyAssertion(:p :a \"value\")",
             "Declaration(AnnotationProperty(:p)) SubClassOf(:A ObjectSomeValuesFrom(:p :B))"] {
@@ -305,12 +352,14 @@ mod tests {
     }
     #[test]
     fn class_datatype_punning_is_rejected_but_class_individual_punning_is_legal() {
+        let _test_env = crate::test_env::read();
         assert!(check_source("Ontology(Declaration(Class(:A)) Declaration(Datatype(:A)))").unwrap_err().contains("incompatible entity types"));
         assert!(check_source("Ontology(Declaration(Class(:A)) Declaration(NamedIndividual(:A)) ClassAssertion(:A :A))").is_ok());
         assert!(check_source("Ontology(Declaration(Class(:p)) Declaration(ObjectProperty(:p)))").is_ok());
     }
     #[test]
     fn reserved_names_are_allowed_only_for_their_builtin_entity_kinds() {
+        let _test_env = crate::test_env::read();
         for axiom in ["Declaration(Class(owl:Class))", "Declaration(ObjectProperty(rdf:type))",
             "Declaration(NamedIndividual(owl:Thing))", "Declaration(AnnotationProperty(owl:Thing))"] {
             assert!(check_source(&format!("Ontology({axiom})")).unwrap_err().contains("reserved IRI"));
@@ -319,6 +368,7 @@ mod tests {
     }
     #[test]
     fn required_entity_declarations_do_not_require_named_individual_declarations() {
+        let _test_env = crate::test_env::read();
         let check = super::super::check_declarations;
         assert!(check("Ontology(Declaration(Class(:A)) ClassAssertion(:A :a))").is_ok());
         assert!(check("Ontology(SubClassOf(:A owl:Thing))").unwrap_err().contains("no matching declaration"));

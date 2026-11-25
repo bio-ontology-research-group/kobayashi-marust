@@ -984,6 +984,7 @@ mod individual_priority_tests {
 
     #[test]
     fn individual_priority_uses_ancestor_depth_and_empty_concept_queue_default() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = node_with_queue(&mut ctx, 7, 4);
         let strategy = IndividualProcessingPriorityStrategy::new_ancestor_depth_maximum();
@@ -997,6 +998,7 @@ mod individual_priority_tests {
 
     #[test]
     fn individual_priority_reads_next_concept_process_priority_and_id_offset() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = node_with_queue(&mut ctx, 5, 3);
         insert_priority(&mut ctx, node, 6.0);
@@ -1014,6 +1016,7 @@ mod individual_priority_tests {
 
     #[test]
     fn individual_process_node_priority_matches_konclude_null_and_ordering() {
+        let _test_env = crate::test_env::read();
         let mut priority = IndividualProcessNodePriority {
             priority_con: 2.0,
             priority_ind: 3.0,
@@ -1078,6 +1081,7 @@ mod task_priority_tests {
 
     #[test]
     fn equal_depth_task_priorities_read_parent_task_depth() {
+        let _test_env = crate::test_env::read();
         let (arena, parent, child) = task_arena_with_parent(4, 17.0);
         let strategy = EqualDepthTaskProcessingPriorityStrategy::new();
 
@@ -1101,6 +1105,7 @@ mod task_priority_tests {
 
     #[test]
     fn equal_depth_branching_priority_uses_parent_depth_denominator() {
+        let _test_env = crate::test_env::read();
         let (arena, parent, child) = task_arena_with_parent(4, 17.0);
         let mut ctx = ProcessContext::new();
         let mut onto = OntologyArenas::new();
@@ -1134,6 +1139,7 @@ mod task_priority_tests {
 
     #[test]
     fn cache_oriented_task_strategy_inherits_parent_depth_methods() {
+        let _test_env = crate::test_env::read();
         let (arena, parent, child) = task_arena_with_parent(3, 11.0);
         let strategy = TaskProcessingPriorityStrategy::new_equal_depth_cache_orientated();
 
@@ -1379,6 +1385,7 @@ mod unsat_cache_retrieval_strategy_tests {
 
     #[test]
     fn generative_non_deterministic_strategy_matches_konclude_truth_table() {
+        let _test_env = crate::test_env::read();
         let strategy = UnsatisfiableCacheRetrievalStrategy::new_generative_non_deterministic();
         let con = ConProcDescId::NONE;
         let indi = NodeId::NONE;

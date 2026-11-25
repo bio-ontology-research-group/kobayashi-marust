@@ -2,7 +2,7 @@ import Std.Data.HashMap
 import ContextCalculus.OWL.Semantics
 
 /-!
-# OWL 2 functional-style syntax parser for the fragment `F` (v1.6.2)
+# OWL 2 functional-style syntax parser (v1.6.2, extended to OWL 2 DL in v1.7.0 stage C0)
 
 `OWL.parse text` reads an OWL 2 functional-style syntax (OFN) document and
 returns the ontology of `OWL/Semantics.lean`, or a reason for rejecting it.
@@ -19,13 +19,14 @@ stack, and a converter from s-expressions to `Axiom`.
 * `(` and `)` are tokens. A full IRI is `<` up to the next `>`, taken
   verbatim (no normalisation). A string literal is `"` up to the next
   unescaped `"`; a backslash escapes the following byte, so `\"` and `\\`
-  do not end the literal. Literal contents are never used (literals only
-  occur in skipped annotations), but they may contain `)`, `"` escapes and
-  non-ASCII text without disturbing the token stream.
+  do not end the literal. The lexical form resolves the escapes `\"` and
+  `\\` (FSS section 2.3); a backslash before any other byte is kept with
+  that byte. A literal token also takes a following `^^datatype` (a full
+  or abbreviated IRI) or `@languageTag`; whitespace and comments may come
+  in between, as in the Rust parser, which glues such an atom to the
+  literal before it.
 * Every other token is a word: the longest run of bytes that are neither
-  whitespace nor parentheses. A typed or language-tagged literal
-  `"v"^^xsd:string` / `"v"@en` is therefore a literal followed by the word
-  `^^xsd:string` / `@en`, as in the Rust tokeniser.
+  whitespace nor parentheses.
 * A word made only of ASCII letters and followed by `(` opens a list with
   that head (`SubClassOf(`...`)`); whitespace may separate the two. A `(`
   without such a head opens an anonymous list (only `HasKey` uses one).
@@ -69,29 +70,56 @@ leading `Annotation(...)` arguments of an axiom) are skipped.
 
 ## What is accepted, skipped and rejected
 
-Accepted (the fragment `F`, plan section 3): `SubClassOf`,
-`EquivalentClasses`, `DisjointClasses`, `ObjectPropertyDomain`,
-`ObjectPropertyRange`, `SubObjectPropertyOf` (with an atomic property or an
-`ObjectPropertyChain` of at least two properties),
-`EquivalentObjectProperties`, `InverseObjectProperties`,
-`TransitiveObjectProperty`, `SymmetricObjectProperty`, and
-`Declaration(Class(..))`, `Declaration(ObjectProperty(..))`; class
-expressions over class IRIs, `owl:Thing`, `owl:Nothing`,
-`ObjectIntersectionOf`, `ObjectUnionOf`, `ObjectComplementOf`,
-`ObjectSomeValuesFrom`, `ObjectAllValuesFrom`; object-property expressions
-over property IRIs and `ObjectInverseOf`. Operand counts follow FSS
-(`EquivalentClasses`, `DisjointClasses`, `EquivalentObjectProperties`,
-`ObjectIntersectionOf` and `ObjectUnionOf` need at least two operands).
+Accepted: every axiom and expression of `OWL/Semantics.lean`, that is the
+OWL 2 structural specification without annotations and without n-ary data
+ranges. Class expressions: class IRIs, `owl:Thing`, `owl:Nothing`, the
+Boolean connectives, `ObjectSomeValuesFrom`, `ObjectAllValuesFrom`,
+`ObjectOneOf`, `ObjectHasValue`, `ObjectHasSelf`, the object
+cardinalities (unqualified: filler `owl:Thing`), `DataSomeValuesFrom` and
+`DataAllValuesFrom` with one data property, `DataHasValue` and the data
+cardinalities (unqualified: range `rdfs:Literal`). Object-property
+expressions: IRIs, `ObjectInverseOf` (in every property position; the
+double inverse collapses), `owl:topObjectProperty`,
+`owl:bottomObjectProperty`. Data-property expressions: IRIs,
+`owl:topDataProperty`, `owl:bottomDataProperty`. Data ranges: datatype
+IRIs, `DataIntersectionOf`, `DataUnionOf`, `DataComplementOf`,
+`DataOneOf`, `DatatypeRestriction`. Individuals: IRIs and node IDs `_:x`
+(only in individual positions). Axioms: the class axioms including
+`DisjointUnion`, every object- and data-property axiom,
+`DatatypeDefinition`, `HasKey`, the assertions, and declarations of every
+entity kind. Declarations of `owl:Thing`, `owl:Nothing` and the top and
+bottom object and data properties are skipped (they are not IRIs of the
+semantics). Operand counts follow FSS.
+
+Literals: `"abc"` has datatype `xsd:string`, `"abc"@en` has datatype
+`rdf:PlainLiteral` and language tag `en` (structural specification,
+section 5.7). A literal whose datatype is in the OWL 2 datatype map must
+have a lexical form in that datatype's lexical space, or the document is
+rejected (`ill-typed literal`). The checks follow XML Schema 1.1 and the
+OWL 2 structural specification, section 4, with two approximations: XML
+name characters accept every non-ASCII character, and `rdf:XMLLiteral` and
+`xsd:anyURI` accept every string. `owl:real` and `rdfs:Literal` have no
+lexical forms. Literals with a datatype outside the map are accepted. A
+`DatatypeRestriction` must use a datatype of the map and facets that the
+map defines for it (`xsd:minInclusive` and its three siblings for the
+numeric and time types; `xsd:length`, `xsd:minLength`, `xsd:maxLength`
+and, except for the binary types, `xsd:pattern` for the string, URI and
+binary types; also `rdf:langRange` for `rdf:PlainLiteral`); length facets
+take a nonnegative integer. Facet values are not checked further.
 
 Skipped (no semantic content): `Annotation(...)`, `AnnotationAssertion`,
 `SubAnnotationPropertyOf`, `AnnotationPropertyDomain`,
-`AnnotationPropertyRange`, and declarations of annotation properties,
-datatypes, data properties and named individuals. A declaration of
-`owl:Thing` or `owl:Nothing` is skipped as well (they are not class IRIs of
-the semantics).
+`AnnotationPropertyRange`.
 
-Rejected with a reason naming the construct: everything else. Every
-rejection is an `Except.error`, never a panic.
+Rejected with a reason: imports (`out of fragment: Import`), `DLSafeRule`
+(`out of fragment: DLSafeRule (rule)`), n-ary data ranges
+(`DataSomeValuesFrom` / `DataAllValuesFrom` with more than one data
+property), property chains outside `SubObjectPropertyOf`, unknown heads,
+ill-typed literals, bad facets, annotations after an operand, and syntax
+errors. Every rejection is an `Except.error`, never a panic.
+
+The global restrictions of OWL 2 DL (simple roles, regularity, ...) are not
+checked here.
 
 ## Cost
 
@@ -184,17 +212,82 @@ end Bytes
 
 /-! ## Tokens -/
 
+/-- How an IRI is spelled: a full IRI (without the angle brackets) or an
+abbreviated IRI `p:local`. -/
+inductive Spelling where
+  | full (text : String)
+  | abbreviated (text : String)
+deriving Repr, Inhabited
+
+/-- What follows the lexical form of a literal: nothing, `^^datatype` or
+`@languageTag`. -/
+inductive LitSuffix where
+  | plain
+  | typed (datatype : Spelling)
+  | lang (tag : String)
+deriving Repr, Inhabited
+
 inductive Tok where
   | lparen
   | rparen
-  /-- A word: keyword, abbreviated IRI, number, `^^datatype`, `@lang`, ... -/
+  /-- A word: keyword, abbreviated IRI, number, node ID, ... -/
   | word (text : String)
   /-- A full IRI, without the angle brackets. -/
   | iri (text : String)
-  /-- A quoted string literal; its contents are not kept. -/
-  | literal
+  /-- A literal: its lexical form (escapes resolved) and its suffix. -/
+  | literal (lexical : String) (suffix : LitSuffix)
   | eof
 deriving Repr, Inhabited
+
+/-- The byte at `k`, or `0` past the end. -/
+def byteAt (bs : ByteArray) (k : Nat) : UInt8 :=
+  if h : k < bs.size then bs[k] else 0
+
+def byteCaret : UInt8 := 94    -- ^
+def byteAt' : UInt8 := 64      -- @
+
+/-- The bytes `[k, j)` of a literal's contents with the escapes `\"` and
+`\\` resolved; a backslash before any other byte is kept with that byte. -/
+def unescapeFrom (bs : ByteArray) (j k : Nat) (acc : ByteArray) : ByteArray :=
+  if k < j then
+    let b := byteAt bs k
+    let c := byteAt bs (k + 1)
+    if b == byteBackslash && k + 1 < j && (c == byteQuote || c == byteBackslash) then
+      unescapeFrom bs j (k + 2) (acc.push c)
+    else
+      unescapeFrom bs j (k + 1) (acc.push b)
+  else
+    acc
+termination_by j - k
+
+/-- The lexical form of the literal whose contents are the bytes `[i, j)`. -/
+def lexicalForm (bs : ByteArray) (i j : Nat) : Except String String :=
+  match String.fromUTF8? (unescapeFrom bs j i ByteArray.empty) with
+  | some s => .ok s
+  | none => .error "syntax error: literal is not valid UTF-8"
+
+/-- The suffix of a literal that ends just before position `j`, and the
+position after the suffix. Whitespace and comments may separate the
+lexical form from `^^` or `@`, as in the Rust parser, which glues a
+following `^^dt` or `@lang` atom to the literal. -/
+def literalSuffix (bs : ByteArray) (j : Nat) : Except String (LitSuffix × Nat) := do
+  let k := skipSpace bs j false
+  if byteAt bs k == byteCaret && byteAt bs (k + 1) == byteCaret then
+    let m := k + 2
+    if byteAt bs m == byteLess then
+      match findByte bs byteGreater (m + 1) with
+      | some e => return (.typed (.full (← slice bs (m + 1) e)), e + 1)
+      | none => throw "syntax error: unterminated full IRI"
+    else
+      let e := wordEnd bs m
+      if e == m then throw "syntax error: missing datatype after ^^"
+      return (.typed (.abbreviated (← slice bs m e)), e)
+  else if byteAt bs k == byteAt' then
+    let e := wordEnd bs (k + 1)
+    if e == k + 1 then throw "syntax error: missing language tag after @"
+    return (.lang (← slice bs (k + 1) e), e)
+  else
+    return (.plain, j)
 
 /-- The token starting at the first non-space position at or after `i`, and
 the position after it. -/
@@ -212,7 +305,11 @@ def nextTok (bs : ByteArray) (i : Nat) : Except String (Tok × Nat) := do
       | none => throw "syntax error: unterminated full IRI"
     else if b == byteQuote then
       match literalEnd bs (i + 1) with
-      | some j => return (.literal, j)
+      | some j =>
+        let lex ← lexicalForm bs (i + 1) (j - 1)
+        let (sfx, k) ← literalSuffix bs j
+        -- `literalSuffix` returns a position at or after `j > i`
+        return (.literal lex sfx, max k j)
       | none => throw "syntax error: unterminated string literal"
     else
       let j := wordEnd bs i
@@ -235,7 +332,7 @@ def isKeyword (w : String) : Bool :=
 inductive Node where
   | word (text : String)
   | iri (text : String)
-  | literal
+  | literal (lexical : String) (suffix : LitSuffix)
   /-- `head(args)`; the head of an anonymous list `(args)` is `""`. -/
   | list (head : String) (args : Array Node)
 deriving Repr, Inhabited
@@ -244,7 +341,7 @@ deriving Repr, Inhabited
 def Node.describe : Node → String
   | .word w => w
   | .iri s => s!"<{s}>"
-  | .literal => "a literal"
+  | .literal .. => "a literal"
   | .list "" _ => "an anonymous list"
   | .list h _ => h
 
@@ -283,7 +380,7 @@ def readNodeFrom (bs : ByteArray) (fuel i : Nat) (stack : Array Frame) :
           pure (stack.push (w, #[]), k)
         else pure (addChild stack (.word w), j)
       | .iri s => pure (addChild stack (.iri s), j)
-      | .literal => pure (addChild stack .literal, j)
+      | .literal lex sfx => pure (addChild stack (.literal lex sfx), j)
       | .rparen =>
         if stack.size ≤ 1 then throw "syntax error: unexpected )"
         else match stack.back? with
@@ -307,6 +404,8 @@ def owlThing : IRI := owlNs ++ "Thing"
 def owlNothing : IRI := owlNs ++ "Nothing"
 def owlTopObjectProperty : IRI := owlNs ++ "topObjectProperty"
 def owlBottomObjectProperty : IRI := owlNs ++ "bottomObjectProperty"
+def owlTopDataProperty : IRI := owlNs ++ "topDataProperty"
+def owlBottomDataProperty : IRI := owlNs ++ "bottomDataProperty"
 
 /-- FSS Table 2, as in `STANDARD_PREFIXES` of `conformance.rs`. -/
 def standardPrefixes : List (String × String) :=
@@ -320,7 +419,7 @@ def expandWord (pfx : Prefixes) (w : String) : Except String IRI :=
   match w.splitOn ":" with
   | [] | [_] => .error s!"syntax error: {w} is not an IRI"
   | p :: rest =>
-    if p == "_" then .error s!"out of fragment: anonymous individual {w}"
+    if p == "_" then .error s!"syntax error: anonymous individual {w} where an IRI is expected"
     else match pfx.get? p with
       | some ns => .ok (ns ++ ":".intercalate rest)
       | none => .error s!"syntax error: undeclared prefix {p}: in {w}"
@@ -354,12 +453,289 @@ def iriOf (pfx : Prefixes) : Node → ConvM IRI
 def outOfFragment {α : Type} (what : String) : ConvM α :=
   throw s!"out of fragment: {what}"
 
+/-! ## Literals and the OWL 2 datatype map (lexical forms, facets) -/
+
+section Datatypes
+
+def xsdNs : String := "http://www.w3.org/2001/XMLSchema#"
+def rdfNs : String := "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+def xsdString : IRI := xsdNs ++ "string"
+def rdfPlainLiteral : IRI := rdfNs ++ "PlainLiteral"
+
+/-- The kinds of datatypes of the OWL 2 datatype map (structural
+specification, section 4), as far as lexical forms and facets go. -/
+inductive DtKind where
+  /-- `owl:real`: no lexical forms. -/
+  | real
+  | rational
+  | decimal
+  /-- An integer type with optional lower and upper bounds. -/
+  | integer (lo hi : Option Int)
+  | float
+  | string
+  | normalizedString
+  | token
+  | language
+  | name
+  | ncName
+  | nmToken
+  | boolean
+  | hexBinary
+  | base64Binary
+  | anyURI
+  | dateTime
+  | dateTimeStamp
+  | plainLiteral
+  | xmlLiteral
+  /-- `rdfs:Literal`: no lexical forms. -/
+  | literal
+deriving Repr, Inhabited
+
+/-- The kind of a datatype IRI of the OWL 2 datatype map, `none` for any
+other IRI. -/
+def dtKind (dt : IRI) : Option DtKind :=
+  let xsd : List (String × DtKind) :=
+    [("decimal", .decimal), ("integer", .integer none none),
+     ("nonNegativeInteger", .integer (some 0) none),
+     ("nonPositiveInteger", .integer none (some 0)),
+     ("positiveInteger", .integer (some 1) none),
+     ("negativeInteger", .integer none (some (-1))),
+     ("long", .integer (some (-9223372036854775808)) (some 9223372036854775807)),
+     ("int", .integer (some (-2147483648)) (some 2147483647)),
+     ("short", .integer (some (-32768)) (some 32767)),
+     ("byte", .integer (some (-128)) (some 127)),
+     ("unsignedLong", .integer (some 0) (some 18446744073709551615)),
+     ("unsignedInt", .integer (some 0) (some 4294967295)),
+     ("unsignedShort", .integer (some 0) (some 65535)),
+     ("unsignedByte", .integer (some 0) (some 255)),
+     ("double", .float), ("float", .float),
+     ("string", .string), ("normalizedString", .normalizedString), ("token", .token),
+     ("language", .language), ("Name", .name), ("NCName", .ncName),
+     ("NMTOKEN", .nmToken), ("boolean", .boolean), ("hexBinary", .hexBinary),
+     ("base64Binary", .base64Binary), ("anyURI", .anyURI), ("dateTime", .dateTime),
+     ("dateTimeStamp", .dateTimeStamp)]
+  if dt == owlNs ++ "real" then some .real
+  else if dt == owlNs ++ "rational" then some .rational
+  else if dt == rdfPlainLiteral then some .plainLiteral
+  else if dt == rdfNs ++ "XMLLiteral" then some .xmlLiteral
+  else if dt == rdfsLiteral then some .literal
+  else if dt.startsWith xsdNs then xsd.lookup (dt.drop xsdNs.length).toString
+  else none
+
+def isDigitC (c : Char) : Bool := '0' ≤ c && c ≤ '9'
+def isHexC (c : Char) : Bool :=
+  isDigitC c || ('a' ≤ c && c ≤ 'f') || ('A' ≤ c && c ≤ 'F')
+def isAlphaC (c : Char) : Bool := ('a' ≤ c && c ≤ 'z') || ('A' ≤ c && c ≤ 'Z')
+
+/-- The value of a nonempty digit string. -/
+def digitsVal (ds : List Char) : Nat :=
+  ds.foldl (fun n c => 10 * n + (c.toNat - '0'.toNat)) 0
+
+/-- `[+-]?[0-9]+` as an integer. -/
+def parseInt (cs : List Char) : Option Int :=
+  let (neg, ds) := match cs with
+    | '-' :: ds => (true, ds)
+    | '+' :: ds => (false, ds)
+    | ds => (false, ds)
+  if !ds.isEmpty && ds.all isDigitC then
+    let n : Int := digitsVal ds
+    some (if neg then -n else n)
+  else none
+
+/-- `[+-]?([0-9]+(.[0-9]*)?|.[0-9]+)`. -/
+def isDecimal (cs : List Char) : Bool :=
+  let ds := match cs with
+    | '-' :: ds | '+' :: ds => ds
+    | ds => ds
+  match ds.splitOn '.' with
+  | [a] => !a.isEmpty && a.all isDigitC
+  | [a, b] => (!a.isEmpty || !b.isEmpty) && a.all isDigitC && b.all isDigitC
+  | _ => false
+
+/-- XSD `double` / `float` lexical forms. -/
+def isFloat (cs : List Char) : Bool :=
+  cs == "INF".toList || cs == "+INF".toList || cs == "-INF".toList || cs == "NaN".toList ||
+  match cs.findIdx? (fun c => c == 'e' || c == 'E') with
+  | none => isDecimal cs
+  | some i => isDecimal (cs.take i) && (parseInt (cs.drop (i + 1))).isSome
+
+def isLanguageTag (cs : List Char) : Bool :=
+  match cs.splitOn '-' with
+  | [] => false
+  | p :: ps =>
+    (!p.isEmpty && p.length ≤ 8 && p.all isAlphaC) &&
+      ps.all fun q => !q.isEmpty && q.length ≤ 8 && q.all fun c => isAlphaC c || isDigitC c
+
+/-- XML name characters, approximated: every non-ASCII character is
+accepted. -/
+def isNameStart (c : Char) : Bool := isAlphaC c || c == '_' || c == ':' || c.toNat ≥ 0x80
+def isNameChar (c : Char) : Bool :=
+  isNameStart c || isDigitC c || c == '-' || c == '.'
+
+def isNormalized (cs : List Char) : Bool := cs.all fun c => c != '\t' && c != '\n' && c != '\r'
+
+def isToken (cs : List Char) : Bool :=
+  isNormalized cs && cs.head? != some ' ' && cs.getLast? != some ' ' &&
+    !(cs.zip cs.tail).any fun (a, b) => a == ' ' && b == ' '
+
+def isBase64 (cs : List Char) : Bool :=
+  let ds := cs.filter (· != ' ')
+  let isB (c : Char) := isAlphaC c || isDigitC c || c == '+' || c == '/'
+  let body := ds.reverse.dropWhile (· == '=') |>.reverse
+  ds.length % 4 == 0 && ds.length - body.length ≤ 2 && body.all isB
+
+/-- Two digits as a number. -/
+def twoDigits : List Char → Option Nat
+  | [a, b] => if isDigitC a && isDigitC b then some (digitsVal [a, b]) else none
+  | _ => none
+
+def daysIn (year : Int) (month : Nat) : Nat :=
+  if month == 2 then
+    if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 then 29 else 28
+  else if month == 4 || month == 6 || month == 9 || month == 11 then 30
+  else 31
+
+/-- A timezone: `Z` or `[+-]hh:mm` with `hh:mm` at most `14:00`. -/
+def isTimezone : List Char → Bool
+  | ['Z'] => true
+  | s :: h1 :: h2 :: ':' :: m1 :: m2 :: [] =>
+    (s == '+' || s == '-') &&
+      match twoDigits [h1, h2], twoDigits [m1, m2] with
+      | some h, some m => m ≤ 59 && (h < 14 || (h == 14 && m == 0))
+      | _, _ => false
+  | _ => false
+
+/-- XSD `dateTime` lexical forms; `needTz` for `dateTimeStamp`. -/
+def isDateTime (needTz : Bool) (cs : List Char) : Bool :=
+  match cs.splitOn 'T' with
+  | [date, time] =>
+    let (neg, date) := match date with
+      | '-' :: d => (true, d)
+      | d => (false, d)
+    match date.splitOn '-' with
+    | [y, mo, d] =>
+      let yOk := y.length ≥ 4 && y.all isDigitC && (y.length == 4 || y.head? != some '0')
+      let year : Int := if neg then -(digitsVal y : Int) else digitsVal y
+      match twoDigits mo, twoDigits d with
+      | some mo', some d' =>
+        let dateOk := yOk && 1 ≤ mo' && mo' ≤ 12 && 1 ≤ d' && d' ≤ daysIn year mo'
+        -- the time is `hh:mm:ss(.s+)?` followed by an optional timezone
+        let clock := time.take 8
+        let rest := time.drop 8
+        let (frac, tz) := match rest with
+          | '.' :: r => (r.takeWhile isDigitC, r.dropWhile isDigitC)
+          | r => ([], r)
+        let fracOk := match rest with
+          | '.' :: _ => !frac.isEmpty
+          | _ => true
+        match clock with
+        | [h1, h2, ':', m1, m2, ':', s1, s2] =>
+          match twoDigits [h1, h2], twoDigits [m1, m2], twoDigits [s1, s2] with
+          | some h, some m, some s =>
+            let timeOk := (h ≤ 23 && m ≤ 59 && s ≤ 59) ||
+              (h == 24 && m == 0 && s == 0 && frac.all (· == '0'))
+            dateOk && timeOk && fracOk &&
+              (if tz.isEmpty then !needTz else isTimezone tz)
+          | _, _, _ => false
+        | _ => false
+      | _, _ => false
+    | _ => false
+  | _ => false
+
+/-- `[+-]?[0-9]+/[0-9]*[1-9][0-9]*` (`owl:rational`). -/
+def isRational (cs : List Char) : Bool :=
+  match cs.splitOn '/' with
+  | [n, d] => (parseInt n).isSome && !d.isEmpty && d.all isDigitC && d.any (· != '0')
+  | _ => false
+
+/-- Whether `lex` is in the lexical space of a datatype of kind `k`. -/
+def lexicalOk (k : DtKind) (lex : String) : Bool :=
+  let cs := lex.toList
+  match k with
+  | .real | .literal => false
+  | .rational => isRational cs
+  | .decimal => isDecimal cs
+  | .integer lo hi =>
+    match parseInt cs with
+    | some v => (lo.all fun l => l ≤ v) && (hi.all fun h => v ≤ h)
+    | none => false
+  | .float => isFloat cs
+  | .string | .anyURI | .xmlLiteral => true
+  | .normalizedString => isNormalized cs
+  | .token => isToken cs
+  | .language => isLanguageTag cs
+  | .nmToken => !cs.isEmpty && cs.all isNameChar
+  | .name => (cs.head?.map isNameStart).getD false && cs.all isNameChar
+  | .ncName => (cs.head?.map isNameStart).getD false && cs.all isNameChar && !cs.contains ':'
+  | .boolean => lex == "true" || lex == "false" || lex == "1" || lex == "0"
+  | .hexBinary => cs.length % 2 == 0 && cs.all isHexC
+  | .base64Binary => isBase64 cs
+  | .dateTime => isDateTime false cs
+  | .dateTimeStamp => isDateTime true cs
+  | .plainLiteral =>
+    -- `text@lang`, split at the last `@`; the tag may be empty
+    match (cs.reverse.splitOn '@') with
+    | [] | [_] => false
+    | tag :: _ => tag.isEmpty || isLanguageTag tag.reverse
+
+/-- Why a literal is ill-typed for the OWL 2 datatype map, if it is. A
+literal whose datatype is outside the map is accepted (its datatype may be
+introduced by `DatatypeDefinition`); the semantics gives it the value the
+abstract datatype map gives. -/
+def literalProblem (l : Literal) : Option String :=
+  match l.lang with
+  | some tag =>
+    if isLanguageTag tag.toList then none else some s!"bad language tag @{tag}"
+  | none =>
+    match dtKind l.datatype with
+    | some k =>
+      if lexicalOk k l.lexical then none
+      else some s!"\"{l.lexical}\" is not a lexical form of <{l.datatype}>"
+    | none => none
+
+/-- The facet groups of the OWL 2 datatype map (structural specification,
+section 4). -/
+def numericFacets : List String :=
+  ["minInclusive", "maxInclusive", "minExclusive", "maxExclusive"]
+def lengthFacets : List String := ["length", "minLength", "maxLength"]
+
+/-- The facets a datatype of kind `k` admits (local names in the `xsd:`
+namespace, plus `rdf:langRange` for `rdf:PlainLiteral`). -/
+def facetsOf : DtKind → List IRI
+  | .real | .rational | .decimal | .integer .. | .float | .dateTime | .dateTimeStamp =>
+    numericFacets.map (xsdNs ++ ·)
+  | .string | .normalizedString | .token | .language | .name | .ncName | .nmToken | .anyURI =>
+    (lengthFacets ++ ["pattern"]).map (xsdNs ++ ·)
+  | .plainLiteral => (lengthFacets ++ ["pattern"]).map (xsdNs ++ ·) ++ [rdfNs ++ "langRange"]
+  | .hexBinary | .base64Binary => lengthFacets.map (xsdNs ++ ·)
+  | .boolean | .xmlLiteral | .literal => []
+
+/-- Why a facet restriction `DatatypeRestriction(dt ... f l ...)` is
+rejected, if it is: the datatype is outside the map, the facet does not
+apply to it, or a length facet has a value that is not a nonnegative
+integer. -/
+def facetProblem (dt f : IRI) (l : Literal) : Option String :=
+  match dtKind dt with
+  | none => some s!"facet <{f}> on datatype <{dt}> outside the OWL 2 datatype map"
+  | some k =>
+    if !(facetsOf k).contains f then some s!"facet <{f}> does not apply to <{dt}>"
+    else if (lengthFacets.map (xsdNs ++ ·)).contains f then
+      match dtKind l.datatype, parseInt l.lexical.toList with
+      | some (.integer ..), some v => if v ≥ 0 then none else some s!"negative length facet"
+      | _, _ => some s!"facet <{f}> needs a nonnegative integer"
+    else none
+
+end Datatypes
+
 /-! ## Expressions -/
 
-/-- The inverse of an object-property expression. -/
+/-- The inverse of an object-property expression. The top and bottom
+properties are their own inverses. -/
 def invert : ObjProp → ObjProp
   | .named r => .inv r
   | .inv r => .named r
+  | .top => .top
+  | .bot => .bot
 
 /-- An object-property expression. -/
 def toRole (pfx : Prefixes) (n : Node) : ConvM ObjProp :=
@@ -370,8 +746,8 @@ def toRole (pfx : Prefixes) (n : Node) : ConvM ObjProp :=
   | .list h _ => outOfFragment s!"object property expression {if h == "" then "(anonymous list)" else h}"
   | _ => do
     let r ← iriOf pfx n
-    if r == owlTopObjectProperty then outOfFragment "owl:topObjectProperty"
-    else if r == owlBottomObjectProperty then outOfFragment "owl:bottomObjectProperty"
+    if r == owlTopObjectProperty then return .top
+    else if r == owlBottomObjectProperty then return .bot
     else return .named r
 termination_by sizeOf n
 decreasing_by
@@ -379,16 +755,111 @@ decreasing_by
   have := Array.sizeOf_getElem args 0 (by omega)
   omega
 
-/-- The reason for rejecting a class constructor outside `F`. -/
+/-- A data-property expression (an IRI). -/
+def toDataProp (pfx : Prefixes) (n : Node) : ConvM DataProp :=
+  match n with
+  | .list h _ => throw s!"syntax error: expected a data property, found {if h == "" then "an anonymous list" else h}"
+  | _ => do
+    let p ← iriOf pfx n
+    if p == owlTopDataProperty then return .top
+    else if p == owlBottomDataProperty then return .bot
+    else return .named p
+
+/-- An individual: a node ID `_:x` or a named individual. -/
+def toIndividual (pfx : Prefixes) (n : Node) : ConvM Individual :=
+  match n with
+  | .word w =>
+    if w.startsWith "_:" then return .anon (w.drop 2).toString
+    else return .named (← iriOf pfx n)
+  | _ => return .named (← iriOf pfx n)
+
+/-- A literal; ill-typed literals (for the OWL 2 datatype map) are
+rejected. -/
+def toLiteral (pfx : Prefixes) (n : Node) : ConvM Literal := do
+  let l ← match n with
+    | .literal lex .plain => pure { lexical := lex, datatype := xsdString, lang := none }
+    | .literal lex (.lang tag) => pure { lexical := lex, datatype := rdfPlainLiteral, lang := some tag }
+    | .literal lex (.typed (.full s)) =>
+      pure { lexical := lex, datatype := ← iriOf pfx (.iri s), lang := none }
+    | .literal lex (.typed (.abbreviated w)) =>
+      pure { lexical := lex, datatype := ← iriOf pfx (.word w), lang := none }
+    | n => throw s!"syntax error: expected a literal, found {n.describe}"
+  match literalProblem l with
+  | some why => throw s!"ill-typed literal: {why}"
+  | none => return l
+
+/-- A cardinality: a nonnegative integer. -/
+def toNat (n : Node) : ConvM Nat :=
+  match n with
+  | .word w =>
+    if !w.isEmpty && w.all Char.isDigit then return digitsVal w.toList
+    else throw s!"syntax error: {w} is not a nonnegative integer"
+  | n => throw s!"syntax error: expected a nonnegative integer, found {n.describe}"
+
+/-- A data range. -/
+def toDataRange (pfx : Prefixes) (n : Node) : ConvM DataRange :=
+  match n with
+  | .list "DataIntersectionOf" args => do
+    if args.size < 2 then throw "syntax error: DataIntersectionOf needs two operands"
+    let rs ← args.attach.mapM fun ⟨a, _⟩ => toDataRange pfx a
+    return .and rs.toList
+  | .list "DataUnionOf" args => do
+    if args.size < 2 then throw "syntax error: DataUnionOf needs two operands"
+    let rs ← args.attach.mapM fun ⟨a, _⟩ => toDataRange pfx a
+    return .or rs.toList
+  | .list "DataComplementOf" args =>
+    if h : args.size = 1 then return .not (← toDataRange pfx args[0])
+    else throw "syntax error: DataComplementOf takes one operand"
+  | .list "DataOneOf" args => do
+    if args.size < 1 then throw "syntax error: DataOneOf needs a literal"
+    return .oneOf (← args.mapM (toLiteral pfx)).toList
+  | .list "DatatypeRestriction" args => do
+    if h : 0 < args.size then
+      let dt ← iriOf pfx args[0]
+      let rest := args.extract 1 args.size
+      if rest.size == 0 || rest.size % 2 != 0 then
+        throw "syntax error: DatatypeRestriction needs facet and literal pairs"
+      let mut fs : Array (IRI × Literal) := #[]
+      for k in [0:rest.size / 2] do
+        let f ← iriOf pfx rest[2 * k]!
+        let l ← toLiteral pfx rest[2 * k + 1]!
+        match facetProblem dt f l with
+        | some why => throw s!"bad facet: {why}"
+        | none => fs := fs.push (f, l)
+      return .restriction dt fs.toList
+    else throw "syntax error: DatatypeRestriction needs a datatype"
+  | .list h _ => throw s!"syntax error: unknown data range {if h == "" then "(anonymous list)" else h}"
+  | _ => return .datatype (← iriOf pfx n)
+termination_by sizeOf n
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (have := Array.sizeOf_lt_of_mem ‹_ ∈ args›; omega)
+    | (have := Array.sizeOf_getElem args 0 (by omega); omega)
+
+/-- The reason for rejecting an unknown class constructor. -/
 def classConstructRejection (h : String) : String :=
-  if h == "ObjectMinCardinality" || h == "ObjectMaxCardinality" ||
-      h == "ObjectExactCardinality" then
-    s!"{h} (cardinality restriction)"
-  else if h == "ObjectOneOf" || h == "ObjectHasValue" then s!"{h} (nominal)"
-  else if h == "ObjectHasSelf" then s!"{h} (self restriction)"
-  else if h.startsWith "Data" then s!"{h} (data construct)"
-  else if h == "" then "anonymous list in a class position"
+  if h == "" then "anonymous list in a class position"
   else s!"class expression {h}"
+
+/-- The property and data range of a unary `DataSomeValuesFrom` /
+`DataAllValuesFrom`; more than one property is an n-ary data range. -/
+def unaryData (pfx : Prefixes) (h : String) (args : Array Node) : ConvM (DataProp × DataRange) :=
+  if hs : args.size = 2 then do
+    return (← toDataProp pfx args[0], ← toDataRange pfx args[1])
+  else if args.size > 2 then
+    outOfFragment s!"{h} with {args.size - 1} data properties (n-ary data range)"
+  else throw s!"syntax error: {h} takes a data property and a data range"
+
+/-- The number, property and data range of a data cardinality restriction
+(unqualified: `rdfs:Literal`). -/
+def dataCard (pfx : Prefixes) (h : String) (args : Array Node) :
+    ConvM (Nat × DataProp × DataRange) :=
+  if hs : args.size = 2 then do
+    return (← toNat args[0], ← toDataProp pfx args[1], .datatype rdfsLiteral)
+  else if hs : args.size = 3 then do
+    return (← toNat args[0], ← toDataProp pfx args[1], ← toDataRange pfx args[2])
+  else throw s!"syntax error: {h} takes a number, a data property and an optional data range"
 
 /-- A class expression. -/
 def toClass (pfx : Prefixes) (n : Node) : ConvM ClassExpr :=
@@ -410,6 +881,48 @@ def toClass (pfx : Prefixes) (n : Node) : ConvM ClassExpr :=
   | .list "ObjectAllValuesFrom" args =>
     if h : args.size = 2 then return .all (← toRole pfx args[0]) (← toClass pfx args[1])
     else throw "syntax error: ObjectAllValuesFrom takes a property and a class"
+  | .list "ObjectOneOf" args => do
+    if args.size < 1 then throw "syntax error: ObjectOneOf needs an individual"
+    return .oneOf (← args.mapM (toIndividual pfx)).toList
+  | .list "ObjectHasValue" args =>
+    if h : args.size = 2 then return .hasValue (← toRole pfx args[0]) (← toIndividual pfx args[1])
+    else throw "syntax error: ObjectHasValue takes a property and an individual"
+  | .list "ObjectHasSelf" args =>
+    if h : args.size = 1 then return .hasSelf (← toRole pfx args[0])
+    else throw "syntax error: ObjectHasSelf takes a property"
+  | .list "ObjectMinCardinality" args =>
+    if h : args.size = 2 then return .min (← toNat args[0]) (← toRole pfx args[1]) .thing
+    else if h : args.size = 3 then
+      return .min (← toNat args[0]) (← toRole pfx args[1]) (← toClass pfx args[2])
+    else throw "syntax error: ObjectMinCardinality takes a number, a property and an optional class"
+  | .list "ObjectMaxCardinality" args =>
+    if h : args.size = 2 then return .max (← toNat args[0]) (← toRole pfx args[1]) .thing
+    else if h : args.size = 3 then
+      return .max (← toNat args[0]) (← toRole pfx args[1]) (← toClass pfx args[2])
+    else throw "syntax error: ObjectMaxCardinality takes a number, a property and an optional class"
+  | .list "ObjectExactCardinality" args =>
+    if h : args.size = 2 then return .exact (← toNat args[0]) (← toRole pfx args[1]) .thing
+    else if h : args.size = 3 then
+      return .exact (← toNat args[0]) (← toRole pfx args[1]) (← toClass pfx args[2])
+    else throw "syntax error: ObjectExactCardinality takes a number, a property and an optional class"
+  | .list "DataSomeValuesFrom" args => do
+    let (p, r) ← unaryData pfx "DataSomeValuesFrom" args
+    return .dataSome p r
+  | .list "DataAllValuesFrom" args => do
+    let (p, r) ← unaryData pfx "DataAllValuesFrom" args
+    return .dataAll p r
+  | .list "DataHasValue" args =>
+    if h : args.size = 2 then return .dataHasValue (← toDataProp pfx args[0]) (← toLiteral pfx args[1])
+    else throw "syntax error: DataHasValue takes a data property and a literal"
+  | .list "DataMinCardinality" args => do
+    let (k, p, r) ← dataCard pfx "DataMinCardinality" args
+    return .dataMin k p r
+  | .list "DataMaxCardinality" args => do
+    let (k, p, r) ← dataCard pfx "DataMaxCardinality" args
+    return .dataMax k p r
+  | .list "DataExactCardinality" args => do
+    let (k, p, r) ← dataCard pfx "DataExactCardinality" args
+    return .dataExact k p r
   | .list h _ => outOfFragment (classConstructRejection h)
   | _ => do
     let a ← iriOf pfx n
@@ -423,6 +936,7 @@ decreasing_by
     | (have := Array.sizeOf_lt_of_mem ‹_ ∈ args›; omega)
     | (have := Array.sizeOf_getElem args 0 (by omega); omega)
     | (have := Array.sizeOf_getElem args 1 (by omega); omega)
+    | (have := Array.sizeOf_getElem args 2 (by omega); omega)
 
 /-! ## Axioms -/
 
@@ -446,27 +960,16 @@ def skippedAxioms : List String :=
 
 /-- Rejected axiom heads, with the reason. -/
 def rejectedAxiom (h : String) : String :=
-  if ["ClassAssertion", "ObjectPropertyAssertion", "NegativeObjectPropertyAssertion",
-      "DataPropertyAssertion", "NegativeDataPropertyAssertion", "SameIndividual",
-      "DifferentIndividuals"].contains h then s!"{h} (ABox assertion)"
-  else if ["FunctionalObjectProperty", "InverseFunctionalObjectProperty",
-      "ReflexiveObjectProperty", "IrreflexiveObjectProperty",
-      "AsymmetricObjectProperty", "DisjointObjectProperties"].contains h then
-    s!"{h} (object property characteristic)"
-  else if ["SubDataPropertyOf", "EquivalentDataProperties", "DisjointDataProperties",
-      "DataPropertyDomain", "DataPropertyRange", "FunctionalDataProperty",
-      "DatatypeDefinition"].contains h then s!"{h} (data property axiom)"
-  else if h == "DLSafeRule" then s!"{h} (rule)"
-  else if h == "HasKey" then s!"{h} (key)"
-  else if h == "DisjointUnion" then s!"{h} (disjoint union)"
+  if h == "DLSafeRule" then s!"{h} (rule)"
   else if h == "" then "anonymous list in an axiom position"
   else s!"axiom {h}"
 
 def arityError {α : Type} (h : String) : ConvM α :=
   throw s!"syntax error: wrong number of operands for {h}"
 
-/-- A declaration: `some` for classes and object properties, `none` for the
-other entity kinds and for `owl:Thing` / `owl:Nothing`. -/
+/-- A declaration: `none` for the declarations of `owl:Thing`,
+`owl:Nothing` and the top and bottom object and data properties, which
+are not IRIs of the semantics. -/
 def toDeclaration (pfx : Prefixes) (ops : Array Node) : ConvM (Option Axiom) := do
   match ops with
   | #[.list "Class" #[x]] =>
@@ -477,15 +980,19 @@ def toDeclaration (pfx : Prefixes) (ops : Array Node) : ConvM (Option Axiom) := 
     let r ← iriOf pfx x
     if r == owlTopObjectProperty || r == owlBottomObjectProperty then return none
     return some (.declareObjectProperty r)
-  | #[.list k #[x]] =>
-    if ["DataProperty", "NamedIndividual", "AnnotationProperty", "Datatype"].contains k then
-      let _ ← iriOf pfx x
-      return none
-    else throw s!"syntax error: unknown entity kind {k} in Declaration"
+  | #[.list "DataProperty" #[x]] =>
+    let p ← iriOf pfx x
+    if p == owlTopDataProperty || p == owlBottomDataProperty then return none
+    return some (.declareDataProperty p)
+  | #[.list "NamedIndividual" #[x]] => return some (.declareNamedIndividual (← iriOf pfx x))
+  | #[.list "Datatype" #[x]] => return some (.declareDatatype (← iriOf pfx x))
+  | #[.list "AnnotationProperty" #[x]] =>
+    return some (.declareAnnotationProperty (← iriOf pfx x))
+  | #[.list k #[_]] => throw s!"syntax error: unknown entity kind {k} in Declaration"
   | _ => arityError "Declaration"
 
-/-- One axiom (a child of `Ontology(...)` that is a list): `some` for an axiom
-of `F`, `none` for a skipped one. -/
+/-- One axiom (a child of `Ontology(...)` that is a list): `some` for an
+axiom of the model, `none` for a skipped one. -/
 def toAxiom (pfx : Prefixes) (h : String) (args : Array Node) : ConvM (Option Axiom) := do
   if skippedAxioms.contains h then return none
   let ops ← operands h args
@@ -495,6 +1002,16 @@ def toAxiom (pfx : Prefixes) (h : String) (args : Array Node) : ConvM (Option Ax
   let roles : ConvM (List ObjProp) := do
     if ops.size < 2 then arityError h
     return (← ops.mapM (toRole pfx)).toList
+  let dataProps : ConvM (List DataProp) := do
+    if ops.size < 2 then arityError h
+    return (← ops.mapM (toDataProp pfx)).toList
+  let individuals : ConvM (List Individual) := do
+    if ops.size < 2 then arityError h
+    return (← ops.mapM (toIndividual pfx)).toList
+  let oneRole : ConvM ObjProp := do
+    match ops with
+    | #[r] => toRole pfx r
+    | _ => arityError h
   match h with
   | "Declaration" => toDeclaration pfx ops
   | "SubClassOf" =>
@@ -503,6 +1020,14 @@ def toAxiom (pfx : Prefixes) (h : String) (args : Array Node) : ConvM (Option Ax
     | _ => arityError h
   | "EquivalentClasses" => return some (.equivalentClasses (← classes))
   | "DisjointClasses" => return some (.disjointClasses (← classes))
+  | "DisjointUnion" =>
+    if hs : 3 ≤ ops.size then
+      let a ← iriOf pfx ops[0]
+      if a == owlThing || a == owlNothing then
+        outOfFragment "DisjointUnion of owl:Thing or owl:Nothing (the class must be a class IRI)"
+      let cs ← (ops.extract 1 ops.size).mapM (toClass pfx)
+      return some (.disjointUnion a cs.toList)
+    else arityError h
   | "ObjectPropertyDomain" =>
     match ops with
     | #[r, c] => return some (.domain (← toRole pfx r) (← toClass pfx c))
@@ -521,17 +1046,71 @@ def toAxiom (pfx : Prefixes) (h : String) (args : Array Node) : ConvM (Option Ax
     | #[r, s] => return some (.subObjectPropertyOf [← toRole pfx r] (← toRole pfx s))
     | _ => arityError h
   | "EquivalentObjectProperties" => return some (.equivalentObjectProperties (← roles))
+  | "DisjointObjectProperties" => return some (.disjointObjectProperties (← roles))
   | "InverseObjectProperties" =>
     match ops with
     | #[r, s] => return some (.inverseObjectProperties (← toRole pfx r) (← toRole pfx s))
     | _ => arityError h
-  | "TransitiveObjectProperty" =>
+  | "TransitiveObjectProperty" => return some (.transitive (← oneRole))
+  | "SymmetricObjectProperty" => return some (.symmetric (← oneRole))
+  | "FunctionalObjectProperty" => return some (.functional (← oneRole))
+  | "InverseFunctionalObjectProperty" => return some (.inverseFunctional (← oneRole))
+  | "ReflexiveObjectProperty" => return some (.reflexive (← oneRole))
+  | "IrreflexiveObjectProperty" => return some (.irreflexive (← oneRole))
+  | "AsymmetricObjectProperty" => return some (.asymmetric (← oneRole))
+  | "SubDataPropertyOf" =>
     match ops with
-    | #[r] => return some (.transitive (← toRole pfx r))
+    | #[p, q] => return some (.subDataPropertyOf (← toDataProp pfx p) (← toDataProp pfx q))
     | _ => arityError h
-  | "SymmetricObjectProperty" =>
+  | "EquivalentDataProperties" => return some (.equivalentDataProperties (← dataProps))
+  | "DisjointDataProperties" => return some (.disjointDataProperties (← dataProps))
+  | "DataPropertyDomain" =>
     match ops with
-    | #[r] => return some (.symmetric (← toRole pfx r))
+    | #[p, c] => return some (.dataDomain (← toDataProp pfx p) (← toClass pfx c))
+    | _ => arityError h
+  | "DataPropertyRange" =>
+    match ops with
+    | #[p, r] => return some (.dataRange (← toDataProp pfx p) (← toDataRange pfx r))
+    | _ => arityError h
+  | "FunctionalDataProperty" =>
+    match ops with
+    | #[p] => return some (.functionalData (← toDataProp pfx p))
+    | _ => arityError h
+  | "DatatypeDefinition" =>
+    match ops with
+    | #[t, r] => return some (.datatypeDefinition (← iriOf pfx t) (← toDataRange pfx r))
+    | _ => arityError h
+  | "HasKey" =>
+    match ops with
+    | #[c, .list "" os, .list "" ds] =>
+      return some (.hasKey (← toClass pfx c) (← os.mapM (toRole pfx)).toList
+        (← ds.mapM (toDataProp pfx)).toList)
+    | _ => throw "syntax error: HasKey takes a class and two parenthesised property lists"
+  | "SameIndividual" => return some (.sameIndividual (← individuals))
+  | "DifferentIndividuals" => return some (.differentIndividuals (← individuals))
+  | "ClassAssertion" =>
+    match ops with
+    | #[c, a] => return some (.classAssertion (← toClass pfx c) (← toIndividual pfx a))
+    | _ => arityError h
+  | "ObjectPropertyAssertion" =>
+    match ops with
+    | #[r, a, b] => return some (.objectPropertyAssertion (← toRole pfx r)
+        (← toIndividual pfx a) (← toIndividual pfx b))
+    | _ => arityError h
+  | "NegativeObjectPropertyAssertion" =>
+    match ops with
+    | #[r, a, b] => return some (.negativeObjectPropertyAssertion (← toRole pfx r)
+        (← toIndividual pfx a) (← toIndividual pfx b))
+    | _ => arityError h
+  | "DataPropertyAssertion" =>
+    match ops with
+    | #[p, a, l] => return some (.dataPropertyAssertion (← toDataProp pfx p)
+        (← toIndividual pfx a) (← toLiteral pfx l))
+    | _ => arityError h
+  | "NegativeDataPropertyAssertion" =>
+    match ops with
+    | #[p, a, l] => return some (.negativeDataPropertyAssertion (← toDataProp pfx p)
+        (← toIndividual pfx a) (← toLiteral pfx l))
     | _ => arityError h
   | _ => outOfFragment (rejectedAxiom h)
 
@@ -636,9 +1215,10 @@ def initialPrefixes : Prefixes :=
 
 end Parse
 
-/-- Parse an OWL 2 functional-syntax document of the fragment `F`.
-`.ok O` gives the ontology; `.error reason` says why the text is not a
-document of `F` (a syntax error, or the first construct outside `F`). -/
+/-- Parse an OWL 2 functional-syntax document. `.ok O` gives the ontology;
+`.error reason` says why the text is rejected (a syntax error, an
+ill-typed literal or bad facet, or the first construct outside the model:
+imports, rules, n-ary data ranges). -/
 def parse (text : String) : Except String Ontology :=
   let bs := text.toUTF8
   Parse.readDocument bs (bs.size + 1) 0 Parse.initialPrefixes []

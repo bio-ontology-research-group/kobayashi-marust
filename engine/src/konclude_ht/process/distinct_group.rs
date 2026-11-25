@@ -95,6 +95,7 @@ mod tests {
 
     #[test]
     fn group_storage_agrees_with_explicit_pairs_after_localization_and_replacement() {
+        let _test_env = crate::test_env::read();
         let first = Id::new(1);
         let second = Id::new(2);
         let third = Id::new(3);
@@ -135,6 +136,7 @@ mod tests {
 
     #[test]
     fn all_member_views_share_one_group_vector_and_never_make_self_distinct() {
+        let _test_env = crate::test_env::read();
         let group = DistinctGroup::new((0..10_000).collect(), TrackPointId::NONE);
         let copy = group.clone();
         assert!(Arc::ptr_eq(&group.members, &copy.members));

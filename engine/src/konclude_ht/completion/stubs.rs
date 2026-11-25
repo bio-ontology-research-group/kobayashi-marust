@@ -1621,6 +1621,16 @@ impl SatisfiableExpanderCacheHandler {
         entry: Option<&mut SigExpanderCacheEntryId>,
     ) -> bool {
         self.stat_retrieval_requests += 1;
+        if self.cache.sig_item_hash.is_empty()
+            && (self.sat_cache_reader.is_none()
+                || self
+                    .cache_context
+                    .sig_expander_cache_reader(self.sat_cache_reader)
+                    .current_slot
+                    .is_none())
+        {
+            return false;
+        }
         let con_set = process_context
             .node(individual_node)
             .use_reapply_con_label_set;
@@ -4774,7 +4784,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                     continue;
                 }
 
-                for creation_role_linker in succ_data_ref.creation_role_linker.iter() {
+                for creation_role_linker in process_context.creation_roles_iter(succ_data_ref.creation_role_linker) {
                     if !creation_role_linker.negated && creation_role_linker.target == *role {
                         let mut next_successor_list = Vec::new();
                         let mut next_trivial_successor_propagated_concept_list = Vec::new();
@@ -5265,7 +5275,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 if succ_data_ref.get_active_count() < 1 {
                     continue;
                 }
-                for creation_role_linker in succ_data_ref.creation_role_linker.iter() {
+                for creation_role_linker in process_context.creation_roles_iter(succ_data_ref.creation_role_linker) {
                     if !creation_role_linker.negated && creation_role_linker.target == *role {
                         let ext_sat_indi_node = succ_data_ref.get_successor_individual_node();
                         if ext_sat_indi_node.is_none()
@@ -7099,17 +7109,24 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         ontology: &OntologyArenas,
         node: NodeId,
     ) -> Option<ClassificationAnalyserOtherNodeSnapshot> {
-        let single_dependency_label_index = self
-            .single_ancestor_dependency_label_index_from_process_node(
+        let mut snapshot =
+            self.extract_other_node_snapshot_from_process_node(process_context, node, None)?;
+        if let Some((descriptor, _)) = self
+            .single_ancestor_dependency_descriptor_and_index_from_process_node(
                 process_context,
                 ontology,
                 node,
-            );
-        self.extract_other_node_snapshot_from_process_node(
-            process_context,
-            node,
-            single_dependency_label_index,
-        )
+            )
+        {
+            let descriptor_ref = process_context.con_desc(descriptor);
+            let target_concept = descriptor_ref.get_concept();
+            let target_negated = descriptor_ref.is_negated();
+            snapshot.single_dependency_label_index = snapshot
+                .labels
+                .iter()
+                .position(|label| label.concept == target_concept && label.negated == target_negated);
+        }
+        Some(snapshot)
     }
 
     /// Port of
@@ -8720,6 +8737,7 @@ mod tests {
 
     #[test]
     fn satisfiable_expander_handler_reads_signature_cache_hit() {
+        let _test_env = crate::test_env::read();
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
         let concept = concepts.push(concept_with_tag(CCATOM, 101, true));
@@ -8754,6 +8772,7 @@ mod tests {
 
     #[test]
     fn satisfiable_expander_handler_rejects_smaller_expander_count() {
+        let _test_env = crate::test_env::read();
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
         let concept = concepts.push(concept_with_tag(CCATOM, 102, true));
@@ -8778,6 +8797,7 @@ mod tests {
 
     #[test]
     fn satisfiable_expander_handler_rejects_negation_mismatch() {
+        let _test_env = crate::test_env::read();
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
         let concept = concepts.push(concept_with_tag(CCATOM, 103, true));
@@ -8802,6 +8822,7 @@ mod tests {
 
     #[test]
     fn satisfiable_expander_handler_extends_an_earlier_signature_with_cached_suffix() {
+        let _test_env = crate::test_env::read();
         let mut process_context = ProcessContext::new();
         let mut ontology = OntologyArenas::new();
         // Keep the synthetic base concept off arena index zero. With one
@@ -8986,7 +9007,7 @@ mod tests {
         succ_data
             .set_successor_individual_node(successor)
             .set_active_count(active_count);
-        succ_data.creation_role_linker = creation_roles.into();
+        succ_data.creation_role_linker = process_context.creation_role_list_from(&creation_roles);
         let succ_data = process_context.alloc_sat_succ_data(succ_data);
         process_context
             .linked_role_sat_succ_data_mut(role_data)
@@ -9111,6 +9132,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_root_pseudo_model_message_requires_flag() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let adapter = SatisfiableTaskClassificationMessageAdapter::new(
             ConceptId::new(3),
@@ -9124,6 +9146,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_creates_root_pseudo_model_identifier_message() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let adapter = SatisfiableTaskClassificationMessageAdapter::new(
             ConceptId::new(3),
@@ -9179,6 +9202,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_extracts_root_pseudo_model_concepts_from_label_set() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let label_set = process_context.alloc_label_set(ReapplyConceptLabelSet::new(0));
@@ -9266,6 +9290,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_marks_non_deterministically_connected_concepts() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let label_set = process_context.alloc_label_set(ReapplyConceptLabelSet::new(0));
@@ -9297,6 +9322,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_validates_pseudo_model_blocking_and_cache_flags() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let clean_node = add_node(&mut process_context, 0, false);
@@ -9357,6 +9383,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_validates_pseudo_model_successor_limits() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let nominal_node = add_node(&mut process_context, 0, true);
@@ -9393,6 +9420,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_extracts_pseudo_model_role_successor_map() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut roles = Arena::new();
@@ -9442,6 +9470,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_extracts_role_bounds_and_skips_complex_roles() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut roles = Arena::new();
@@ -9533,6 +9562,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_builds_full_pseudo_model_identifier_message() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -9624,6 +9654,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_pseudo_model_producer_gates_like_cpp() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let root = add_identified_node(&mut process_context, 1);
@@ -9680,6 +9711,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_wraps_pseudo_model_message_in_linker() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -9739,6 +9771,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_merges_message_linkers_in_cpp_order() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let subsum = ClassificationMessageDataLinker::from_message(
             ClassificationMessageDataPayload::Header(ClassificationMessageData::new(
@@ -9772,6 +9805,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_corrects_individual_id_over_deterministic_merge_chain() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -9813,6 +9847,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_corrected_individual_marks_nondeterministic_merges() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -9851,6 +9886,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_corrected_individual_rejects_missing_vector_entry() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let node_vector = IndividualProcessNodeVector::new();
@@ -9864,6 +9900,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_root_branch_uses_corrected_base_and_clamps_nondet_merge() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -9954,6 +9991,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_root_branch_possible_only_still_emits_root_class_message() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -10040,6 +10078,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_bounded_integration_delivers_root_other_and_pseudomodel() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -10207,6 +10246,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_bounded_integration_releases_without_requested_messages() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -10261,6 +10301,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_classifier_references_drive_other_node_possible_messages() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -10358,6 +10399,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_live_other_node_wrapper_discovers_graph_successors() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -10453,6 +10495,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_live_wrapper_uses_ontology_equivalent_non_candidates() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -10543,6 +10586,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_visit_reuse_preserves_all_ordered_payloads() {
+        let _test_env = crate::test_env::read();
         fn run(reuse: bool, merged: bool, value_triggers: bool) -> (String, usize) {
             let analyser = SatisfiableTaskClassificationMessageAnalyser;
             let mut context = ProcessContext::new();
@@ -10613,6 +10657,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_live_wrapper_suppresses_pseudomodel_for_value_space_triggers(
     ) {
+        let _test_env = crate::test_env::read();
         fn run(has_value_space_triggers: bool) -> Vec<ClassificationMessageDataType> {
             let analyser = SatisfiableTaskClassificationMessageAnalyser;
             let mut process_context = ProcessContext::new();
@@ -10698,6 +10743,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_task_context_entry_reads_adapter_and_databox() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut calc_context = CalculationAlgorithmContext::new();
         let testing = calc_context
@@ -10781,6 +10827,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_task_context_entry_reads_mbox_value_space_triggers() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut calc_context = CalculationAlgorithmContext::new();
         let testing = calc_context
@@ -10862,6 +10909,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_task_context_entry_resolves_registered_observer() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut calc_context = CalculationAlgorithmContext::new();
         let mut observer_registry = ClassificationMessageDataObserverRegistry::new();
@@ -10947,6 +10995,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_task_context_entry_rejects_missing_adapter() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut calc_context = CalculationAlgorithmContext::new();
         let mut task = SatisfiableCalculationTask::new();
@@ -10961,6 +11010,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_classifier_references_release_without_required_info() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -11056,6 +11106,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_snapshots_possible_subsumption_state_from_classifier_item() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let analysed = concepts.push(concept_with_tag(CCATOM, 30, true));
@@ -11119,6 +11170,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_repeated_snapshot_labels_preserve_candidate_states() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -11182,6 +11234,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_classifier_state_wrapper_derives_possible_update() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut node_vector = IndividualProcessNodeVector::new();
@@ -11287,6 +11340,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_resolves_saturated_individual_node_for_concept() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let positive_sat_node =
@@ -11354,6 +11408,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_saturated_node_lookup_returns_none_for_missing_chain() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -11393,6 +11448,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_resolves_direct_existential_saturated_successor_node() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -11430,6 +11486,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_existential_saturated_successor_falls_back_to_single_operand(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -11469,6 +11526,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_existential_saturated_successor_flips_single_all_operand() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -11509,6 +11567,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_existential_saturated_successor_falls_back_to_top_for_empty_operand_list(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -11547,6 +11606,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_existential_saturated_successor_returns_none_for_multi_operand_fallback(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -11576,6 +11636,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_trivial_propagation_collects_negated_sub() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let sub = concepts.push(concept_with_tag(CCSUB, 31, true));
@@ -11592,6 +11653,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_trivial_propagation_collects_positive_all_family() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let all = concepts.push(concept_with_tag(CCALL, 31, true));
@@ -11625,6 +11687,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_trivial_propagation_recurses_positive_aqand_family() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let sub = concepts.push(concept_with_tag(CCSUB, 31, true));
@@ -11646,6 +11709,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_trivial_propagation_rejects_non_trivial_operand() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let atom = concepts.push(concept_with_tag(CCATOM, 31, true));
@@ -11672,6 +11736,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_automate_transaction_collects_saturated_operand_for_matching_role(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -11719,6 +11784,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_automate_transaction_rejects_problematic_saturated_operand()
     {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -11769,6 +11835,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_automate_transaction_falls_back_to_trivial_operand() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -11805,6 +11872,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_automate_transaction_rejects_non_trivial_unsaturated_operand(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -11838,6 +11906,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_automate_transaction_recurses_positive_aqand_family() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -11893,6 +11962,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_automate_transaction_ignores_non_matching_role() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -11926,6 +11996,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_collects_successor_merging_nodes_from_completion_reapply_queue(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -11995,6 +12066,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_collects_successor_merging_trivial_fallback_and_backward_roles(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -12057,6 +12129,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_collect_successor_merging_rejects_unsupported_reapply_concept(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -12110,6 +12183,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_recursive_successor_merging_collects_influence_for_self_super_role(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -12165,6 +12239,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_recursive_successor_merging_preserves_influence_role_key_guard(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12209,6 +12284,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_recursive_successor_merging_collects_backward_reapply_trivial_and_null_successor(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let succ_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -12259,6 +12335,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_recursive_successor_merging_skips_excluded_substitute_and_records_inverse_role(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let succ_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -12322,6 +12399,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_recursive_successor_merging_rejects_unsupported_backward_reapply(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let succ_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -12369,6 +12447,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_trigger_prep_collects_sub_triggers_and_all_influences(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12405,6 +12484,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_trigger_prep_rejects_backward_role_link()
     {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let existential = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -12431,6 +12511,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_trigger_prep_ignores_positive_sub_and_rejects_all_with_backward_role(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12471,6 +12552,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_label_trigger_merge_records_saturation_descriptor(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12504,6 +12586,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_label_trigger_merge_rejects_polarity_conflict(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12538,6 +12621,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_label_trigger_merge_handles_implication_trigger_conflicts(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12587,6 +12671,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_label_trigger_merge_follows_substitute_node(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12626,6 +12711,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_label_trigger_merge_records_substitute_reference(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12671,6 +12757,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_label_trigger_merge_rejects_substitute_reference_trigger_conflict(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12701,6 +12788,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_label_trigger_merge_rejects_substitute_reference_polarity_conflict(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12732,6 +12820,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_label_trigger_merge_records_multihop_substitute_references(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -12775,6 +12864,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_recursive_jobs_prepend_existential_successor(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let source = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -12856,6 +12946,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_recursive_jobs_preserve_original_trivial_condition(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let source = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -12937,6 +13028,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_recursive_jobs_reject_missing_existential_saturation(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let source = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -13003,6 +13095,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_saturated_successor_dispatch_selects_single_and_decrements_limits(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let existential = SatNodeId::new(7);
         let successor = SatNodeId::new(11);
@@ -13037,6 +13130,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_saturated_successor_dispatch_selects_multiple_for_non_single_count(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let existential = SatNodeId::new(7);
         let successor_a = SatNodeId::new(11);
@@ -13063,6 +13157,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_saturated_successor_dispatch_preserves_predecrement_failure_order(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut count = 5;
         assert!(analyser
@@ -13094,6 +13189,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_saturated_successor_executor_preserves_predecrement_failure_order(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let concepts = Arena::<Concept>::new();
         let roles = Arena::<Role>::new();
@@ -13141,6 +13237,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_saturated_successor_job_dispatches_share_count_budget() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut first_backward = crate::fxhash::FxHashSet::default();
         first_backward.insert(RoleId::new(31));
@@ -13198,6 +13295,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_executes_terminal_single_successor_dispatch() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let concepts = Arena::<Concept>::new();
@@ -13232,6 +13330,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_execution_preserves_depth_gate_before_child_count_decrement()
     {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -13292,6 +13391,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_single_successor_prep_accepts_matching_negated_sub_descriptor(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -13323,6 +13423,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_single_successor_prep_rejects_sub_descriptor_conflicts() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -13371,6 +13472,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_single_successor_prep_checks_substitute_reference_fallback()
     {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -13408,6 +13510,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_single_successor_prep_collects_all_influence_and_rejects_backward_role(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -13449,6 +13552,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_single_successor_non_extension_jobs_prepend_existential_successor(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -13534,6 +13638,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_single_successor_non_extension_jobs_preserve_original_trivial_gate(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -13616,6 +13721,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_single_successor_non_extension_jobs_skip_successor_extension_branch(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -13669,6 +13775,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_linked_successor_extension_jobs_collect_active_matching_creation_role(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let source = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -13737,6 +13844,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_linked_successor_extension_jobs_ignore_inactive_negated_and_nonmatching_creation_roles(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let source = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -13811,6 +13919,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_linked_successor_extension_jobs_reject_invalid_ext_successor_node(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let source = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -13858,6 +13967,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_single_successor_wrapper_dispatches_non_extension_jobs() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -13928,6 +14038,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_multiple_successor_wrapper_dispatches_triggers_before_extensions(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -14020,6 +14131,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_saturated_existentials_wrapper_dispatches_non_extension_descriptor(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14106,6 +14218,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_saturated_existentials_wrapper_dispatches_linked_extension_successor(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14176,6 +14289,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_saturated_existentials_live_executes_successor_merge() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14253,6 +14367,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_saturated_existentials_live_rejects_dispatchable_invalid_child(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14337,6 +14452,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_subsumer_merged_saturated_wrapper_reports_clashed_merge() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -14401,6 +14517,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_subsumer_merged_saturated_wrapper_reaches_existential_dispatch(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14496,6 +14613,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_subsumer_merged_saturated_live_executes_existential_probe() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14590,6 +14708,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_collects_live_equivalent_non_candidate_possible_subsumers() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, label_set) = add_completion_label_set_node(&mut process_context);
@@ -14646,6 +14765,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_equivalence_alternatives_records_failed_merge() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14686,6 +14806,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_equivalence_alternatives_accepts_all_unsatisfiable_merge() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -14754,6 +14875,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_collect_equivalence_expands_negated_and_to_existential() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14801,6 +14923,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_collect_equivalence_uses_cached_satisfiable_merge() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14845,6 +14968,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_collect_equivalence_label_hit_short_circuits() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, label_set) = add_completion_label_set_node(&mut process_context);
@@ -14891,6 +15015,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_collect_equivalence_missing_atom_clears_all_flag() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14929,6 +15054,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_collect_equivalence_aqchoose_filters_by_operand_negation() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -14972,6 +15098,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_model_clash_detects_deterministic_opposite_label() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, label_set) = add_completion_label_set_node(&mut process_context);
@@ -15010,6 +15137,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_model_clash_treats_nondeterministic_opposite_label_unknown()
     {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, label_set) = add_completion_label_set_node(&mut process_context);
@@ -15047,6 +15175,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_model_clash_same_label_is_clash_free() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, label_set) = add_completion_label_set_node(&mut process_context);
@@ -15083,6 +15212,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_model_clash_negated_and_requires_all_operand_clashes() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, label_set) = add_completion_label_set_node(&mut process_context);
@@ -15128,6 +15258,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_model_clash_role_successor_clash_makes_all_clash_free() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -15173,6 +15304,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_model_clash_depth_guard_returns_unknown() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -15196,6 +15328,7 @@ mod tests {
 
     #[test]
     fn linked_role_saturation_successor_hash_lazy_create_gets_role_bucket() {
+        let _test_env = crate::test_env::read();
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
         let role = RoleId::new(7);
@@ -15229,6 +15362,7 @@ mod tests {
 
     #[test]
     fn linked_role_saturation_successor_data_reports_active_successor() {
+        let _test_env = crate::test_env::read();
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
         let active_successor =
@@ -15299,6 +15433,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_saturated_merge_gate_requires_completed_clean_node() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let incomplete = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -15357,6 +15492,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_resolves_only_merge_eligible_saturated_node_for_concept() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let sat_node = process_context.alloc_sat_node(IndividualSaturationProcessNode::new(11));
@@ -15419,6 +15555,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_concept_set_merge_requires_both_label_sets() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let node = process_context.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
@@ -15439,6 +15576,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_concept_set_merge_reports_saturated_clash_flag() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, _) = add_completion_label_set_node(&mut process_context);
@@ -15463,6 +15601,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_concept_set_merge_detects_descriptor_polarity_clash() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -15502,6 +15641,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_concept_set_merge_rejects_positive_descriptor_with_saturated_reapply(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -15543,6 +15683,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_concept_set_merge_rejects_positive_saturated_descriptor_with_non_empty_reapply_queue(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -15592,6 +15733,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_concept_set_merge_accepts_matching_labels() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -15630,6 +15772,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_role_successor_merge_is_vacuously_true_without_hashes() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let concepts = Arena::new();
@@ -15646,6 +15789,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_role_successor_merge_rejects_missing_successor_operand() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -15679,6 +15823,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_role_successor_merge_accepts_satisfied_successor_operand() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -15718,6 +15863,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_role_successor_merge_skips_when_root_has_reapply_concept() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -15757,6 +15903,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_delivers_merged_linkers_in_cpp_order() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let subsum = ClassificationMessageDataLinker::from_message(
             ClassificationMessageDataPayload::Header(ClassificationMessageData::new(
@@ -15814,6 +15961,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_final_output_records_release_branch_without_messages() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
             ConceptId::new(7),
@@ -15847,6 +15995,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_final_output_does_not_release_when_delivery_is_missing_observer(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let subsum = ClassificationMessageDataLinker::from_message(
             ClassificationMessageDataPayload::Header(ClassificationMessageData::new(
@@ -15883,6 +16032,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_creates_root_class_subsumption_message() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -15925,6 +16075,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_creates_root_class_message_with_null_subsumer_list() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -15943,6 +16094,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_creates_other_node_class_subsumption_message() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let analyse_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -15979,6 +16131,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_branch_error_suppresses_message() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let analyse_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16006,6 +16159,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_requires_single_dependency_descriptor() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let analyse_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16033,6 +16187,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_selection_records_analysed_concept() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16070,6 +16225,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_selection_preserves_cpp_filters() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16121,6 +16277,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_guard_skips_nominal_and_blocker_nodes() {
+        let _test_env = crate::test_env::read();
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
         let root_only_adapter = SatisfiableTaskClassificationMessageAdapter::new(
@@ -16170,6 +16327,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_bfs_visits_allowed_successors_once() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16235,6 +16393,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_bfs_does_not_expand_skipped_nodes() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16280,6 +16439,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_bfs_marks_single_dependency_descriptor() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16319,6 +16479,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_bfs_single_dependency_falls_back_when_absent() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16351,6 +16512,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_other_node_bfs_uses_single_dependency_without_multiple_extraction(
     ) {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16382,6 +16544,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_live_other_node_bfs_collects_successor_snapshots() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let ontology = OntologyArenas::new();
@@ -16410,6 +16573,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_live_other_node_bfs_does_not_expand_blocked_nodes() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let ontology = OntologyArenas::new();
@@ -16448,6 +16612,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_extracts_other_node_snapshot_from_process_node() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();
@@ -16510,6 +16675,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_snapshot_preserves_node_flags() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let node = add_node(
@@ -16534,6 +16700,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_selects_single_ancestor_dependency_descriptor() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut ontology = OntologyArenas::new();
@@ -16602,6 +16769,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_resolves_merged_concept_ancestor_dependency_snapshot() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut ontology = OntologyArenas::new();
@@ -16670,6 +16838,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_single_ancestor_dependency_rejects_cpp_cases() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut ontology = OntologyArenas::new();
@@ -16776,6 +16945,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_visits_create_class_and_possible_messages() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16845,6 +17015,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_other_node_visit_messages_prepend_and_deduplicate() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16934,6 +17105,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_creates_possible_subsumption_init_message() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -16988,6 +17160,7 @@ mod tests {
 
     #[test]
     fn classification_message_template_preserves_order_and_testing_exclusion() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 20, true));
@@ -17096,6 +17269,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_live_eq_non_candidate_message_preserves_empty_set_flag() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let (node, label_set) = add_completion_label_set_node(&mut process_context);
@@ -17167,6 +17341,7 @@ mod tests {
     #[test]
     fn classification_message_analyser_creates_possible_subsumption_update_only_for_missing_non_eq()
     {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -17218,6 +17393,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_prunes_reused_possible_subsumption_init_list() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let retained_low = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -17248,6 +17424,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_reused_possible_subsumption_prune_is_noop_when_tags_match() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut concepts = Arena::new();
         let first = concepts.push(concept_with_tag(CCATOM, 10, true));
@@ -17273,6 +17450,7 @@ mod tests {
 
     #[test]
     fn classification_message_analyser_pseudo_model_producer_applies_depth_cap() {
+        let _test_env = crate::test_env::read();
         let analyser = SatisfiableTaskClassificationMessageAnalyser;
         let mut process_context = ProcessContext::new();
         let mut concepts = Arena::new();

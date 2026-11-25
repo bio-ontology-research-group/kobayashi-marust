@@ -116,6 +116,11 @@ fn literal_status(literal: &str) -> Result<(), &'static str> {
     };
     if let Val::Opaque(_) = value {
         let key = datatype.as_deref().and_then(builtin_datatype_key);
+        if matches!(key, Some("rdfs:Literal" | "Literal"))
+            && crate::frontend::conformance::unknown_datatypes_free()
+        {
+            return Ok(());
+        }
         if key.is_some_and(|key| !outside_map(key)) {
             return Err("a literal of the datatype map outside the decided value fragment");
         }
@@ -887,6 +892,7 @@ mod tests {
 
     #[test]
     fn decimal_lexical_forms() {
+        let _test_env = crate::test_env::read();
         assert_eq!(decimal_lexical(&Rat::new(3, 2).unwrap()).as_deref(), Some("1.5"));
         assert_eq!(decimal_lexical(&Rat::new(-1, 8).unwrap()).as_deref(), Some("-0.125"));
         assert_eq!(decimal_lexical(&Rat::from_int(7)).as_deref(), Some("7"));
@@ -895,6 +901,7 @@ mod tests {
 
     #[test]
     fn intersection_with_complement_has_structure_and_cells() {
+        let _test_env = crate::test_env::read();
         let name = "__dt__c__DataIntersectionOf(DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer xsd:maxInclusive \"9\"^^xsd:integer) DataComplementOf(DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer xsd:maxInclusive \"8\"^^xsd:integer)))";
         let vocabulary = expand(&set(&[name]), None);
         assert!(vocabulary.undecided.is_empty(), "{:?}", vocabulary.undecided);
@@ -905,6 +912,7 @@ mod tests {
 
     #[test]
     fn helly_cells_split_integers_from_decimals() {
+        let _test_env = crate::test_env::read();
         let names = set(&["__dt__integer",
             "__dt__c__DatatypeRestriction(xsd:decimal xsd:minInclusive \"1.2\"^^xsd:decimal xsd:maxInclusive \"3\"^^xsd:decimal)",
             "__dt__c__DatatypeRestriction(xsd:decimal xsd:minInclusive \"0\"^^xsd:decimal xsd:maxInclusive \"1.8\"^^xsd:decimal)"]);
@@ -916,6 +924,7 @@ mod tests {
 
     #[test]
     fn ieee_cells_isolate_shared_endpoints() {
+        let _test_env = crate::test_env::read();
         let names = set(&[
             "__dt__c__DatatypeRestriction(xsd:float xsd:minInclusive \"1.0\"^^xsd:float xsd:maxInclusive \"2.0\"^^xsd:float)",
             "__dt__c__DatatypeRestriction(xsd:float xsd:minInclusive \"2.0\"^^xsd:float xsd:maxInclusive \"3.0\"^^xsd:float)"]);
@@ -926,6 +935,7 @@ mod tests {
 
     #[test]
     fn undecided_facets_and_literals_are_reported() {
+        let _test_env = crate::test_env::read();
         let names = set(&["__dt__c__DatatypeRestriction(xsd:string xsd:pattern \"x.*\")",
             "__dt__c__DatatypeRestriction(xsd:dateTime xsd:pattern \"2020.*\")",
             "__dt__val__\"maybe\"^^xsd:boolean",
@@ -938,6 +948,7 @@ mod tests {
 
     #[test]
     fn datetime_bounds_are_decided() {
+        let _test_env = crate::test_env::read();
         // ore_ont_13077: one untimezoned bound next to xsd:dateTime and values.
         let bound = "__dt__c__DatatypeRestriction(xsd:dateTime xsd:minExclusive \"2004-12-27T06:00:00\"^^xsd:dateTime)";
         let names = set(&["__dt__dateTime", bound, "__dt__val__\"2004-12-27T07:45:00\"^^xsd:dateTime",
@@ -951,6 +962,7 @@ mod tests {
 
     #[test]
     fn overlapping_datetime_bounds_get_cells() {
+        let _test_env = crate::test_env::read();
         let names = set(&[
             "__dt__c__DatatypeRestriction(xsd:dateTime xsd:minInclusive \"2020-01-01T00:00:00Z\"^^xsd:dateTime xsd:maxInclusive \"2020-03-01T00:00:00Z\"^^xsd:dateTime)",
             "__dt__c__DatatypeRestriction(xsd:dateTime xsd:minInclusive \"2020-02-01T00:00:00Z\"^^xsd:dateTime)"]);

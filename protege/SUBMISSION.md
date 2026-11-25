@@ -27,18 +27,18 @@ first.
       installation smoke test in stock Protégé 5.6.9 and 6.0.0-alpha-1.
 - [x] Settle the licence statement: BSD-3-Clause, copyright Robert
       Hoehndorf (maintainer decision, 2026-11-13).
-- [ ] Release v1.6.3 by pushing the `v1.6.3` tag. `release.yml` creates the
+- [ ] Release v1.7.0 by pushing the `v1.7.0` tag. `release.yml` creates the
       release; `protege-plugin.yml` attaches
-      `kobayashi-marust-protege5-1.6.3.jar`,
-      `kobayashi-marust-protege6-1.6.3.jar` and `SHA256SUMS-protege`.
+      `kobayashi-marust-protege5-1.7.0.jar`,
+      `kobayashi-marust-protege6-1.7.0.jar` and `SHA256SUMS-protege`.
 - [ ] Check that both download URLs below return the jars, and that each jar
       reports `Bundle-SymbolicName: org.bioontology.kobayashi-marust` and
-      `Bundle-Version: 1.6.3`:
+      `Bundle-Version: 1.7.0`:
 
       ```sh
       for line in 5 6; do
         curl -fsSL -o km$line.jar \
-          https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.6.3/kobayashi-marust-protege$line-1.6.3.jar
+          https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.7.0/kobayashi-marust-protege$line-1.7.0.jar
         unzip -p km$line.jar META-INF/MANIFEST.MF | grep -E '^Bundle-(SymbolicName|Version)'
       done
       ```
@@ -69,8 +69,8 @@ The file it points at
 
 ```properties
 id=org.bioontology.kobayashi-marust
-version=1.6.3
-download=https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.6.3/kobayashi-marust-protege5-1.6.3.jar
+version=1.7.0
+download=https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.7.0/kobayashi-marust-protege5-1.7.0.jar
 name=Kobayashi-MaRust Reasoner
 readme=https://raw.githubusercontent.com/bio-ontology-research-group/kobayashi-marust/main/protege/update-info/protege-5/readme.html
 license=https://raw.githubusercontent.com/bio-ontology-research-group/kobayashi-marust/main/LICENSE
@@ -99,8 +99,8 @@ The jar bundles the native reasoner for Linux (x86_64, aarch64), macOS (Intel,
 Apple silicon) and Windows (x86_64), so users need to install nothing else.
 
 - update.properties: https://raw.githubusercontent.com/bio-ontology-research-group/kobayashi-marust/main/protege/update-info/protege-5/update.properties
-- jar: https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.6.3/kobayashi-marust-protege5-1.6.3.jar
-  (`Bundle-SymbolicName: org.bioontology.kobayashi-marust`, `Bundle-Version: 1.6.3`)
+- jar: https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.7.0/kobayashi-marust-protege5-1.7.0.jar
+  (`Bundle-SymbolicName: org.bioontology.kobayashi-marust`, `Bundle-Version: 1.7.0`)
 - tested with Protégé 5.6.9 on Linux x86_64 (add the other platforms you
   have tested)
 - source and README: https://github.com/bio-ontology-research-group/kobayashi-marust/tree/main/protege
@@ -117,8 +117,8 @@ Changes:
 
    ```properties
    id=org.bioontology.kobayashi-marust
-   version=1.6.3
-   download=https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.6.3/kobayashi-marust-protege6-1.6.3.jar
+   version=1.7.0
+   download=https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.7.0/kobayashi-marust-protege6-1.7.0.jar
    name=Kobayashi-MaRust Reasoner
    readme=https://raw.githubusercontent.com/bio-ontology-research-group/kobayashi-marust/main/protege/update-info/protege-5/readme.html
    license=https://raw.githubusercontent.com/bio-ontology-research-group/kobayashi-marust/main/LICENSE
@@ -141,15 +141,15 @@ Add the Kobayashi-MaRust reasoner to the Protégé 6 plugin registry
 Body:
 
 ```markdown
-This adds Kobayashi-MaRust (KM) 1.6.3, an OWL 2 DL reasoner written in Rust,
+This adds Kobayashi-MaRust (KM) 1.7.0, an OWL 2 DL reasoner written in Rust,
 to the Protégé 6 registry.
 
 The Protégé 6 jar is a separate build against Protégé 6.0.0-alpha-1,
 OWL API 5.5.1 and OWL Explanation 5.0.1; it is not the Protégé 5 jar.
 
 - descriptor: `update-info/6.0.0/kobayashi-marust.properties`
-- jar: https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.6.3/kobayashi-marust-protege6-1.6.3.jar
-  (`Bundle-SymbolicName: org.bioontology.kobayashi-marust`, `Bundle-Version: 1.6.3`)
+- jar: https://github.com/bio-ontology-research-group/kobayashi-marust/releases/download/v1.7.0/kobayashi-marust-protege6-1.7.0.jar
+  (`Bundle-SymbolicName: org.bioontology.kobayashi-marust`, `Bundle-Version: 1.7.0`)
 - `./scripts/validate-protege-6-registry.sh` passes with this change
 - tested with Protégé 6.0.0-alpha-1 on Linux x86_64 (add the other
   platforms you have tested): the plugin resolves and starts in the OSGi

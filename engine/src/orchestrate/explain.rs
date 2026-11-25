@@ -755,6 +755,7 @@ mod tests {
 
     #[test]
     fn source_document_round_trip_keeps_axioms_and_literal_suffixes() {
+        let _test_env = crate::test_env::write();
         let text = r#"
 Prefix(:=<http://example.org/>)
 Ontology(<http://example.org/o>
@@ -774,6 +775,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn deletion_returns_one_verified_subset_minimal_support() {
+        let _test_env = crate::test_env::write();
         // Query follows from (0 and 1); axiom 2 is noise.  The monotone oracle
         // models an entailment check without running a reasoner in this unit.
         let result = enumerate(3, 8, 1, |active| Ok(active[0] && active[1])).unwrap();
@@ -787,6 +789,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn hitting_set_tree_finds_two_distinct_minimal_supports() {
+        let _test_env = crate::test_env::write();
         let result = enumerate(5, 64, 2, |active| {
             Ok((active[0] && active[1]) || (active[2] && active[3]))
         })
@@ -805,6 +808,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn sparse_large_support_is_minimised_without_a_linear_oracle_budget() {
+        let _test_env = crate::test_env::write();
         let result = enumerate(4_096, 96, 1, |active| Ok(active[17] && active[4_000])).unwrap();
         assert!(result.entailed);
         assert_eq!(result.justifications.len(), 1);
@@ -818,6 +822,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn unfinished_minimization_is_not_returned_when_check_budget_ends() {
+        let _test_env = crate::test_env::write();
         let result = enumerate(3, 2, 1, |_active| Ok(true)).unwrap();
         assert!(result.entailed);
         assert!(result.justifications.is_empty());
@@ -828,6 +833,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn tautology_has_one_verified_empty_justification() {
+        let _test_env = crate::test_env::write();
         let result = enumerate(2, 8, 1, |_active| Ok(true)).unwrap();
         assert!(result.entailed);
         assert_eq!(result.justifications, vec![vec![false, false]]);
@@ -838,6 +844,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn query_recognises_taxonomy_unsat_and_owl_tautologies() {
+        let _test_env = crate::test_env::write();
         let iris = IriResolver::default();
         let classification = Classification {
             approximate: None,
@@ -870,6 +877,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn query_resolves_source_prefixes_without_local_name_matching() {
+        let _test_env = crate::test_env::write();
         let iris = IriResolver::from_preamble(&[
             "Prefix(:=<http://example.org/>)".into(),
             "Prefix(other:=<http://other.example/>)".into(),
@@ -895,6 +903,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn inconsistent_ontology_entails_every_supported_query() {
+        let _test_env = crate::test_env::write();
         let iris = IriResolver::default();
         let classification = Classification {
             approximate: None,
@@ -913,6 +922,7 @@ Ontology(<http://example.org/o>
 
     #[test]
     fn api_rejects_a_forced_measurement_route_before_reading_source() {
+        let _test_env = crate::test_env::write();
         let config = Config::from_env();
         let error = explain(
             &config,

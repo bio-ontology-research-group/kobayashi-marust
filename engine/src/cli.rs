@@ -121,6 +121,14 @@ struct OfnMeta {
     route_approximations: std::collections::BTreeMap<String, u64>,
     #[serde(skip_serializing_if = "is_false")]
     one_sorted_data_successors: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rbox: Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    data_roles: Vec<String>,
+    #[serde(skip_serializing_if = "crate::json_io::NominalAboxMeta::is_empty")]
+    nominal_abox: crate::json_io::NominalAboxMeta,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    separable_abox_export: Option<crate::frontend::SeparableAboxExport>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -214,8 +222,19 @@ pub fn run_ofn(args: &[String]) {
     let path = &args[0];
     let mut meta_path: Option<&str> = None;
     let mut elc_binary_path: Option<&str> = None;
+    // `--source-stdin`: read the document from stdin instead of `path`, and do
+    // not re-validate it. Only the orchestrator passes it, and only with the
+    // exact bytes that its own `check_user_source` accepted in this
+    // classification (`frontend_run::run_ofn_split_cached_once`); `path` then
+    // only names the document in messages.
+    let mut validated_stdin = false;
     let mut index = 1;
     while index < args.len() {
+        if args[index] == "--source-stdin" {
+            validated_stdin = true;
+            index += 1;
+            continue;
+        }
         let (slot, name) = match args[index].as_str() {
             "--meta" => (&mut meta_path, "--meta"),
             "--elc-binary" => (&mut elc_binary_path, "--elc-binary"),
@@ -231,7 +250,13 @@ pub fn run_ofn(args: &[String]) {
         *slot = Some(value);
         index += 2;
     }
-    let text = match std::fs::read_to_string(path) {
+    let read = if validated_stdin {
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text).map(|_| text)
+    } else {
+        std::fs::read_to_string(path)
+    };
+    let text = match read {
         Ok(t) => t,
         Err(e) => {
             eprintln!("failed to read {}: {}", path, e);
@@ -240,14 +265,18 @@ pub fn run_ofn(args: &[String]) {
     };
     // Only the orchestrator sets this, on this worker's command alone, naming
     // the exact file it registered as its own rewrite of a validated source.
-    let trusted_rewrite = std::env::var_os(crate::orchestrate::TRUSTED_REWRITE_ENV)
-        .is_some_and(|trusted| std::path::Path::new(&trusted) == std::path::Path::new(path));
+    let trusted_rewrite = validated_stdin
+        || std::env::var_os(crate::orchestrate::TRUSTED_REWRITE_ENV)
+            .is_some_and(|trusted| std::path::Path::new(&trusted) == std::path::Path::new(path));
     let classifier_extended_atomic =
         std::env::var_os(crate::frontend::CLASSIFIER_EXTENDED_ATOMIC_ABOX_ENV)
             .is_some_and(|v| v == std::ffi::OsStr::new("1"));
+    let abort_on_uncarried = classifier_extended_atomic
+        && std::env::var_os("KM_DATA_ASSERTION_AS_CLASS").is_none_or(|v| v == "0")
+        && std::env::var_os("KM_KEEP_CLAUSES").is_none();
     let parse_ofn = || {
         if classifier_extended_atomic {
-            crate::frontend::ofn_to_clauses_for_classifier(&text)
+            crate::frontend::ofn_to_clauses_for_classifier_pass(&text, abort_on_uncarried)
         } else {
             ofn_to_clauses(&text)
         }
@@ -305,6 +334,7 @@ pub fn run_ofn(args: &[String]) {
         && result.profile.source.rule_axioms == 0;
 
     if let Some(mp) = meta_path {
+        let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
         let meta = OfnMeta {
             iri_map: result.iri_map,
             named: result.named,
@@ -318,6 +348,22 @@ pub fn run_ofn(args: &[String]) {
             dropped_source_axioms: result.dropped_source_axioms,
             route_approximations: result.route_approximations,
             one_sorted_data_successors: result.one_sorted_data_successors,
+            rbox: if export_active {
+                result.rbox.clone()
+            } else {
+                Vec::new()
+            },
+            data_roles: if export_active {
+                result.data_roles.clone()
+            } else {
+                Vec::new()
+            },
+            nominal_abox: if export_active {
+                result.nominal_abox.clone()
+            } else {
+                crate::json_io::NominalAboxMeta::default()
+            },
+            separable_abox_export: result.separable_abox_export,
         };
         match std::fs::File::create(mp) {
             Ok(f) => {
@@ -416,6 +462,7 @@ pub fn run_elc() {
     die_with_supervisor();
     use crate::elcomplete;
     use std::time::Instant;
+    elcomplete::ELC_WORKER_PROCESS.store(true, std::sync::atomic::Ordering::Relaxed);
     let timing = std::env::var("KM_ELC_TIMING").is_ok();
     let t0 = Instant::now();
     // Raw bytes + `from_slice` skips full-buffer UTF-8 validation (matters on the
@@ -468,6 +515,15 @@ pub fn run_elc() {
                 );
             }
             let t3 = Instant::now();
+            if std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some() {
+                let model_res = res
+                    .exported_model
+                    .take()
+                    .unwrap_or_else(|| Err("elc worker did not capture exported model".into()));
+                crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+                    &crate::orchestrate::model_export::WorkerModelPayload::El(model_res),
+                );
+            }
             let partial = !res.unresolved.is_empty();
             let direct_compact = res.compact.take();
             let out = ElcOutput {
@@ -489,15 +545,8 @@ pub fn run_elc() {
                 && out.subsumptions.len() >= 1_000
                 && std::env::var_os("KM_ELC_OUTPUT_BINARY").is_some()
                 && std::env::var_os("KM_NO_ELC_OUTPUT_BINARY").is_none()
-                && {
-                    let compact_min_relations =
-                        std::env::var("KM_ELC_OUTPUT_BINARY_MIN_RELATIONS")
-                            .ok()
-                            .and_then(|value| value.parse::<usize>().ok())
-                            .unwrap_or(2_000_000);
-                    out.subsumptions.values().map(Vec::len).sum::<usize>()
-                        >= compact_min_relations
-                });
+                && out.subsumptions.values().map(Vec::len).sum::<usize>()
+                    >= elcomplete::elc_output_binary_min_relations());
             let write_result = if let Some(compact) = direct_compact.as_ref() {
                 crate::json_io::write_compact_elc_output_binary(&mut w, compact)
             } else if compact {
@@ -547,6 +596,26 @@ pub fn run_incremental() {
 
 /// Source-level incremental OWL Functional Syntax session used by OWLAPI.
 pub fn run_source_incremental() {
+    for arg in std::env::args().skip(2) {
+        match arg.as_str() {
+            "--unknown-datatypes=strict" => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
+            "--unknown-datatypes=free" => std::env::set_var("KM_UNKNOWN_DATATYPES", "free"),
+            "--lenient" | "--lenient=true" | "--lenient=1" => std::env::set_var("KM_LENIENT", "1"),
+            "--lenient=false" | "--lenient=0" => std::env::remove_var("KM_LENIENT"),
+            value if value.starts_with("--lenient=") => {
+                eprintln!("--lenient takes true or false, got {value:?}");
+                exit(2);
+            }
+            value if value.starts_with("--unknown-datatypes") => {
+                eprintln!("--unknown-datatypes takes strict or free, got {value:?}");
+                exit(2);
+            }
+            other => {
+                eprintln!("unknown incremental-source option: {other}");
+                exit(2);
+            }
+        }
+    }
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let reader = std::io::BufReader::with_capacity(1 << 20, stdin.lock());
@@ -663,11 +732,17 @@ pub fn run_engine() {
             exit(5);
         }
     }
+    let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     let mut r = Reasoner::new(&input.clauses);
     // Likewise the parsed `JClause` block (String-owning IRIs, several times
     // the raw JSON size) is fully interned into the Reasoner; drop it before
     // saturation rather than at end of function.
-    drop(input);
+    let export_input = if export_active {
+        Some(input)
+    } else {
+        drop(input);
+        None
+    };
     let t_build = t1.elapsed();
     if prof {
         eprintln!("KM_STATS[phase] build={:.1}ms", t_build.as_secs_f64() * 1e3);
@@ -728,6 +803,19 @@ pub fn run_engine() {
         .into_iter()
         .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
         .collect();
+    if let Some(ref input) = export_input {
+        let classify_secs = (t_parse + t_build + t_saturate).as_secs_f64();
+        let budget_secs = std::env::var("KM_EXPORT_MODEL_BUDGET_S")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(classify_secs + 2.0);
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs_f64(budget_secs.max(0.1));
+        let model_res = r.export_cb_model(input, Some(deadline));
+        crate::orchestrate::model_export::write_worker_model_payload_if_requested(
+            &crate::orchestrate::model_export::WorkerModelPayload::Cb(model_res),
+        );
+    }
     // The reasoner (contexts, clause arenas, indexes — the saturation peak) is
     // dead once the answer is moved out; free it before serialising so the
     // output bytes reuse that memory instead of stacking on top of it.
@@ -5237,6 +5325,9 @@ fn cb_source_succ_closure_candidate(
         "join3_closure": {"version": 1, "hyper_closure": hyper},
         "rsucc_enabled": live.rsucc_enabled,
         "reach_concepts": live.reach_concept_ids,
+        "grounded_label_concepts": live.grounded_label_concept_ids,
+        "individual_labels_every_edge": live.individual_labels_every_edge,
+        "rsucc_demand": live.rsucc_demand,
     }))
 }
 
@@ -5513,6 +5604,9 @@ mod cb_derivation_candidate_tests {
             source_ontology: Vec::new(),
             rsucc_enabled: false,
             reach_concept_ids: Vec::new(),
+            grounded_label_concept_ids: Vec::new(),
+            individual_labels_every_edge: false,
+            rsucc_demand: false,
             ordinary_clause_arena: Vec::new(),
             root_clause_arena: Vec::new(),
             pending_messages: 0,
@@ -5565,6 +5659,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn production_trace_extraction_requires_exact_live_context_identity() {
+        let _test_env = crate::test_env::write();
         let document = serde_json::json!({
             "decoy": {
                 "source": {}, "individual_count": 0,
@@ -5595,6 +5690,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn terminal_state_candidate_uses_receiver_and_successor_watermarks() {
+        let _test_env = crate::test_env::write();
         let send_coverage = serde_json::json!({
             "version": 2,
             "inter_context": {"production": {"marker": "production"}},
@@ -5651,6 +5747,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn terminal_state_candidate_requires_certified_send_coverage() {
+        let _test_env = crate::test_env::write();
         let error =
             cb_terminal_state_candidate(&serde_json::json!({"version": 1}), &live_snapshot())
                 .unwrap_err();
@@ -5659,6 +5756,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn pred_send_candidate_reconstructs_actual_clause_major_transfer() {
+        let _test_env = crate::test_env::write();
         let x = crate::calc::X;
         let function = crate::calc::FTERM_BASE;
         let a = crate::engine::CbLivePred {
@@ -5740,6 +5838,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_pred_send_candidate_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_PRED_SEND_COVERAGE_CHECKER") else {
             return;
         };
@@ -5793,6 +5892,9 @@ mod cb_derivation_candidate_tests {
             source_ontology: vec![clause.clone()],
             rsucc_enabled: true,
             reach_concept_ids: Vec::new(),
+            grounded_label_concept_ids: Vec::new(),
+            individual_labels_every_edge: false,
+            rsucc_demand: false,
             ordinary_clause_arena: vec![clause],
             root_clause_arena: Vec::new(),
             pending_messages: 0,
@@ -5825,6 +5927,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_root_pred_send_candidate_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_PRED_SEND_COVERAGE_CHECKER") else {
             return;
         };
@@ -5879,6 +5982,9 @@ mod cb_derivation_candidate_tests {
             source_ontology: vec![clause.clone()],
             rsucc_enabled: true,
             reach_concept_ids: Vec::new(),
+            grounded_label_concept_ids: Vec::new(),
+            individual_labels_every_edge: false,
+            rsucc_demand: false,
             ordinary_clause_arena: Vec::new(),
             root_clause_arena: vec![clause, ground_clause.clone()],
             pending_messages: 0,
@@ -6020,6 +6126,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn live_publication_rows_cover_the_exact_grouped_answer() {
+        let _test_env = crate::test_env::write();
         let mut live = live_snapshot();
         live.concept_count = 2;
         live.concept_names = vec!["A".to_string(), "B".to_string()];
@@ -6086,6 +6193,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn exact_taxonomy_candidate_reuses_live_evidence_and_marks_only_negatives() {
+        let _test_env = crate::test_env::write();
         let live = serde_json::json!({
             "version": 1,
             "derivation": {"production_bound": {"live_state": {
@@ -6144,6 +6252,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn canonical_binary_role_chains_allocate_finite_fresh_roles() {
+        let _test_env = crate::test_env::write();
         let (target_roles, rules, derivations) =
             cb_canonical_binary_role_chains(5, &[(vec![0, 1], 2), (vec![0, 1, 2, 3], 4)]).unwrap();
         assert_eq!(target_roles, 7);
@@ -6171,6 +6280,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn canonical_binary_role_chains_reject_malformed_sources() {
+        let _test_env = crate::test_env::write();
         assert!(cb_canonical_binary_role_chains(2, &[(vec![0], 1)])
             .unwrap_err()
             .contains("fewer than two"));
@@ -6184,6 +6294,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn certified_typed_source_maps_exactly_to_arbitrary_chain_safe_wire() {
+        let _test_env = crate::test_env::write();
         let source = serde_json::json!({
             "version": 1,
             "concept_count": 4,
@@ -6254,6 +6365,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn source_exact_taxonomy_uses_real_production_traces_and_models() {
+        let _test_env = crate::test_env::write();
         let checker = std::env::var_os("KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER")
             .expect("the source-exact taxonomy test requires the real Lean checker");
         let context_checker = std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER")
@@ -6454,6 +6566,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn certified_typed_source_rejects_disagreeing_embedded_runs() {
+        let _test_env = crate::test_env::write();
         let source = |concept_count| {
             serde_json::json!({
                 "version": 1,
@@ -6478,6 +6591,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_regular_countermodel_passes_the_exact_lean_wire_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_REGULAR_ARBITRARY_CHAIN_CHECKER") else {
             return;
         };
@@ -6760,6 +6874,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn typed_regular_cardinality_countermodel_respects_function_allocation() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_TYPED_REGULAR_ARBITRARY_CHAIN_CHECKER")
         else {
             return;
@@ -6845,6 +6960,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn one_element_countermodel_respects_equality_and_inequality_truth() {
+        let _test_env = crate::test_env::write();
         let state = serde_json::json!({
             "concept_count": 2,
             "role_count": 1,
@@ -6891,6 +7007,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn two_element_countermodel_closes_a_genuine_inequality_model() {
+        let _test_env = crate::test_env::write();
         let first = crate::calc::X + 1;
         let second = crate::calc::X + 2;
         let state = serde_json::json!({
@@ -6916,6 +7033,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn two_element_countermodel_grounds_functions_over_every_value() {
+        let _test_env = crate::test_env::write();
         let state = serde_json::json!({
             "concept_count": 2,
             "role_count": 0,
@@ -6937,6 +7055,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn blocked_taxonomy_countermodel_builds_a_closed_resolution_trace() {
+        let _test_env = crate::test_env::write();
         let publication = serde_json::json!({
             "derivation": {"production_bound": {
                 "live_state": {"concept_count": 3, "role_count": 0},
@@ -6967,6 +7086,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn blocked_taxonomy_countermodel_rejects_a_refuted_query() {
+        let _test_env = crate::test_env::write();
         let publication = serde_json::json!({
             "derivation": {"production_bound": {
                 "live_state": {"concept_count": 2, "role_count": 0},
@@ -6983,6 +7103,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn factor_metadata_builds_a_chronological_checked_trace() {
+        let _test_env = crate::test_env::write();
         let equality = |left, right| crate::engine::CbLiveLit {
             kind: "equality",
             iri: None,
@@ -7033,6 +7154,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn paramodulation_metadata_builds_a_chronological_checked_trace() {
+        let _test_env = crate::test_env::write();
         let equality = |left, right| crate::engine::CbLiveLit {
             kind: "equality",
             iri: None,
@@ -7090,6 +7212,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn paramodulation_trace_exposes_folded_reflexive_inequality_deletion() {
+        let _test_env = crate::test_env::write();
         let binary = |kind, left, right| crate::engine::CbLiveLit {
             kind,
             iri: None,
@@ -7139,6 +7262,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn join_resolution_metadata_builds_a_checked_trace() {
+        let _test_env = crate::test_env::write();
         let individual = crate::calc::X + 1;
         let predicate = crate::engine::CbLivePred {
             kind: "concept",
@@ -7185,6 +7309,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn join3_metadata_builds_a_checked_three_premise_trace() {
+        let _test_env = crate::test_env::write();
         let individual = crate::calc::X + 1;
         let predicate = |iri, term| crate::engine::CbLivePred {
             kind: "concept",
@@ -7252,6 +7377,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn pred_metadata_cites_exact_sender_and_provider_events() {
+        let _test_env = crate::test_env::write();
         let predicate = |iri| crate::engine::CbLivePred {
             kind: "concept",
             iri,
@@ -7304,6 +7430,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_source_live_pred_candidate_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_SOURCE_LIVE_DERIVATION_CHECKER") else {
             return;
         };
@@ -7547,6 +7674,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn pred_standalone_dag_passes_the_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER") else {
             return;
         };
@@ -7666,6 +7794,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn filtered_fact_seed_builds_source_resolution_and_inequality_trace() {
+        let _test_env = crate::test_env::write();
         let concept = |iri| crate::engine::CbLiveLit {
             kind: "concept",
             iri: Some(iri),
@@ -7714,6 +7843,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn filtered_core_bottom_seed_starts_from_exact_core_assumption() {
+        let _test_env = crate::test_env::write();
         let predicate = crate::engine::CbLivePred {
             kind: "concept",
             iri: 0,
@@ -7751,6 +7881,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn standalone_local_trace_ends_in_the_claimed_literal_order() {
+        let _test_env = crate::test_env::write();
         // Checkers-on defect C2: a resolvent with head [C2, C1] proves the
         // arena clause [C1, C2]; the standalone node needs it verbatim.
         let concept = |id: u64| {
@@ -7796,12 +7927,14 @@ pub fn run_tableau() {
     // committed page by page as it grows, so it serves both without charging
     // gigabytes of unused stack against a strict commit limit at startup
     // (`bigstack`). This must run before any thread exists or stdin is read:
-    // it may re-execute the worker once with a larger RLIMIT_STACK.
+    // it may re-execute the worker once with a larger RLIMIT_STACK. The
+    // supervisor spawns this worker with that limit already set
+    // (`bigstack::prepare_worker_command`), so the re-execution is skipped.
     let stack_mb = std::env::var("KM_TAB_STACK_MB")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(2048);
-    crate::bigstack::ensure_main_stack((stack_mb << 20).max(crate::bigstack::DEEP_STACK));
+    crate::bigstack::ensure_main_stack(crate::bigstack::tableau_worker_stack_bytes());
     die_with_supervisor();
     maybe_enable_debug();
     let mut buf = String::new();
@@ -7821,7 +7954,14 @@ pub fn run_tableau() {
     // complete stdin document does not sit under the classification peak.
     let worker = crate::bigstack::run("tableau worker", stack_mb << 20, move || {
         if compact_bridge {
-            crate::tableau::run_bridge_json_owned_compact(buf).map(WorkerOutput::Compact)
+            if std::env::var_os("KM_HT_BRIDGE_ONLY").is_some() {
+                crate::tableau::run_bridge_json_owned_compact(buf).map(WorkerOutput::Compact)
+            } else {
+                crate::tableau::run_bridge_or_json_owned_compact(buf).map(|out| match out {
+                    Ok(compact) => WorkerOutput::Compact(compact),
+                    Err(json) => WorkerOutput::Json(json),
+                })
+            }
         } else {
             crate::tableau::run_json_owned(buf).map(WorkerOutput::Json)
         }

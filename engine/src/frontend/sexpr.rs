@@ -242,6 +242,7 @@ mod tests {
     use super::*;
     #[test]
     fn find_byte_matches_the_plain_scan() {
+        let _test_env = crate::test_env::read();
         let text = b"ab>cdefghij>klmnopqrstuvwxyz\n0123456789>>\n";
         for needle in [b'>', b'\n', b'z', b'#'] {
             for start in 0..=text.len() {
@@ -253,6 +254,7 @@ mod tests {
 
     #[test]
     fn parser_errors_and_nesting_are_unchanged() {
+        let _test_env = crate::test_env::read();
         let mut p = Parser::new("A(B(c d) e(f) <g> (h i) j)");
         let node = p.parse().unwrap();
         assert_eq!(node, Node::List("A", vec![
@@ -270,6 +272,7 @@ mod tests {
 
     #[test]
     fn byte_classes_are_the_functional_syntax_whitespace() {
+        let _test_env = crate::test_env::read();
         for b in 0..=255u8 {
             let space = matches!(b, b' ' | b'\t' | b'\n' | b'\r');
             assert_eq!(BYTE_CLASS[b as usize] & WHITESPACE != 0, space, "{b:#x}");
@@ -282,6 +285,7 @@ mod tests {
     /// classes took A0 as whitespace and sliced the word inside the character.
     #[test]
     fn non_ascii_bare_word_is_one_token() {
+        let _test_env = crate::test_env::read();
         let text = "Prefix(ex:=<http://e.org/#>)\nOntology(SubClassOf(ex:\u{e0} ex:B))\n";
         let toks = tokenize(text);
         assert!(toks.contains(&"ex:\u{e0}"), "{toks:?}");
@@ -294,6 +298,7 @@ mod tests {
     /// Probe `9-cr-comment.ofn`: a comment ends at CR as well as at LF.
     #[test]
     fn comments_end_at_cr_or_lf() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(# comment\rSubClassOf(<http://e#A> <http://e#B>))\n";
         assert_eq!(tokenize(text), vec!["Ontology", "(", "SubClassOf", "(",
             "<http://e#A>", "<http://e#B>", ")", ")"]);
@@ -304,6 +309,7 @@ mod tests {
     /// they no longer separate tokens.
     #[test]
     fn vertical_tab_and_form_feed_are_not_whitespace() {
+        let _test_env = crate::test_env::read();
         assert_eq!(tokenize("<http://e#A>\u{b}<http://e#B>"), vec!["<http://e#A>", "\u{b}<http://e#B>"]);
         assert_eq!(tokenize("a\u{c}b c"), vec!["a\u{c}b", "c"]);
     }

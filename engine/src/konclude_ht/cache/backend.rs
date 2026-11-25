@@ -3269,6 +3269,7 @@ mod tests {
 
     #[test]
     fn backend_cache_reader_slot_update_publishes_snapshot_to_readers() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology_data = OntologyData::new();
         ontology_data.set_next_update_minimum_valid_recomputation_id(17);
@@ -3304,6 +3305,7 @@ mod tests {
 
     #[test]
     fn backend_cache_reader_switches_updated_slot_and_refreshes_ontology_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let old_ontology = ctx.alloc_ontology_data(OntologyData::new());
         let new_ontology = ctx.alloc_ontology_data(OntologyData::new());
@@ -3332,6 +3334,7 @@ mod tests {
 
     #[test]
     fn backend_cache_reader_set_working_ontology_consumes_updated_slot() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let old_ontology = ctx.alloc_ontology_data(OntologyData::new());
         let new_ontology = ctx.alloc_ontology_data(OntologyData::new());
@@ -3365,6 +3368,7 @@ mod tests {
 
     #[test]
     fn backend_cache_reader_check_recomputation_usage_updates_reference() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let rec_ref = alloc_recomputation_reference_linker(&mut ctx, 1);
         let mut ontology = OntologyData::new();
@@ -3392,6 +3396,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "invalid backend representative memory cache recomputation id")]
     fn backend_cache_reader_check_recomputation_usage_rejects_stale_id() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology = OntologyData::new();
         ontology.set_minimum_valid_recomputation_id(3);
@@ -3408,6 +3413,7 @@ mod tests {
 
     #[test]
     fn backend_cache_clean_unused_slots_decrements_ontology_usage_counts() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut unused_ontology = OntologyData::new();
         unused_ontology.inc_usage_count(1);
@@ -3550,6 +3556,7 @@ mod tests {
 
     #[test]
     fn reader_gets_individual_association_data_from_ontology_vector() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let ass_data = ctx.alloc_individual_assoc_data(IndividualAssociationData::new());
         let mut ontology_data = OntologyData::new();
@@ -3580,6 +3587,7 @@ mod tests {
 
     #[test]
     fn reader_gets_individual_association_data_from_basic_precomputation_vector() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let direct_ass_data = ctx.alloc_individual_assoc_data(IndividualAssociationData::new());
         let basic_ass_data = ctx.alloc_individual_assoc_data(IndividualAssociationData::new());
@@ -3611,6 +3619,7 @@ mod tests {
 
     #[test]
     fn reader_gets_individual_associated_cache_label_item() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = ctx.alloc_label_cache_item(LabelCacheItem::new(INVALID));
         let mut ass_data = IndividualAssociationData::new();
@@ -3643,6 +3652,7 @@ mod tests {
 
     #[test]
     fn reader_gets_nominal_indirect_connection_data_from_ontology_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let nominal_data = ctx
             .alloc_nominal_indirect_connection_data(NominalIndividualIndirectConnectionData::new());
@@ -3664,6 +3674,7 @@ mod tests {
 
     #[test]
     fn reader_checks_and_gets_label_signature_cache_entries() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label_a = ctx.alloc_label_cache_item(LabelCacheItem::new(INVALID));
         let label_b = ctx.alloc_label_cache_item(LabelCacheItem::new(INVALID));
@@ -3708,6 +3719,7 @@ mod tests {
 
     #[test]
     fn reader_checks_same_individual_mergings_flag() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology_data = OntologyData::new();
         ontology_data.set_same_individuals_mergings(true);
@@ -3718,6 +3730,7 @@ mod tests {
 
     #[test]
     fn reader_visits_label_cache_entries_and_stops_on_false() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label_a = ctx.alloc_label_cache_item(LabelCacheItem::new(INVALID));
         let label_b = ctx.alloc_label_cache_item(LabelCacheItem::new(INVALID));
@@ -3763,6 +3776,7 @@ mod tests {
 
     #[test]
     fn reader_gets_label_cache_entry_via_provided_cache_values() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let distractor = alloc_concept_label(
             &mut ctx,
@@ -3813,6 +3827,7 @@ mod tests {
 
     #[test]
     fn reader_get_label_cache_entry_via_provided_cache_values_returns_none_without_match() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = alloc_concept_label(
             &mut ctx,
@@ -3855,6 +3870,7 @@ mod tests {
 
     #[test]
     fn reader_gets_cache_value_for_resolved_neighbour_label_reference() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut label = LabelCacheItem::new(INVALID);
         label.set_cache_entry_id(4242);
@@ -3876,6 +3892,7 @@ mod tests {
 
     #[test]
     fn reader_gets_cache_value_for_temporary_neighbour_label_reference() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let tmp_label_write =
             ctx.alloc_backend_temp_write_record(BackendTempWriteRecord::new_label_write(
@@ -3899,6 +3916,7 @@ mod tests {
 
     #[test]
     fn utilities_get_neighbour_role_instantiated_set_linker_signature() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut label = LabelCacheItem::new(INVALID);
         label.set_cache_entry_id(5001);
@@ -3934,6 +3952,7 @@ mod tests {
 
     #[test]
     fn reader_gets_neighbour_role_instantiated_set_combination_label_cache_entry() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut role_label_a = LabelCacheItem::new(INVALID);
         role_label_a.set_cache_entry_id(6101);
@@ -3999,6 +4018,7 @@ mod tests {
 
     #[test]
     fn utilities_get_individual_set_signature_set_hashes_all_ids_and_counts() {
+        let _test_env = crate::test_env::read();
         let individual_set = vec![3, 5, -7];
         let mut count = 0;
         let qhash = |value: Cint64| {
@@ -4017,6 +4037,7 @@ mod tests {
 
     #[test]
     fn reader_gets_individual_set_label_cache_entry_set() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let individual_set = vec![31, 37];
@@ -4083,6 +4104,7 @@ mod tests {
 
     #[test]
     fn utilities_get_individual_set_signature_merging_filters_entries() {
+        let _test_env = crate::test_env::read();
         let entries = vec![
             IndividualMergingHashEntry::new(101, true, Some(3)),
             IndividualMergingHashEntry::new(102, true, None),
@@ -4106,6 +4128,7 @@ mod tests {
 
     #[test]
     fn utilities_get_individual_set_signature_distinct_uses_negated_hash_key() {
+        let _test_env = crate::test_env::read();
         let entries = vec![
             DistinctHashEntry::new(-201, Some(2)),
             DistinctHashEntry::new(-202, None),
@@ -4129,6 +4152,7 @@ mod tests {
 
     #[test]
     fn reader_gets_individual_set_label_cache_entry_merging() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let entries = vec![
             IndividualMergingHashEntry::new(301, true, Some(2)),
@@ -4168,6 +4192,7 @@ mod tests {
 
     #[test]
     fn reader_gets_individual_set_label_cache_entry_distinct() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let entries = vec![
             DistinctHashEntry::new(-401, Some(2)),
@@ -4207,6 +4232,7 @@ mod tests {
 
     #[test]
     fn utilities_get_concept_descriptor_signature_saturation_excludes_positive_concept() {
+        let _test_env = crate::test_env::read();
         let descriptors = vec![
             ConceptDescriptorRecord::new(5001, 71, false, Some(1), false),
             ConceptDescriptorRecord::new(5002, 72, true, Some(1), false),
@@ -4228,6 +4254,7 @@ mod tests {
 
     #[test]
     fn utilities_get_concept_descriptor_signature_splits_determinism_and_nominals() {
+        let _test_env = crate::test_env::read();
         let descriptors = vec![
             ConceptDescriptorRecord::new(5101, 81, false, Some(1), false),
             ConceptDescriptorRecord::new(5102, 82, true, None, false),
@@ -4265,6 +4292,7 @@ mod tests {
 
     #[test]
     fn reader_gets_concept_set_label_cache_entry_saturation() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let descriptors = vec![
             ConceptDescriptorRecord::new(5201, 91, false, Some(1), false),
@@ -4302,6 +4330,7 @@ mod tests {
 
     #[test]
     fn reader_gets_deterministic_and_nondeterministic_concept_set_label_entries() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let descriptors = vec![
             ConceptDescriptorRecord::new(5301, 101, false, Some(1), false),
@@ -4374,6 +4403,7 @@ mod tests {
 
     #[test]
     fn reader_gets_concept_set_label_cache_entry_exclusion() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let descriptors = vec![
             ConceptDescriptorRecord::new(5401, 111, false, Some(1), false),
@@ -4413,6 +4443,7 @@ mod tests {
 
     #[test]
     fn reader_gets_full_concept_set_label_cache_entry_uses_determinism_callback() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let descriptors = vec![
             ConceptDescriptorRecord::new(5501, 121, false, Some(1), false),
@@ -4454,6 +4485,7 @@ mod tests {
 
     #[test]
     fn role_assertion_linker_preserves_inversion_flag() {
+        let _test_env = crate::test_env::read();
         let mut linker = RoleAssertionLinker::new();
         linker.init_role_assertion_linker(44, true, false, true, false);
 
@@ -4466,6 +4498,7 @@ mod tests {
 
     #[test]
     fn reader_gets_label_cache_entry_via_role_assertion_linker() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut assertion_a = RoleAssertionLinker::new();
@@ -4512,6 +4545,7 @@ mod tests {
 
     #[test]
     fn utilities_get_role_inversed_linker_signature_respects_global_inversion() {
+        let _test_env = crate::test_env::read();
         let role_linker = vec![(71, false), (72, true)];
         let qhash = |value: Cint64| {
             let value = value as u64;
@@ -4530,6 +4564,7 @@ mod tests {
 
     #[test]
     fn reader_gets_label_cache_entry_via_role_linker() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let role_linker = vec![(81, false), (82, true)];
@@ -4581,6 +4616,7 @@ mod tests {
 
     #[test]
     fn reader_visits_label_item_individual_associations_in_iterator_order() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, label) = association_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut visited = Vec::new();
@@ -4606,6 +4642,7 @@ mod tests {
 
     #[test]
     fn reader_visit_label_item_individual_associations_respects_filters_and_stop() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, label) = association_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut visited = Vec::new();
@@ -4628,6 +4665,7 @@ mod tests {
 
     #[test]
     fn reader_visit_label_item_individual_associations_returns_false_without_extension() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = ctx.alloc_label_cache_item(LabelCacheItem::new(INVALID));
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
@@ -4651,6 +4689,7 @@ mod tests {
 
     #[test]
     fn reader_visits_individual_ids_of_associated_individual_set_label() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, label) = association_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut visited = Vec::new();
@@ -4671,6 +4710,7 @@ mod tests {
 
     #[test]
     fn reader_visit_individual_ids_of_associated_individual_set_label_respects_stop() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, label) = association_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut visited = Vec::new();
@@ -4691,6 +4731,7 @@ mod tests {
 
     #[test]
     fn reader_has_individual_ids_in_associated_individual_set_label_checks_all_associations() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, label) = association_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
 
@@ -4722,6 +4763,7 @@ mod tests {
 
     #[test]
     fn reader_visits_nominal_indirectly_connected_individual_ids() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut data = NominalIndividualIndirectConnectionData::new();
         data.set_indirectly_connected_individual_id_linker(vec![101, 102, 103]);
@@ -4745,6 +4787,7 @@ mod tests {
 
     #[test]
     fn reader_visit_nominal_indirectly_connected_individual_ids_returns_false_without_linker() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let data = ctx
             .alloc_nominal_indirect_connection_data(NominalIndividualIndirectConnectionData::new());
@@ -4771,6 +4814,7 @@ mod tests {
 
     #[test]
     fn reader_visits_neighbour_individual_ids_for_array_id_from_cursor() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, det_label, _nondet_label) = neighbour_array_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut visited = Vec::new();
@@ -4814,6 +4858,7 @@ mod tests {
 
     #[test]
     fn reader_visits_neighbour_individual_ids_for_role_respects_determinism_filter() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, det_label, nondet_label) = neighbour_array_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut deterministic = Vec::new();
@@ -4852,6 +4897,7 @@ mod tests {
 
     #[test]
     fn reader_visits_neighbour_array_ids_for_role() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, det_label, nondet_label) = neighbour_array_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut deterministic = Vec::new();
@@ -4884,6 +4930,7 @@ mod tests {
 
     #[test]
     fn reader_visit_neighbour_array_id_from_cursor_respects_determinism_filter() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, _det_label, _nondet_label) = neighbour_array_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut visited = Vec::new();
@@ -4907,6 +4954,7 @@ mod tests {
 
     #[test]
     fn reader_counts_neighbours_by_role_and_array_position() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, _det_label, _nondet_label) = neighbour_array_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
 
@@ -4938,6 +4986,7 @@ mod tests {
 
     #[test]
     fn reader_visits_associated_deterministic_and_nondeterministic_concept_labels() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, _det_label, _nondet_label, _full_label) = concept_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut det_seen = Vec::new();
@@ -4968,6 +5017,7 @@ mod tests {
 
     #[test]
     fn reader_has_associated_concept_labels_checks_cache_values() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, _det_label, _nondet_label, _full_label) = concept_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
 
@@ -4995,6 +5045,7 @@ mod tests {
 
     #[test]
     fn reader_visits_full_concept_set_label_with_determinism_filters() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, _det_label, _nondet_label, full_label) = concept_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut deterministic = Vec::new();
@@ -5033,6 +5084,7 @@ mod tests {
 
     #[test]
     fn reader_has_full_concept_set_label_respects_determinism_overload() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, _det_label, _nondet_label, full_label) = concept_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
 
@@ -5056,6 +5108,7 @@ mod tests {
 
     #[test]
     fn reader_gets_concept_occurrence_in_associated_full_concept_set_label() {
+        let _test_env = crate::test_env::read();
         let (mut ctx, ass_data, _det_label, _nondet_label, full_label) = concept_label_context();
         let mut reader = BackendRepresentativeMemoryCacheReader::new();
         let mut negated = true;
@@ -5105,6 +5158,7 @@ mod tests {
 
     #[test]
     fn reader_visits_roles_of_associated_neighbour_role_set_label() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = alloc_role_label(
             &mut ctx,
@@ -5141,6 +5195,7 @@ mod tests {
 
     #[test]
     fn reader_has_roles_in_associated_neighbour_role_set_label_variants() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = alloc_role_label(
             &mut ctx,
@@ -5204,6 +5259,7 @@ mod tests {
 
     #[test]
     fn reader_visits_label_references_of_neighbour_role_set_combination_label() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label_a = alloc_role_label(
             &mut ctx,
@@ -5235,6 +5291,7 @@ mod tests {
 
     #[test]
     fn reader_visits_and_checks_combination_role_set_labels() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = alloc_role_label(
             &mut ctx,
@@ -5318,6 +5375,7 @@ mod tests {
 
     #[test]
     fn reader_checks_role_to_neighbour_through_neighbour_role_set_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = alloc_role_label(
             &mut ctx,
@@ -5354,6 +5412,7 @@ mod tests {
 
     #[test]
     fn reader_visits_roles_to_neighbour_through_neighbour_role_set_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = alloc_role_label(
             &mut ctx,

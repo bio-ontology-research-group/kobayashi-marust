@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/bool-min2>
+SubClassOf(:A DataMinCardinality(2 :p xsd:boolean))
+)

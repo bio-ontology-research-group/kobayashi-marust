@@ -119,6 +119,36 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .concept(concept)
             .get_operator_code();
 
+        if !con_negation && self.value_singletons.contains(&concept) {
+            // KM-BRIDGE: a value singleton merges every node that carries it
+            // (u02 `ht_apply_singleton_merges`); saturation has no such merge.
+            // A node is a sound summary as long as no merge can happen: one
+            // carrier per singleton, standing for one successor. A second
+            // carrier, or a carrier counted twice by an at-least restriction
+            // (as Konclude treats a nominal, cpp 7020-7026), makes the nodes
+            // involved insufficient, and completion decides. Without it,
+            // `A ⊑ ≥2 d` over a one-value range of `d` came out satisfiable.
+            let node = *process_indi;
+            let mut insufficient: Vec<SatNodeId> = calc_alg_context
+                .process_context()
+                .sat_node(node)
+                .get_multiple_cardinality_ancestor_nodes_linker()
+                .to_vec();
+            let first = *self.singleton_first_carrier.entry(concept).or_insert(node);
+            if first != node {
+                insufficient.push(first);
+                insufficient.push(node);
+            }
+            self.singleton_carriers.insert(node);
+            for target in insufficient {
+                self.update_direct_adding_individual_status_flags(
+                    target,
+                    super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+            }
+        }
         if !con_negation {
             match con_op_code {
                 CCDATATYPE => {
@@ -706,11 +736,54 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                             .get_concept_count(),
                                     );
                                 }
+                                let shared_copy_head = if copied_node.is_some()
+                                    && calc_alg_context
+                                        .process_context()
+                                        .sat_node(disjunction_node)
+                                        .get_copy_individual_node()
+                                        == copied_node
+                                {
+                                    let copied_label = calc_alg_context
+                                        .process_context()
+                                        .sat_node(copied_node)
+                                        .reapply_con_sat_label_set;
+                                    let target_label = calc_alg_context
+                                        .process_context()
+                                        .sat_node(*process_indi)
+                                        .reapply_con_sat_label_set;
+                                    if copied_label.is_some() && target_label.is_some() {
+                                        let candidate = calc_alg_context
+                                            .process_context()
+                                            .reapply_con_sat_label_set(copied_label)
+                                            .get_concept_saturation_description_linker();
+                                        if candidate.is_some() {
+                                            let desc = calc_alg_context
+                                                .process_context()
+                                                .con_sat_desc(candidate);
+                                            if Self::sat_label_set_contains_concept_get_negation(
+                                                target_label,
+                                                desc.get_concept(),
+                                                calc_alg_context,
+                                            ) == Some(desc.get_negation())
+                                            {
+                                                candidate
+                                            } else {
+                                                ConceptSaturationDescriptorId::NONE
+                                            }
+                                        } else {
+                                            ConceptSaturationDescriptorId::NONE
+                                        }
+                                    } else {
+                                        ConceptSaturationDescriptorId::NONE
+                                    }
+                                } else {
+                                    ConceptSaturationDescriptorId::NONE
+                                };
                                 let mut descriptor = calc_alg_context
                                     .process_context()
                                     .reapply_con_sat_label_set(disjunction_label)
                                     .get_concept_saturation_description_linker();
-                                while descriptor.is_some() {
+                                while descriptor.is_some() && descriptor != shared_copy_head {
                                     let (adding_concept, adding_negation, next) = {
                                         let value = calc_alg_context
                                             .process_context()
@@ -1208,6 +1281,7 @@ mod tests {
 
     #[test]
     fn s03_apply_and_does_not_replay_operands_into_copy_dependents() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1268,6 +1342,7 @@ mod tests {
 
     #[test]
     fn s03_apply_implication_rule_executes_single_operand() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1311,6 +1386,7 @@ mod tests {
 
     #[test]
     fn s03_apply_implication_rule_queues_next_trigger() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1358,6 +1434,7 @@ mod tests {
 
     #[test]
     fn s03_tableau_dispatch_positive_bottom_flags_clash() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1382,6 +1459,7 @@ mod tests {
 
     #[test]
     fn s03_tableau_dispatch_unknown_operator_uses_else_rule() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1407,6 +1485,7 @@ mod tests {
 
     #[test]
     fn s03_tableau_dispatch_positive_implication_executes_rule() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1450,6 +1529,7 @@ mod tests {
 
     #[test]
     fn s03_test_automate_transition_operands_addable_missing_aqall_operand() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1478,6 +1558,7 @@ mod tests {
 
     #[test]
     fn s03_test_automate_transition_operands_addable_existing_operand_not_addable() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1509,6 +1590,7 @@ mod tests {
 
     #[test]
     fn s03_test_automate_transition_operands_addable_role_mismatch_is_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1543,6 +1625,7 @@ mod tests {
 
     #[test]
     fn s03_test_automate_transition_operands_addable_recurses_through_aqand() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 

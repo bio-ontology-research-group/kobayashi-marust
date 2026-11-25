@@ -58,14 +58,38 @@ pub(super) fn classify_text(text: String) -> Result<ClassificationEvidence, Orch
     if names.iter().any(|name| !iris.contains_key(name)) {
         return Err(OrchestrateError::OutOfFragment("symbolic source lacks a public class IRI".into()));
     }
+    let export_meta = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some().then(|| {
+        super::frontend_run::Meta {
+            iri_map: source.iri_map.clone(),
+            named: source.named.clone(),
+            declared: source.declared.clone(),
+            el_rbox_safe: source.el_rbox_safe,
+            abox_inconsistent: source.abox_inconsistent,
+            asserted_classes: source.asserted_classes.clone(),
+            profile: source.profile.clone(),
+            route: source.route.clone(),
+            uncarried_data_assertions: source.uncarried_data_assertions,
+            dropped_source_axioms: source.dropped_source_axioms.clone(),
+            route_approximations: source.route_approximations.clone(),
+            one_sorted_data_successors: source.one_sorted_data_successors,
+            rbox: source.rbox.clone(),
+            data_roles: source.data_roles.clone(),
+            nominal_abox: source.nominal_abox.clone(),
+            separable_abox_export: source.separable_abox_export.clone(),
+        }
+    });
     // The native input owns the complete source evidence now. Do not retain
     // the large frontend clause representation beside the completion graph.
     drop(frontend);
     crate::mem::release_transient_heap();
     let output = crate::tableau::run_bridge_producer_input_typed(input)
         .map_err(|error| OrchestrateError::OutOfFragment(format!("symbolic source bridge deferred ({error})")))?;
+    let classification = map_output(output, &names, &iris, &asserted, inconsistent);
+    if let Some(meta) = export_meta {
+        super::model_export::record_symbolic_source_export(meta, classification.consistent);
+    }
     Ok(ClassificationEvidence {
-        classification: map_output(output, &names, &iris, &asserted, inconsistent),
+        classification,
         grouped_subsumptions: None,
         consistency_certified: true,
     })
@@ -84,10 +108,12 @@ fn map_output(output: crate::tableau::TOutput, names: &HashSet<String>,
     }
     let consistent = output.consistent && !frontend_inconsistent
         && !asserted.iter().any(|name| unsatisfiable.contains(&full(name)));
-    if !consistent {
-        return Classification { consistent: false, subsumptions: vec![], unsatisfiable: vec![], dropped: 0, approximate: None };
-    }
     let public: HashSet<String> = names.iter().map(|name| full(name)).collect();
+    if !consistent {
+        let mut all_public: Vec<String> = public.into_iter().collect();
+        all_public.sort();
+        return Classification { consistent: false, subsumptions: vec![], unsatisfiable: all_public, dropped: 0, approximate: None };
+    }
     Classification { consistent, subsumptions: pairs.into_iter().collect(),
         unsatisfiable: unsatisfiable.into_iter().filter(|name| public.contains(name)).collect(), dropped: 0, approximate: None }
 }
@@ -98,6 +124,7 @@ mod tests {
 
     #[test]
     fn automatic_hint_uses_constructor_tokens_and_excludes_rule_sources() {
+        let _test_env = crate::test_env::write();
         for construct in ["ObjectMinCardinality", "ObjectMaxCardinality", "ObjectExactCardinality"] {
             assert!(high_object_cardinality_without_rules(&format!("{construct} ( # bound\n128 :r :F)")));
             assert!(!high_object_cardinality_without_rules(&format!("{construct}(127 :r :F)")));
@@ -114,6 +141,7 @@ mod tests {
 
     #[test]
     fn symbolic_publication_retains_public_iris_and_global_clashes() {
+        let _test_env = crate::test_env::write();
         let names = HashSet::from(["Q_public".into(), "B".into()]);
         let iris = BTreeMap::from([("Q_public".into(), "urn:A".into()), ("B".into(), "urn:B".into())]);
         let output = || crate::tableau::TOutput { consistent: true,
@@ -125,7 +153,8 @@ mod tests {
         for result in [map_output(output(), &names, &iris, &["B".into()], false),
             map_output(output(), &names, &iris, &[], true)] {
             assert!(!result.consistent);
-            assert!(result.subsumptions.is_empty() && result.unsatisfiable.is_empty());
+            assert!(result.subsumptions.is_empty());
+            assert_eq!(result.unsatisfiable, vec!["urn:A".to_owned(), "urn:B".to_owned()]);
         }
     }
 }
@@ -136,6 +165,7 @@ mod facts_tests {
     /// the shared conformance traversal equals the token scan it replaces.
     #[test]
     fn cached_cardinality_fact_equals_the_token_scan() {
+        let _test_env = crate::test_env::write();
         let decl = "Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) \
             Declaration(ObjectProperty(<urn:r>)) Declaration(ObjectProperty(<urn:s>))";
         let mut docs = [

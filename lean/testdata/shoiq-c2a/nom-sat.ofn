@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/nom-sat>
+ClassAssertion(:A :a)
+SubClassOf(:A ObjectHasValue(:r :b))
+)

@@ -1,0 +1,8 @@
+# chainroles.ofn on the witness route: a (= d) on core 0, b on 1, c on 2; r from a to b, s from b to c and from c to a
+blocks 3
+ty 0 0 1 4 5 7
+ty 1 2 5 8
+ty 2 3 5 9
+lab 0 1 +0
+lab 1 2 +1
+lab 2 0 +1

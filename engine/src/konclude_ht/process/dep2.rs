@@ -380,6 +380,7 @@ mod tests {
 
     #[test]
     fn dep2_add_clashes_prepends_chain_and_preserves_old_head() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let old_head = ctx.alloc_clash_desc(ClashDescriptor::new());
         let new_head = ctx.alloc_clash_desc(ClashDescriptor::new());
@@ -399,6 +400,7 @@ mod tests {
 
     #[test]
     fn dep2_add_clashes_ignores_none_without_setting_flag() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut track_point = DependencyTrackPoint::new(DependencyId::NONE);
 

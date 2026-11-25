@@ -84,6 +84,7 @@ mod tests {
 
     #[test]
     fn concept_process_linker_init_sets_descriptor_restriction_and_clears_next() {
+        let _test_env = crate::test_env::read();
         let mut linker = ConceptProcessLinker::new();
         linker
             .set_next(ConceptProcessLinkerId::new(9))

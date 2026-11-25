@@ -238,6 +238,7 @@ mod tests {
     use super::*;
     #[test]
     fn closure_memo_answers_an_equal_input_in_any_order() {
+        let _test_env = crate::test_env::read();
         let source = |order: &str| -> String {
             let axioms = [
                 "ClassAssertion(<P> <a>)", "ObjectPropertyAssertion(<r> <a> <b>)",
@@ -283,6 +284,7 @@ mod tests {
     }
     #[test]
     fn repeated_role_variables_require_one_shared_binding() {
+        let _test_env = crate::test_env::read();
         let mut registry = super::super::iri::IriRegistry::new();
         let mut ontology = super::super::parse::parse_axioms(&mut registry, r#"Ontology(
             ObjectPropertyAssertion(<r> <a> <b>)
@@ -295,6 +297,7 @@ mod tests {
     }
     #[test]
     fn rule_premises_include_inferred_inverse_chain_and_transitive_edges() {
+        let _test_env = crate::test_env::read();
         let mut registry = super::super::iri::IriRegistry::new();
         let mut ontology = super::super::parse::parse_axioms(&mut registry, r#"Ontology(
             ObjectPropertyAssertion(<r> <b> <a>)
@@ -313,6 +316,7 @@ mod tests {
     }
     #[test]
     fn closure_preserves_rules_and_requires_every_positive_premise() {
+        let _test_env = crate::test_env::read();
         let mut registry = super::super::iri::IriRegistry::new();
         let mut ontology = super::super::parse::parse_axioms(&mut registry, r#"Ontology(
             ClassAssertion(<P> <a>) ObjectPropertyAssertion(<r> <a> <b>)
