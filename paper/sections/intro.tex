@@ -68,9 +68,9 @@ paper describes the resulting system and its evaluation.
 We evaluate KM v1.7.0 on the ORE~2015 corpus \cite{parsia2017ore} under a
 protocol of one core, 240 seconds, and 20~GiB per ontology, with correctness
 decided by agreement with Konclude, HermiT, Openllet, and JFact.  On
-\HOInputs{} held-out ontologies KM solves \HOKMSolved{} and Konclude
-\HOKCSolved{}, and KM is faster and uses less memory in the mean and in the
-median on the inputs both solve.  We compare KM with OxidOWL
+\HOInputs{} held-out ontologies KM returns an answer for \HOKMSolved{} and Konclude
+for \HOKCSolved{}, and KM is faster and uses less memory in the mean and in the
+median on the inputs both answer.  We compare KM with OxidOWL
 \cite{sieve2026oxidowlcodingagents}, a hypertableau reasoner for OWL~2~DL
 that is also written in Rust, under the same protocol; OxidOWL finishes
 classification on \OXFinished{} of these ontologies and returns the reference

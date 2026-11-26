@@ -43,13 +43,10 @@ by full IRI, and stores for every satisfiable class the set of its named
 superclasses together with the set of unsatisfiable classes and the
 consistency value.  Reference answers come from Konclude~v0.7.0-1138,
 HermiT~1.4.5.519, Openllet~2.6.5, and JFact~5.0.3, each run on the full pool
-under the same limits.  We count an input as solved by a reasoner when the
-reasoner finishes within the limits and its canonical answer equals that of at
-least one reference reasoner other than itself.  \todo{The release documents
-use two slightly different definitions (agreement with every reference that
-answered; Konclude's same-day answer equal to its pinned answer); recompute
-all three systems in Table~\ref{tab:heldout} with one definition from the
-per-input records.}
+under the same limits.  A reasoner finishes an input when it returns an answer
+within the limits.  A finished answer is confirmed when its canonical form
+equals a stored reference answer; for Konclude's run of the benchmark day the
+stored answers include Konclude's own answer of 4 October 2026.
 
 \subsection{Held-out comparison with Konclude}
 \label{sec:eval-heldout}
@@ -57,8 +54,14 @@ per-input records.}
 We first ask whether KM matches Konclude on inputs that were not used during
 development.  Both reasoners were run on the \HOInputs{} held-out inputs in
 the same batch job on 24 November 2026.  Table~\ref{tab:heldout} reports the
-result.  KM solves \HOKMSolved{} inputs and Konclude \HOKCSolved{}.  On the
-\HOCommonKMKC{} inputs that both solve, KM needs \HOKMMean{}~s in the mean and
+result.  KM finishes \HOKMSolved{} inputs and Konclude \HOKCSolved{}.  Of KM's
+answers, \HOKMConfirmed{} are confirmed.  The remaining answer is for ORE
+ontology 3794, whose only stored reference answer is Konclude's; KM's
+hierarchy differs from that answer, and an adjudication with HermiT for
+KM~v1.5.5 found the Konclude answer incomplete.  Of Konclude's answers,
+\HOKCConfirmed{} are confirmed, and its hierarchies for ORE ontologies 3794
+and 6333 differ from the stored answers.  On the \HOCommonKMKC{} inputs that
+both finish and on which KM's answer is confirmed, KM needs \HOKMMean{}~s in the mean and
 \HOKMMedian{}~s in the median, against \HOKCMean{}~s and \HOKCMedian{}~s for
 Konclude, and KM's peak memory is \HOKMMemMedian{}~MiB in the median against
 \HOKCMemMedian{}~MiB.  KM is the faster of the two on \HOKMFaster{} of the
@@ -71,21 +74,21 @@ classifies in 49~s and Konclude in 9~s.
 \centering
 \small
 \caption{Held-out half of the ORE~2015 pool (\HOInputs{} inputs), one core,
-240~s, 20~GiB.  Time and memory of KM and Konclude are over the
-\HOCommonKMKC{} inputs both solve.  The OxidOWL row counts inputs whose class
-hierarchy is correct (Section~\ref{sec:eval-oxidowl}); its time and memory are
+240~s, 20~GiB.  Time and memory of KM and Konclude are over
+\HOCommonKMKC{} common inputs.  For OxidOWL, a confirmed answer is a correct class
+hierarchy (Section~\ref{sec:eval-oxidowl}); its time and memory are
 over the \OXCommon{} inputs on which both KM and OxidOWL are correct, and the
 last row gives KM on the same inputs.}
 \label{tab:heldout}
-\begin{tabular}{lrrrrr}
+\begin{tabular}{lrrrrrr}
 \toprule
-Reasoner & Solved & Mean s & Median s & Median MiB & Mean MiB \\
+Reasoner & Finished & Confirmed & Mean s & Median s & Median MiB & Mean MiB \\
 \midrule
-KM v1.7.0 & \HOKMSolved & \HOKMMean & \HOKMMedian & \HOKMMemMedian & \HOKMMemMean \\
-Konclude v0.7.0-1138 & \HOKCSolved & \HOKCMean & \HOKCMedian & \HOKCMemMedian & \HOKCMemMean \\
+KM v1.7.0 & \HOKMSolved & \HOKMConfirmed & \HOKMMean & \HOKMMedian & \HOKMMemMedian & \HOKMMemMean \\
+Konclude v0.7.0-1138 & \HOKCSolved & \HOKCConfirmed & \HOKCMean & \HOKCMedian & \HOKCMemMedian & \HOKCMemMean \\
 \midrule
-OxidOWL v2.1.1 & \OXHierarchyCorrect & \OXMean & \OXMedian & \OXMemMedian & \OXMemMean \\
-KM v1.7.0, same inputs & & \OXKMMean & \OXKMMedian & \OXKMMemMedian & \OXKMMemMean \\
+OxidOWL v2.1.1 & \OXFinished & \OXHierarchyCorrect & \OXMean & \OXMedian & \OXMemMedian & \OXMemMean \\
+KM v1.7.0, same inputs & & & \OXKMMean & \OXKMMedian & \OXKMMemMedian & \OXKMMemMean \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -206,7 +209,7 @@ Tables~\ref{tab:pool} and~\ref{tab:java} uses the current release.}
 pool: number of inputs with identical answers, and median time and peak memory
 on those inputs.}
 \label{tab:java}
-\begin{tabular}{lrrrrr}
+\begin{tabular}{lrrrrrr}
 \toprule
  & & \multicolumn{2}{c}{Median time (s)} & \multicolumn{2}{c}{Median memory (MiB)} \\
 Reasoner & Inputs & Other & KM & Other & KM \\
